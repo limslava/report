@@ -764,30 +764,38 @@ export class PlanningV2ReportService {
       currentMap.set(metric.code, metric);
     }
 
+    const yearPlans = await this.monthlyPlanRepo.find({
+      where: { segmentId: segment.id, year },
+      relations: ['planMetrics'],
+    });
+    const yearPlanByMonth = new Map<number, PlanningMonthlyPlan>();
+    for (const plan of yearPlans) {
+      yearPlanByMonth.set(plan.month, plan);
+    }
+
     for (const [code, currentMetric] of currentMap.entries()) {
-      const baseCurrent = safeNumber(currentMetric.basePlan ?? currentMetric.carryPlan);
-      if (month === 1) {
-        resolved.set(code, baseCurrent);
-        continue;
+      let debt = 0;
+      let carryForRequestedMonth = 0;
+
+      for (let currentMonth = 1; currentMonth <= month; currentMonth += 1) {
+        const monthPlan = yearPlanByMonth.get(currentMonth);
+        const monthMetric = monthPlan?.planMetrics?.find((item) => item.code === code);
+        const base = safeNumber(monthMetric?.basePlan ?? (currentMonth === month ? currentMetric.basePlan : 0));
+        const carry = base + debt;
+
+        const fact = await this.getFactForPlanMetric(
+          segment.id,
+          segment.code,
+          code,
+          metricIdByCode,
+          year,
+          currentMonth
+        );
+        debt = Math.max(0, carry - fact);
+        carryForRequestedMonth = carry;
       }
 
-      const prevMonth = month - 1;
-      const prevPlan = await this.monthlyPlanRepo.findOne({
-        where: { segmentId: segment.id, year, month: prevMonth },
-        relations: ['planMetrics'],
-      });
-      const prevMetric = prevPlan?.planMetrics?.find((item) => item.code === code);
-      const prevBase = safeNumber(prevMetric?.basePlan ?? prevMetric?.carryPlan);
-      const prevFact = await this.getFactForPlanMetric(
-        segment.id,
-        segment.code,
-        code,
-        metricIdByCode,
-        year,
-        prevMonth
-      );
-
-      resolved.set(code, baseCurrent + Math.max(0, prevBase - prevFact));
+      resolved.set(code, carryForRequestedMonth);
     }
 
     return resolved;

@@ -72,21 +72,13 @@ const getFromAddress = async (): Promise<string> => {
 export const sendInvitationEmail = async (
   email: string,
   fullName: string,
-  role: string,
+  _role: string,
   temporaryPassword: string
 ) => {
   try {
-    logger.info(`Sending invitation email to ${email} for role ${role}`);
-    const roleNames: Record<string, string> = {
-      container_vladivostok: 'Контейнерные перевозки - Владивосток',
-      container_moscow: 'Контейнерные перевозки - Москва',
-      railway: 'ЖД перевозки',
-      autotruck: 'ТС (Автовозы)',
-      additional: 'Дополнительные услуги',
-      sales: 'Продажи',
-      director: 'Директор',
-      admin: 'Администратор',
-    };
+    logger.info(`Sending invitation email to ${email}`);
+    const frontendBaseUrl = (process.env.FRONTEND_URL || 'https://reportlimslava.amvera.io').replace(/\/+$/, '');
+    const loginUrl = `${frontendBaseUrl}/login`;
 
     const transporter = await createTransporter();
     const from = await getFromAddress();
@@ -104,9 +96,8 @@ export const sendInvitationEmail = async (
           <ul>
             <li><strong>Логин:</strong> ${email}</li>
             <li><strong>Пароль:</strong> ${temporaryPassword}</li>
-            <li><strong>Ссылка для входа:</strong> <a href="${process.env.FRONTEND_URL}/login">${process.env.FRONTEND_URL}/login</a></li>
+            <li><strong>Ссылка для входа:</strong> <a href="${loginUrl}">${loginUrl}</a></li>
           </ul>
-          <p><strong>Роль:</strong> ${roleNames[role] || role}</p>
           <p>Рекомендуем сменить пароль после первого входа.</p>
           <hr>
           <p style="color: #666;">Это автоматическое сообщение, пожалуйста, не отвечайте на него.</p>

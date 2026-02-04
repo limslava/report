@@ -132,20 +132,20 @@ function safeNumber(value: number | null | undefined): number {
 
 function buildClassicCarryPlans(basePlans: number[], facts: number[]): number[] {
   const carryPlans = Array.from({ length: 12 }, () => 0);
+  let debt = 0;
+
   for (let idx = 0; idx < 12; idx += 1) {
     const base = safeNumber(basePlans[idx]);
-    if (idx === 0) {
-      // Январь без переноса из прошлого года.
-      carryPlans[idx] = base;
-      continue;
-    }
+    // Классический перенос:
+    // план месяца = база месяца + накопленный долг по плану из прошлых месяцев.
+    const carry = base + debt;
+    carryPlans[idx] = carry;
 
-    // Классический перенос без "раздувания":
-    // только недовыполнение прошлого месяца относительно его базового плана.
-    const prevBase = safeNumber(basePlans[idx - 1]);
-    const prevFact = safeNumber(facts[idx - 1]);
-    carryPlans[idx] = base + Math.max(0, prevBase - prevFact);
+    // Перевыполнение не создает "кредит", только гасит долг до нуля.
+    const fact = safeNumber(facts[idx]);
+    debt = Math.max(0, carry - fact);
   }
+
   return carryPlans;
 }
 
@@ -196,7 +196,8 @@ export class PlanningV2TotalsService {
       }
 
       const yearlyBasePlan = months.reduce((acc, month) => acc + month.basePlan, 0);
-      const yearlyCarryPlan = months.reduce((acc, month) => acc + month.carryPlan, 0);
+      // В годовом итоге "План с переносом" показываем как сумму базовых планов.
+      const yearlyCarryPlan = config.kind === 'PLAN_FLOW' ? yearlyBasePlan : 0;
       const yearlyFact = months.reduce((acc, month) => acc + month.fact, 0);
 
       rows.push({
