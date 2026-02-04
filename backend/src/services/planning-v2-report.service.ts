@@ -95,15 +95,17 @@ function pct(part: number, total: number): number {
   return (part / total) * 100;
 }
 
+function isWaitingMetricCode(metricCode: string): boolean {
+  return metricCode === 'auto_truck_waiting'
+    || metricCode === 'auto_ktk_waiting'
+    || metricCode === 'auto_curtain_waiting'
+    || metricCode === 'auto_total_waiting';
+}
+
 function getPlanValue(planMetricMap: Map<PlanningPlanMetricCode, PlanningMonthlyPlanMetric>, code: PlanningPlanMetricCode): number {
   const planMetric = planMetricMap.get(code);
   if (!planMetric) {
     return 0;
-  }
-
-  // For KTK, carry plan is expected to equal base plan.
-  if (code === PlanningPlanMetricCode.KTK_PLAN_REQUESTS) {
-    return planMetric.basePlan ?? 0;
   }
 
   if (planMetric.carryPlan !== null && planMetric.carryPlan !== undefined) {
@@ -215,7 +217,7 @@ export class PlanningV2ReportService {
       const dayValues = valuesByMetric.get(metric.code) ?? [];
 
       const monthTotal = (() => {
-        if (metric.aggregation === PlanningMetricAggregation.LAST) {
+        if (metric.aggregation === PlanningMetricAggregation.LAST || isWaitingMetricCode(metric.code)) {
           return lastUntil(dayValues, dayValues.length);
         }
         return sum(dayValues);
@@ -408,8 +410,13 @@ export class PlanningV2ReportService {
     segmentId: string,
     metrics: PlanningMetric[],
     year: number,
-    month: number
+    month: number,
+    depth = 0
   ): Promise<Record<string, number | undefined>> {
+    if (depth > 36) {
+      return { truck: 0, ktk: 0, curtain: 0 };
+    }
+
     const prevMonth = month === 1 ? 12 : month - 1;
     const prevYear = month === 1 ? year - 1 : year;
     const prevDaysInMonth = getDaysInMonth(prevYear, prevMonth);
@@ -426,7 +433,8 @@ export class PlanningV2ReportService {
       .getMany();
 
     if (prevRows.length === 0) {
-      return { truck: 0, ktk: 0, curtain: 0 };
+      // Если предыдущий месяц пустой, берем остаток из более раннего месяца (без обнуления на границе года).
+      return this.resolveAutoWaitingStart(segmentId, metrics, prevYear, prevMonth, depth + 1);
     }
 
     // Важное правило: старт текущего месяца = финальное ожидание прошлого месяца.
@@ -435,7 +443,8 @@ export class PlanningV2ReportService {
       segmentId,
       metrics,
       prevYear,
-      prevMonth
+      prevMonth,
+      depth + 1
     );
 
     const metricById = new Map(metrics.map((metric) => [metric.id, metric.code]));

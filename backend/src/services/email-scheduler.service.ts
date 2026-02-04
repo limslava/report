@@ -229,8 +229,8 @@ export const sendScheduledEmailNow = async (schedule: EmailSchedule) => {
 
 async function buildSvExcelFromData(year: number, month: number, asOfDate: string): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  const planningSheet = workbook.addWorksheet('Планирование v2');
-  const totalSheet = workbook.addWorksheet('ИТОГО v2');
+  const planningSheet = workbook.addWorksheet('Ежедневный отчет');
+  const totalSheet = workbook.addWorksheet('ИТОГО');
   const daysInMonth = new Date(year, month, 0).getDate();
 
   const segmentOrder: PlanningSegmentCode[] = [
@@ -254,7 +254,7 @@ async function buildSvExcelFromData(year: number, month: number, asOfDate: strin
     cursor += 2;
   }
 
-  // Global layout for "Планирование v2"
+  // Global layout for "Ежедневный отчет"
   planningSheet.views = [{ state: 'frozen', ySplit: 1, xSplit: 1 }];
   planningSheet.getColumn(1).width = 42;
   for (let d = 1; d <= daysInMonth; d += 1) {

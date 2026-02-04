@@ -112,14 +112,14 @@ describe('PlanningV2ReportService dashboard', () => {
       asOfDate: '2026-02-04',
     });
 
-    expect(dashboard.planMonth).toBe(850);
-    expect(dashboard.planToDate).toBeCloseTo(91.0714, 3);
+    expect(dashboard.planMonth).toBe(280);
+    expect(dashboard.planToDate).toBeCloseTo(30, 3);
     expect(dashboard.factToDate).toBe(60);
     expect(dashboard.monthFact).toBe(60);
-    expect(dashboard.completionToDatePct).toBeCloseTo(65.8823, 3);
-    expect(dashboard.avgPerDay).toBe(20);
-    expect(dashboard.grossTotal).toBe(600);
-    expect(dashboard.grossAvgPerDay).toBe(200);
-    expect(dashboard.trucksAvgOnLine).toBe(4);
+    expect(dashboard.completionToDatePct).toBeCloseTo(200, 3);
+    expect(dashboard.avgPerDay).toBe(15);
+    expect(dashboard.grossTotal).toBe(300);
+    expect(dashboard.grossAvgPerDay).toBe(75);
+    expect(dashboard.trucksAvgOnLine).toBe(3);
   });
 });

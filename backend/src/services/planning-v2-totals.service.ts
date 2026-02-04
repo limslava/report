@@ -130,20 +130,6 @@ function safeNumber(value: number | null | undefined): number {
   return value ?? 0;
 }
 
-function calcCarryPlan(
-  config: TotalsConfig,
-  month: number,
-  basePlan: number,
-  prevCarry: number,
-  prevFact: number
-): number {
-  // For KTK business flow, carry should match base plan for each month.
-  if (config.planMetricCode === PlanningPlanMetricCode.KTK_PLAN_REQUESTS) {
-    return basePlan;
-  }
-  return month === 1 ? basePlan : basePlan + Math.max(0, prevCarry - prevFact);
-}
-
 export class PlanningV2TotalsService {
   private readonly segmentRepo = AppDataSource.getRepository(PlanningSegment);
   private readonly monthlyPlanRepo = AppDataSource.getRepository(PlanningMonthlyPlan);
@@ -169,17 +155,25 @@ export class PlanningV2TotalsService {
       for (let month = 1; month <= 12; month += 1) {
         const metric = monthMetricMap.get(month);
         const basePlan = config.kind === 'PLAN_FLOW' ? safeNumber(metric?.basePlan) : 0;
-        const carryPlan = config.kind === 'PLAN_FLOW'
-          ? calcCarryPlan(config, month, basePlan, prevCarry, prevFact)
-          : 0;
         const fact = facts[month - 1];
+        const carryPlan = config.kind === 'PLAN_FLOW'
+          ? (
+            month === 1
+              ? basePlan - fact
+              : (prevCarry - prevFact < 0 ? basePlan : basePlan + (prevCarry - prevFact))
+          )
+          : 0;
+
+        const completionPct = config.kind === 'PLAN_FLOW'
+          ? pct(fact, month === 1 ? basePlan : carryPlan)
+          : 0;
 
         months.push({
           month,
           basePlan,
           carryPlan,
           fact,
-          completionPct: config.kind === 'PLAN_FLOW' ? pct(fact, carryPlan) : 0,
+          completionPct,
         });
 
         if (config.kind === 'PLAN_FLOW') {
@@ -195,7 +189,7 @@ export class PlanningV2TotalsService {
       rows.push({
         rowId: `${config.segmentCode}:${config.planMetricCode ?? config.factMetricCodes.join('+')}`,
         segmentCode: config.segmentCode,
-        segmentName: segment.name || config.segmentName,
+        segmentName: config.segmentName,
         planMetricCode: config.planMetricCode,
         planMetricName: config.planMetricName,
         kind: config.kind,
@@ -292,7 +286,9 @@ export class PlanningV2TotalsService {
       }
 
       const basePlan = safeNumber(metric.basePlan);
-      const carryPlan = calcCarryPlan(config, month, basePlan, prevCarry, prevFact);
+      const carryPlan = month === 1
+        ? basePlan - facts[month - 1]
+        : (prevCarry - prevFact < 0 ? basePlan : basePlan + (prevCarry - prevFact));
       metric.carryPlan = carryPlan;
       metric.carryMode = 'ROLL_OVER';
       await this.monthlyPlanMetricRepo.save(metric);

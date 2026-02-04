@@ -97,15 +97,15 @@ function buildDashboardCards(segmentCode: ExcelLikePlanTableProps['segmentCode']
       { label: 'План на дату (автовоз + шторы)', value: truck.planToDate },
       { label: 'Выполнение на дату (автовоз + шторы)', value: truck.factToDate },
       { label: 'Выполнение % на дату (автовоз + шторы)', value: truck.completionToDatePct, kind: 'percent' },
-      { label: 'План месяц (авто в ктк)', value: ktk.planMonth },
       { label: 'План на дату (авто в ктк)', value: ktk.planToDate },
+      { label: 'План месяц (авто в ктк)', value: ktk.planMonth },
       { label: 'Выполнение на дату (авто в ктк)', value: ktk.factToDate },
       { label: 'Выполнение % на дату (авто в ктк)', value: ktk.completionToDatePct, kind: 'percent' },
+      { label: 'Задолженность перегруз', value: dashboard.debtOverload, kind: 'currency' },
+      { label: 'Задолженность кэшбек', value: dashboard.debtCashback, kind: 'currency' },
       { label: 'В ожидании отгрузки Автовоз', value: dashboard.waitingTruck },
       { label: 'В ожидании отгрузки Авто в ктк', value: dashboard.waitingKtk },
       { label: 'В ожидании отгрузки Штора', value: dashboard.waitingCurtain },
-      { label: 'Задолженность перегруз', value: dashboard.debtOverload, kind: 'currency' },
-      { label: 'Задолженность кэшбек', value: dashboard.debtCashback, kind: 'currency' },
     ];
   }
 
