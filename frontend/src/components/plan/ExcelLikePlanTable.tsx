@@ -813,7 +813,12 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
                 <Box
                   key={`dashboard-row-${idx + 1}`}
                   display="grid"
-                  gridTemplateColumns={`repeat(${row.length}, minmax(220px, 1fr))`}
+                  gridTemplateColumns={{
+                    xs: '1fr',
+                    sm: 'repeat(2, minmax(220px, 1fr))',
+                    md: 'repeat(3, minmax(220px, 1fr))',
+                    lg: 'repeat(5, minmax(220px, 1fr))',
+                  }}
                   gap={1.5}
                 >
                   {row.map((card) => (
