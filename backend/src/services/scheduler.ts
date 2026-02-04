@@ -1,4 +1,5 @@
 import Queue from 'bull';
+import Redis from 'ioredis';
 import { logger } from '../utils/logger';
 import { processScheduledEmails } from './email-scheduler.service';
 
@@ -13,6 +14,7 @@ type RedisOptions = {
 
 let emailQueue: Queue.Queue | null = null;
 let schedulerEnabled = true;
+let localSchedulerTimer: NodeJS.Timeout | null = null;
 
 const redisEnabled = () => (process.env.REDIS_ENABLED ?? 'true').toLowerCase() !== 'false';
 const schedulerEnvEnabled = () => (process.env.SCHEDULER_ENABLED ?? 'true').toLowerCase() !== 'false';
@@ -29,6 +31,63 @@ const redisConfig = {
   },
 } satisfies RedisOptions;
 
+const runScheduledEmails = async () => {
+  logger.info('Processing scheduled emails (scheduler tick)');
+  try {
+    await processScheduledEmails();
+  } catch (error) {
+    logger.error('Failed to process scheduled emails:', error);
+  }
+};
+
+const startLocalSchedulerFallback = () => {
+  if (localSchedulerTimer) {
+    return;
+  }
+
+  // Fallback mode when Redis queue is unavailable.
+  localSchedulerTimer = setInterval(() => {
+    void runScheduledEmails();
+  }, 10 * 60 * 1000);
+
+  logger.warn('Email scheduler fallback started (in-process, every 10 minutes).');
+};
+
+const stopLocalSchedulerFallback = () => {
+  if (!localSchedulerTimer) {
+    return;
+  }
+  clearInterval(localSchedulerTimer);
+  localSchedulerTimer = null;
+};
+
+const canConnectRedis = async (): Promise<boolean> => {
+  const client = new Redis({
+    host: redisConfig.host,
+    port: redisConfig.port,
+    password: redisConfig.password,
+    lazyConnect: true,
+    connectTimeout: 5000,
+    maxRetriesPerRequest: 1,
+    enableOfflineQueue: false,
+  });
+
+  try {
+    await client.connect();
+    await client.ping();
+    return true;
+  } catch (error) {
+    logger.warn('Redis ping failed, switching scheduler to local fallback.', error);
+    return false;
+  } finally {
+    try {
+      await client.quit();
+    } catch {
+      client.disconnect();
+    }
+  }
+};
+
 const createQueue = (): Queue.Queue | null => {
   if (!redisEnabled()) {
     logger.warn('Redis disabled via REDIS_ENABLED=false. Email scheduler will be skipped.');
@@ -42,20 +101,27 @@ const createQueue = (): Queue.Queue | null => {
     logger.error('Redis queue error. Scheduler disabled until restart.', error);
     queue.close().catch((closeErr) => logger.error('Failed to close email queue after error:', closeErr));
     emailQueue = null;
+    startLocalSchedulerFallback();
   });
 
   queue.on('failed', (_job, error) => {
     logger.error('Email scheduler job failed:', error);
   });
 
-  queue.process(async (_job) => {
-    logger.info('Processing scheduled emails (cron job)');
-    try {
-      await processScheduledEmails();
-    } catch (error) {
-      logger.error('Failed to process scheduled emails:', error);
-      throw error;
-    }
+  // Bull may return a promise here; handle rejection to avoid unhandledRejection crash.
+  Promise.resolve(
+    queue.process(async (_job) => {
+      logger.info('Processing scheduled emails (cron job)');
+      try {
+        await processScheduledEmails();
+      } catch (error) {
+        logger.error('Failed to process scheduled emails:', error);
+        throw error;
+      }
+    })
+  ).catch((error) => {
+    schedulerEnabled = false;
+    logger.error('Failed to register email scheduler processor. Scheduler disabled.', error);
   });
 
   return queue;
@@ -69,14 +135,29 @@ export const startScheduler = async () => {
   }
   if (!schedulerEnabled) {
     logger.warn('Scheduler is in disabled state after Redis error. Restart app to retry.');
+    startLocalSchedulerFallback();
     return;
   }
+
+  if (!redisEnabled()) {
+    startLocalSchedulerFallback();
+    return;
+  }
+
+  const redisOk = await canConnectRedis();
+  if (!redisOk) {
+    startLocalSchedulerFallback();
+    return;
+  }
+
+  stopLocalSchedulerFallback();
 
   if (!emailQueue) {
     emailQueue = createQueue();
   }
 
   if (!emailQueue) {
+    startLocalSchedulerFallback();
     return;
   }
 
@@ -91,11 +172,13 @@ export const startScheduler = async () => {
     schedulerEnabled = false;
     await emailQueue.close().catch((closeErr) => logger.error('Failed to close queue after start failure:', closeErr));
     emailQueue = null;
+    startLocalSchedulerFallback();
   }
 };
 
 // Остановка планировщика (для graceful shutdown)
 export const stopScheduler = async () => {
+  stopLocalSchedulerFallback();
   if (!emailQueue) return;
   await emailQueue.close();
   emailQueue = null;
