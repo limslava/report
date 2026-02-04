@@ -206,7 +206,7 @@ export class PlanningV2ReportService {
     });
 
     const autoWaitingStart = segment.code === PlanningSegmentCode.AUTO
-      ? await this.resolveAutoWaitingStart(segment.id, metrics, params.year, params.month, monthlyPlan)
+      ? await this.resolveAutoWaitingStart(segment.id, metrics, params.year, params.month)
       : undefined;
 
     this.applyFormulaRows(segment.code, valuesByMetric, daysInMonth, monthlyPlan, autoWaitingStart);
@@ -296,18 +296,16 @@ export class PlanningV2ReportService {
         const truckSent = report.gridRows.find((row) => row.metricCode === 'auto_truck_sent');
         const ktkSent = report.gridRows.find((row) => row.metricCode === 'auto_ktk_sent');
         const curtainSent = report.gridRows.find((row) => row.metricCode === 'auto_curtain_sent');
-        const curtainPlan = 0;
-        const curtainFactToDate = report.daysInMonth > 0 ? sumUntil(curtainSent?.dayValues ?? [], report.dashboard.completedDays as number) : 0;
         const curtainMonthFact = curtainSent?.monthTotal ?? 0;
 
         items.push({
           segmentCode: segment.code,
-          segmentName: 'Автовозы',
+          segmentName: 'Автовозы / Шторы',
           parentSegmentCode: segment.code,
-          detailCode: 'AUTO_TRUCK',
+          detailCode: 'AUTO_TRUCK_CURTAIN',
           planMonth: Number(truck?.planMonth ?? 0),
           factToDate: Number(truck?.factToDate ?? 0),
-          monthFact: truckSent?.monthTotal ?? 0,
+          monthFact: (truckSent?.monthTotal ?? 0) + curtainMonthFact,
           completionToDate: Number(truck?.completionToDatePct ?? 0),
           completionMonth: Number(truck?.completionMonthPct ?? 0),
         });
@@ -321,17 +319,6 @@ export class PlanningV2ReportService {
           monthFact: ktkSent?.monthTotal ?? 0,
           completionToDate: Number(ktk?.completionToDatePct ?? 0),
           completionMonth: Number(ktk?.completionMonthPct ?? 0),
-        });
-        items.push({
-          segmentCode: segment.code,
-          segmentName: 'Шторы',
-          parentSegmentCode: segment.code,
-          detailCode: 'AUTO_CURTAIN',
-          planMonth: curtainPlan,
-          factToDate: curtainFactToDate,
-          monthFact: curtainMonthFact,
-          completionToDate: 0,
-          completionMonth: 0,
         });
       }
 
@@ -360,31 +347,16 @@ export class PlanningV2ReportService {
       }
 
       if (segment.code === PlanningSegmentCode.RAIL) {
-        const from = report.gridRows.find((row) => row.metricCode === 'rail_from_vvo_total');
-        const to = report.gridRows.find((row) => row.metricCode === 'rail_to_vvo_total');
-        const completedDays = Number(report.dashboard.completedDays ?? 0);
-
         items.push({
           segmentCode: segment.code,
-          segmentName: 'Из Владивостока',
+          segmentName: 'Из/Во Владивосток',
           parentSegmentCode: segment.code,
-          detailCode: 'RAIL_FROM_VVO',
-          planMonth: 0,
-          factToDate: sumUntil(from?.dayValues ?? [], completedDays),
-          monthFact: from?.monthTotal ?? 0,
-          completionToDate: 0,
-          completionMonth: 0,
-        });
-        items.push({
-          segmentCode: segment.code,
-          segmentName: 'Во Владивосток',
-          parentSegmentCode: segment.code,
-          detailCode: 'RAIL_TO_VVO',
-          planMonth: 0,
-          factToDate: sumUntil(to?.dayValues ?? [], completedDays),
-          monthFact: to?.monthTotal ?? 0,
-          completionToDate: 0,
-          completionMonth: 0,
+          detailCode: 'RAIL_TOTAL_FLOW',
+          planMonth: Number(report.dashboard.planMonth ?? 0),
+          factToDate: Number(report.dashboard.factToDate ?? 0),
+          monthFact: Number(report.dashboard.monthFact ?? 0),
+          completionToDate: Number(report.dashboard.completionToDatePct ?? 0),
+          completionMonth: Number(report.dashboard.completionMonthPct ?? 0),
         });
       }
     }
@@ -436,10 +408,8 @@ export class PlanningV2ReportService {
     segmentId: string,
     metrics: PlanningMetric[],
     year: number,
-    month: number,
-    monthlyPlan: PlanningMonthlyPlan | null
+    month: number
   ): Promise<Record<string, number | undefined>> {
-    const currentStart = (monthlyPlan?.params?.waitingStart ?? {}) as Record<string, number | undefined>;
     const prevMonth = month === 1 ? 12 : month - 1;
     const prevYear = month === 1 ? year - 1 : year;
     const prevDaysInMonth = getDaysInMonth(prevYear, prevMonth);
@@ -456,14 +426,17 @@ export class PlanningV2ReportService {
       .getMany();
 
     if (prevRows.length === 0) {
-      // Если в прошлом месяце нет данных, начинаем ожидание с нуля.
       return { truck: 0, ktk: 0, curtain: 0 };
     }
 
-    const prevMonthlyPlan = await this.monthlyPlanRepo.findOne({
-      where: { segmentId, year: prevYear, month: prevMonth },
-    });
-    const prevStart = ((prevMonthlyPlan?.params?.waitingStart ?? currentStart) as Record<string, number | undefined>);
+    // Важное правило: старт текущего месяца = финальное ожидание прошлого месяца.
+    // Не прибавляем "seed/start" повторно, чтобы не удваивать перенос.
+    const prevStart = await this.resolveAutoWaitingStart(
+      segmentId,
+      metrics,
+      prevYear,
+      prevMonth
+    );
 
     const metricById = new Map(metrics.map((metric) => [metric.id, metric.code]));
     const valuesByCode = new Map<string, Array<number | null>>();
@@ -581,6 +554,7 @@ export class PlanningV2ReportService {
     asOfDate: string;
   }): SegmentDashboard {
     const { segmentCode, valuesByMetric, monthlyPlan, daysInMonth, completedDays, asOfDate } = params;
+    const dataDays = Math.max(1, Math.min(daysInMonth, completedDays + 1));
 
     const planMetricMap = new Map<PlanningPlanMetricCode, PlanningMonthlyPlanMetric>();
     for (const metric of monthlyPlan?.planMetrics ?? []) {
@@ -602,9 +576,9 @@ export class PlanningV2ReportService {
 
       const planMonth = getPlanValue(planMetricMap, PlanningPlanMetricCode.KTK_PLAN_REQUESTS);
       const planToDate = daysInMonth > 0 ? (planMonth / daysInMonth) * completedDays : 0;
-      const factToDate = sumUntil(total, completedDays);
+      const factToDate = sumUntil(total, dataDays);
       const monthFact = sum(total);
-      const grossToDate = sumUntil(gross, completedDays);
+      const grossToDate = lastUntil(gross, dataDays);
 
       return {
         ...base,
@@ -614,10 +588,10 @@ export class PlanningV2ReportService {
         monthFact,
         completionMonthPct: pct(monthFact, planMonth),
         completionToDatePct: pct(factToDate, planToDate),
-        avgPerDay: completedDays > 0 ? factToDate / completedDays : 0,
+        avgPerDay: dataDays > 0 ? factToDate / dataDays : 0,
         grossTotal: grossToDate,
-        grossAvgPerDay: completedDays > 0 ? grossToDate / completedDays : 0,
-        trucksAvgOnLine: avgUntil(trucks, completedDays),
+        grossAvgPerDay: dataDays > 0 ? grossToDate / dataDays : 0,
+        trucksAvgOnLine: avgUntil(trucks, dataDays),
       };
     }
 
@@ -633,16 +607,16 @@ export class PlanningV2ReportService {
       const ktkSent = valuesByMetric.get('auto_ktk_sent') ?? [];
 
       // "Автовозы" в отчете = Автовоз + Штора
-      const truckFactToDate = sumUntil(truckSent, completedDays) + sumUntil(curtainSent, completedDays);
-      const ktkFactToDate = sumUntil(ktkSent, completedDays);
+      const truckFactToDate = sumUntil(truckSent, dataDays) + sumUntil(curtainSent, dataDays);
+      const ktkFactToDate = sumUntil(ktkSent, dataDays);
 
-      const waitingTotal = lastUntil(valuesByMetric.get('auto_total_waiting') ?? [], completedDays);
-      const waitingTruck = lastUntil(valuesByMetric.get('auto_truck_waiting') ?? [], completedDays);
-      const waitingKtk = lastUntil(valuesByMetric.get('auto_ktk_waiting') ?? [], completedDays);
-      const waitingCurtain = lastUntil(valuesByMetric.get('auto_curtain_waiting') ?? [], completedDays);
+      const waitingTotal = lastUntil(valuesByMetric.get('auto_total_waiting') ?? [], dataDays);
+      const waitingTruck = lastUntil(valuesByMetric.get('auto_truck_waiting') ?? [], dataDays);
+      const waitingKtk = lastUntil(valuesByMetric.get('auto_ktk_waiting') ?? [], dataDays);
+      const waitingCurtain = lastUntil(valuesByMetric.get('auto_curtain_waiting') ?? [], dataDays);
 
-      const debtOverload = lastUntil(valuesByMetric.get('auto_manual_debt_overload') ?? [], completedDays);
-      const debtCashback = lastUntil(valuesByMetric.get('auto_manual_debt_cashback') ?? [], completedDays);
+      const debtOverload = lastUntil(valuesByMetric.get('auto_manual_debt_overload') ?? [], dataDays);
+      const debtCashback = lastUntil(valuesByMetric.get('auto_manual_debt_cashback') ?? [], dataDays);
 
       const factToDate = truckFactToDate + ktkFactToDate;
       const planMonth = planTruckMonth + planKtkMonth;
@@ -657,14 +631,14 @@ export class PlanningV2ReportService {
         monthFact,
         completionMonthPct: pct(monthFact, planMonth),
         completionToDatePct: pct(factToDate, planToDate),
-        avgPerDay: completedDays > 0 ? factToDate / completedDays : 0,
+        avgPerDay: dataDays > 0 ? factToDate / dataDays : 0,
         truck: {
           planMonth: planTruckMonth,
           planToDate: planTruckToDate,
           factToDate: truckFactToDate,
           completionMonthPct: pct(sum(truckSent) + sum(curtainSent), planTruckMonth),
           completionToDatePct: pct(truckFactToDate, planTruckToDate),
-          avgPerDay: completedDays > 0 ? truckFactToDate / completedDays : 0,
+          avgPerDay: dataDays > 0 ? truckFactToDate / dataDays : 0,
         },
         ktk: {
           planMonth: planKtkMonth,
@@ -672,7 +646,7 @@ export class PlanningV2ReportService {
           factToDate: ktkFactToDate,
           completionMonthPct: pct(sum(ktkSent), planKtkMonth),
           completionToDatePct: pct(ktkFactToDate, planKtkToDate),
-          avgPerDay: completedDays > 0 ? ktkFactToDate / completedDays : 0,
+          avgPerDay: dataDays > 0 ? ktkFactToDate / dataDays : 0,
         },
         waitingTotal,
         waitingTruck,
@@ -687,7 +661,7 @@ export class PlanningV2ReportService {
       const planMonth = getPlanValue(planMetricMap, PlanningPlanMetricCode.RAIL_PLAN_KTK);
       const planToDate = daysInMonth > 0 ? (planMonth / daysInMonth) * completedDays : 0;
       const railTotal = valuesByMetric.get('rail_total') ?? [];
-      const factToDate = sumUntil(railTotal, completedDays);
+      const factToDate = sumUntil(railTotal, dataDays);
       const monthFact = sum(railTotal);
 
       return {
@@ -698,7 +672,7 @@ export class PlanningV2ReportService {
         monthFact,
         completionMonthPct: pct(monthFact, planMonth),
         completionToDatePct: pct(factToDate, planToDate),
-        avgPerDay: completedDays > 0 ? factToDate / completedDays : 0,
+        avgPerDay: dataDays > 0 ? factToDate / dataDays : 0,
       };
     }
 
@@ -706,7 +680,7 @@ export class PlanningV2ReportService {
       const planMonth = getPlanValue(planMetricMap, PlanningPlanMetricCode.TO_PLAN);
       const planToDate = daysInMonth > 0 ? (planMonth / daysInMonth) * completedDays : 0;
       const values = valuesByMetric.get('to_count') ?? [];
-      const factToDate = sumUntil(values, completedDays);
+      const factToDate = sumUntil(values, dataDays);
       const monthFact = sum(values);
 
       return {
@@ -717,13 +691,13 @@ export class PlanningV2ReportService {
         monthFact,
         completionMonthPct: pct(monthFact, planMonth),
         completionToDatePct: pct(factToDate, planToDate),
-        avgPerDay: completedDays > 0 ? factToDate / completedDays : 0,
+        avgPerDay: dataDays > 0 ? factToDate / dataDays : 0,
       };
     }
 
     if (segmentCode === PlanningSegmentCode.EXTRA) {
       const total = valuesByMetric.get('extra_total') ?? [];
-      const factToDate = sumUntil(total, completedDays);
+      const factToDate = sumUntil(total, dataDays);
       const monthFact = sum(total);
 
       return {
@@ -734,11 +708,11 @@ export class PlanningV2ReportService {
         monthFact,
         completionMonthPct: 0,
         completionToDatePct: 0,
-        avgPerDay: completedDays > 0 ? factToDate / completedDays : 0,
-        groupage: sumUntil(valuesByMetric.get('extra_groupage') ?? [], completedDays),
-        curtains: sumUntil(valuesByMetric.get('extra_curtains') ?? [], completedDays),
-        forwarding: sumUntil(valuesByMetric.get('extra_forwarding') ?? [], completedDays),
-        repack: sumUntil(valuesByMetric.get('extra_repack') ?? [], completedDays),
+        avgPerDay: dataDays > 0 ? factToDate / dataDays : 0,
+        groupage: sumUntil(valuesByMetric.get('extra_groupage') ?? [], dataDays),
+        curtains: sumUntil(valuesByMetric.get('extra_curtains') ?? [], dataDays),
+        forwarding: sumUntil(valuesByMetric.get('extra_forwarding') ?? [], dataDays),
+        repack: sumUntil(valuesByMetric.get('extra_repack') ?? [], dataDays),
       };
     }
 

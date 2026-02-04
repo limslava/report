@@ -15,6 +15,8 @@ type RedisOptions = {
 let emailQueue: Queue.Queue | null = null;
 let schedulerEnabled = true;
 let localSchedulerTimer: NodeJS.Timeout | null = null;
+const schedulerIntervalMinutes = Math.max(1, Number(process.env.SCHEDULER_INTERVAL_MINUTES || 5));
+const schedulerCron = `*/${schedulerIntervalMinutes} * * * *`;
 
 const redisEnabled = () => (process.env.REDIS_ENABLED ?? 'true').toLowerCase() !== 'false';
 const schedulerEnvEnabled = () => (process.env.SCHEDULER_ENABLED ?? 'true').toLowerCase() !== 'false';
@@ -48,9 +50,9 @@ const startLocalSchedulerFallback = () => {
   // Fallback mode when Redis queue is unavailable.
   localSchedulerTimer = setInterval(() => {
     void runScheduledEmails();
-  }, 10 * 60 * 1000);
+  }, schedulerIntervalMinutes * 60 * 1000);
 
-  logger.warn('Email scheduler fallback started (in-process, every 10 minutes).');
+  logger.warn(`Email scheduler fallback started (in-process, every ${schedulerIntervalMinutes} minutes).`);
 };
 
 const stopLocalSchedulerFallback = () => {
@@ -164,9 +166,9 @@ export const startScheduler = async () => {
   try {
     // Удаляем старые задачи (опционально)
     await emailQueue.empty();
-    // Добавляем повторяющуюся задачу с cron‑выражением '*/10 * * * *'
-    await emailQueue.add({}, { repeat: { cron: '*/10 * * * *' } });
-    logger.info('Email scheduler started (runs every 10 minutes)');
+    // Добавляем повторяющуюся задачу
+    await emailQueue.add({}, { repeat: { cron: schedulerCron } });
+    logger.info(`Email scheduler started (runs every ${schedulerIntervalMinutes} minutes)`);
   } catch (error) {
     logger.error('Failed to start email scheduler:', error);
     schedulerEnabled = false;

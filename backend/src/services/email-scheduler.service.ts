@@ -19,6 +19,7 @@ const DEPARTMENT_TO_SEGMENT: Record<string, PlanningSegmentCode | null> = {
 };
 
 const WEEK_DAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+const DEFAULT_TZ = process.env.SCHEDULER_TIMEZONE || 'Asia/Vladivostok';
 
 const COLORS = {
   sectionTitle: 'FFE6E6E6',
@@ -89,18 +90,52 @@ const checkSchedule = (schedule: EmailSchedule, now: Date): boolean => {
   const lastSent = schedule.lastSent;
   const scheduledTime = config.time || '09:00';
   const [hour, minute] = scheduledTime.split(':').map(Number);
-  const isAfterTime = now.getHours() > hour || (now.getHours() === hour && now.getMinutes() >= minute);
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
+  const timezone = String(config.timezone || DEFAULT_TZ);
 
-  if (lastSent && lastSent >= todayStart) {
+  const asTzParts = (date: Date) => {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      weekday: 'short',
+    });
+    const parts = dtf.formatToParts(date);
+    const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+    const weekdayMap: Record<string, number> = {
+      Sun: 7,
+      Mon: 1,
+      Tue: 2,
+      Wed: 3,
+      Thu: 4,
+      Fri: 5,
+      Sat: 6,
+    };
+
+    return {
+      year: Number(map.year),
+      month: Number(map.month),
+      day: Number(map.day),
+      hour: Number(map.hour),
+      minute: Number(map.minute),
+      isoWeekday: weekdayMap[map.weekday] ?? 1,
+      dayKey: `${map.year}-${map.month}-${map.day}`,
+    };
+  };
+
+  const nowTz = asTzParts(now);
+  const isAfterTime = nowTz.hour > hour || (nowTz.hour === hour && nowTz.minute >= minute);
+
+  if (lastSent && asTzParts(lastSent).dayKey === nowTz.dayKey) {
     return false;
   }
 
   if (frequency === 'daily') {
     if (Array.isArray(config.daysOfWeek) && config.daysOfWeek.length > 0) {
-      const dayIso = now.getDay() === 0 ? 7 : now.getDay();
-      if (!config.daysOfWeek.includes(dayIso)) {
+      if (!config.daysOfWeek.includes(nowTz.isoWeekday)) {
         return false;
       }
     }
@@ -108,9 +143,8 @@ const checkSchedule = (schedule: EmailSchedule, now: Date): boolean => {
   }
 
   if (frequency === 'weekly') {
-    const dayIso = now.getDay() === 0 ? 7 : now.getDay();
     const days = Array.isArray(config.daysOfWeek) && config.daysOfWeek.length > 0 ? config.daysOfWeek : [1];
-    if (!days.includes(dayIso)) {
+    if (!days.includes(nowTz.isoWeekday)) {
       return false;
     }
     return isAfterTime;
@@ -118,7 +152,7 @@ const checkSchedule = (schedule: EmailSchedule, now: Date): boolean => {
 
   if (frequency === 'monthly') {
     const dayOfMonth = Number(config.dayOfMonth || 1);
-    if (now.getDate() !== dayOfMonth) {
+    if (nowTz.day !== dayOfMonth) {
       return false;
     }
     return isAfterTime;

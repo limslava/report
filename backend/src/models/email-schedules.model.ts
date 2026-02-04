@@ -23,6 +23,7 @@ export class EmailSchedule {
     daysOfWeek?: number[]; // 1-7 для weekly
     dayOfMonth?: number; // 1-31 для monthly
     reportType?: 'sv_pdf' | 'planning_v2_segment';
+    timezone?: string; // IANA TZ, e.g. Asia/Vladivostok
   };
 
   @Column({ type: 'jsonb' })
