@@ -4,6 +4,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import { config } from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 import { AppDataSource } from './config/data-source';
 import { authRouter } from './routes/auth.routes';
 import { adminRouter } from './routes/admin.routes';
@@ -61,6 +63,19 @@ app.use('/api/smtp-config', smtpConfigRouter);
 app.get('/health', (_req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
+
+// Serve built frontend in production (single-container mode)
+const frontendDistPath = path.resolve(process.cwd(), 'frontend', 'dist');
+const frontendIndexPath = path.join(frontendDistPath, 'index.html');
+if (fs.existsSync(frontendIndexPath)) {
+  app.use(express.static(frontendDistPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path === '/health') {
+      return next();
+    }
+    return res.sendFile(frontendIndexPath);
+  });
+}
 
 // 404 handler
 app.use('*', (_req, res) => {

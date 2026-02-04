@@ -1,0 +1,9 @@
+{
+  "name": "report-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "amvera:build": "npm --prefix frontend ci && npm --prefix frontend run build && npm --prefix backend ci && npm --prefix backend run build",
+    "amvera:start": "node backend/dist/index.js"
+  }
+}

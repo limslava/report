@@ -1,0 +1,13 @@
+meta:
+  environment: node
+  toolchain:
+    name: npm
+    version: 20
+
+build:
+  commands:
+    - npm run amvera:build
+
+run:
+  command: APP_PORT=80 npm run amvera:start
+  persistenceMount: /data
