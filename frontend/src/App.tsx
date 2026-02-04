@@ -1,0 +1,50 @@
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuthStore } from './store/auth-store';
+import DashboardLayout from './layouts/DashboardLayout';
+import LoginPage from './pages/LoginPage';
+import SummaryReportPage from './pages/SummaryReportPage';
+import AdminPage from './pages/AdminPage';
+import SettingsPage from './pages/SettingsPage';
+import PlansPage from './pages/PlansPage';
+import RouteAccessGuard from './components/auth/RouteAccessGuard';
+import { canAccessAdmin, canViewSummary } from './utils/rolePermissions';
+
+function App() {
+  const { token, user } = useAuthStore();
+  const isAuthenticated = !!token;
+
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      
+      {isAuthenticated ? (
+          <Route path="/" element={<DashboardLayout />}>
+            <Route index element={<Navigate to="/plans" replace />} />
+          <Route
+            path="summary-report"
+            element={(
+              <RouteAccessGuard allow={canViewSummary(user?.role)}>
+                <SummaryReportPage />
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="admin"
+            element={(
+              <RouteAccessGuard allow={canAccessAdmin(user?.role)}>
+                <AdminPage />
+              </RouteAccessGuard>
+            )}
+          />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="plans" element={<PlansPage mode="daily" />} />
+          <Route path="plans/totals" element={<PlansPage mode="totals" />} />
+        </Route>
+      ) : (
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      )}
+    </Routes>
+  );
+}
+
+export default App;
