@@ -37,6 +37,7 @@ interface ExcelLikePlanTableProps {
 type DraftState = Record<string, number | null>;
 type DashboardValueKind = 'number' | 'percent' | 'currency' | 'text';
 type DashboardCard = { label: string; value: unknown; kind?: DashboardValueKind };
+type DashboardRow = DashboardCard[];
 type EditingCell = { metricCode: string; dayIndex: number } | null;
 type CellCoord = { metricCode: string; dayIndex: number } | null;
 type ReportContext = {
@@ -92,20 +93,20 @@ function buildDashboardCards(segmentCode: ExcelLikePlanTableProps['segmentCode']
   if (segmentCode === 'AUTO') {
     const truck = asRecord(dashboard.truck);
     const ktk = asRecord(dashboard.ktk);
-    return [
-      { label: 'План месяц (автовоз + шторы)', value: truck.planMonth },
-      { label: 'План на дату (автовоз + шторы)', value: truck.planToDate },
-      { label: 'Выполнение на дату (автовоз + шторы)', value: truck.factToDate },
-      { label: 'Выполнение % на дату (автовоз + шторы)', value: truck.completionToDatePct, kind: 'percent' },
-      { label: 'План на дату (авто в ктк)', value: ktk.planToDate },
+      return [
+        { label: 'План месяц (автовоз + шторы)', value: truck.planMonth },
+        { label: 'План на дату (автовоз + шторы)', value: truck.planToDate },
+        { label: 'Выполнение на дату (автовоз + шторы)', value: truck.factToDate },
+        { label: 'Выполнение % на дату (автовоз + шторы)', value: truck.completionToDatePct, kind: 'percent' },
       { label: 'План месяц (авто в ктк)', value: ktk.planMonth },
+      { label: 'План на дату (авто в ктк)', value: ktk.planToDate },
       { label: 'Выполнение на дату (авто в ктк)', value: ktk.factToDate },
       { label: 'Выполнение % на дату (авто в ктк)', value: ktk.completionToDatePct, kind: 'percent' },
-      { label: 'Задолженность перегруз', value: dashboard.debtOverload, kind: 'currency' },
-      { label: 'Задолженность кэшбек', value: dashboard.debtCashback, kind: 'currency' },
       { label: 'В ожидании отгрузки Автовоз', value: dashboard.waitingTruck },
       { label: 'В ожидании отгрузки Авто в ктк', value: dashboard.waitingKtk },
       { label: 'В ожидании отгрузки Штора', value: dashboard.waitingCurtain },
+      { label: 'Задолженность перегруз', value: dashboard.debtOverload, kind: 'currency' },
+      { label: 'Задолженность кэшбек', value: dashboard.debtCashback, kind: 'currency' },
     ];
   }
 
@@ -135,6 +136,17 @@ function buildDashboardCards(segmentCode: ExcelLikePlanTableProps['segmentCode']
     { label: 'Шторы', value: dashboard.curtains },
     { label: 'Экспедирование', value: dashboard.forwarding },
     { label: 'Перетарки/доукрепление', value: dashboard.repack },
+  ];
+}
+
+function buildDashboardRows(segmentCode: ExcelLikePlanTableProps['segmentCode'], cards: DashboardCard[]): DashboardRow[] | null {
+  if (segmentCode !== 'AUTO') {
+    return null;
+  }
+  return [
+    cards.slice(0, 4),
+    cards.slice(4, 8),
+    cards.slice(8, 13),
   ];
 }
 
@@ -477,6 +489,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   };
 
   const dashboardCards = buildDashboardCards(segmentCode, asRecord(report?.dashboard));
+  const dashboardRows = buildDashboardRows(segmentCode, dashboardCards);
   const compactMode = true;
   const monthOptions = [
     { value: 1, label: 'Январь' }, { value: 2, label: 'Февраль' }, { value: 3, label: 'Март' },
@@ -796,16 +809,38 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
       {showDashboard && (
         <Paper sx={{ p: 2 }}>
           <Typography variant="subtitle1" gutterBottom>Дашборд</Typography>
-          <Box display="grid" gridTemplateColumns="repeat(auto-fit, minmax(220px, 1fr))" gap={1.5}>
-            {dashboardCards.map((card) => (
-              <Box key={card.label} sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                <Typography variant="caption" color="text.secondary">{card.label}</Typography>
-                <Typography variant="body2" fontWeight={600}>
-                  {formatDashboardValue(card.value, card.kind)}
-                </Typography>
-              </Box>
-            ))}
-          </Box>
+          {dashboardRows ? (
+            <Box display="flex" flexDirection="column" gap={1.5}>
+              {dashboardRows.map((row, idx) => (
+                <Box
+                  key={`dashboard-row-${idx + 1}`}
+                  display="grid"
+                  gridTemplateColumns={`repeat(${row.length}, minmax(220px, 1fr))`}
+                  gap={1.5}
+                >
+                  {row.map((card) => (
+                    <Box key={card.label} sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                      <Typography variant="caption" color="text.secondary">{card.label}</Typography>
+                      <Typography variant="body2" fontWeight={600}>
+                        {formatDashboardValue(card.value, card.kind)}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              ))}
+            </Box>
+          ) : (
+            <Box display="grid" gridTemplateColumns="repeat(auto-fit, minmax(220px, 1fr))" gap={1.5}>
+              {dashboardCards.map((card) => (
+                <Box key={card.label} sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                  <Typography variant="caption" color="text.secondary">{card.label}</Typography>
+                  <Typography variant="body2" fontWeight={600}>
+                    {formatDashboardValue(card.value, card.kind)}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          )}
         </Paper>
       )}
 

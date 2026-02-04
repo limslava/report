@@ -40,6 +40,10 @@ type SummaryRow = {
   parentSegmentCode?: PlanningSegmentCode;
   detailCode?: string;
 };
+type PlanFlowConfig = {
+  planMetricCode: PlanningPlanMetricCode;
+  factMetricCodes: string[];
+};
 
 function toIsoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -210,6 +214,13 @@ export class PlanningV2ReportService {
     const autoWaitingStart = segment.code === PlanningSegmentCode.AUTO
       ? await this.resolveAutoWaitingStart(segment.id, metrics, params.year, params.month)
       : undefined;
+    const carryPlanByMetric = await this.resolveCarryPlanForMonth({
+      segmentId: segment.id,
+      segmentCode: segment.code,
+      metrics,
+      year: params.year,
+      month: params.month,
+    });
 
     this.applyFormulaRows(segment.code, valuesByMetric, daysInMonth, monthlyPlan, autoWaitingStart);
 
@@ -237,6 +248,7 @@ export class PlanningV2ReportService {
       segmentCode: segment.code,
       valuesByMetric,
       monthlyPlan,
+      carryPlanByMetric,
       daysInMonth,
       completedDays,
       asOfDate: toIsoDate(effectiveAsOf),
@@ -554,15 +566,123 @@ export class PlanningV2ReportService {
     }
   }
 
+  private getPlanFlowConfigs(segmentCode: PlanningSegmentCode): PlanFlowConfig[] {
+    if (segmentCode === PlanningSegmentCode.KTK_VVO) {
+      return [{ planMetricCode: PlanningPlanMetricCode.KTK_PLAN_REQUESTS, factMetricCodes: ['ktk_vvo_fact_total_per_day'] }];
+    }
+    if (segmentCode === PlanningSegmentCode.KTK_MOW) {
+      return [{ planMetricCode: PlanningPlanMetricCode.KTK_PLAN_REQUESTS, factMetricCodes: ['ktk_mow_fact_total_per_day'] }];
+    }
+    if (segmentCode === PlanningSegmentCode.AUTO) {
+      return [
+        { planMetricCode: PlanningPlanMetricCode.AUTO_PLAN_TRUCK, factMetricCodes: ['auto_truck_sent', 'auto_curtain_sent'] },
+        { planMetricCode: PlanningPlanMetricCode.AUTO_PLAN_KTK, factMetricCodes: ['auto_ktk_sent'] },
+      ];
+    }
+    if (segmentCode === PlanningSegmentCode.RAIL) {
+      return [{ planMetricCode: PlanningPlanMetricCode.RAIL_PLAN_KTK, factMetricCodes: ['rail_total'] }];
+    }
+    if (segmentCode === PlanningSegmentCode.TO) {
+      return [{ planMetricCode: PlanningPlanMetricCode.TO_PLAN, factMetricCodes: ['to_count'] }];
+    }
+    return [];
+  }
+
+  private async getFactsByMonth(
+    segmentId: string,
+    metricIdByCode: Map<string, string>,
+    factMetricCodes: string[],
+    year: number
+  ): Promise<number[]> {
+    const metricIds = factMetricCodes
+      .map((code) => metricIdByCode.get(code))
+      .filter((id): id is string => Boolean(id));
+    if (metricIds.length === 0) {
+      return Array.from({ length: 12 }, () => 0);
+    }
+
+    const fromDate = toIsoDate(new Date(Date.UTC(year, 0, 1)));
+    const toDate = toIsoDate(new Date(Date.UTC(year, 11, 31)));
+
+    const rows = await this.valuesRepo
+      .createQueryBuilder('value')
+      .select("EXTRACT(MONTH FROM value.date)", 'month')
+      .addSelect('SUM(value.value)', 'fact')
+      .where('value.segment_id = :segmentId', { segmentId })
+      .andWhere('value.metric_id IN (:...metricIds)', { metricIds })
+      .andWhere('value.date BETWEEN :fromDate AND :toDate', { fromDate, toDate })
+      .groupBy("EXTRACT(MONTH FROM value.date)")
+      .getRawMany<{ month: string; fact: string }>();
+
+    const facts = Array.from({ length: 12 }, () => 0);
+    rows.forEach((row) => {
+      const month = Number(row.month);
+      if (month >= 1 && month <= 12) {
+        facts[month - 1] = Number(row.fact ?? 0);
+      }
+    });
+    return facts;
+  }
+
+  private async resolveCarryPlanForMonth(params: {
+    segmentId: string;
+    segmentCode: PlanningSegmentCode;
+    metrics: PlanningMetric[];
+    year: number;
+    month: number;
+  }): Promise<Map<PlanningPlanMetricCode, number>> {
+    const { segmentId, segmentCode, metrics, year, month } = params;
+    const overrides = new Map<PlanningPlanMetricCode, number>();
+    const planConfigs = this.getPlanFlowConfigs(segmentCode);
+    if (planConfigs.length === 0) {
+      return overrides;
+    }
+
+    const monthlyPlans = await this.monthlyPlanRepo.find({
+      where: { segmentId, year },
+      relations: ['planMetrics'],
+      order: { month: 'ASC' },
+    });
+    const monthlyPlanByMonth = new Map<number, PlanningMonthlyPlan>();
+    monthlyPlans.forEach((plan) => monthlyPlanByMonth.set(plan.month, plan));
+    const metricIdByCode = new Map(metrics.map((metric) => [metric.code, metric.id]));
+
+    for (const config of planConfigs) {
+      const facts = await this.getFactsByMonth(segmentId, metricIdByCode, config.factMetricCodes, year);
+      let prevCarry = 0;
+      let prevFact = 0;
+
+      for (let m = 1; m <= month; m += 1) {
+        const plan = monthlyPlanByMonth.get(m);
+        const planMetric = plan?.planMetrics?.find((item) => item.code === config.planMetricCode);
+        const basePlan = safeNumber(planMetric?.basePlan);
+        const fact = facts[m - 1] ?? 0;
+        const carryPlan = m === 1
+          ? basePlan - fact
+          : (prevCarry - prevFact < 0 ? basePlan : basePlan + (prevCarry - prevFact));
+
+        prevCarry = carryPlan;
+        prevFact = fact;
+
+        if (m === month) {
+          overrides.set(config.planMetricCode, carryPlan);
+        }
+      }
+    }
+
+    return overrides;
+  }
+
   private computeDashboard(params: {
     segmentCode: PlanningSegmentCode;
     valuesByMetric: Map<string, Array<number | null>>;
     monthlyPlan: PlanningMonthlyPlan | null;
+    carryPlanByMetric: Map<PlanningPlanMetricCode, number>;
     daysInMonth: number;
     completedDays: number;
     asOfDate: string;
   }): SegmentDashboard {
-    const { segmentCode, valuesByMetric, monthlyPlan, daysInMonth, completedDays, asOfDate } = params;
+    const { segmentCode, valuesByMetric, monthlyPlan, carryPlanByMetric, daysInMonth, completedDays, asOfDate } = params;
     const dataDays = Math.max(1, Math.min(daysInMonth, completedDays + 1));
 
     const planMetricMap = new Map<PlanningPlanMetricCode, PlanningMonthlyPlanMetric>();
@@ -583,7 +703,8 @@ export class PlanningV2ReportService {
       const gross = valuesByMetric.get(`${prefix}_manual_gross`) ?? [];
       const trucks = valuesByMetric.get(`${prefix}_fact_trucks_on_line`) ?? [];
 
-      const planMonth = getPlanValue(planMetricMap, PlanningPlanMetricCode.KTK_PLAN_REQUESTS);
+      const planMonth = carryPlanByMetric.get(PlanningPlanMetricCode.KTK_PLAN_REQUESTS)
+        ?? getPlanValue(planMetricMap, PlanningPlanMetricCode.KTK_PLAN_REQUESTS);
       const planToDate = daysInMonth > 0 ? (planMonth / daysInMonth) * completedDays : 0;
       const factToDate = sumUntil(total, dataDays);
       const monthFact = sum(total);
@@ -605,8 +726,10 @@ export class PlanningV2ReportService {
     }
 
     if (segmentCode === PlanningSegmentCode.AUTO) {
-      const planTruckMonth = getPlanValue(planMetricMap, PlanningPlanMetricCode.AUTO_PLAN_TRUCK);
-      const planKtkMonth = getPlanValue(planMetricMap, PlanningPlanMetricCode.AUTO_PLAN_KTK);
+      const planTruckMonth = carryPlanByMetric.get(PlanningPlanMetricCode.AUTO_PLAN_TRUCK)
+        ?? getPlanValue(planMetricMap, PlanningPlanMetricCode.AUTO_PLAN_TRUCK);
+      const planKtkMonth = carryPlanByMetric.get(PlanningPlanMetricCode.AUTO_PLAN_KTK)
+        ?? getPlanValue(planMetricMap, PlanningPlanMetricCode.AUTO_PLAN_KTK);
 
       const planTruckToDate = daysInMonth > 0 ? (planTruckMonth / daysInMonth) * completedDays : 0;
       const planKtkToDate = daysInMonth > 0 ? (planKtkMonth / daysInMonth) * completedDays : 0;
@@ -667,7 +790,8 @@ export class PlanningV2ReportService {
     }
 
     if (segmentCode === PlanningSegmentCode.RAIL) {
-      const planMonth = getPlanValue(planMetricMap, PlanningPlanMetricCode.RAIL_PLAN_KTK);
+      const planMonth = carryPlanByMetric.get(PlanningPlanMetricCode.RAIL_PLAN_KTK)
+        ?? getPlanValue(planMetricMap, PlanningPlanMetricCode.RAIL_PLAN_KTK);
       const planToDate = daysInMonth > 0 ? (planMonth / daysInMonth) * completedDays : 0;
       const railTotal = valuesByMetric.get('rail_total') ?? [];
       const factToDate = sumUntil(railTotal, dataDays);
@@ -686,7 +810,8 @@ export class PlanningV2ReportService {
     }
 
     if (segmentCode === PlanningSegmentCode.TO) {
-      const planMonth = getPlanValue(planMetricMap, PlanningPlanMetricCode.TO_PLAN);
+      const planMonth = carryPlanByMetric.get(PlanningPlanMetricCode.TO_PLAN)
+        ?? getPlanValue(planMetricMap, PlanningPlanMetricCode.TO_PLAN);
       const planToDate = daysInMonth > 0 ? (planMonth / daysInMonth) * completedDays : 0;
       const values = valuesByMetric.get('to_count') ?? [];
       const factToDate = sumUntil(values, dataDays);
