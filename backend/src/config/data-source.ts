@@ -1,5 +1,6 @@
 import { DataSource } from 'typeorm';
 import { config } from 'dotenv';
+import path from 'path';
 
 config();
 
@@ -12,9 +13,9 @@ export const AppDataSource = new DataSource({
   database: process.env.DB_DATABASE || 'logistics_reporting',
   synchronize: true,
   logging: process.env.NODE_ENV === 'development',
-  entities: ['src/models/**/*.ts'],
-  migrations: ['src/migrations/**/*.ts'],
-  subscribers: ['src/subscribers/**/*.ts'],
+  entities: [path.join(__dirname, '..', 'models', '**', '*.{js,ts}')],
+  migrations: [path.join(__dirname, '..', 'migrations', '**', '*.{js,ts}')],
+  subscribers: [path.join(__dirname, '..', 'subscribers', '**', '*.{js,ts}')],
   migrationsTableName: 'typeorm_migrations',
 });
 
