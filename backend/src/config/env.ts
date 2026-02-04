@@ -29,7 +29,7 @@ export function getAllowedCorsOrigins(): string[] {
 }
 
 export function getAppPort(): number {
-  return Number(process.env.APP_PORT || 3000);
+  return Number(process.env.APP_PORT || process.env.PORT || 3000);
 }
 
 export function assertProductionEnv(): void {

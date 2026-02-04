@@ -5,9 +5,9 @@ meta:
     version: 20
 
 build:
-  commands:
-    - npm run amvera:build
+  additionalCommands: npm run amvera:build
 
 run:
-  command: APP_PORT=80 npm run amvera:start
+  command: npm run amvera:start
+  containerPort: 80
   persistenceMount: /data
