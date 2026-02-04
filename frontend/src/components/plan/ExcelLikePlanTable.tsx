@@ -115,7 +115,6 @@ function buildDashboardCards(segmentCode: ExcelLikePlanTableProps['segmentCode']
       { label: 'План на месяц', value: dashboard.planMonth },
       { label: 'План на дату', value: dashboard.planToDate },
       { label: 'Выполнение на дату', value: dashboard.factToDate },
-      { label: 'Факт за месяц', value: dashboard.monthFact },
       { label: 'Выполнение % по месяцу', value: dashboard.completionMonthPct, kind: 'percent' },
       { label: 'Выполнение % на дату', value: dashboard.completionToDatePct, kind: 'percent' },
       { label: 'Среднее в день', value: dashboard.avgPerDay },
@@ -131,7 +130,6 @@ function buildDashboardCards(segmentCode: ExcelLikePlanTableProps['segmentCode']
 
   return [
     { label: 'Факт на дату', value: dashboard.factToDate },
-    { label: 'Факт за месяц', value: dashboard.monthFact },
     { label: 'Сборный груз', value: dashboard.groupage },
     { label: 'Шторы', value: dashboard.curtains },
     { label: 'Экспедирование', value: dashboard.forwarding },

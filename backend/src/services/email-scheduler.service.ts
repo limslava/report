@@ -18,6 +18,15 @@ const DEPARTMENT_TO_SEGMENT: Record<string, PlanningSegmentCode | null> = {
   to_auto: PlanningSegmentCode.TO,
 };
 
+const SEGMENT_REPORT_TITLE: Record<PlanningSegmentCode, string> = {
+  [PlanningSegmentCode.KTK_VVO]: 'Контейнерным перевозкам - Владивосток',
+  [PlanningSegmentCode.KTK_MOW]: 'Контейнерным перевозкам - Москва',
+  [PlanningSegmentCode.AUTO]: 'Отправке авто',
+  [PlanningSegmentCode.RAIL]: 'ЖД',
+  [PlanningSegmentCode.EXTRA]: 'Доп.услугам',
+  [PlanningSegmentCode.TO]: 'ТО авто',
+};
+
 const WEEK_DAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const DEFAULT_TZ = process.env.SCHEDULER_TIMEZONE || 'Asia/Vladivostok';
 
@@ -177,7 +186,14 @@ export const sendScheduledEmailNow = async (schedule: EmailSchedule) => {
       await sendEmailWithAttachment(
         schedule.recipients,
         `СВ - ${ddmmyyyy}`,
-        `<p>Во вложении отчет СВ за ${ddmmyyyy}.</p>`,
+        [
+          '<p>Уважаемые коллеги,</p>',
+          `<p>Отчет на ${ddmmyyyy} во вложении.</p>`,
+          `<p><strong>Вложение:</strong> Детальный отчёт в формате Excel содержит все операционные данные на ${ddmmyyyy}.</p>`,
+          '<p>Отчёт сгенерирован автоматически системой мониторинга логистики.</p>',
+          '<p>© 2026 Система управления логистикой и отчётности</p>',
+          '<p>Это письмо отправлено автоматически, пожалуйста, не отвечайте на него.</p>',
+        ].join(''),
         {
           filename: `СВ - ${ddmmyyyy}.xlsx`,
           content,
@@ -208,12 +224,28 @@ export const sendScheduledEmailNow = async (schedule: EmailSchedule) => {
       fillDashboardSheet(dashboardSheet, report.segment.code, report.dashboard || {});
 
       const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+      const reportTitle = SEGMENT_REPORT_TITLE[report.segment.code] ?? report.segment.name;
+      const planMonth = Number(report.dashboard?.planMonth ?? 0);
+      const factToDate = Number(report.dashboard?.factToDate ?? 0);
+      const completionMonth = Number(report.dashboard?.completionMonthPct ?? 0);
+
       await sendEmailWithAttachment(
         schedule.recipients,
-        `Планирование v2 - ${report.segment.name} - ${ddmmyyyy}`,
-        `<p>Во вложении отчет Планирование v2 (${report.segment.name}) за ${ddmmyyyy}.</p>`,
+        `Отчет по ${reportTitle} на ${ddmmyyyy}`,
+        [
+          `<p>Отчет по ${reportTitle}</p>`,
+          `<p>Дата: ${ddmmyyyy}</p>`,
+          '<h3>Ключевые показатели</h3>',
+          `<p><strong>План на месяц:</strong> ${planMonth.toLocaleString('ru-RU')}</p>`,
+          `<p><strong>Выполнение на дату:</strong> ${factToDate.toLocaleString('ru-RU')}</p>`,
+          `<p><strong>Выполнение % по месяцу:</strong> ${completionMonth.toFixed(1)}%</p>`,
+          `<p><strong>Вложение:</strong> Детальный отчёт в формате Excel содержит все операционные данные на ${ddmmyyyy}.</p>`,
+          '<p>Отчёт сгенерирован автоматически системой мониторинга логистики.</p>',
+          '<p>© 2026 Система управления логистикой и отчётности</p>',
+          '<p>Это письмо отправлено автоматически, пожалуйста, не отвечайте на него.</p>',
+        ].join(''),
         {
-          filename: `Планирование v2 - ${report.segment.name} - ${ddmmyyyy}.xlsx`,
+          filename: `Отчет по ${reportTitle} - ${ddmmyyyy}.xlsx`,
           content: buffer,
           contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         }
