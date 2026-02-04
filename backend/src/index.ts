@@ -101,7 +101,8 @@ async function startServer() {
           (module as { default?: { startScheduler?: unknown } }).default?.startScheduler;
 
         if (typeof startScheduler === 'function') {
-          startScheduler();
+          Promise.resolve(startScheduler())
+            .catch((err) => logger.error('Failed to start scheduler:', err));
           return;
         }
 

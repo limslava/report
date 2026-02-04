@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -25,6 +25,7 @@ interface YearTotalsV2TableProps {
 
 type DraftMap = Record<string, number>;
 type EditingCell = { rowId: string; month: number } | null;
+type CellCoord = { rowId: string; month: number } | null;
 
 function makeDraftKey(rowId: string, month: number): string {
   return `${rowId}__m__${month}`;
@@ -103,6 +104,8 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
   const [draft, setDraft] = useState<DraftMap>({});
   const [editingCell, setEditingCell] = useState<EditingCell>(null);
   const [editingValue, setEditingValue] = useState<string>('');
+  const [selectedCell, setSelectedCell] = useState<CellCoord>(null);
+  const cellRefs = useRef<Record<string, HTMLTableCellElement | null>>({});
 
   const loadData = async () => {
     try {
@@ -141,6 +144,32 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
   const sortedRows = useMemo(() => {
     return [...rows].sort((a, b) => rowSortOrder(a) - rowSortOrder(b));
   }, [rows]);
+  const editableRowIds = useMemo(
+    () => sortedRows.filter((row) => row.kind === 'PLAN_FLOW').map((row) => row.rowId),
+    [sortedRows]
+  );
+
+  const makeCellKey = (rowId: string, month: number) => `${rowId}__${month}`;
+
+  const focusCell = (coord: CellCoord) => {
+    if (!coord) return;
+    setSelectedCell(coord);
+    requestAnimationFrame(() => {
+      cellRefs.current[makeCellKey(coord.rowId, coord.month)]?.focus();
+    });
+  };
+
+  const moveCell = (coord: CellCoord, direction: 'left' | 'right' | 'up' | 'down'): CellCoord => {
+    if (!coord || editableRowIds.length === 0) {
+      return coord;
+    }
+    const rowIndex = editableRowIds.findIndex((id) => id === coord.rowId);
+    if (rowIndex < 0) return coord;
+    if (direction === 'left') return { rowId: coord.rowId, month: Math.max(1, coord.month - 1) };
+    if (direction === 'right') return { rowId: coord.rowId, month: Math.min(12, coord.month + 1) };
+    if (direction === 'up') return { rowId: editableRowIds[Math.max(0, rowIndex - 1)], month: coord.month };
+    return { rowId: editableRowIds[Math.min(editableRowIds.length - 1, rowIndex + 1)], month: coord.month };
+  };
 
   const updateDraft = (rowId: string, month: number, raw: string) => {
     const key = makeDraftKey(rowId, month);
@@ -172,14 +201,20 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
     setEditingValue(String(currentValue));
   };
 
-  const commitEdit = () => {
+  const commitEdit = (direction?: 'left' | 'right' | 'up' | 'down') => {
     if (!editingCell) {
       return;
     }
 
-    updateDraft(editingCell.rowId, editingCell.month, editingValue);
+    const current = editingCell;
+    updateDraft(current.rowId, current.month, editingValue);
     setEditingCell(null);
     setEditingValue('');
+    if (direction) {
+      focusCell(moveCell(current, direction));
+    } else {
+      focusCell(current);
+    }
   };
 
   const cancelEdit = () => {
@@ -360,7 +395,78 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
                           editingCell?.month === month;
 
                         return (
-                          <TableCell key={`${row.rowId}-${metric.key}-${month}`} align="center">
+                          <TableCell
+                            key={`${row.rowId}-${metric.key}-${month}`}
+                            align="center"
+                            ref={(el) => {
+                              if (isAdmin && metric.key === 'base') {
+                                cellRefs.current[makeCellKey(row.rowId, month)] = el as HTMLTableCellElement | null;
+                              }
+                            }}
+                            tabIndex={isAdmin && metric.key === 'base' ? 0 : -1}
+                            onClick={() => {
+                              if (isAdmin && metric.key === 'base') {
+                                setSelectedCell({ rowId: row.rowId, month });
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (!isAdmin || metric.key !== 'base' || isEditing) {
+                                return;
+                              }
+                              const current: CellCoord = { rowId: row.rowId, month };
+                              if (e.key === 'Enter' || e.key === 'F2') {
+                                e.preventDefault();
+                                startEdit(row.rowId, month);
+                                return;
+                              }
+                              if (e.key === 'Tab') {
+                                e.preventDefault();
+                                focusCell(moveCell(current, e.shiftKey ? 'left' : 'right'));
+                                return;
+                              }
+                              if (e.key === 'ArrowLeft') {
+                                e.preventDefault();
+                                focusCell(moveCell(current, 'left'));
+                                return;
+                              }
+                              if (e.key === 'ArrowRight') {
+                                e.preventDefault();
+                                focusCell(moveCell(current, 'right'));
+                                return;
+                              }
+                              if (e.key === 'ArrowUp') {
+                                e.preventDefault();
+                                focusCell(moveCell(current, 'up'));
+                                return;
+                              }
+                              if (e.key === 'ArrowDown') {
+                                e.preventDefault();
+                                focusCell(moveCell(current, 'down'));
+                                return;
+                              }
+                              if (e.key === 'Delete' || e.key === 'Backspace') {
+                                e.preventDefault();
+                                updateDraft(row.rowId, month, '');
+                                return;
+                              }
+                              if (/^[0-9]$/.test(e.key)) {
+                                e.preventDefault();
+                                setEditingCell({ rowId: row.rowId, month });
+                                setEditingValue(e.key);
+                              }
+                            }}
+                            sx={{
+                              outline:
+                                isAdmin &&
+                                metric.key === 'base' &&
+                                selectedCell?.rowId === row.rowId &&
+                                selectedCell?.month === month
+                                  ? '2px solid'
+                                  : 'none',
+                              outlineColor: 'primary.main',
+                              outlineOffset: '-2px',
+                            }}
+                          >
                             {metric.key === 'base' ? (
                               isAdmin && isEditing ? (
                                 <TextField
@@ -368,13 +474,35 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
                                   type="number"
                                   value={editingValue}
                                   onChange={(e) => setEditingValue(e.target.value)}
-                                  onBlur={commitEdit}
+                                  onBlur={() => commitEdit()}
                                   onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
-                                      commitEdit();
+                                      e.preventDefault();
+                                      commitEdit('down');
                                     }
                                     if (e.key === 'Escape') {
+                                      e.preventDefault();
                                       cancelEdit();
+                                    }
+                                    if (e.key === 'Tab') {
+                                      e.preventDefault();
+                                      commitEdit(e.shiftKey ? 'left' : 'right');
+                                    }
+                                    if (e.key === 'ArrowLeft') {
+                                      e.preventDefault();
+                                      commitEdit('left');
+                                    }
+                                    if (e.key === 'ArrowRight') {
+                                      e.preventDefault();
+                                      commitEdit('right');
+                                    }
+                                    if (e.key === 'ArrowUp') {
+                                      e.preventDefault();
+                                      commitEdit('up');
+                                    }
+                                    if (e.key === 'ArrowDown') {
+                                      e.preventDefault();
+                                      commitEdit('down');
                                     }
                                   }}
                                   inputProps={{ min: 0 }}

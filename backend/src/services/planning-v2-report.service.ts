@@ -101,6 +101,11 @@ function getPlanValue(planMetricMap: Map<PlanningPlanMetricCode, PlanningMonthly
     return 0;
   }
 
+  // For KTK, carry plan is expected to equal base plan.
+  if (code === PlanningPlanMetricCode.KTK_PLAN_REQUESTS) {
+    return planMetric.basePlan ?? 0;
+  }
+
   if (planMetric.carryPlan !== null && planMetric.carryPlan !== undefined) {
     return planMetric.carryPlan;
   }
