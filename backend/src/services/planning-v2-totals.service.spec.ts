@@ -18,7 +18,7 @@ function createMonthlyMetric(month: number, basePlan: number): PlanningMonthlyPl
 }
 
 describe('PlanningV2TotalsService', () => {
-  it('builds year totals with Excel-like carry plan formula', async () => {
+  it('builds year totals with classic carry from previous month base underperformance', async () => {
     const service = new PlanningV2TotalsService() as any;
 
     const monthMetricMap = new Map<number, PlanningMonthlyPlanMetric>();
@@ -41,12 +41,12 @@ describe('PlanningV2TotalsService', () => {
     );
 
     expect(target).toBeDefined();
-    expect(target.months[0].carryPlan).toBe(20);
-    expect(target.months[1].carryPlan).toBe(100);
+    expect(target.months[0].carryPlan).toBe(100);
+    expect(target.months[1].carryPlan).toBe(120);
     expect(target.months[2].carryPlan).toBe(100);
   });
 
-  it('recalculates and persists KTK carry plans with Excel-like formula', async () => {
+  it('recalculates and persists classic carry plans', async () => {
     const service = new PlanningV2TotalsService() as any;
 
     const monthMetricMap = new Map<number, PlanningMonthlyPlanMetric>();
@@ -67,8 +67,8 @@ describe('PlanningV2TotalsService', () => {
       PlanningPlanMetricCode.KTK_PLAN_REQUESTS
     );
 
-    expect(monthMetricMap.get(1)?.carryPlan).toBe(20);
-    expect(monthMetricMap.get(2)?.carryPlan).toBe(100);
+    expect(monthMetricMap.get(1)?.carryPlan).toBe(100);
+    expect(monthMetricMap.get(2)?.carryPlan).toBe(120);
     expect(monthMetricMap.get(3)?.carryPlan).toBe(100);
     expect(saveMock).toHaveBeenCalled();
   });

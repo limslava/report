@@ -107,7 +107,7 @@ describe('PlanningV2ReportService dashboard', () => {
       segmentCode: PlanningSegmentCode.KTK_VVO,
       valuesByMetric,
       monthlyPlan,
-      carryPlanByMetric: new Map(),
+      resolvedPlanByCode: new Map(),
       daysInMonth: 28,
       completedDays: 3,
       asOfDate: '2026-02-04',

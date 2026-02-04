@@ -130,6 +130,25 @@ function safeNumber(value: number | null | undefined): number {
   return value ?? 0;
 }
 
+function buildClassicCarryPlans(basePlans: number[], facts: number[]): number[] {
+  const carryPlans = Array.from({ length: 12 }, () => 0);
+  for (let idx = 0; idx < 12; idx += 1) {
+    const base = safeNumber(basePlans[idx]);
+    if (idx === 0) {
+      // Январь без переноса из прошлого года.
+      carryPlans[idx] = base;
+      continue;
+    }
+
+    // Классический перенос без "раздувания":
+    // только недовыполнение прошлого месяца относительно его базового плана.
+    const prevBase = safeNumber(basePlans[idx - 1]);
+    const prevFact = safeNumber(facts[idx - 1]);
+    carryPlans[idx] = base + Math.max(0, prevBase - prevFact);
+  }
+  return carryPlans;
+}
+
 export class PlanningV2TotalsService {
   private readonly segmentRepo = AppDataSource.getRepository(PlanningSegment);
   private readonly monthlyPlanRepo = AppDataSource.getRepository(PlanningMonthlyPlan);
@@ -149,20 +168,18 @@ export class PlanningV2TotalsService {
       const facts = await this.getFactsForYear(config.segmentCode, config.factMetricCodes, year);
 
       const months: YearTotalsMonthCell[] = [];
-      let prevCarry = 0;
-      let prevFact = 0;
+      const basePlans = Array.from({ length: 12 }, (_, idx) => {
+        const metric = monthMetricMap.get(idx + 1);
+        return config.kind === 'PLAN_FLOW' ? safeNumber(metric?.basePlan) : 0;
+      });
+      const carryPlans = config.kind === 'PLAN_FLOW'
+        ? buildClassicCarryPlans(basePlans, facts)
+        : Array.from({ length: 12 }, () => 0);
 
       for (let month = 1; month <= 12; month += 1) {
-        const metric = monthMetricMap.get(month);
-        const basePlan = config.kind === 'PLAN_FLOW' ? safeNumber(metric?.basePlan) : 0;
+        const basePlan = basePlans[month - 1];
         const fact = facts[month - 1];
-        const carryPlan = config.kind === 'PLAN_FLOW'
-          ? (
-            month === 1
-              ? basePlan - fact
-              : (prevCarry - prevFact < 0 ? basePlan : basePlan + (prevCarry - prevFact))
-          )
-          : 0;
+        const carryPlan = carryPlans[month - 1];
 
         const completionPct = config.kind === 'PLAN_FLOW'
           ? pct(fact, month === 1 ? basePlan : carryPlan)
@@ -176,10 +193,6 @@ export class PlanningV2TotalsService {
           completionPct,
         });
 
-        if (config.kind === 'PLAN_FLOW') {
-          prevCarry = carryPlan;
-          prevFact = fact;
-        }
       }
 
       const yearlyBasePlan = months.reduce((acc, month) => acc + month.basePlan, 0);
@@ -275,9 +288,11 @@ export class PlanningV2TotalsService {
 
     const { monthMetricMap } = await this.ensureYearPlanMetrics(year, segmentCode, planMetricCode);
     const facts = await this.getFactsForYear(segmentCode, config.factMetricCodes, year);
-
-    let prevCarry = 0;
-    let prevFact = 0;
+    const basePlans = Array.from({ length: 12 }, (_, idx) => {
+      const metric = monthMetricMap.get(idx + 1);
+      return safeNumber(metric?.basePlan);
+    });
+    const carryPlans = buildClassicCarryPlans(basePlans, facts);
 
     for (let month = 1; month <= 12; month += 1) {
       const metric = monthMetricMap.get(month);
@@ -285,16 +300,10 @@ export class PlanningV2TotalsService {
         continue;
       }
 
-      const basePlan = safeNumber(metric.basePlan);
-      const carryPlan = month === 1
-        ? basePlan - facts[month - 1]
-        : (prevCarry - prevFact < 0 ? basePlan : basePlan + (prevCarry - prevFact));
-      metric.carryPlan = carryPlan;
+      metric.carryPlan = carryPlans[month - 1];
       metric.carryMode = 'ROLL_OVER';
       await this.monthlyPlanMetricRepo.save(metric);
 
-      prevCarry = carryPlan;
-      prevFact = facts[month - 1];
     }
   }
 
