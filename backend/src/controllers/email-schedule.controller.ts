@@ -56,11 +56,28 @@ export const updateSchedule = async (req: Request, res: Response, next: NextFunc
     if (!existing) {
       return res.status(404).json({ message: 'Schedule not found' });
     }
-    existing.department = department ?? existing.department;
-    existing.frequency = frequency ?? existing.frequency;
-    existing.schedule = schedule ?? existing.schedule;
-    existing.recipients = recipients ?? existing.recipients;
-    existing.isActive = isActive ?? existing.isActive;
+    const nextDepartment = department ?? existing.department;
+    const nextFrequency = frequency ?? existing.frequency;
+    const nextSchedule = schedule ?? existing.schedule;
+    const nextRecipients = recipients ?? existing.recipients;
+    const nextIsActive = isActive ?? existing.isActive;
+
+    const hasScheduleChanges =
+      existing.department !== nextDepartment ||
+      existing.frequency !== nextFrequency ||
+      JSON.stringify(existing.schedule ?? {}) !== JSON.stringify(nextSchedule ?? {}) ||
+      JSON.stringify(existing.recipients ?? []) !== JSON.stringify(nextRecipients ?? []);
+
+    existing.department = nextDepartment;
+    existing.frequency = nextFrequency;
+    existing.schedule = nextSchedule;
+    existing.recipients = nextRecipients;
+    existing.isActive = nextIsActive;
+
+    // Если расписание изменилось, разрешаем повторную отправку в текущие сутки по новому правилу.
+    if (hasScheduleChanges) {
+      existing.lastSent = null;
+    }
     await emailScheduleRepo.save(existing);
     logger.info(`Email schedule ${id} updated`);
     res.json(existing);

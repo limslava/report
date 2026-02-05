@@ -350,7 +350,7 @@ const SettingsPage = () => {
     }
 
     try {
-      const schedule: any = { time: newSchedule.time };
+      const schedule: any = { time: normalizeTimeToFiveMinutes(newSchedule.time), timezone: SCHEDULER_TIMEZONE };
       schedule.reportType = newSchedule.reportType;
       if (newSchedule.frequency === 'weekly') {
         schedule.daysOfWeek = newSchedule.daysOfWeek;
@@ -391,7 +391,7 @@ const SettingsPage = () => {
       department: item.department ?? 'container_vladivostok',
       frequency: item.frequency ?? 'daily',
       reportType: item.schedule?.reportType ?? 'planning_v2_segment',
-      time: item.schedule?.time ?? '09:00',
+      time: normalizeTimeToFiveMinutes(item.schedule?.time ?? '09:00'),
       daysOfWeek: item.schedule?.daysOfWeek ?? [1, 2, 3, 4, 5],
       dayOfMonth: item.schedule?.dayOfMonth ?? 1,
       recipientsText: (item.recipients ?? []).join(', '),
@@ -688,8 +688,10 @@ const SettingsPage = () => {
                     type="time"
                     size="small"
                     value={newSchedule.time}
-                    onChange={(e) => setNewSchedule((prev) => ({ ...prev, time: e.target.value }))}
+                    onChange={(e) => setNewSchedule((prev) => ({ ...prev, time: normalizeTimeToFiveMinutes(e.target.value) }))}
                     InputLabelProps={{ shrink: true }}
+                    inputProps={{ step: 300 }}
+                    helperText="Шаг: 5 минут (часовой пояс Владивосток)"
                   />
                   {newSchedule.frequency === 'monthly' && (
                     <TextField
@@ -782,3 +784,12 @@ const SettingsPage = () => {
 };
 
 export default SettingsPage;
+  const SCHEDULER_TIMEZONE = 'Asia/Vladivostok';
+
+  const normalizeTimeToFiveMinutes = (value: string): string => {
+    const [hh = '09', mm = '00'] = value.split(':');
+    const hour = Math.min(23, Math.max(0, Number(hh) || 0));
+    const minuteRaw = Math.min(59, Math.max(0, Number(mm) || 0));
+    const minute = Math.floor(minuteRaw / 5) * 5;
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  };

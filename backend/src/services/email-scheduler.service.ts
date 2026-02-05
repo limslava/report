@@ -166,7 +166,7 @@ const checkSchedule = (
 
   const nowTz = asTzParts(now);
   const nowLocal = `${String(nowTz.day).padStart(2, '0')}.${String(nowTz.month).padStart(2, '0')}.${nowTz.year} ${String(nowTz.hour).padStart(2, '0')}:${String(nowTz.minute).padStart(2, '0')}`;
-  const isAfterTime = nowTz.hour > hour || (nowTz.hour === hour && nowTz.minute >= minute);
+  const isExactTime = nowTz.hour === hour && nowTz.minute === minute;
   const lastSentLocal = lastSent ? (() => {
     const s = asTzParts(lastSent);
     return `${String(s.day).padStart(2, '0')}.${String(s.month).padStart(2, '0')}.${s.year} ${String(s.hour).padStart(2, '0')}:${String(s.minute).padStart(2, '0')}`;
@@ -187,8 +187,8 @@ const checkSchedule = (
       }
     }
     return {
-      shouldSend: isAfterTime,
-      reason: isAfterTime ? 'ok' : 'time_not_reached',
+      shouldSend: isExactTime,
+      reason: isExactTime ? 'ok' : 'time_not_reached',
       timezone,
       scheduledTime,
       nowLocal,
@@ -202,8 +202,8 @@ const checkSchedule = (
       return { shouldSend: false, reason: 'weekday_not_allowed', timezone, scheduledTime, nowLocal, lastSentLocal };
     }
     return {
-      shouldSend: isAfterTime,
-      reason: isAfterTime ? 'ok' : 'time_not_reached',
+      shouldSend: isExactTime,
+      reason: isExactTime ? 'ok' : 'time_not_reached',
       timezone,
       scheduledTime,
       nowLocal,
@@ -217,8 +217,8 @@ const checkSchedule = (
       return { shouldSend: false, reason: 'day_of_month_not_matched', timezone, scheduledTime, nowLocal, lastSentLocal };
     }
     return {
-      shouldSend: isAfterTime,
-      reason: isAfterTime ? 'ok' : 'time_not_reached',
+      shouldSend: isExactTime,
+      reason: isExactTime ? 'ok' : 'time_not_reached',
       timezone,
       scheduledTime,
       nowLocal,
