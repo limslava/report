@@ -46,6 +46,7 @@ const AdminPage = () => {
   const [reassignDialogOpen, setReassignDialogOpen] = useState(false);
   const [deletingUser, setDeletingUser] = useState<any>(null);
   const [targetUserId, setTargetUserId] = useState('');
+  const [isSavingUser, setIsSavingUser] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     fullName: '',
@@ -131,6 +132,10 @@ const AdminPage = () => {
   };
 
   const handleSaveUser = async () => {
+    if (isSavingUser) {
+      return;
+    }
+
     const { email, fullName, role } = formData;
     if (!email || !fullName || !role) {
       alert('Заполните все поля');
@@ -138,6 +143,7 @@ const AdminPage = () => {
     }
 
     try {
+      setIsSavingUser(true);
       if (selectedUser) {
         await updateUser(selectedUser.id, { fullName, role });
         alert('Пользователь обновлен');
@@ -152,6 +158,8 @@ const AdminPage = () => {
       handleCloseDialog();
     } catch (error: any) {
       alert(`Ошибка: ${error.response?.data?.message || error.message}`);
+    } finally {
+      setIsSavingUser(false);
     }
   };
 
@@ -356,9 +364,11 @@ const AdminPage = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog}>Отмена</Button>
-          <Button variant="contained" onClick={handleSaveUser}>
-            Сохранить
+          <Button onClick={handleCloseDialog} disabled={isSavingUser}>
+            Отмена
+          </Button>
+          <Button variant="contained" onClick={handleSaveUser} disabled={isSavingUser}>
+            {isSavingUser ? 'Сохранение...' : 'Сохранить'}
           </Button>
         </DialogActions>
       </Dialog>

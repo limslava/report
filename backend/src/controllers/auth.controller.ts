@@ -13,15 +13,12 @@ const appSettingRepository = AppDataSource.getRepository(AppSetting);
 
 export const login = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    logger.info('Login attempt', { email: req.body?.email });
     const { email, password } = req.body;
 
     if (!email || !password) {
-      logger.warn('Missing credentials');
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    logger.info('Finding user...');
     const user = await userRepository.findOne({ where: { email } });
     
     if (!user) {
@@ -34,7 +31,6 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       return res.status(403).json({ error: 'User account is deactivated' });
     }
 
-    logger.info('Comparing password...');
     const isValidPassword = await bcrypt.compare(password, user.passwordHash);
     
     if (!isValidPassword) {
@@ -42,7 +38,6 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    logger.info('Generating token...');
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
       getJwtSecret(),
@@ -131,7 +126,7 @@ export const forgotPassword = async (req: Request, res: Response, next: NextFunc
     );
 
     // TODO: Send email with reset link
-    logger.info(`Password reset token for ${email}: ${resetToken}`);
+    void resetToken;
 
     return res.json({ message: 'If the email exists, a reset link has been sent' });
   } catch (error) {

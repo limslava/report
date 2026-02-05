@@ -96,7 +96,7 @@ export const processScheduledEmails = async () => {
         schedule.lastSent = now;
         await emailScheduleRepo.save(schedule);
       } else {
-        logger.info('Email schedule skipped', {
+        const skipPayload = {
           scheduleId: schedule.id,
           department: schedule.department,
           frequency: schedule.frequency,
@@ -105,7 +105,13 @@ export const processScheduledEmails = async () => {
           nowLocal: check.nowLocal,
           scheduledTime: check.scheduledTime,
           lastSentLocal: check.lastSentLocal,
-        });
+        };
+
+        if (check.reason === 'time_not_reached' || check.reason === 'already_sent_today') {
+          logger.debug('Email schedule skipped', skipPayload);
+        } else {
+          logger.info('Email schedule skipped', skipPayload);
+        }
       }
     }
   } catch (error) {

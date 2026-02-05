@@ -48,7 +48,15 @@ app.use('/api', apiRateLimiter);
 
 // Logging middleware
 app.use((req, _res, next) => {
-  logger.info(`${req.method} ${req.url}`);
+  const pathLower = req.path.toLowerCase();
+  const isStaticAsset =
+    pathLower === '/vite.svg' ||
+    pathLower.startsWith('/assets/') ||
+    pathLower === '/favicon.ico';
+
+  if (!isStaticAsset) {
+    logger.info(`${req.method} ${req.url}`);
+  }
   next();
 });
 

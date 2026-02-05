@@ -5,6 +5,7 @@ import { AppSetting } from '../models/app-setting.model';
 import { logger } from '../utils/logger';
 import { sendInvitationEmail } from '../services/email.service';
 import bcrypt from 'bcryptjs';
+import { QueryFailedError } from 'typeorm';
 
 const userRepository = AppDataSource.getRepository(User);
 const appSettingRepository = AppDataSource.getRepository(AppSetting);
@@ -74,6 +75,11 @@ export const inviteUser = async (req: Request, res: Response, next: NextFunction
       emailSent: true,
     });
   } catch (error) {
+    if (error instanceof QueryFailedError && (error as any).code === '23505') {
+      const duplicateError: any = new Error('Пользователь с таким email уже существует');
+      duplicateError.statusCode = 409;
+      return next(duplicateError);
+    }
     next(error);
   }
 };
