@@ -255,6 +255,22 @@ const SmtpConfigForm = () => {
   );
 };
 
+const SCHEDULER_TIMEZONE = 'Asia/Vladivostok';
+
+const normalizeTimeToFiveMinutes = (value: string): string => {
+  const [hh = '09', mm = '00'] = value.split(':');
+  const hour = Math.min(23, Math.max(0, Number(hh) || 0));
+  const minuteRaw = Math.min(59, Math.max(0, Number(mm) || 0));
+  const minute = Math.floor(minuteRaw / 5) * 5;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+};
+
+const TIME_OPTIONS_5_MINUTES = Array.from({ length: 24 * 12 }, (_, index) => {
+  const hour = Math.floor(index / 12);
+  const minute = (index % 12) * 5;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+});
+
 const SettingsPage = () => {
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
@@ -684,15 +700,19 @@ const SettingsPage = () => {
                     <MenuItem value="monthly">Ежемесячно</MenuItem>
                   </TextField>
                   <TextField
+                    select
                     label="Время"
-                    type="time"
                     size="small"
-                    value={newSchedule.time}
-                    onChange={(e) => setNewSchedule((prev) => ({ ...prev, time: normalizeTimeToFiveMinutes(e.target.value) }))}
-                    InputLabelProps={{ shrink: true }}
-                    inputProps={{ step: 300 }}
+                    value={normalizeTimeToFiveMinutes(newSchedule.time)}
+                    onChange={(e) => setNewSchedule((prev) => ({ ...prev, time: e.target.value }))}
                     helperText="Шаг: 5 минут (часовой пояс Владивосток)"
-                  />
+                  >
+                    {TIME_OPTIONS_5_MINUTES.map((time) => (
+                      <MenuItem key={time} value={time}>
+                        {time}
+                      </MenuItem>
+                    ))}
+                  </TextField>
                   {newSchedule.frequency === 'monthly' && (
                     <TextField
                       label="День месяца"
@@ -784,12 +804,3 @@ const SettingsPage = () => {
 };
 
 export default SettingsPage;
-  const SCHEDULER_TIMEZONE = 'Asia/Vladivostok';
-
-  const normalizeTimeToFiveMinutes = (value: string): string => {
-    const [hh = '09', mm = '00'] = value.split(':');
-    const hour = Math.min(23, Math.max(0, Number(hh) || 0));
-    const minuteRaw = Math.min(59, Math.max(0, Number(mm) || 0));
-    const minute = Math.floor(minuteRaw / 5) * 5;
-    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-  };

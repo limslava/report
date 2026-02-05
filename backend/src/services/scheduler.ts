@@ -15,8 +15,10 @@ type RedisOptions = {
 let emailQueue: Queue.Queue | null = null;
 let schedulerEnabled = true;
 let localSchedulerTimer: NodeJS.Timeout | null = null;
+let localSchedulerAlignTimer: NodeJS.Timeout | null = null;
 const schedulerIntervalMinutes = Math.max(1, Number(process.env.SCHEDULER_INTERVAL_MINUTES || 5));
 const schedulerCron = `*/${schedulerIntervalMinutes} * * * *`;
+const schedulerUseQueue = (process.env.SCHEDULER_USE_QUEUE ?? 'false').toLowerCase() === 'true';
 
 const redisEnabled = () => (process.env.REDIS_ENABLED ?? 'true').toLowerCase() !== 'false';
 const schedulerEnvEnabled = () => (process.env.SCHEDULER_ENABLED ?? 'true').toLowerCase() !== 'false';
@@ -42,20 +44,41 @@ const runScheduledEmails = async () => {
   }
 };
 
+const getDelayToNextAlignedTickMs = () => {
+  const now = new Date();
+  const secondsMs = now.getSeconds() * 1000 + now.getMilliseconds();
+  const minute = now.getMinutes();
+  const nextAlignedMinute = minute - (minute % schedulerIntervalMinutes) + schedulerIntervalMinutes;
+  const minutesUntilNext = nextAlignedMinute - minute;
+  return minutesUntilNext * 60 * 1000 - secondsMs;
+};
+
 const startLocalSchedulerFallback = () => {
-  if (localSchedulerTimer) {
+  if (localSchedulerTimer || localSchedulerAlignTimer) {
     return;
   }
 
-  // Fallback mode when Redis queue is unavailable.
-  localSchedulerTimer = setInterval(() => {
+  const startAlignedInterval = () => {
+    localSchedulerAlignTimer = null;
     void runScheduledEmails();
-  }, schedulerIntervalMinutes * 60 * 1000);
+    localSchedulerTimer = setInterval(() => {
+      void runScheduledEmails();
+    }, schedulerIntervalMinutes * 60 * 1000);
+  };
 
-  logger.warn(`Email scheduler fallback started (in-process, every ${schedulerIntervalMinutes} minutes).`);
+  const delayMs = getDelayToNextAlignedTickMs();
+  localSchedulerAlignTimer = setTimeout(startAlignedInterval, delayMs);
+
+  logger.warn(
+    `Email scheduler fallback started (in-process, every ${schedulerIntervalMinutes} minutes, aligned to clock).`
+  );
 };
 
 const stopLocalSchedulerFallback = () => {
+  if (localSchedulerAlignTimer) {
+    clearTimeout(localSchedulerAlignTimer);
+    localSchedulerAlignTimer = null;
+  }
   if (!localSchedulerTimer) {
     return;
   }
@@ -137,6 +160,12 @@ export const startScheduler = async () => {
   }
   if (!schedulerEnabled) {
     logger.warn('Scheduler is in disabled state after Redis error. Restart app to retry.');
+    startLocalSchedulerFallback();
+    return;
+  }
+
+  if (!schedulerUseQueue) {
+    logger.info('Email scheduler queue disabled (SCHEDULER_USE_QUEUE=false). Using local aligned scheduler only.');
     startLocalSchedulerFallback();
     return;
   }
