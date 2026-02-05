@@ -92,8 +92,8 @@ export const triggerTestEmail = async (req: Request, res: Response, next: NextFu
     }
 
     await sendScheduledEmailNow(schedule);
-    schedule.lastSent = new Date();
-    await emailScheduleRepo.save(schedule);
+    // Важно: тестовая отправка не должна сдвигать lastSent,
+    // иначе регулярная отправка по расписанию может быть пропущена в этот же день.
 
     logger.info(`Manual send executed for schedule ${id}`);
     res.json({ message: 'Email sent now' });

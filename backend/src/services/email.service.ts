@@ -77,7 +77,7 @@ export const sendInvitationEmail = async (
 ) => {
   try {
     logger.info(`Sending invitation email to ${email}`);
-    const frontendBaseUrl = (process.env.FRONTEND_URL || 'https://reportlimslava.amvera.io').replace(/\/+$/, '');
+    const frontendBaseUrl = (process.env.FRONTEND_URL || 'https://report-limslava.amvera.io').replace(/\/+$/, '');
     const loginUrl = `${frontendBaseUrl}/login`;
 
     const transporter = await createTransporter();

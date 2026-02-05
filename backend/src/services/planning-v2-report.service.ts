@@ -102,6 +102,10 @@ function isWaitingMetricCode(metricCode: string): boolean {
     || metricCode === 'auto_total_waiting';
 }
 
+function isKtkGrossMetricCode(metricCode: string): boolean {
+  return metricCode === 'ktk_vvo_manual_gross' || metricCode === 'ktk_mow_manual_gross';
+}
+
 function getPlanValue(planMetricMap: Map<PlanningPlanMetricCode, PlanningMonthlyPlanMetric>, code: PlanningPlanMetricCode): number {
   const planMetric = planMetricMap.get(code);
   if (!planMetric) {
@@ -224,7 +228,11 @@ export class PlanningV2ReportService {
       const dayValues = valuesByMetric.get(metric.code) ?? [];
 
       const monthTotal = (() => {
-        if (metric.aggregation === PlanningMetricAggregation.LAST || isWaitingMetricCode(metric.code)) {
+        if (
+          metric.aggregation === PlanningMetricAggregation.LAST
+          || isWaitingMetricCode(metric.code)
+          || isKtkGrossMetricCode(metric.code)
+        ) {
           return lastUntil(dayValues, dayValues.length);
         }
         return sum(dayValues);

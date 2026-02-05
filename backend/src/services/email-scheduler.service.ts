@@ -82,11 +82,30 @@ export const processScheduledEmails = async () => {
     });
 
     for (const schedule of schedules) {
-      const shouldSend = checkSchedule(schedule, now);
-      if (shouldSend) {
+      const check = checkSchedule(schedule, now);
+      if (check.shouldSend) {
+        logger.info('Email schedule matched, sending now', {
+          scheduleId: schedule.id,
+          department: schedule.department,
+          frequency: schedule.frequency,
+          timezone: check.timezone,
+          nowLocal: check.nowLocal,
+          scheduledTime: check.scheduledTime,
+        });
         await sendScheduledEmailNow(schedule);
         schedule.lastSent = now;
         await emailScheduleRepo.save(schedule);
+      } else {
+        logger.info('Email schedule skipped', {
+          scheduleId: schedule.id,
+          department: schedule.department,
+          frequency: schedule.frequency,
+          reason: check.reason,
+          timezone: check.timezone,
+          nowLocal: check.nowLocal,
+          scheduledTime: check.scheduledTime,
+          lastSentLocal: check.lastSentLocal,
+        });
       }
     }
   } catch (error) {
@@ -94,7 +113,17 @@ export const processScheduledEmails = async () => {
   }
 };
 
-const checkSchedule = (schedule: EmailSchedule, now: Date): boolean => {
+const checkSchedule = (
+  schedule: EmailSchedule,
+  now: Date
+): {
+  shouldSend: boolean;
+  reason: string;
+  timezone: string;
+  scheduledTime: string;
+  nowLocal: string;
+  lastSentLocal: string | null;
+} => {
   const { frequency, schedule: config } = schedule;
   const lastSent = schedule.lastSent;
   const scheduledTime = config.time || '09:00';
@@ -136,38 +165,68 @@ const checkSchedule = (schedule: EmailSchedule, now: Date): boolean => {
   };
 
   const nowTz = asTzParts(now);
+  const nowLocal = `${String(nowTz.day).padStart(2, '0')}.${String(nowTz.month).padStart(2, '0')}.${nowTz.year} ${String(nowTz.hour).padStart(2, '0')}:${String(nowTz.minute).padStart(2, '0')}`;
   const isAfterTime = nowTz.hour > hour || (nowTz.hour === hour && nowTz.minute >= minute);
+  const lastSentLocal = lastSent ? (() => {
+    const s = asTzParts(lastSent);
+    return `${String(s.day).padStart(2, '0')}.${String(s.month).padStart(2, '0')}.${s.year} ${String(s.hour).padStart(2, '0')}:${String(s.minute).padStart(2, '0')}`;
+  })() : null;
 
   if (lastSent && asTzParts(lastSent).dayKey === nowTz.dayKey) {
-    return false;
+    return { shouldSend: false, reason: 'already_sent_today', timezone, scheduledTime, nowLocal, lastSentLocal };
   }
 
+  const normalizedDaysOfWeek = Array.isArray(config.daysOfWeek)
+    ? config.daysOfWeek.map((d) => Number(d)).filter((d) => Number.isFinite(d))
+    : [];
+
   if (frequency === 'daily') {
-    if (Array.isArray(config.daysOfWeek) && config.daysOfWeek.length > 0) {
-      if (!config.daysOfWeek.includes(nowTz.isoWeekday)) {
-        return false;
+    if (normalizedDaysOfWeek.length > 0) {
+      if (!normalizedDaysOfWeek.includes(nowTz.isoWeekday)) {
+        return { shouldSend: false, reason: 'weekday_not_allowed', timezone, scheduledTime, nowLocal, lastSentLocal };
       }
     }
-    return isAfterTime;
+    return {
+      shouldSend: isAfterTime,
+      reason: isAfterTime ? 'ok' : 'time_not_reached',
+      timezone,
+      scheduledTime,
+      nowLocal,
+      lastSentLocal,
+    };
   }
 
   if (frequency === 'weekly') {
-    const days = Array.isArray(config.daysOfWeek) && config.daysOfWeek.length > 0 ? config.daysOfWeek : [1];
+    const days = normalizedDaysOfWeek.length > 0 ? normalizedDaysOfWeek : [1];
     if (!days.includes(nowTz.isoWeekday)) {
-      return false;
+      return { shouldSend: false, reason: 'weekday_not_allowed', timezone, scheduledTime, nowLocal, lastSentLocal };
     }
-    return isAfterTime;
+    return {
+      shouldSend: isAfterTime,
+      reason: isAfterTime ? 'ok' : 'time_not_reached',
+      timezone,
+      scheduledTime,
+      nowLocal,
+      lastSentLocal,
+    };
   }
 
   if (frequency === 'monthly') {
     const dayOfMonth = Number(config.dayOfMonth || 1);
     if (nowTz.day !== dayOfMonth) {
-      return false;
+      return { shouldSend: false, reason: 'day_of_month_not_matched', timezone, scheduledTime, nowLocal, lastSentLocal };
     }
-    return isAfterTime;
+    return {
+      shouldSend: isAfterTime,
+      reason: isAfterTime ? 'ok' : 'time_not_reached',
+      timezone,
+      scheduledTime,
+      nowLocal,
+      lastSentLocal,
+    };
   }
 
-  return false;
+  return { shouldSend: false, reason: 'unsupported_frequency', timezone, scheduledTime, nowLocal, lastSentLocal };
 };
 
 export const sendScheduledEmailNow = async (schedule: EmailSchedule) => {
