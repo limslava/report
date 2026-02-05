@@ -33,7 +33,9 @@ router.get('/users',
 
 router.post('/users/invite',
   [
-    body('email').isEmail().normalizeEmail(),
+    body('email')
+      .isEmail()
+      .customSanitizer((value: string) => String(value).trim().toLowerCase()),
     body('fullName').notEmpty().trim(),
     body('role').isIn([
       'container_vladivostok',

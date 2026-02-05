@@ -4,6 +4,7 @@ import { planningV2ReportService } from '../services/planning-v2-report.service'
 import { PlanningPlanMetricCode, PlanningSegmentCode } from '../models/planning.enums';
 import { planningV2TotalsService } from '../services/planning-v2-totals.service';
 import { logger } from '../utils/logger';
+import { planWebSocketService } from '../services/websocket.service';
 
 function parseSegmentCode(raw: string): PlanningSegmentCode {
   if (!Object.values(PlanningSegmentCode).includes(raw as PlanningSegmentCode)) {
@@ -135,6 +136,13 @@ export const batchUpsertPlanningValues = async (req: Request, res: Response, nex
       year,
       month,
       updates,
+    });
+
+    planWebSocketService.notifyPlanningV2SegmentUpdated({
+      segmentCode,
+      year,
+      month,
+      userId: user.id,
     });
 
     res.json({ message: 'Values updated', ...result });

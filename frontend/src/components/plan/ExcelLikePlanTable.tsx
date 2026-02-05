@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -40,6 +40,14 @@ type DashboardCard = { label: string; value: unknown; kind?: DashboardValueKind 
 type DashboardRow = DashboardCard[];
 type EditingCell = { metricCode: string; dayIndex: number } | null;
 type CellCoord = { metricCode: string; dayIndex: number } | null;
+type PlanningRealtimeEvent = {
+  type: 'planning-v2:segment-updated';
+  segmentCode: ExcelLikePlanTableProps['segmentCode'];
+  year: number;
+  month: number;
+  timestamp: string;
+  userId?: string;
+};
 type ReportContext = {
   segmentCode: ExcelLikePlanTableProps['segmentCode'];
   year: number;
@@ -49,6 +57,31 @@ type ReportContext = {
 
 function keyFor(metricCode: string, dayIndex: number): string {
   return `${metricCode}:${dayIndex}`;
+}
+
+function getPlanningWebSocketUrl(): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return `${protocol}://localhost:3000/ws/plans`;
+  }
+  return `${protocol}://${window.location.host}/ws/plans`;
+}
+
+function isSameContext(a: ReportContext, b: Pick<ReportContext, 'segmentCode' | 'year' | 'month'>): boolean {
+  return a.segmentCode === b.segmentCode && a.year === b.year && a.month === b.month;
+}
+
+function isPlanningRealtimeEvent(payload: unknown): payload is PlanningRealtimeEvent {
+  if (!payload || typeof payload !== 'object') {
+    return false;
+  }
+  const data = payload as Record<string, unknown>;
+  return (
+    data.type === 'planning-v2:segment-updated' &&
+    typeof data.segmentCode === 'string' &&
+    typeof data.year === 'number' &&
+    typeof data.month === 'number'
+  );
 }
 
 function formatValue(value: unknown): string {
@@ -173,38 +206,69 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   const [editingValue, setEditingValue] = useState<string>('');
   const [selectedCell, setSelectedCell] = useState<CellCoord>(null);
   const [showDashboard, setShowDashboard] = useState<boolean>(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [remoteUpdatePending, setRemoteUpdatePending] = useState<boolean>(false);
   const [pendingContext, setPendingContext] = useState<ReportContext | null>(null);
   const [confirmSwitchOpen, setConfirmSwitchOpen] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const contextRef = useRef<ReportContext>(desiredContext);
+  const dirtyCountRef = useRef<number>(0);
+  const isEditableRef = useRef<boolean>(isEditable);
+  const userIdRef = useRef<string | undefined>(user?.id);
+  const savingRef = useRef<boolean>(false);
   const cellRefs = useRef<Record<string, HTMLTableCellElement | null>>({});
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const dirtyCount = Object.keys(draft).length;
 
-  const loadData = async (ctx: ReportContext = currentContext) => {
+  useEffect(() => {
+    contextRef.current = currentContext;
+  }, [currentContext]);
+
+  useEffect(() => {
+    dirtyCountRef.current = dirtyCount;
+  }, [dirtyCount]);
+
+  useEffect(() => {
+    isEditableRef.current = isEditable;
+  }, [isEditable]);
+
+  useEffect(() => {
+    userIdRef.current = user?.id;
+  }, [user?.id]);
+
+  useEffect(() => {
+    savingRef.current = saving;
+  }, [saving]);
+
+  const loadData = useCallback(async (ctx?: ReportContext) => {
+    const targetContext = ctx ?? contextRef.current;
     try {
       setLoading(true);
       setError(null);
       const data = await planningV2Api.getSegmentReport({
-        segmentCode: ctx.segmentCode,
-        year: ctx.year,
-        month: ctx.month,
-        asOfDate: ctx.asOfDate,
+        segmentCode: targetContext.segmentCode,
+        year: targetContext.year,
+        month: targetContext.month,
+        asOfDate: targetContext.asOfDate,
       });
       setReport(data);
       setDraft({});
       setEditingCell(null);
       setEditingValue('');
       setSelectedCell(null);
+      setRemoteUpdatePending(false);
+      setLastUpdatedAt(new Date());
     } catch (err: any) {
       setError(err?.message || 'Ошибка загрузки данных сегмента');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadData(currentContext);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    void loadData(currentContext);
+  }, [loadData]);
 
   useEffect(() => {
     if (
@@ -223,9 +287,79 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
     }
 
     setCurrentContext(desiredContext);
-    loadData(desiredContext);
+    void loadData(desiredContext);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [desiredContext]);
+  }, [desiredContext, loadData]);
+
+  useEffect(() => {
+    let stopped = false;
+
+    const connect = () => {
+      if (stopped) {
+        return;
+      }
+
+      const ws = new WebSocket(getPlanningWebSocketUrl());
+      wsRef.current = ws;
+
+      ws.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data) as unknown;
+          if (!isPlanningRealtimeEvent(payload)) {
+            return;
+          }
+          const data = payload;
+
+          if (!isSameContext(contextRef.current, data)) {
+            return;
+          }
+
+          if (data.userId && userIdRef.current && data.userId === userIdRef.current) {
+            return;
+          }
+
+          setLastUpdatedAt(data.timestamp ? new Date(data.timestamp) : new Date());
+
+          if (!isEditableRef.current) {
+            void loadData(contextRef.current);
+            return;
+          }
+
+          if (dirtyCountRef.current === 0 && !savingRef.current) {
+            void loadData(contextRef.current);
+            return;
+          }
+
+          setRemoteUpdatePending(true);
+        } catch {
+          // ignore malformed websocket payload
+        }
+      };
+
+      ws.onclose = () => {
+        wsRef.current = null;
+        if (!stopped) {
+          reconnectTimerRef.current = window.setTimeout(connect, 2500);
+        }
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+    };
+
+    connect();
+
+    return () => {
+      stopped = true;
+      if (reconnectTimerRef.current) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      wsRef.current?.close();
+      wsRef.current = null;
+    };
+  }, [loadData]);
 
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
@@ -507,6 +641,30 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   return (
     <Box>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {remoteUpdatePending && isEditable && (
+        <Alert
+          severity="info"
+          sx={{ mb: 2 }}
+          action={(
+            <Box display="flex" gap={1}>
+              <Button
+                size="small"
+                onClick={() => {
+                  setRemoteUpdatePending(false);
+                  void loadData(currentContext);
+                }}
+              >
+                Обновить
+              </Button>
+              <Button size="small" onClick={() => setRemoteUpdatePending(false)}>
+                Позже
+              </Button>
+            </Box>
+          )}
+        >
+          Есть изменения от коллеги в этом сегменте. Вы можете обновить данные сейчас или позже.
+        </Alert>
+      )}
 
       <Paper sx={{ p: 2, mb: 2 }}>
         <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
@@ -553,6 +711,17 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
             >
               Дашборд
             </Button>
+            {isAdmin && (
+              <Typography variant="caption" color="text.secondary" sx={{ px: 1 }}>
+                {lastUpdatedAt
+                  ? `Обновлено в ${lastUpdatedAt.toLocaleTimeString('ru-RU', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                    })}`
+                  : 'Обновление: —'}
+              </Typography>
+            )}
             {isAdmin && (
               <Button variant="outlined" onClick={() => loadData()} disabled={saving}>
                 Обновить

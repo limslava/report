@@ -13,6 +13,17 @@ export interface PlanUpdateEvent {
   userId?: string;
 }
 
+export interface PlanningV2SegmentUpdateEvent {
+  type: 'planning-v2:segment-updated';
+  segmentCode: string;
+  year: number;
+  month: number;
+  timestamp: string;
+  userId?: string;
+}
+
+type OutgoingWebSocketEvent = PlanUpdateEvent | PlanningV2SegmentUpdateEvent;
+
 export class PlanWebSocketService {
   private wss: WebSocketServer | null = null;
   private clients: Set<WebSocket> = new Set();
@@ -93,7 +104,7 @@ export class PlanWebSocketService {
   /**
    * Отправить событие обновления плана всем подключенным клиентам
    */
-  broadcastPlanUpdate(event: PlanUpdateEvent) {
+  broadcastPlanUpdate(event: OutgoingWebSocketEvent) {
     const message = JSON.stringify(event);
     
     this.clients.forEach((client) => {
@@ -103,6 +114,22 @@ export class PlanWebSocketService {
     });
     
     logger.debug(`Broadcasted plan update: ${event.type} for ${event.category} ${event.year}`);
+  }
+
+  notifyPlanningV2SegmentUpdated(params: {
+    segmentCode: string;
+    year: number;
+    month: number;
+    userId?: string;
+  }) {
+    this.broadcastPlanUpdate({
+      type: 'planning-v2:segment-updated',
+      segmentCode: params.segmentCode,
+      year: params.year,
+      month: params.month,
+      userId: params.userId,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   /**

@@ -15,7 +15,9 @@ const loginRateLimiter = createRateLimiter({
 router.post('/login',
   loginRateLimiter,
   [
-    body('email').isEmail().normalizeEmail(),
+    body('email')
+      .isEmail()
+      .customSanitizer((value: string) => String(value).trim().toLowerCase()),
     body('password').isLength({ min: 6 }),
   ],
   handleValidationErrors,
@@ -24,7 +26,9 @@ router.post('/login',
 
 router.post('/register',
   [
-    body('email').isEmail().normalizeEmail(),
+    body('email')
+      .isEmail()
+      .customSanitizer((value: string) => String(value).trim().toLowerCase()),
     body('password').isLength({ min: 8 }),
     body('fullName').notEmpty().trim(),
     body('department').isIn(['container_vladivostok', 'container_moscow', 'railway', 'autotruck', 'additional', 'admin']),
@@ -36,7 +40,9 @@ router.post('/register',
 
 router.post('/forgot-password',
   [
-    body('email').isEmail().normalizeEmail(),
+    body('email')
+      .isEmail()
+      .customSanitizer((value: string) => String(value).trim().toLowerCase()),
   ],
   handleValidationErrors,
   forgotPassword
