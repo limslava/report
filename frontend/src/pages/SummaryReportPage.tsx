@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -21,6 +21,35 @@ import { planningV2Api } from '../services/planning-v2.api';
 import { PlanningSummaryItem } from '../types/planning-v2.types';
 import { useAuthStore } from '../store/auth-store';
 import { canViewSummary } from '../utils/rolePermissions';
+
+type PlanningRealtimeEvent = {
+  type: 'planning-v2:segment-updated';
+  segmentCode: string;
+  year: number;
+  month: number;
+  timestamp: string;
+  userId?: string;
+};
+
+function getPlanningWebSocketUrl(): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return `${protocol}://localhost:3000/ws/plans`;
+  }
+  return `${protocol}://${window.location.host}/ws/plans`;
+}
+
+function isPlanningRealtimeEvent(payload: unknown): payload is PlanningRealtimeEvent {
+  if (!payload || typeof payload !== 'object') {
+    return false;
+  }
+  const data = payload as Record<string, unknown>;
+  return (
+    data.type === 'planning-v2:segment-updated' &&
+    typeof data.year === 'number' &&
+    typeof data.month === 'number'
+  );
+}
 
 function segmentGroupTitle(code: PlanningSummaryItem['segmentCode']): string {
   if (code === 'KTK_VVO' || code === 'KTK_MOW') return 'Контейнерные перевозки';
@@ -53,7 +82,7 @@ const SummaryReportPage = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -64,11 +93,55 @@ const SummaryReportPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [year, month, asOfDate]);
 
   useEffect(() => {
-    loadData();
-  }, [year, month, asOfDate]);
+    void loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    let stopped = false;
+    let reconnectTimer: number | null = null;
+    let refreshTimer: number | null = null;
+    const ws = new WebSocket(getPlanningWebSocketUrl());
+
+    ws.onmessage = (event) => {
+      if (stopped) return;
+      try {
+        const payload = JSON.parse(event.data) as unknown;
+        if (!isPlanningRealtimeEvent(payload)) return;
+        if (payload.year !== year || payload.month !== month) return;
+
+        if (refreshTimer) {
+          window.clearTimeout(refreshTimer);
+        }
+        // Coalesce bursty updates from multiple saves into one refresh.
+        refreshTimer = window.setTimeout(() => {
+          void loadData();
+        }, 350);
+      } catch {
+        // ignore malformed events
+      }
+    };
+
+    ws.onclose = () => {
+      if (stopped) return;
+      reconnectTimer = window.setTimeout(() => {
+        if (!stopped) {
+          void loadData();
+        }
+      }, 1500);
+    };
+
+    ws.onerror = () => ws.close();
+
+    return () => {
+      stopped = true;
+      if (refreshTimer) window.clearTimeout(refreshTimer);
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      ws.close();
+    };
+  }, [year, month, loadData]);
 
   const topLevelRows = useMemo(() => {
     const includeDetailForTotals = new Set([

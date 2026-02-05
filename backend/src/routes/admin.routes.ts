@@ -63,6 +63,10 @@ router.post('/users/invite',
 router.put('/users/:id',
   [
     param('id').isUUID(),
+    body('email')
+      .optional()
+      .isEmail()
+      .customSanitizer((value: string) => String(value).trim().toLowerCase()),
     body('fullName').optional().notEmpty(),
     body('department').optional().isString(),
     body('role').optional().isString(),

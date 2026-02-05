@@ -145,7 +145,7 @@ const AdminPage = () => {
     try {
       setIsSavingUser(true);
       if (selectedUser) {
-        await updateUser(selectedUser.id, { fullName, role });
+        await updateUser(selectedUser.id, { email, fullName, role });
         alert('Пользователь обновлен');
       } else {
         await inviteUser({ email, fullName, role });

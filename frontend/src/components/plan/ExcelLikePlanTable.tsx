@@ -415,6 +415,11 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   }, [report?.daysInMonth, currentContext.year, currentContext.month]);
 
   const rows: PlanningGridRow[] = report?.gridRows ?? [];
+  const rowByMetric = useMemo(() => {
+    const map = new Map<string, PlanningGridRow>();
+    rows.forEach((row) => map.set(row.metricCode, row));
+    return map;
+  }, [rows]);
   const editableMetricCodes = useMemo(
     () => rows.filter((row) => isEditable && row.isEditable).map((row) => row.metricCode),
     [rows, isEditable]
@@ -518,10 +523,17 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
       return;
     }
 
-    setDraft((prev) => ({
-      ...prev,
-      [keyFor(metricCode, dayIndex)]: parsed,
-    }));
+    const committed = rowByMetric.get(metricCode)?.dayValues[dayIndex] ?? null;
+    setDraft((prev) => {
+      const next = { ...prev };
+      const key = keyFor(metricCode, dayIndex);
+      if (parsed === committed) {
+        delete next[key];
+        return next;
+      }
+      next[key] = parsed;
+      return next;
+    });
   };
 
   const getCellValue = (row: PlanningGridRow, dayIndex: number): number | null => {
@@ -889,7 +901,9 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
                           ? (header.isWeekend ? 'action.hover' : undefined)
                           : rowBg,
                         outline:
-                          selectedCell?.metricCode === row.metricCode && selectedCell?.dayIndex === dayIndex
+                          selectedCell?.metricCode === row.metricCode &&
+                          selectedCell?.dayIndex === dayIndex &&
+                          !isEditing
                             ? '2px solid'
                             : 'none',
                         outlineColor: 'primary.main',
@@ -898,7 +912,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
                     >
                       {canEditCell && isEditing ? (
                         <TextField
-                          type="number"
+                          type="text"
                           size="small"
                           value={editingValue}
                           onChange={(e) => setEditingValue(e.target.value)}
@@ -938,7 +952,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
                             commitEdit();
                             applyPaste({ metricCode: row.metricCode, dayIndex }, e.clipboardData.getData('text'));
                           }}
-                          inputProps={{ min: 0, step: 'any' }}
+                          inputProps={{ inputMode: 'decimal' }}
                           sx={{ width: compactMode ? 58 : 78 }}
                           autoFocus
                         />

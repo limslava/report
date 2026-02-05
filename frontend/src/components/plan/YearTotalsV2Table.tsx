@@ -15,6 +15,7 @@ import {
   Typography,
 } from '@mui/material';
 import { planningV2Api } from '../../services/planning-v2.api';
+import { registerUnsavedHandlers, setHasUnsavedChanges } from '../../store/unsavedChanges';
 import { PlanningYearTotalsRow } from '../../types/planning-v2.types';
 
 interface YearTotalsV2TableProps {
@@ -26,6 +27,34 @@ interface YearTotalsV2TableProps {
 type DraftMap = Record<string, number>;
 type EditingCell = { rowId: string; month: number } | null;
 type CellCoord = { rowId: string; month: number } | null;
+type PlanningRealtimeEvent = {
+  type: 'planning-v2:segment-updated';
+  segmentCode: string;
+  year: number;
+  month: number;
+  timestamp: string;
+  userId?: string;
+};
+
+function getPlanningWebSocketUrl(): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return `${protocol}://localhost:3000/ws/plans`;
+  }
+  return `${protocol}://${window.location.host}/ws/plans`;
+}
+
+function isPlanningRealtimeEvent(payload: unknown): payload is PlanningRealtimeEvent {
+  if (!payload || typeof payload !== 'object') {
+    return false;
+  }
+  const data = payload as Record<string, unknown>;
+  return (
+    data.type === 'planning-v2:segment-updated' &&
+    typeof data.year === 'number' &&
+    typeof data.month === 'number'
+  );
+}
 
 function makeDraftKey(rowId: string, month: number): string {
   return `${rowId}__m__${month}`;
@@ -105,7 +134,11 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
   const [editingCell, setEditingCell] = useState<EditingCell>(null);
   const [editingValue, setEditingValue] = useState<string>('');
   const [selectedCell, setSelectedCell] = useState<CellCoord>(null);
+  const [remoteUpdatePending, setRemoteUpdatePending] = useState(false);
   const cellRefs = useRef<Record<string, HTMLTableCellElement | null>>({});
+  const draftCountRef = useRef(0);
+  const savingRef = useRef(false);
+  const yearRef = useRef(year);
 
   const loadData = async () => {
     try {
@@ -116,6 +149,7 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
       setDraft({});
       setEditingCell(null);
       setEditingValue('');
+      setRemoteUpdatePending(false);
     } catch (err: any) {
       setError(err?.message || 'Ошибка загрузки ИТОГО v2');
     } finally {
@@ -128,6 +162,84 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
   }, [year]);
 
   const draftCount = Object.keys(draft).length;
+  useEffect(() => {
+    draftCountRef.current = draftCount;
+  }, [draftCount]);
+
+  useEffect(() => {
+    savingRef.current = saving;
+  }, [saving]);
+
+  useEffect(() => {
+    yearRef.current = year;
+  }, [year]);
+
+  useEffect(() => {
+    setHasUnsavedChanges(draftCount > 0);
+    return () => setHasUnsavedChanges(false);
+  }, [draftCount]);
+
+  useEffect(() => {
+    registerUnsavedHandlers({
+      save: async () => {
+        await handleSaveAll();
+        return true;
+      },
+      discard: () => {
+        setDraft({});
+        setEditingCell(null);
+        setEditingValue('');
+      },
+    });
+
+    return () => registerUnsavedHandlers(null);
+  }, [draftCount, rows, year]);
+
+  useEffect(() => {
+    let stopped = false;
+    let reconnectTimer: number | null = null;
+    let refreshTimer: number | null = null;
+    const ws = new WebSocket(getPlanningWebSocketUrl());
+
+    ws.onmessage = (event) => {
+      if (stopped) return;
+      try {
+        const payload = JSON.parse(event.data) as unknown;
+        if (!isPlanningRealtimeEvent(payload)) return;
+        if (payload.year !== yearRef.current) return;
+
+        if (draftCountRef.current === 0 && !savingRef.current) {
+          if (refreshTimer) window.clearTimeout(refreshTimer);
+          refreshTimer = window.setTimeout(() => {
+            void loadData();
+          }, 250);
+          return;
+        }
+
+        setRemoteUpdatePending(true);
+      } catch {
+        // ignore malformed events
+      }
+    };
+
+    ws.onclose = () => {
+      if (stopped) return;
+      reconnectTimer = window.setTimeout(() => {
+        if (!stopped) {
+          void loadData();
+        }
+      }, 1500);
+    };
+
+    ws.onerror = () => ws.close();
+
+    return () => {
+      stopped = true;
+      if (refreshTimer) window.clearTimeout(refreshTimer);
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      ws.close();
+    };
+  }, []);
 
   const totals = useMemo(() => {
     return rows.reduce(
@@ -171,7 +283,7 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
     return { rowId: editableRowIds[Math.min(editableRowIds.length - 1, rowIndex + 1)], month: coord.month };
   };
 
-  const updateDraft = (rowId: string, month: number, raw: string) => {
+  const updateDraft = (rowId: string, month: number, raw: string, committedValue?: number) => {
     const key = makeDraftKey(rowId, month);
     const value = Number(raw);
 
@@ -185,6 +297,18 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
     }
 
     if (!Number.isFinite(value) || value < 0) {
+      return;
+    }
+
+    if (committedValue !== undefined && value === committedValue) {
+      setDraft((prev) => {
+        if (prev[key] === undefined) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
       return;
     }
 
@@ -207,7 +331,9 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
     }
 
     const current = editingCell;
-    updateDraft(current.rowId, current.month, editingValue);
+    const row = rows.find((item) => item.rowId === current.rowId);
+    const committedValue = row ? getCommittedBaseValue(row, current.month) : undefined;
+    updateDraft(current.rowId, current.month, editingValue, committedValue);
     setEditingCell(null);
     setEditingValue('');
     if (direction) {
@@ -228,6 +354,11 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
       return draft[key];
     }
 
+    const cell = row.months.find((m) => m.month === month);
+    return cell?.basePlan ?? 0;
+  };
+
+  const getCommittedBaseValue = (row: PlanningYearTotalsRow, month: number): number => {
     const cell = row.months.find((m) => m.month === month);
     return cell?.basePlan ?? 0;
   };
@@ -281,6 +412,19 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
   return (
     <Box>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {remoteUpdatePending && (
+        <Alert
+          severity="info"
+          sx={{ mb: 2 }}
+          action={(
+            <Button color="inherit" size="small" onClick={() => loadData()}>
+              Обновить
+            </Button>
+          )}
+        >
+          Есть изменения от коллеги.
+        </Alert>
+      )}
 
       <Paper sx={{ p: 2, mb: 2 }}>
         <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1.5}>
@@ -446,7 +590,7 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
                               }
                               if (e.key === 'Delete' || e.key === 'Backspace') {
                                 e.preventDefault();
-                                updateDraft(row.rowId, month, '');
+                                updateDraft(row.rowId, month, '', getCommittedBaseValue(row, month));
                                 return;
                               }
                               if (/^[0-9]$/.test(e.key)) {
@@ -461,7 +605,7 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
                                 metric.key === 'base' &&
                                 selectedCell?.rowId === row.rowId &&
                                 selectedCell?.month === month
-                                  ? '2px solid'
+                                  ? '1px solid'
                                   : 'none',
                               outlineColor: 'primary.main',
                               outlineOffset: '-2px',
@@ -471,7 +615,7 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
                               isAdmin && isEditing ? (
                                 <TextField
                                   size="small"
-                                  type="number"
+                                  type="text"
                                   value={editingValue}
                                   onChange={(e) => setEditingValue(e.target.value)}
                                   onBlur={() => commitEdit()}
@@ -505,8 +649,12 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
                                       commitEdit('down');
                                     }
                                   }}
-                                  inputProps={{ min: 0 }}
-                                  sx={{ width: 95 }}
+                                  inputProps={{ inputMode: 'numeric' }}
+                                  sx={{
+                                    width: 95,
+                                    '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                                  }}
                                   autoFocus
                                 />
                               ) : (

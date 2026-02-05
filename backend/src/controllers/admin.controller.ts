@@ -87,7 +87,7 @@ export const inviteUser = async (req: Request, res: Response, next: NextFunction
 export const updateUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { fullName, role, isActive } = req.body;
+    const { email, fullName, role, isActive } = req.body;
 
     const user = await userRepository.findOne({ where: { id } });
     if (!user) {
@@ -96,6 +96,9 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
       throw error;
     }
 
+    if (typeof email === 'string' && email.trim()) {
+      user.email = email.trim().toLowerCase();
+    }
     if (fullName) user.fullName = fullName;
     if (role) user.role = role;
     if (typeof isActive === 'boolean') user.isActive = isActive;
@@ -116,6 +119,11 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
       },
     });
   } catch (error) {
+    if (error instanceof QueryFailedError && (error as any).code === '23505') {
+      const duplicateError: any = new Error('Пользователь с таким email уже существует');
+      duplicateError.statusCode = 409;
+      return next(duplicateError);
+    }
     next(error);
   }
 };

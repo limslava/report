@@ -120,7 +120,12 @@ export class PlanWebSocketService {
       return;
     }
 
-    logger.debug(`Broadcasted plan update: ${event.type} for ${event.category} ${event.year}`);
+    if ('category' in event) {
+      logger.debug(`Broadcasted plan update: ${event.type} for ${event.category} ${event.year}`);
+      return;
+    }
+
+    logger.debug(`Broadcasted plan update: ${event.type}`);
   }
 
   notifyPlanningV2SegmentUpdated(params: {
