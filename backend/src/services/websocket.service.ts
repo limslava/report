@@ -113,6 +113,13 @@ export class PlanWebSocketService {
       }
     });
     
+    if (event.type === 'planning-v2:segment-updated') {
+      logger.debug(
+        `Broadcasted plan update: ${event.type} for ${event.segmentCode} ${event.year}-${event.month}`
+      );
+      return;
+    }
+
     logger.debug(`Broadcasted plan update: ${event.type} for ${event.category} ${event.year}`);
   }
 
