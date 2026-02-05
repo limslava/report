@@ -24,6 +24,14 @@ export interface PlanningV2SegmentUpdateEvent {
 
 type OutgoingWebSocketEvent = PlanUpdateEvent | PlanningV2SegmentUpdateEvent;
 
+function isPlanningV2Event(event: OutgoingWebSocketEvent): event is PlanningV2SegmentUpdateEvent {
+  return event.type === 'planning-v2:segment-updated';
+}
+
+function isPlanUpdateEvent(event: OutgoingWebSocketEvent): event is PlanUpdateEvent {
+  return event.type !== 'planning-v2:segment-updated';
+}
+
 export class PlanWebSocketService {
   private wss: WebSocketServer | null = null;
   private clients: Set<WebSocket> = new Set();
@@ -113,19 +121,19 @@ export class PlanWebSocketService {
       }
     });
     
-    if (event.type === 'planning-v2:segment-updated') {
+    if (isPlanningV2Event(event)) {
       logger.debug(
         `Broadcasted plan update: ${event.type} for ${event.segmentCode} ${event.year}-${event.month}`
       );
       return;
     }
 
-    if ('category' in event) {
+    if (isPlanUpdateEvent(event)) {
       logger.debug(`Broadcasted plan update: ${event.type} for ${event.category} ${event.year}`);
       return;
     }
 
-    logger.debug(`Broadcasted plan update: ${event.type}`);
+    logger.debug('Broadcasted plan update');
   }
 
   notifyPlanningV2SegmentUpdated(params: {
