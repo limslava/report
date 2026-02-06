@@ -33,6 +33,7 @@ type SummaryRow = {
   segmentCode: PlanningSegmentCode;
   segmentName: string;
   planMonth: number;
+  planToDate: number;
   factToDate: number;
   monthFact: number;
   completionToDate: number;
@@ -93,6 +94,21 @@ function pct(part: number, total: number): number {
     return 0;
   }
   return (part / total) * 100;
+}
+
+function calcPlanToDate(planMonth: number, daysInMonth: number, completedDays: number): number {
+  if (daysInMonth <= 0 || completedDays <= 0) {
+    return 0;
+  }
+
+  const raw = (planMonth / daysInMonth) * completedDays;
+  const rounded = Math.round(raw);
+
+  if (completedDays >= daysInMonth) {
+    return Math.min(rounded, planMonth);
+  }
+
+  return rounded;
 }
 
 function isWaitingMetricCode(metricCode: string): boolean {
@@ -297,6 +313,7 @@ export class PlanningV2ReportService {
           segmentCode: segment.code,
           segmentName: topLevelSummaryName(segment.code, segment.name),
           planMonth,
+          planToDate: Number(report.dashboard.planToDate ?? 0),
           factToDate,
           monthFact,
           completionToDate: pct(factToDate, Number(report.dashboard.planToDate ?? 0)),
@@ -322,6 +339,7 @@ export class PlanningV2ReportService {
           parentSegmentCode: segment.code,
           detailCode: 'AUTO_TRUCK_CURTAIN',
           planMonth: Number(truck?.planMonth ?? 0),
+          planToDate: Number(truck?.planToDate ?? 0),
           factToDate: Number(truck?.factToDate ?? 0),
           monthFact: (truckSent?.monthTotal ?? 0) + curtainMonthFact,
           completionToDate: Number(truck?.completionToDatePct ?? 0),
@@ -333,6 +351,7 @@ export class PlanningV2ReportService {
           parentSegmentCode: segment.code,
           detailCode: 'AUTO_KTK',
           planMonth: Number(ktk?.planMonth ?? 0),
+          planToDate: Number(ktk?.planToDate ?? 0),
           factToDate: Number(ktk?.factToDate ?? 0),
           monthFact: ktkSent?.monthTotal ?? 0,
           completionToDate: Number(ktk?.completionToDatePct ?? 0),
@@ -356,6 +375,7 @@ export class PlanningV2ReportService {
             parentSegmentCode: segment.code,
             detailCode: metric.detailCode,
             planMonth: 0,
+            planToDate: 0,
             factToDate: report.daysInMonth > 0 ? sumUntil(row?.dayValues ?? [], report.dashboard.completedDays as number) : 0,
             monthFact: row?.monthTotal ?? 0,
             completionToDate: 0,
@@ -371,6 +391,7 @@ export class PlanningV2ReportService {
           parentSegmentCode: segment.code,
           detailCode: 'RAIL_TOTAL_FLOW',
           planMonth: Number(report.dashboard.planMonth ?? 0),
+          planToDate: Number(report.dashboard.planToDate ?? 0),
           factToDate: Number(report.dashboard.factToDate ?? 0),
           monthFact: Number(report.dashboard.monthFact ?? 0),
           completionToDate: Number(report.dashboard.completionToDatePct ?? 0),
@@ -602,7 +623,7 @@ export class PlanningV2ReportService {
 
       const planMonth = resolvedPlanByCode.get(PlanningPlanMetricCode.KTK_PLAN_REQUESTS)
         ?? getPlanValue(planMetricMap, PlanningPlanMetricCode.KTK_PLAN_REQUESTS);
-      const planToDate = daysInMonth > 0 ? (planMonth / daysInMonth) * completedDays : 0;
+      const planToDate = calcPlanToDate(planMonth, daysInMonth, completedDays);
       const factToDate = sumUntil(total, dataDays);
       const monthFact = sum(total);
       const grossToDate = lastUntil(gross, dataDays);
@@ -628,8 +649,8 @@ export class PlanningV2ReportService {
       const planKtkMonth = resolvedPlanByCode.get(PlanningPlanMetricCode.AUTO_PLAN_KTK)
         ?? getPlanValue(planMetricMap, PlanningPlanMetricCode.AUTO_PLAN_KTK);
 
-      const planTruckToDate = daysInMonth > 0 ? (planTruckMonth / daysInMonth) * completedDays : 0;
-      const planKtkToDate = daysInMonth > 0 ? (planKtkMonth / daysInMonth) * completedDays : 0;
+      const planTruckToDate = calcPlanToDate(planTruckMonth, daysInMonth, completedDays);
+      const planKtkToDate = calcPlanToDate(planKtkMonth, daysInMonth, completedDays);
 
       const truckSent = valuesByMetric.get('auto_truck_sent') ?? [];
       const curtainSent = valuesByMetric.get('auto_curtain_sent') ?? [];
@@ -689,7 +710,7 @@ export class PlanningV2ReportService {
     if (segmentCode === PlanningSegmentCode.RAIL) {
       const planMonth = resolvedPlanByCode.get(PlanningPlanMetricCode.RAIL_PLAN_KTK)
         ?? getPlanValue(planMetricMap, PlanningPlanMetricCode.RAIL_PLAN_KTK);
-      const planToDate = daysInMonth > 0 ? (planMonth / daysInMonth) * completedDays : 0;
+      const planToDate = calcPlanToDate(planMonth, daysInMonth, completedDays);
       const railTotal = valuesByMetric.get('rail_total') ?? [];
       const factToDate = sumUntil(railTotal, dataDays);
       const monthFact = sum(railTotal);
@@ -709,7 +730,7 @@ export class PlanningV2ReportService {
     if (segmentCode === PlanningSegmentCode.TO) {
       const planMonth = resolvedPlanByCode.get(PlanningPlanMetricCode.TO_PLAN)
         ?? getPlanValue(planMetricMap, PlanningPlanMetricCode.TO_PLAN);
-      const planToDate = daysInMonth > 0 ? (planMonth / daysInMonth) * completedDays : 0;
+      const planToDate = calcPlanToDate(planMonth, daysInMonth, completedDays);
       const values = valuesByMetric.get('to_count') ?? [];
       const factToDate = sumUntil(values, dataDays);
       const monthFact = sum(values);

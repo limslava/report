@@ -23,6 +23,7 @@ import { planningV2Api } from '../../services/planning-v2.api';
 import { PlanningGridRow, PlanningSegmentReport } from '../../types/planning-v2.types';
 import { useAuthStore } from '../../store/auth-store';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../../store/unsavedChanges';
+import { downloadBlob } from '../../utils/download';
 
 interface ExcelLikePlanTableProps {
   segmentCode: 'KTK_VVO' | 'KTK_MOW' | 'AUTO' | 'RAIL' | 'EXTRA' | 'TO';
@@ -82,6 +83,14 @@ function isPlanningRealtimeEvent(payload: unknown): payload is PlanningRealtimeE
     typeof data.year === 'number' &&
     typeof data.month === 'number'
   );
+}
+
+function formatDateForFilename(isoDate: string): string {
+  const [year, month, day] = isoDate.split('-');
+  if (!year || !month || !day) {
+    return isoDate;
+  }
+  return `${day.padStart(2, '0')}.${month.padStart(2, '0')}.${year}`;
 }
 
 function formatValue(value: unknown): string {
@@ -200,6 +209,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   const [report, setReport] = useState<PlanningSegmentReport | null>(null);
   const [draft, setDraft] = useState<DraftState>({});
   const [loading, setLoading] = useState<boolean>(true);
+  const [downloading, setDownloading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell>(null);
@@ -265,6 +275,25 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
       setLoading(false);
     }
   }, []);
+
+  const handleDownloadExcel = async () => {
+    try {
+      setDownloading(true);
+      setError(null);
+      const { blob, filename } = await planningV2Api.downloadDailyExcel({
+        segmentCode: currentContext.segmentCode,
+        year: currentContext.year,
+        month: currentContext.month,
+        asOfDate: currentContext.asOfDate,
+      });
+      const fallbackName = `${report?.segment.name ?? currentContext.segmentCode} — ${formatDateForFilename(currentContext.asOfDate)}.xlsx`;
+      downloadBlob(blob, filename ?? fallbackName);
+    } catch (err: any) {
+      setError(err?.message || 'Ошибка выгрузки Excel');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   useEffect(() => {
     void loadData(currentContext);
@@ -717,6 +746,9 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
                 ))}
               </TextField>
             )}
+            <Button variant="outlined" onClick={handleDownloadExcel} disabled={loading || downloading}>
+              {downloading ? 'Скачивание...' : 'Скачать Excel'}
+            </Button>
             <Button
               variant={showDashboard ? 'contained' : 'outlined'}
               onClick={() => setShowDashboard((prev) => !prev)}

@@ -17,6 +17,7 @@ import {
 import { planningV2Api } from '../../services/planning-v2.api';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../../store/unsavedChanges';
 import { PlanningYearTotalsRow } from '../../types/planning-v2.types';
+import { downloadBlob } from '../../utils/download';
 
 interface YearTotalsV2TableProps {
   year: number;
@@ -128,6 +129,7 @@ const formatPct = (value: number) => `${value.toFixed(2)}%`;
 export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearTotalsV2TableProps) {
   const [rows, setRows] = useState<PlanningYearTotalsRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftMap>({});
@@ -401,6 +403,20 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
     }
   };
 
+  const handleDownloadExcel = async () => {
+    try {
+      setDownloading(true);
+      setError(null);
+      const { blob, filename } = await planningV2Api.downloadTotalsExcel({ year });
+      const fallbackName = `ИТОГО — ${year}.xlsx`;
+      downloadBlob(blob, filename ?? fallbackName);
+    } catch (err: any) {
+      setError(err?.message || 'Ошибка выгрузки Excel');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" p={4}>
@@ -446,6 +462,9 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
               }}
               sx={{ width: 120 }}
             />
+            <Button variant="outlined" onClick={handleDownloadExcel} disabled={loading || downloading}>
+              {downloading ? 'Скачивание...' : 'Скачать Excel'}
+            </Button>
             {isAdmin && (
               <Button variant="outlined" onClick={loadData} disabled={saving}>Обновить</Button>
             )}

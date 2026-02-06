@@ -27,6 +27,15 @@ const SEGMENT_REPORT_TITLE: Record<PlanningSegmentCode, string> = {
   [PlanningSegmentCode.TO]: 'ТО авто',
 };
 
+const DEFAULT_SEGMENT_ORDER: PlanningSegmentCode[] = [
+  PlanningSegmentCode.KTK_VVO,
+  PlanningSegmentCode.KTK_MOW,
+  PlanningSegmentCode.AUTO,
+  PlanningSegmentCode.RAIL,
+  PlanningSegmentCode.EXTRA,
+  PlanningSegmentCode.TO,
+];
+
 const WEEK_DAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const DEFAULT_TZ = process.env.SCHEDULER_TIMEZONE || 'Asia/Vladivostok';
 
@@ -283,10 +292,23 @@ export const sendScheduledEmailNow = async (schedule: EmailSchedule) => {
       });
 
       const workbook = new ExcelJS.Workbook();
-      const dataSheet = workbook.addWorksheet('Планирование v2');
-      const dashboardSheet = workbook.addWorksheet('Дашборд');
-      fillPlanningSheet(dataSheet, report, year, month);
-      fillDashboardSheet(dashboardSheet, report.segment.code, report.dashboard || {});
+      const reportSheet = workbook.addWorksheet('Ежедневный отчет');
+      appendSegmentReportBlock(reportSheet, report, year, month, 1, { includeMonthTotalColumn: true });
+      // Match layout from standard daily export.
+      reportSheet.views = [{ state: 'frozen', ySplit: 1, xSplit: 1 }];
+      reportSheet.getColumn(1).width = 42;
+      for (let d = 1; d <= report.daysInMonth; d += 1) {
+        reportSheet.getColumn(d + 1).width = 5.3;
+      }
+      const dataEndCol = report.daysInMonth + 2;
+      const spacerCol = dataEndCol + 1;
+      const dashboardStartCol = spacerCol + 1;
+      reportSheet.getColumn(dataEndCol).width = 9.5; // ИТОГО
+      reportSheet.getColumn(spacerCol).width = 2; // spacer
+      reportSheet.getColumn(dashboardStartCol).width = 14; // dashboard title column
+      reportSheet.getColumn(dashboardStartCol + 1).width = 24; // dashboard metric
+      reportSheet.getColumn(dashboardStartCol + 2).width = 14; // dashboard value 1
+      reportSheet.getColumn(dashboardStartCol + 3).width = 14; // dashboard value 2
 
       const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
       const reportTitle = SEGMENT_REPORT_TITLE[report.segment.code] ?? report.segment.name;
@@ -324,20 +346,71 @@ export const sendScheduledEmailNow = async (schedule: EmailSchedule) => {
   }
 };
 
+type DailyExportOptions = {
+  year: number;
+  month: number;
+  asOfDate: string;
+  segmentCodes?: PlanningSegmentCode[];
+  includeMonthTotalColumn?: boolean;
+};
+
+type TotalsExportOptions = {
+  year: number;
+  segmentCodes?: PlanningSegmentCode[];
+  highlightMonth?: number | null;
+};
+
+const MONTH_NAMES_SHORT = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+
+export const buildPlanningDailyExcel = async (options: DailyExportOptions): Promise<Buffer> => {
+  const workbook = new ExcelJS.Workbook();
+  const planningSheet = workbook.addWorksheet('Ежедневный отчет');
+  await fillDailyReportSheet(planningSheet, options);
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+};
+
+export const buildPlanningTotalsExcel = async (options: TotalsExportOptions): Promise<Buffer> => {
+  const workbook = new ExcelJS.Workbook();
+  const totalSheet = workbook.addWorksheet('ИТОГО');
+  await fillTotalsSheet(totalSheet, options);
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+};
+
 async function buildSvExcelFromData(year: number, month: number, asOfDate: string): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   const planningSheet = workbook.addWorksheet('Ежедневный отчет');
   const totalSheet = workbook.addWorksheet('ИТОГО');
-  const daysInMonth = new Date(year, month, 0).getDate();
 
-  const segmentOrder: PlanningSegmentCode[] = [
-    PlanningSegmentCode.KTK_VVO,
-    PlanningSegmentCode.KTK_MOW,
-    PlanningSegmentCode.AUTO,
-    PlanningSegmentCode.RAIL,
-    PlanningSegmentCode.EXTRA,
-    PlanningSegmentCode.TO,
-  ];
+  await fillDailyReportSheet(planningSheet, {
+    year,
+    month,
+    asOfDate,
+    segmentCodes: DEFAULT_SEGMENT_ORDER,
+    includeMonthTotalColumn: true,
+  });
+  await fillTotalsSheet(totalSheet, { year, highlightMonth: month });
+
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
+function resolveSegmentOrder(segmentCodes?: PlanningSegmentCode[]): PlanningSegmentCode[] {
+  if (!segmentCodes || segmentCodes.length === 0) {
+    return [...DEFAULT_SEGMENT_ORDER];
+  }
+  const selected = new Set(segmentCodes);
+  const ordered = DEFAULT_SEGMENT_ORDER.filter((code) => selected.has(code));
+  segmentCodes.forEach((code) => {
+    if (!ordered.includes(code)) {
+      ordered.push(code);
+    }
+  });
+  return ordered;
+}
+
+async function fillDailyReportSheet(sheet: ExcelJS.Worksheet, options: DailyExportOptions): Promise<void> {
+  const { year, month, asOfDate, includeMonthTotalColumn = true } = options;
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const segmentOrder = resolveSegmentOrder(options.segmentCodes);
 
   let cursor = 1;
   for (const segmentCode of segmentOrder) {
@@ -347,36 +420,48 @@ async function buildSvExcelFromData(year: number, month: number, asOfDate: strin
       month,
       asOfDate,
     });
-    cursor = appendSegmentReportBlock(planningSheet, report, year, month, cursor);
+    cursor = appendSegmentReportBlock(sheet, report, year, month, cursor, { includeMonthTotalColumn });
     cursor += 2;
   }
 
   // Global layout for "Ежедневный отчет"
-  planningSheet.views = [{ state: 'frozen', ySplit: 1, xSplit: 1 }];
-  planningSheet.getColumn(1).width = 42;
+  sheet.views = [{ state: 'frozen', ySplit: 1, xSplit: 1 }];
+  sheet.getColumn(1).width = 42;
   for (let d = 1; d <= daysInMonth; d += 1) {
-    planningSheet.getColumn(d + 1).width = 5.3;
+    sheet.getColumn(d + 1).width = 5.3;
   }
-  planningSheet.getColumn(daysInMonth + 2).width = 9.5; // ИТОГО
-  planningSheet.getColumn(daysInMonth + 3).width = 2; // spacer
-  planningSheet.getColumn(daysInMonth + 4).width = 14; // dashboard title column
-  planningSheet.getColumn(daysInMonth + 5).width = 24; // dashboard metric
-  planningSheet.getColumn(daysInMonth + 6).width = 14; // dashboard value 1
-  planningSheet.getColumn(daysInMonth + 7).width = 14; // dashboard value 2
 
-  const yearTotals = await planningV2TotalsService.getYearTotals(year);
-  const monthNamesShort = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
-  totalSheet.addRow(['Сегмент', 'Показатель', ...monthNamesShort, 'Итог за год']);
-  totalSheet.getRow(1).font = { bold: true };
-  totalSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9EEF5' } };
-  totalSheet.columns = [{ width: 26 }, { width: 22 }, ...Array.from({ length: 12 }, () => ({ width: 10 })), { width: 14 }];
+  const dataEndCol = daysInMonth + (includeMonthTotalColumn ? 2 : 1);
+  const spacerCol = dataEndCol + 1;
+  const dashboardStartCol = spacerCol + 1;
 
-  const sortedTotals = [...yearTotals].sort((a, b) => totalsSortOrder(a) - totalsSortOrder(b));
+  if (includeMonthTotalColumn) {
+    sheet.getColumn(daysInMonth + 2).width = 9.5; // ИТОГО
+  }
+  sheet.getColumn(spacerCol).width = 2; // spacer
+  sheet.getColumn(dashboardStartCol).width = 14; // dashboard title column
+  sheet.getColumn(dashboardStartCol + 1).width = 24; // dashboard metric
+  sheet.getColumn(dashboardStartCol + 2).width = 14; // dashboard value 1
+  sheet.getColumn(dashboardStartCol + 3).width = 14; // dashboard value 2
+}
+
+async function fillTotalsSheet(sheet: ExcelJS.Worksheet, options: TotalsExportOptions): Promise<void> {
+  const yearTotals = await planningV2TotalsService.getYearTotals(options.year);
+  const filteredTotals = options.segmentCodes && options.segmentCodes.length > 0
+    ? yearTotals.filter((row) => options.segmentCodes?.includes(row.segmentCode))
+    : yearTotals;
+
+  sheet.addRow(['Сегмент', 'Показатель', ...MONTH_NAMES_SHORT, 'Итог за год']);
+  sheet.getRow(1).font = { bold: true };
+  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9EEF5' } };
+  sheet.columns = [{ width: 26 }, { width: 22 }, ...Array.from({ length: 12 }, () => ({ width: 10 })), { width: 14 }];
+
+  const sortedTotals = [...filteredTotals].sort((a, b) => totalsSortOrder(a) - totalsSortOrder(b));
   let lastGroup = '';
   sortedTotals.forEach((row) => {
     const group = totalsGroupTitle(row);
     if (group !== lastGroup) {
-      const groupRow = totalSheet.addRow([group, '', ...Array.from({ length: 13 }, () => '')]);
+      const groupRow = sheet.addRow([group, '', ...Array.from({ length: 13 }, () => '')]);
       groupRow.font = { bold: true };
       groupRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F5' } };
       lastGroup = group;
@@ -384,10 +469,10 @@ async function buildSvExcelFromData(year: number, month: number, asOfDate: strin
 
     if (row.kind === 'PLAN_FLOW') {
       const segmentLabel = totalsSegmentLabel(row);
-      const baseRow = totalSheet.addRow([segmentLabel, 'Базовый план', ...row.months.map((m) => m.basePlan), row.yearlyBasePlan]);
-      const factRow = totalSheet.addRow([segmentLabel, 'Факт', ...row.months.map((m) => m.fact), row.yearlyFact]);
-      const carryRow = totalSheet.addRow([segmentLabel, 'План с переносом', ...row.months.map((m) => m.carryPlan), row.yearlyCarryPlan]);
-      const pctRow = totalSheet.addRow([segmentLabel, 'Выполнение плана', ...row.months.map((m) => m.completionPct / 100), row.yearlyCompletionPct / 100]);
+      const baseRow = sheet.addRow([segmentLabel, 'Базовый план', ...row.months.map((m) => m.basePlan), row.yearlyBasePlan]);
+      const factRow = sheet.addRow([segmentLabel, 'Факт', ...row.months.map((m) => m.fact), row.yearlyFact]);
+      const carryRow = sheet.addRow([segmentLabel, 'План с переносом', ...row.months.map((m) => m.carryPlan), row.yearlyCarryPlan]);
+      const pctRow = sheet.addRow([segmentLabel, 'Выполнение плана', ...row.months.map((m) => m.completionPct / 100), row.yearlyCompletionPct / 100]);
       pctRow.eachCell((cell, colNumber) => {
         if (colNumber >= 3) cell.numFmt = '0.0%';
       });
@@ -397,23 +482,23 @@ async function buildSvExcelFromData(year: number, month: number, asOfDate: strin
         })
       );
     } else {
-      const factRow = totalSheet.addRow([totalsSegmentLabel(row), 'Факт', ...row.months.map((m) => m.fact), row.yearlyFact]);
+      const factRow = sheet.addRow([totalsSegmentLabel(row), 'Факт', ...row.months.map((m) => m.fact), row.yearlyFact]);
       factRow.eachCell((cell, colNumber) => {
         if (colNumber >= 3) cell.numFmt = '#,##0';
       });
     }
   });
 
-  const currentMonthCol = month + 2;
-  totalSheet.getColumn(currentMonthCol).eachCell((cell) => {
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF4CC' } };
-  });
-  totalSheet.getColumn(15).eachCell((cell) => {
+  if (options.highlightMonth && options.highlightMonth >= 1 && options.highlightMonth <= 12) {
+    const currentMonthCol = options.highlightMonth + 2;
+    sheet.getColumn(currentMonthCol).eachCell((cell) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF4CC' } };
+    });
+  }
+  sheet.getColumn(15).eachCell((cell) => {
     cell.font = { ...(cell.font || {}), bold: true };
   });
-  applyGrid(totalSheet);
-
-  return Buffer.from(await workbook.xlsx.writeBuffer());
+  applyGrid(sheet);
 }
 
 function normalizeMetricName(metricCode: string, name: string): string {
@@ -497,16 +582,24 @@ function totalsSortOrder(row: any): number {
   return 999;
 }
 
+type SegmentBlockOptions = {
+  includeMonthTotalColumn?: boolean;
+};
+
 function appendSegmentReportBlock(
   sheet: ExcelJS.Worksheet,
   report: any,
   year: number,
   month: number,
-  startRow: number
+  startRow: number,
+  options: SegmentBlockOptions = {}
 ): number {
+  const includeMonthTotalColumn = options.includeMonthTotalColumn ?? true;
   const blockStartCol = 1;
-  const dashboardStartCol = report.daysInMonth + 4;
-  const blockEndCol = Math.max(report.daysInMonth + 2, dashboardStartCol + 3);
+  const dataEndCol = report.daysInMonth + (includeMonthTotalColumn ? 2 : 1);
+  const spacerCol = dataEndCol + 1;
+  const dashboardStartCol = spacerCol + 1;
+  const blockEndCol = Math.max(dataEndCol, dashboardStartCol + 3);
   const titleRow = sheet.getRow(startRow);
   titleRow.getCell(1).value = report.segment.name;
   titleRow.getCell(1).font = { bold: true, size: 12 };
@@ -520,9 +613,11 @@ function appendSegmentReportBlock(
     titleRow.getCell(d + 1).alignment = { horizontal: 'center', vertical: 'middle' };
     titleRow.getCell(d + 1).font = { bold: true };
   }
-  titleRow.getCell(report.daysInMonth + 2).value = 'ИТОГО';
-  titleRow.getCell(report.daysInMonth + 2).alignment = { horizontal: 'center', vertical: 'middle' };
-  titleRow.getCell(report.daysInMonth + 2).font = { bold: true };
+  if (includeMonthTotalColumn) {
+    titleRow.getCell(report.daysInMonth + 2).value = 'ИТОГО';
+    titleRow.getCell(report.daysInMonth + 2).alignment = { horizontal: 'center', vertical: 'middle' };
+    titleRow.getCell(report.daysInMonth + 2).font = { bold: true };
+  }
   titleRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
   titleRow.commit();
 
@@ -556,12 +651,14 @@ function appendSegmentReportBlock(
         dataRow.getCell(idx + 2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.weekend } };
       }
     });
-    dataRow.getCell(report.daysInMonth + 2).value = row.monthTotal;
-    dataRow.getCell(report.daysInMonth + 2).font = { bold: true };
-    dataRow.getCell(report.daysInMonth + 2).alignment = { horizontal: 'center', vertical: 'middle' };
+    if (includeMonthTotalColumn) {
+      dataRow.getCell(report.daysInMonth + 2).value = row.monthTotal;
+      dataRow.getCell(report.daysInMonth + 2).font = { bold: true };
+      dataRow.getCell(report.daysInMonth + 2).alignment = { horizontal: 'center', vertical: 'middle' };
+    }
     if (!row.isEditable) {
       dataRow.eachCell((cell, col) => {
-        if (col <= report.daysInMonth + 2) {
+        if (col <= dataEndCol) {
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.readonly } };
         }
       });
@@ -573,10 +670,10 @@ function appendSegmentReportBlock(
   const dashboardHeight = writeDashboardInline(sheet, report.segment.code, report.dashboard || {}, startRow, dashboardStartCol);
 
   const blockEndRow = Math.max(rowCursor - 1, startRow + dashboardHeight - 1);
-  applyDottedGridRange(sheet, startRow, blockEndRow, 1, report.daysInMonth + 2);
+  applyDottedGridRange(sheet, startRow, blockEndRow, 1, dataEndCol);
   applyDottedGridRange(sheet, startRow, blockEndRow, dashboardStartCol, dashboardStartCol + 2);
   for (let r = startRow; r <= blockEndRow; r += 1) {
-    const sep = sheet.getRow(r).getCell(dashboardStartCol - 1);
+    const sep = sheet.getRow(r).getCell(spacerCol);
     sep.border = {
       left: { style: 'medium', color: { argb: 'FFB9C4D0' } },
     };

@@ -3,6 +3,7 @@ import { planningV2Service } from '../services/planning-v2.service';
 import { planningV2ReportService } from '../services/planning-v2-report.service';
 import { PlanningPlanMetricCode, PlanningSegmentCode } from '../models/planning.enums';
 import { planningV2TotalsService } from '../services/planning-v2-totals.service';
+import { buildPlanningDailyExcel, buildPlanningTotalsExcel } from '../services/email-scheduler.service';
 import { logger } from '../utils/logger';
 import { planWebSocketService } from '../services/websocket.service';
 
@@ -18,6 +19,37 @@ function parsePlanMetricCode(raw: string): PlanningPlanMetricCode {
     throw new Error('Invalid plan metric code');
   }
   return raw as PlanningPlanMetricCode;
+}
+
+function formatDdMmYyyy(isoDate: string): string {
+  const parts = isoDate.split('-');
+  if (parts.length !== 3) {
+    throw new Error('Invalid date format');
+  }
+  const [year, month, day] = parts;
+  if (!year || !month || !day) {
+    throw new Error('Invalid date format');
+  }
+  return `${day.padStart(2, '0')}.${month.padStart(2, '0')}.${year}`;
+}
+
+function buildContentDisposition(filename: string): string {
+  const sanitized = filename.replace(/"/g, '');
+  const asciiFallback = sanitized
+    .normalize('NFKD')
+    .replace(/[^\x20-\x7E]+/g, '_')
+    .replace(/[\\"]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const safeFallback = asciiFallback || 'report.xlsx';
+  const encoded = encodeURIComponent(filename)
+    .replace(/['()]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)
+    .replace(/\*/g, '%2A');
+  return `attachment; filename="${safeFallback}"; filename*=UTF-8''${encoded}`;
+}
+
+function isFullAccessRole(role: string): boolean {
+  return role === 'admin' || role === 'director' || role === 'sales' || role === 'manager_sales';
 }
 
 export const bootstrapPlanningCatalog = async (_req: Request, res: Response, next: NextFunction) => {
@@ -282,6 +314,116 @@ export const updatePlanningBasePlan = async (req: Request, res: Response, next: 
     });
 
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const exportPlanningDailyExcel = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
+    const year = Number(req.query.year);
+    const month = Number(req.query.month);
+    const asOfDate = req.query.asOfDate ? String(req.query.asOfDate) : '';
+    const segmentCodeRaw = req.query.segmentCode ? String(req.query.segmentCode) : '';
+
+    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+      res.status(400).json({ error: 'Invalid year or month' });
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(asOfDate)) {
+      res.status(400).json({ error: 'Invalid asOfDate' });
+      return;
+    }
+
+    const segments = await planningV2Service.getSegmentsForRole(user.role);
+    if (segments.length === 0) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    const fullAccess = isFullAccessRole(user.role);
+
+    let segmentCode: PlanningSegmentCode | null = null;
+    if (!fullAccess) {
+      if (segmentCodeRaw) {
+        segmentCode = parseSegmentCode(segmentCodeRaw);
+      } else if (segments.length === 1) {
+        segmentCode = segments[0].code;
+      }
+
+      if (!segmentCode) {
+        res.status(400).json({ error: 'segmentCode is required' });
+        return;
+      }
+
+      if (!segments.some((segment) => segment.code === segmentCode)) {
+        res.status(403).json({ error: 'Access denied' });
+        return;
+      }
+    }
+
+    const buffer = await buildPlanningDailyExcel({
+      year,
+      month,
+      asOfDate,
+      segmentCodes: fullAccess ? segments.map((segment) => segment.code) : [segmentCode as PlanningSegmentCode],
+      includeMonthTotalColumn: !fullAccess,
+    });
+
+    const ddmmyyyy = formatDdMmYyyy(asOfDate);
+    const filename = fullAccess
+      ? `СВ — ${ddmmyyyy}.xlsx`
+      : `${segments.find((segment) => segment.code === segmentCode)?.name ?? segmentCode} — ${ddmmyyyy}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', buildContentDisposition(filename));
+    res.status(200).send(buffer);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const exportPlanningTotalsExcel = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
+    const year = Number(req.query.year);
+    if (!Number.isInteger(year) || year < 2020 || year > 2100) {
+      res.status(400).json({ error: 'Invalid year' });
+      return;
+    }
+
+    const segments = await planningV2Service.getSegmentsForRole(user.role);
+    if (segments.length === 0) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    const now = new Date();
+    const highlightMonth = year === now.getFullYear() ? now.getMonth() + 1 : null;
+    const buffer = await buildPlanningTotalsExcel({
+      year,
+      segmentCodes: segments.map((segment) => segment.code),
+      highlightMonth,
+    });
+
+    const filename = segments.length === 1
+      ? `ИТОГО ${segments[0].name} — ${year}.xlsx`
+      : `ИТОГО — ${year}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', buildContentDisposition(filename));
+    res.status(200).send(buffer);
   } catch (error) {
     next(error);
   }

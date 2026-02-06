@@ -159,6 +159,7 @@ const SummaryReportPage = () => {
     return rows.filter((row) => !row.detailCode || includeDetailForTotals.has(row.detailCode));
   }, [rows]);
   const totalPlan = useMemo(() => topLevelRows.reduce((acc, row) => acc + row.planMonth, 0), [topLevelRows]);
+  const totalPlanToDate = useMemo(() => topLevelRows.reduce((acc, row) => acc + row.planToDate, 0), [topLevelRows]);
   const totalFact = useMemo(() => topLevelRows.reduce((acc, row) => acc + row.factToDate, 0), [topLevelRows]);
   const totalMonthFact = useMemo(() => topLevelRows.reduce((acc, row) => acc + row.monthFact, 0), [topLevelRows]);
   const totalCompletion = totalPlan > 0 ? (totalMonthFact / totalPlan) * 100 : 0;
@@ -277,14 +278,14 @@ const SummaryReportPage = () => {
         <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 680 }}>
           <Table size="small" stickyHeader>
             <TableHead>
-              <TableRow>
-                <TableCell sx={{ minWidth: 300 }}>Сегмент</TableCell>
-                <TableCell align="right" sx={{ minWidth: 130 }}>План месяц</TableCell>
-                <TableCell align="right" sx={{ minWidth: 130 }}>Факт на дату</TableCell>
-                <TableCell align="right" sx={{ minWidth: 130 }}>Факт месяц</TableCell>
-                <TableCell align="right" sx={{ minWidth: 110 }}>% на дату</TableCell>
-                <TableCell align="right" sx={{ minWidth: 110 }}>% месяц</TableCell>
-              </TableRow>
+                <TableRow>
+                  <TableCell sx={{ minWidth: 300 }}>Сегмент</TableCell>
+                  <TableCell align="right" sx={{ minWidth: 130 }}>План месяц</TableCell>
+                  <TableCell align="right" sx={{ minWidth: 130 }}>План на дату</TableCell>
+                  <TableCell align="right" sx={{ minWidth: 130 }}>Факт на дату</TableCell>
+                  <TableCell align="right" sx={{ minWidth: 110 }}>% на дату</TableCell>
+                  <TableCell align="right" sx={{ minWidth: 110 }}>% месяц</TableCell>
+                </TableRow>
             </TableHead>
             <TableBody>
               {orderedRows.map((row, index) => {
@@ -320,8 +321,8 @@ const SummaryReportPage = () => {
                         </Typography>
                       </TableCell>
                       <TableCell align="right">{formatInt(row.planMonth)}</TableCell>
+                      <TableCell align="right">{formatInt(row.planToDate)}</TableCell>
                       <TableCell align="right">{formatInt(row.factToDate)}</TableCell>
-                      <TableCell align="right">{formatInt(row.monthFact)}</TableCell>
                       <TableCell align="right">{formatPct(row.completionToDate)}</TableCell>
                       <TableCell align="right">{formatPct(row.completionMonth)}</TableCell>
                     </TableRow>
@@ -331,10 +332,10 @@ const SummaryReportPage = () => {
               <TableRow sx={{ backgroundColor: 'action.selected' }}>
                 <TableCell><strong>ИТОГО</strong></TableCell>
                 <TableCell align="right"><strong>{formatInt(totalPlan)}</strong></TableCell>
+                <TableCell align="right"><strong>{formatInt(totalPlanToDate)}</strong></TableCell>
                 <TableCell align="right"><strong>{formatInt(totalFact)}</strong></TableCell>
-                <TableCell align="right"><strong>{formatInt(totalMonthFact)}</strong></TableCell>
                 <TableCell align="right">
-                  <strong>{totalPlan > 0 ? formatPct((totalFact / totalPlan) * 100) : '0.00%'}</strong>
+                  <strong>{totalPlanToDate > 0 ? formatPct((totalFact / totalPlanToDate) * 100) : '0.00%'}</strong>
                 </TableCell>
                 <TableCell align="right"><strong>{formatPct(totalCompletion)}</strong></TableCell>
               </TableRow>

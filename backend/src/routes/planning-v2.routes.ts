@@ -11,6 +11,8 @@ import {
   getPlanningSummaryReport,
   updatePlanningBasePlan,
   getPlanningValuesByMonth,
+  exportPlanningDailyExcel,
+  exportPlanningTotalsExcel,
 } from '../controllers/planning-v2.controller';
 
 const router = Router();
@@ -23,6 +25,8 @@ router.get('/values', getPlanningValuesByMonth);
 router.put('/values/batch', batchUpsertPlanningValues);
 router.get('/reports/segment', getPlanningSegmentReport);
 router.get('/reports/summary', getPlanningSummaryReport);
+router.get('/exports/daily', exportPlanningDailyExcel);
+router.get('/exports/totals', exportPlanningTotalsExcel);
 router.get('/totals/year', getPlanningYearTotals);
 router.put('/totals/base-plan', updatePlanningBasePlan);
 

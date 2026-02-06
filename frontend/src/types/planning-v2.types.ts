@@ -26,6 +26,7 @@ export interface PlanningSummaryItem {
   segmentCode: PlanningSegment['code'];
   segmentName: string;
   planMonth: number;
+  planToDate: number;
   factToDate: number;
   monthFact: number;
   completionToDate: number;
