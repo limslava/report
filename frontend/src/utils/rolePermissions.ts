@@ -16,6 +16,18 @@ export function canViewTotalsInPlans(role?: string | null): boolean {
   return Boolean(role);
 }
 
+export function canViewFinancialPlan(role?: string | null): boolean {
+  return role === 'admin' || role === 'director' || role === 'financer';
+}
+
+export function canEditFinancialPlan(role?: string | null): boolean {
+  return role === 'admin' || role === 'director' || role === 'financer';
+}
+
+export function canManageFinancialVat(role?: string | null): boolean {
+  return role === 'admin';
+}
+
 export function canBootstrapPlanning(role?: string | null): boolean {
   return role === 'admin';
 }

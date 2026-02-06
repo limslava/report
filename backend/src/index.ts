@@ -12,6 +12,7 @@ import { adminRouter } from './routes/admin.routes';
 import emailRouter from './routes/email.routes';
 import smtpConfigRouter from './routes/smtp-config.routes';
 import { planningV2Router } from './routes/planning-v2.routes';
+import { financialPlanRouter } from './routes/financial-plan.routes';
 import { errorHandler } from './middleware/error-handler';
 import { logger } from './utils/logger';
 import { planWebSocketService } from './services/websocket.service';
@@ -63,6 +64,7 @@ app.use((req, _res, next) => {
 // Routes
 app.use('/api/auth', authRouter);
 app.use('/api/v2/planning', planningV2Router);
+app.use('/api/v2/financial-plan', financialPlanRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/email-schedules', emailRouter);
 app.use('/api/smtp-config', smtpConfigRouter);

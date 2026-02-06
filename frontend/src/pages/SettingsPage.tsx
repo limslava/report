@@ -34,6 +34,8 @@ import {
   getAppSettings,
   updateAppSettings,
 } from '../services/api';
+import { financialPlanApi } from '../services/financial-plan.api';
+import { FinancialVatRate } from '../types/financial-plan.types';
 import { useAuthStore } from '../store/auth-store';
 
 interface TabPanelProps {
@@ -299,6 +301,16 @@ const SettingsPage = () => {
   const [appTitle, setAppTitle] = useState('Логистика & Отчетность');
   const [appTitleMessage, setAppTitleMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [savingAppTitle, setSavingAppTitle] = useState(false);
+  const currentYear = new Date().getFullYear();
+  const [vatYear, setVatYear] = useState(currentYear);
+  const [vatRates, setVatRates] = useState<FinancialVatRate[]>([]);
+  const [vatWarning, setVatWarning] = useState(false);
+  const [vatLoading, setVatLoading] = useState(false);
+  const [vatMessage, setVatMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [vatDate, setVatDate] = useState('');
+  const [vatRate, setVatRate] = useState('');
+  const [vatSaving, setVatSaving] = useState(false);
+  const [vatShowAll, setVatShowAll] = useState(false);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -336,6 +348,25 @@ const SettingsPage = () => {
     };
     loadAppSettings();
   }, [isAdmin]);
+
+  const loadVatRates = async (yearValue: number = vatYear) => {
+    if (!isAdmin) return;
+    try {
+      setVatLoading(true);
+      setVatMessage(null);
+      const response = await financialPlanApi.getVatRates(yearValue);
+      setVatRates(response.rates ?? []);
+      setVatWarning(Boolean(response.warning));
+    } catch {
+      setVatMessage({ type: 'error', text: 'Не удалось загрузить ставки НДС' });
+    } finally {
+      setVatLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadVatRates();
+  }, [isAdmin, vatYear]);
 
   const handleSaveAppTitle = async () => {
     const normalized = appTitle.trim();
@@ -490,11 +521,35 @@ const SettingsPage = () => {
     }
   };
 
+  const handleAddVatRate = async () => {
+    if (!isAdmin || !vatDate || !vatRate) return;
+    const rateValue = Number(vatRate.replace(',', '.'));
+    if (!Number.isFinite(rateValue)) {
+      setVatMessage({ type: 'error', text: 'Некорректная ставка НДС' });
+      return;
+    }
+
+    try {
+      setVatSaving(true);
+      setVatMessage(null);
+      await financialPlanApi.addVatRate({ effectiveFrom: vatDate, rate: rateValue });
+      setVatDate('');
+      setVatRate('');
+      setVatMessage({ type: 'success', text: 'Ставка НДС сохранена' });
+      await loadVatRates();
+    } catch {
+      setVatMessage({ type: 'error', text: 'Не удалось сохранить ставку НДС' });
+    } finally {
+      setVatSaving(false);
+    }
+  };
+
   // Динамические вкладки в зависимости от роли
   const tabs = [
     { label: 'Профиль', show: true },
     { label: 'Уведомления', show: isAdmin },
     { label: 'Интеграции', show: isAdmin },
+    { label: 'НДС', show: isAdmin },
   ];
   
   const visibleTabs = tabs.filter(tab => tab.show);
@@ -794,6 +849,80 @@ const SettingsPage = () => {
                 </Button>
               </Paper>
               <SmtpConfigForm />
+            </TabPanel>
+            <TabPanel value={tabValue} index={3}>
+              <Typography variant="h6" gutterBottom>
+                НДС
+              </Typography>
+              {vatMessage && (
+                <Alert severity={vatMessage.type} sx={{ mb: 2 }}>
+                  {vatMessage.text}
+                </Alert>
+              )}
+              <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-end' }}>
+                  <TextField
+                    label="Год"
+                    type="number"
+                    size="small"
+                    inputProps={{ min: 2020, max: 2100 }}
+                    value={vatYear}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      if (Number.isInteger(next) && next >= 2020 && next <= 2100) {
+                        setVatYear(next);
+                      }
+                    }}
+                    sx={{ width: 120 }}
+                  />
+                  <TextField
+                    label="Дата начала"
+                    type="date"
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                    value={vatDate}
+                    onChange={(e) => setVatDate(e.target.value)}
+                  />
+                  <TextField
+                    label="Ставка, %"
+                    type="number"
+                    size="small"
+                    value={vatRate}
+                    onChange={(e) => setVatRate(e.target.value)}
+                    sx={{ width: 140 }}
+                  />
+                  <Button variant="outlined" onClick={handleAddVatRate} disabled={vatSaving || !vatDate || !vatRate}>
+                    {vatSaving ? 'Сохранение...' : 'Добавить'}
+                  </Button>
+                </Box>
+                {vatWarning && (
+                  <Alert severity="warning" sx={{ mt: 2 }}>
+                    Нужно указать НДС
+                  </Alert>
+                )}
+              </Paper>
+
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Typography variant="subtitle1">История ставок</Typography>
+                  <Button size="small" onClick={() => setVatShowAll((prev) => !prev)}>
+                    {vatShowAll ? 'Скрыть' : 'Показать все'}
+                  </Button>
+                </Box>
+                {vatLoading ? (
+                  <Typography variant="body2" color="text.secondary">Загрузка...</Typography>
+                ) : vatRates.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">Нет данных</Typography>
+                ) : (
+                  <List dense sx={{ maxHeight: 260, overflowY: 'auto' }}>
+                    {(vatShowAll ? vatRates : vatRates.slice(-5)).map((rate) => (
+                      <ListItem key={rate.id} sx={{ py: 0.5 }}>
+                        <ListItemText primary={`${rate.effectiveFrom} — ${rate.rate}%`} />
+                      </ListItem>
+                    ))}
+                  </List>
+                )}
+              </Paper>
             </TabPanel>
           </>
         )}

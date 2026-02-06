@@ -22,7 +22,14 @@ export interface PlanningV2SegmentUpdateEvent {
   userId?: string;
 }
 
-type OutgoingWebSocketEvent = PlanUpdateEvent | PlanningV2SegmentUpdateEvent;
+export interface FinancialPlanUpdateEvent {
+  type: 'financial-plan:updated';
+  year: number;
+  timestamp: string;
+  userId?: string;
+}
+
+type OutgoingWebSocketEvent = PlanUpdateEvent | PlanningV2SegmentUpdateEvent | FinancialPlanUpdateEvent;
 
 function isPlanningV2Event(event: OutgoingWebSocketEvent): event is PlanningV2SegmentUpdateEvent {
   return event.type === 'planning-v2:segment-updated';
@@ -30,6 +37,10 @@ function isPlanningV2Event(event: OutgoingWebSocketEvent): event is PlanningV2Se
 
 function isPlanUpdateEvent(event: OutgoingWebSocketEvent): event is PlanUpdateEvent {
   return event.type !== 'planning-v2:segment-updated';
+}
+
+function isFinancialPlanEvent(event: OutgoingWebSocketEvent): event is FinancialPlanUpdateEvent {
+  return event.type === 'financial-plan:updated';
 }
 
 export class PlanWebSocketService {
@@ -128,6 +139,11 @@ export class PlanWebSocketService {
       return;
     }
 
+    if (isFinancialPlanEvent(event)) {
+      logger.debug(`Broadcasted financial plan update for ${event.year}`);
+      return;
+    }
+
     if (isPlanUpdateEvent(event)) {
       logger.debug(`Broadcasted plan update: ${event.type} for ${event.category} ${event.year}`);
       return;
@@ -147,6 +163,15 @@ export class PlanWebSocketService {
       segmentCode: params.segmentCode,
       year: params.year,
       month: params.month,
+      userId: params.userId,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  notifyFinancialPlanUpdated(params: { year: number; userId?: string }) {
+    this.broadcastPlanUpdate({
+      type: 'financial-plan:updated',
+      year: params.year,
       userId: params.userId,
       timestamp: new Date().toISOString(),
     });

@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   CircularProgress,
@@ -15,6 +16,7 @@ import {
   Typography,
 } from '@mui/material';
 import { planningV2Api } from '../../services/planning-v2.api';
+import { useAuthStore } from '../../store/auth-store';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../../store/unsavedChanges';
 import { PlanningYearTotalsRow } from '../../types/planning-v2.types';
 import { downloadBlob } from '../../utils/download';
@@ -136,10 +138,54 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
   const [editingValue, setEditingValue] = useState<string>('');
   const [selectedCell, setSelectedCell] = useState<CellCoord>(null);
   const [remoteUpdatePending, setRemoteUpdatePending] = useState(false);
+  const userId = useAuthStore((state) => state.user?.id);
+  const zoomStorageKey = `planning-totals-zoom:${userId ?? 'guest'}`;
+  const [tableZoom, setTableZoom] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 1;
+    }
+    const stored = window.localStorage.getItem(zoomStorageKey);
+    const parsed = stored ? Number(stored) : 1;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  });
+  const [zoomInput, setZoomInput] = useState('100%');
+  const zoomOptions = ['25%', '50%', '75%', '100%'];
   const cellRefs = useRef<Record<string, HTMLTableCellElement | null>>({});
   const draftCountRef = useRef(0);
   const savingRef = useRef(false);
   const yearRef = useRef(year);
+
+  const applyZoomFromInput = (raw: string) => {
+    const normalized = raw.trim().replace(',', '.');
+    if (!normalized) return;
+    const numeric = Number(normalized.replace('%', ''));
+    if (!Number.isFinite(numeric)) return;
+    const scale = normalized.includes('%') || numeric > 2 ? numeric / 100 : numeric;
+    if (scale < 0.2 || scale > 2) return;
+    setTableZoom(scale);
+    setZoomInput(`${Math.round(scale * 100)}%`);
+  };
+
+  useEffect(() => {
+    setZoomInput(`${Math.round(tableZoom * 100)}%`);
+  }, [tableZoom]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const stored = window.localStorage.getItem(zoomStorageKey);
+    const parsed = stored ? Number(stored) : 1;
+    const next = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+    setTableZoom(next);
+  }, [zoomStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.setItem(zoomStorageKey, String(tableZoom));
+  }, [tableZoom, zoomStorageKey]);
 
   const loadData = async () => {
     try {
@@ -461,6 +507,28 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
               }}
               sx={{ width: 120 }}
             />
+            <Autocomplete
+              freeSolo
+              options={zoomOptions}
+              inputValue={zoomInput}
+              onInputChange={(_event, value) => setZoomInput(value)}
+              onChange={(_event, value) => {
+                if (typeof value === 'string') {
+                  setZoomInput(value);
+                  applyZoomFromInput(value);
+                }
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Масштаб"
+                  size="small"
+                  onBlur={() => applyZoomFromInput(zoomInput)}
+                  placeholder="например 80%"
+                />
+              )}
+              sx={{ width: 140 }}
+            />
             <Button variant="outlined" onClick={handleDownloadExcel} disabled={loading || downloading}>
               {downloading ? 'Скачивание...' : 'Скачать Excel'}
             </Button>
@@ -477,7 +545,7 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
       </Paper>
 
       <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 660 }}>
-        <Table size="small" stickyHeader>
+        <Table size="small" stickyHeader sx={{ zoom: tableZoom }}>
           <TableHead>
             <TableRow>
               <TableCell sx={{ minWidth: 260 }}>Сегмент</TableCell>

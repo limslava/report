@@ -98,6 +98,7 @@ export const registerSchema = Joi.object({
   role: Joi.string().required().valid(
     'admin',
     'director',
+    'financer',
     'sales',
     'container_vladivostok',
     'container_moscow',

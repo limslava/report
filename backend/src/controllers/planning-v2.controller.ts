@@ -281,8 +281,8 @@ export const updatePlanningBasePlan = async (req: Request, res: Response, next: 
       return;
     }
 
-    if (user.role !== 'admin') {
-      res.status(403).json({ error: 'Only admin can edit base plans' });
+    if (user.role !== 'admin' && user.role !== 'director') {
+      res.status(403).json({ error: 'Only admin or director can edit base plans' });
       return;
     }
 

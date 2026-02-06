@@ -7,7 +7,7 @@ import AdminPage from './pages/AdminPage';
 import SettingsPage from './pages/SettingsPage';
 import PlansPage from './pages/PlansPage';
 import RouteAccessGuard from './components/auth/RouteAccessGuard';
-import { canAccessAdmin, canViewSummary } from './utils/rolePermissions';
+import { canAccessAdmin, canViewFinancialPlan, canViewSummary } from './utils/rolePermissions';
 
 function App() {
   const { token, user } = useAuthStore();
@@ -39,6 +39,14 @@ function App() {
           <Route path="settings" element={<SettingsPage />} />
           <Route path="plans" element={<PlansPage mode="daily" />} />
           <Route path="plans/totals" element={<PlansPage mode="totals" />} />
+          <Route
+            path="plans/financial"
+            element={(
+              <RouteAccessGuard allow={canViewFinancialPlan(user?.role)}>
+                <PlansPage mode="financial" />
+              </RouteAccessGuard>
+            )}
+          />
         </Route>
       ) : (
         <Route path="*" element={<Navigate to="/login" replace />} />

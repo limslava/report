@@ -89,6 +89,7 @@ const AdminPage = () => {
     manager_sales: 'Менеджер по продажам',
     director: 'Директор',
     admin: 'Администратор',
+    financer: 'Финансист',
   };
 
   const roles = [
@@ -101,6 +102,7 @@ const AdminPage = () => {
     { value: 'manager_sales', label: 'Менеджер по продажам' },
     { value: 'director', label: 'Директор' },
     { value: 'admin', label: 'Администратор' },
+    { value: 'financer', label: 'Финансист' },
   ];
 
   const handleOpenDialog = (user: any = null) => {

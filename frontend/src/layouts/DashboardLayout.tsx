@@ -33,7 +33,7 @@ import {
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/auth-store';
-import { canAccessAdmin, canViewSummary, canViewTotalsInPlans } from '../utils/rolePermissions';
+import { canAccessAdmin, canViewFinancialPlan, canViewSummary, canViewTotalsInPlans } from '../utils/rolePermissions';
 import { getHasUnsavedChanges, getUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import { getRuntimeAppSettings } from '../services/api';
 
@@ -55,6 +55,7 @@ const DashboardLayout = () => {
   const [appTitle, setAppTitle] = useState('Логистика & Отчетность');
   const drawerWidth = isPinnedOpen ? expandedDrawerWidth : collapsedDrawerWidth;
   const canViewTotals = canViewTotalsInPlans(user?.role);
+  const canViewFinancial = canViewFinancialPlan(user?.role);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -200,6 +201,17 @@ const DashboardLayout = () => {
                   sx={{ py: 0.5, minHeight: 34 }}
                 >
                   <ListItemText primary="Итого" primaryTypographyProps={{ fontSize: 14 }} />
+                </ListItemButton>
+              </ListItem>
+            )}
+            {canViewFinancial && (
+              <ListItem disablePadding sx={{ pl: 4 }}>
+                <ListItemButton
+                  selected={location.pathname === '/plans/financial'}
+                  onClick={() => handleNavigate('/plans/financial')}
+                  sx={{ py: 0.5, minHeight: 34 }}
+                >
+                  <ListItemText primary="Фин.рез. план" primaryTypographyProps={{ fontSize: 14 }} />
                 </ListItemButton>
               </ListItem>
             )}
