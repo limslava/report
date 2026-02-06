@@ -265,8 +265,12 @@ export const getPlanningYearTotals = async (req: Request, res: Response, next: N
     }
 
     const segments = await planningV2Service.getSegmentsForRole(user.role);
-    const allowedCodes = new Set(segments.map((segment) => segment.code));
-    const rows = (await planningV2TotalsService.getYearTotals(year)).filter((row) => allowedCodes.has(row.segmentCode));
+    const allowedCodes = segments.map((segment) => segment.code);
+    const canEditBasePlan = user.role === 'admin' || user.role === 'director';
+    const rows = await planningV2TotalsService.getYearTotals(year, {
+      allowedSegmentCodes: allowedCodes,
+      ensureMetrics: canEditBasePlan,
+    });
     res.json({ year, rows });
   } catch (error) {
     next(error);
@@ -419,8 +423,8 @@ export const exportPlanningTotalsExcel = async (req: Request, res: Response, nex
     });
 
     const filename = segments.length === 1
-      ? `ИТОГО ${segments[0].name} — ${year}.xlsx`
-      : `ИТОГО — ${year}.xlsx`;
+      ? `Оперативный отчет ${segments[0].name} — ${year}.xlsx`
+      : `Оперативный отчет — ${year}.xlsx`;
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', buildContentDisposition(filename));

@@ -1,3 +1,4 @@
+import { In } from 'typeorm';
 import { AppDataSource } from '../config/data-source';
 import { PlanningMonthlyPlan } from '../models/planning-monthly-plan.model';
 import { PlanningMonthlyPlanMetric } from '../models/planning-monthly-plan-metric.model';
@@ -35,6 +36,8 @@ export interface YearTotalsRow {
   yearlyFact: number;
   yearlyCompletionPct: number;
 }
+
+type SegmentReport = Awaited<ReturnType<typeof planningV2ReportService.getSegmentReport>>;
 
 const TOTALS_CONFIG: TotalsConfig[] = [
   {
@@ -154,18 +157,42 @@ export class PlanningV2TotalsService {
   private readonly monthlyPlanRepo = AppDataSource.getRepository(PlanningMonthlyPlan);
   private readonly monthlyPlanMetricRepo = AppDataSource.getRepository(PlanningMonthlyPlanMetric);
 
-  async getYearTotals(year: number): Promise<YearTotalsRow[]> {
+  async getYearTotals(
+    year: number,
+    options?: { allowedSegmentCodes?: PlanningSegmentCode[]; ensureMetrics?: boolean }
+  ): Promise<YearTotalsRow[]> {
     const rows: YearTotalsRow[] = [];
 
-    for (const config of TOTALS_CONFIG) {
-      const monthMetricMap = config.planMetricCode
-        ? (await this.ensureYearPlanMetrics(year, config.segmentCode, config.planMetricCode)).monthMetricMap
-        : new Map<number, PlanningMonthlyPlanMetric>();
-      const segment = await this.segmentRepo.findOne({ where: { code: config.segmentCode } });
+    const allowedSet = options?.allowedSegmentCodes && options.allowedSegmentCodes.length > 0
+      ? new Set(options.allowedSegmentCodes)
+      : null;
+    const configs = allowedSet
+      ? TOTALS_CONFIG.filter((item) => allowedSet.has(item.segmentCode))
+      : TOTALS_CONFIG;
+
+    const segmentCodes = Array.from(new Set(configs.map((item) => item.segmentCode)));
+    const segments = segmentCodes.length > 0
+      ? await this.segmentRepo.find({ where: { code: In(segmentCodes) } })
+      : [];
+    const segmentByCode = new Map<PlanningSegmentCode, PlanningSegment>(
+      segments.map((segment) => [segment.code, segment])
+    );
+
+    const reportCache = new Map<string, SegmentReport>();
+
+    for (const config of configs) {
+      const segment = segmentByCode.get(config.segmentCode);
       if (!segment) {
         continue;
       }
-      const facts = await this.getFactsForYear(config.segmentCode, config.factMetricCodes, year);
+
+      const monthMetricMap = config.planMetricCode
+        ? (options?.ensureMetrics
+          ? (await this.ensureYearPlanMetrics(year, config.segmentCode, config.planMetricCode, segment)).monthMetricMap
+          : (await this.getYearPlanMetrics(year, segment, config.planMetricCode)).monthMetricMap)
+        : new Map<number, PlanningMonthlyPlanMetric>();
+
+      const facts = await this.getFactsForYear(config.segmentCode, config.factMetricCodes, year, reportCache);
 
       const months: YearTotalsMonthCell[] = [];
       const basePlans = Array.from({ length: 12 }, (_, idx) => {
@@ -311,9 +338,10 @@ export class PlanningV2TotalsService {
   private async ensureYearPlanMetrics(
     year: number,
     segmentCode: PlanningSegmentCode,
-    planMetricCode: PlanningPlanMetricCode
+    planMetricCode: PlanningPlanMetricCode,
+    segmentOverride?: PlanningSegment
   ): Promise<{ segment: PlanningSegment; monthMetricMap: Map<number, PlanningMonthlyPlanMetric> }> {
-    const segment = await this.segmentRepo.findOne({ where: { code: segmentCode } });
+    const segment = segmentOverride ?? await this.segmentRepo.findOne({ where: { code: segmentCode } });
     if (!segment) {
       throw new Error('Segment not found');
     }
@@ -357,11 +385,42 @@ export class PlanningV2TotalsService {
     return { segment, monthMetricMap };
   }
 
-  private async getFactsForYear(segmentCode: PlanningSegmentCode, factMetricCodes: string[], year: number): Promise<number[]> {
+  private async getYearPlanMetrics(
+    year: number,
+    segment: PlanningSegment,
+    planMetricCode: PlanningPlanMetricCode
+  ): Promise<{ segment: PlanningSegment; monthMetricMap: Map<number, PlanningMonthlyPlanMetric> }> {
+    const monthMetricMap = new Map<number, PlanningMonthlyPlanMetric>();
+    const monthlyPlans = await this.monthlyPlanRepo.find({
+      where: { segmentId: segment.id, year },
+      relations: ['planMetrics'],
+    });
+
+    monthlyPlans.forEach((plan) => {
+      const metric = plan.planMetrics?.find((item) => item.code === planMetricCode);
+      if (metric) {
+        monthMetricMap.set(plan.month, metric);
+      }
+    });
+
+    return { segment, monthMetricMap };
+  }
+
+  private async getFactsForYear(
+    segmentCode: PlanningSegmentCode,
+    factMetricCodes: string[],
+    year: number,
+    reportCache?: Map<string, SegmentReport>
+  ): Promise<number[]> {
     const facts: number[] = [];
 
     for (let month = 1; month <= 12; month += 1) {
-      const report = await planningV2ReportService.getSegmentReport({ segmentCode, year, month });
+      const cacheKey = `${segmentCode}:${year}:${month}`;
+      let report = reportCache?.get(cacheKey);
+      if (!report) {
+        report = await planningV2ReportService.getSegmentReport({ segmentCode, year, month });
+        reportCache?.set(cacheKey, report);
+      }
       const monthFact = factMetricCodes.reduce((acc, metricCode) => {
         const row = report.gridRows.find((item) => item.metricCode === metricCode);
         return acc + (row ? row.monthTotal : 0);

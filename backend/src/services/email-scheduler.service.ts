@@ -371,7 +371,7 @@ export const buildPlanningDailyExcel = async (options: DailyExportOptions): Prom
 
 export const buildPlanningTotalsExcel = async (options: TotalsExportOptions): Promise<Buffer> => {
   const workbook = new ExcelJS.Workbook();
-  const totalSheet = workbook.addWorksheet('ИТОГО');
+  const totalSheet = workbook.addWorksheet('Оперативный отчет');
   await fillTotalsSheet(totalSheet, options);
   return Buffer.from(await workbook.xlsx.writeBuffer());
 };
@@ -379,7 +379,7 @@ export const buildPlanningTotalsExcel = async (options: TotalsExportOptions): Pr
 async function buildSvExcelFromData(year: number, month: number, asOfDate: string): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   const planningSheet = workbook.addWorksheet('Ежедневный отчет');
-  const totalSheet = workbook.addWorksheet('ИТОГО');
+  const totalSheet = workbook.addWorksheet('Оперативный отчет');
 
   await fillDailyReportSheet(planningSheet, {
     year,
