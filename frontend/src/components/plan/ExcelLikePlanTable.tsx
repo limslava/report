@@ -216,7 +216,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   const [editingValue, setEditingValue] = useState<string>('');
   const [selectedCell, setSelectedCell] = useState<CellCoord>(null);
   const [showDashboard, setShowDashboard] = useState<boolean>(false);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [remoteUpdatePending, setRemoteUpdatePending] = useState<boolean>(false);
   const [pendingContext, setPendingContext] = useState<ReportContext | null>(null);
   const [confirmSwitchOpen, setConfirmSwitchOpen] = useState(false);
@@ -233,6 +233,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
 
   useEffect(() => {
     contextRef.current = currentContext;
+    setLastSavedAt(null);
   }, [currentContext]);
 
   useEffect(() => {
@@ -268,7 +269,6 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
       setEditingValue('');
       setSelectedCell(null);
       setRemoteUpdatePending(false);
-      setLastUpdatedAt(new Date());
     } catch (err: any) {
       setError(err?.message || 'Ошибка загрузки данных сегмента');
     } finally {
@@ -633,7 +633,10 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
       setSaving(true);
       setError(null);
       const ok = await saveDraft();
-      if (ok) await loadData(currentContext);
+      if (ok) {
+        await loadData(currentContext);
+        setLastSavedAt(new Date());
+      }
     } finally {
       setSaving(false);
     }
@@ -708,74 +711,73 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
       )}
 
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
-          <Box>
-            <Typography variant="h6">{report?.segment.name}</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Период: {currentContext.month}.{currentContext.year} • Отчетная дата: {report?.asOfDate}
-            </Typography>
-          </Box>
-          <Box display="flex" gap={1} alignItems="center" flexWrap="wrap" justifyContent="flex-end">
-            {onYearChange && (
-              <TextField
-                label="Год"
-                type="number"
-                size="small"
-                value={currentContext.year}
-                inputProps={{ min: 2020, max: 2100 }}
-                onChange={(e) => {
-                  const next = Number(e.target.value);
-                  if (Number.isInteger(next) && next >= 2020 && next <= 2100) onYearChange(next);
-                }}
-                sx={{ width: 120 }}
-              />
-            )}
-            {onMonthChange && (
-              <TextField
-                label="Месяц"
-                select
-                size="small"
-                value={currentContext.month}
-                onChange={(e) => onMonthChange(Number(e.target.value))}
-                sx={{ width: 170 }}
-              >
-                {monthOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </TextField>
-            )}
-            <Button variant="outlined" onClick={handleDownloadExcel} disabled={loading || downloading}>
-              {downloading ? 'Скачивание...' : 'Скачать Excel'}
-            </Button>
-            <Button
-              variant={showDashboard ? 'contained' : 'outlined'}
-              onClick={() => setShowDashboard((prev) => !prev)}
-            >
-              Дашборд
-            </Button>
-            {isAdmin && (
-              <Typography variant="caption" color="text.secondary" sx={{ px: 1 }}>
-                {lastUpdatedAt
-                  ? `Обновлено в ${lastUpdatedAt.toLocaleTimeString('ru-RU', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      second: '2-digit',
-                    })}`
-                  : 'Обновление: —'}
-              </Typography>
-            )}
-            {isAdmin && (
-              <Button variant="outlined" onClick={() => loadData()} disabled={saving}>
-                Обновить
-              </Button>
-            )}
+        <Box display="flex" flexDirection="column" gap={1.5}>
+          <Typography variant="h6">{report?.segment.name}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Период: {currentContext.month}.{currentContext.year} • Отчетная дата: {report?.asOfDate}
             {isEditable && (
-              <Button variant="contained" onClick={handleSave} disabled={saving || dirtyCount === 0}>
-                {saving ? 'Сохранение...' : `Сохранить (${dirtyCount})`}
-              </Button>
+              lastSavedAt
+                ? ` • Сохранено: ${lastSavedAt.toLocaleDateString('ru-RU')} ${lastSavedAt.toLocaleTimeString('ru-RU', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}`
+                : ' • Сохранено: —'
             )}
+          </Typography>
+          <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2}>
+            <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+              {onYearChange && (
+                <TextField
+                  label="Год"
+                  type="number"
+                  size="small"
+                  value={currentContext.year}
+                  inputProps={{ min: 2020, max: 2100 }}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    if (Number.isInteger(next) && next >= 2020 && next <= 2100) onYearChange(next);
+                  }}
+                  sx={{ width: 120 }}
+                />
+              )}
+              {onMonthChange && (
+                <TextField
+                  label="Месяц"
+                  select
+                  size="small"
+                  value={currentContext.month}
+                  onChange={(e) => onMonthChange(Number(e.target.value))}
+                  sx={{ width: 170 }}
+                >
+                  {monthOptions.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              )}
+            </Box>
+            <Box display="flex" gap={1} alignItems="center" flexWrap="wrap" sx={{ ml: 'auto' }}>
+              <Button variant="outlined" onClick={handleDownloadExcel} disabled={loading || downloading}>
+                {downloading ? 'Скачивание...' : 'Скачать Excel'}
+              </Button>
+              <Button
+                variant={showDashboard ? 'contained' : 'outlined'}
+                onClick={() => setShowDashboard((prev) => !prev)}
+              >
+                Дашборд
+              </Button>
+              {isAdmin && (
+                <Button variant="outlined" onClick={() => loadData()} disabled={saving}>
+                  Обновить
+                </Button>
+              )}
+              {isEditable && (
+                <Button variant="contained" onClick={handleSave} disabled={saving || dirtyCount === 0}>
+                  {saving ? 'Сохранение...' : `Сохранить (${dirtyCount})`}
+                </Button>
+              )}
+            </Box>
           </Box>
         </Box>
       </Paper>

@@ -19,12 +19,36 @@ interface PlanDashboardProps {
   year?: number;
 }
 
+function pad2(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+function formatIsoDate(year: number, month: number, day: number): string {
+  return `${year}-${pad2(month)}-${pad2(day)}`;
+}
+
+function deriveAsOfDate(year: number, month: number): string {
+  const now = new Date();
+  const nowYear = now.getFullYear();
+  const nowMonth = now.getMonth() + 1;
+  const nowDay = now.getDate();
+
+  const lastDay = new Date(year, month, 0).getDate();
+
+  if (year > nowYear || (year === nowYear && month > nowMonth)) {
+    return formatIsoDate(year, month, 1);
+  }
+  if (year === nowYear && month === nowMonth) {
+    return formatIsoDate(year, month, nowDay);
+  }
+  return formatIsoDate(year, month, lastDay);
+}
+
 const PlanDashboard: React.FC<PlanDashboardProps> = ({ year = new Date().getFullYear() }) => {
   const { user } = useAuthStore();
-  const today = new Date();
   const [yearValue, setYearValue] = useState<number>(year);
-  const [month, setMonth] = useState<number>(today.getMonth() + 1);
-  const asOfDate = today.toISOString().slice(0, 10);
+  const [month, setMonth] = useState<number>(new Date().getMonth() + 1);
+  const [asOfDate, setAsOfDate] = useState<string>(() => deriveAsOfDate(year, new Date().getMonth() + 1));
   const [segments, setSegments] = useState<PlanningSegment[]>([]);
   const [activeSegment, setActiveSegment] = useState<PlanningSegment['code'] | ''>('');
   const [loading, setLoading] = useState<boolean>(true);
@@ -58,6 +82,10 @@ const PlanDashboard: React.FC<PlanDashboardProps> = ({ year = new Date().getFull
   useEffect(() => {
     loadSegments();
   }, []);
+
+  useEffect(() => {
+    setAsOfDate(deriveAsOfDate(yearValue, month));
+  }, [yearValue, month]);
 
   const handleBootstrap = async () => {
     try {
@@ -119,8 +147,8 @@ const PlanDashboard: React.FC<PlanDashboardProps> = ({ year = new Date().getFull
           month={month}
           asOfDate={asOfDate}
           isEditable={isEditableForSegment}
-          onYearChange={setYearValue}
-          onMonthChange={setMonth}
+          onYearChange={(nextYear) => setYearValue(nextYear)}
+          onMonthChange={(nextMonth) => setMonth(nextMonth)}
         />
       )}
     </Box>
