@@ -200,7 +200,7 @@ const DashboardLayout = () => {
                   onClick={() => handleNavigate('/plans/totals')}
                   sx={{ py: 0.5, minHeight: 34 }}
                 >
-                  <ListItemText primary="Оперативный отчет" primaryTypographyProps={{ fontSize: 14 }} />
+                  <ListItemText primary="Операционный отчет" primaryTypographyProps={{ fontSize: 14 }} />
                 </ListItemButton>
               </ListItem>
             )}

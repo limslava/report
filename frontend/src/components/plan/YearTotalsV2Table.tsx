@@ -453,7 +453,7 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
       setDownloading(true);
       setError(null);
       const { blob, filename } = await planningV2Api.downloadTotalsExcel({ year });
-      const fallbackName = `Оперативный отчет — ${year}.xlsx`;
+      const fallbackName = `Операционный отчет — ${year}.xlsx`;
       downloadBlob(blob, filename ?? fallbackName);
     } catch (err: any) {
       setError(err?.message || 'Ошибка выгрузки Excel');
@@ -490,7 +490,7 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
       <Paper sx={{ p: 2, mb: 2 }}>
         <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1.5}>
           <Box>
-            <Typography variant="h6">Оперативный отчет • {year}</Typography>
+            <Typography variant="h6">Операционный отчет • {year}</Typography>
           </Box>
           <Box display="flex" gap={1} alignItems="center" flexWrap="wrap" justifyContent="flex-end">
             <TextField

@@ -423,8 +423,8 @@ export const exportPlanningTotalsExcel = async (req: Request, res: Response, nex
     });
 
     const filename = segments.length === 1
-      ? `Оперативный отчет ${segments[0].name} — ${year}.xlsx`
-      : `Оперативный отчет — ${year}.xlsx`;
+      ? `Операционный отчет ${segments[0].name} — ${year}.xlsx`
+      : `Операционный отчет — ${year}.xlsx`;
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', buildContentDisposition(filename));
