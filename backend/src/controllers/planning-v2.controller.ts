@@ -6,6 +6,7 @@ import { planningV2TotalsService } from '../services/planning-v2-totals.service'
 import { buildPlanningDailyExcel, buildPlanningTotalsExcel } from '../services/email-scheduler.service';
 import { logger } from '../utils/logger';
 import { planWebSocketService } from '../services/websocket.service';
+import { PLANNING_FULL_ACCESS_ROLES } from '../constants/roles';
 
 function parseSegmentCode(raw: string): PlanningSegmentCode {
   if (!Object.values(PlanningSegmentCode).includes(raw as PlanningSegmentCode)) {
@@ -49,7 +50,7 @@ function buildContentDisposition(filename: string): string {
 }
 
 function isFullAccessRole(role: string): boolean {
-  return role === 'admin' || role === 'director' || role === 'sales' || role === 'manager_sales';
+  return PLANNING_FULL_ACCESS_ROLES.includes(role as any);
 }
 
 export const bootstrapPlanningCatalog = async (_req: Request, res: Response, next: NextFunction) => {

@@ -18,6 +18,7 @@ import { planningV2Api } from '../../services/planning-v2.api';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../../store/unsavedChanges';
 import { PlanningYearTotalsRow } from '../../types/planning-v2.types';
 import { downloadBlob } from '../../utils/download';
+import { formatInt, formatPct } from '../../utils/format';
 
 interface YearTotalsV2TableProps {
   year: number;
@@ -123,8 +124,6 @@ function rowSegmentLabel(row: PlanningYearTotalsRow): string {
 }
 
 const monthNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
-const formatInt = (value: number) => value.toLocaleString('ru-RU');
-const formatPct = (value: number) => `${value.toFixed(2)}%`;
 
 export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearTotalsV2TableProps) {
   const [rows, setRows] = useState<PlanningYearTotalsRow[]>([]);

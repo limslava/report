@@ -1,18 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
+import { DEPARTMENT_FULL_ACCESS_ROLES, DEPARTMENT_ROLES } from '../constants/roles';
 
 export const authorizeDepartment = (req: Request, _res: Response, next: NextFunction) => {
   const user = req.user;
   const department = req.params.department;
 
   // Roles that have full access to all departments
-  const fullAccessRoles = ['admin', 'director', 'sales'];
-  if (user && fullAccessRoles.includes(user.role)) {
+  if (user && DEPARTMENT_FULL_ACCESS_ROLES.includes(user.role as any)) {
     return next();
   }
 
   // Direction roles: can access only their own department
-  const directionRoles = ['container_vladivostok', 'container_moscow', 'railway', 'autotruck', 'additional'];
-  if (user && directionRoles.includes(user.role) && user.role === department) {
+  if (user && DEPARTMENT_ROLES.includes(user.role as any) && user.role === department) {
     return next();
   }
 

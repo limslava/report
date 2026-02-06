@@ -5,6 +5,7 @@ import { PlanningMetric } from '../models/planning-metric.model';
 import { PlanningMonthlyPlan } from '../models/planning-monthly-plan.model';
 import { PlanningMonthlyPlanMetric } from '../models/planning-monthly-plan-metric.model';
 import { PlanningSegment } from '../models/planning-segment.model';
+import { PLANNING_FULL_ACCESS_ROLES } from '../constants/roles';
 import {
   PlanningMetricAggregation,
   PlanningMetricValueType,
@@ -27,12 +28,7 @@ export interface BatchUpsertPayload {
   updates: BatchValueUpdate[];
 }
 
-const FULL_ACCESS_ROLES = new Set<string>([
-  PlanningRole.ADMIN,
-  PlanningRole.DIRECTOR,
-  PlanningRole.SALES,
-  'manager_sales',
-]);
+const FULL_ACCESS_ROLES = new Set<string>(PLANNING_FULL_ACCESS_ROLES);
 
 const LEGACY_SEGMENT_ROLE: Record<string, PlanningSegmentCode | null> = {
   container_vladivostok: PlanningSegmentCode.KTK_VVO,

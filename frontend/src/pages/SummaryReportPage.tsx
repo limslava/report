@@ -21,6 +21,7 @@ import { planningV2Api } from '../services/planning-v2.api';
 import { PlanningSummaryItem } from '../types/planning-v2.types';
 import { useAuthStore } from '../store/auth-store';
 import { canViewSummary } from '../utils/rolePermissions';
+import { formatInt, formatPct } from '../utils/format';
 
 type PlanningRealtimeEvent = {
   type: 'planning-v2:segment-updated';
@@ -202,8 +203,6 @@ const SummaryReportPage = () => {
     });
   }, [rows]);
 
-  const formatInt = (value: number) => value.toLocaleString('ru-RU');
-  const formatPct = (value: number) => `${value.toFixed(2)}%`;
   const monthOptions = [
     { value: 1, label: 'Январь' }, { value: 2, label: 'Февраль' }, { value: 3, label: 'Март' },
     { value: 4, label: 'Апрель' }, { value: 5, label: 'Май' }, { value: 6, label: 'Июнь' },
