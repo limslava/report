@@ -347,8 +347,6 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
             return;
           }
 
-          setLastUpdatedAt(data.timestamp ? new Date(data.timestamp) : new Date());
-
           if (!isEditableRef.current) {
             void loadData(contextRef.current);
             return;
