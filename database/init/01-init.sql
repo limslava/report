@@ -10,9 +10,8 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash VARCHAR(255) NOT NULL,
   full_name VARCHAR(255) NOT NULL,
   role VARCHAR(50) NOT NULL CHECK (role IN (
-    'admin', 'director', 'financer', 'sales', 'manager_sales',
-    'manager_ktk_vvo', 'manager_ktk_mow', 'manager_auto', 'manager_rail', 'manager_extra', 'manager_to',
-    'container_vladivostok', 'container_moscow', 'railway', 'autotruck', 'additional', 'to_auto'
+    'admin', 'director', 'financer', 'manager_sales',
+    'manager_ktk_vvo', 'manager_ktk_mow', 'manager_auto', 'manager_rail', 'manager_extra', 'manager_to'
   )),
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMP DEFAULT NOW(),
@@ -57,6 +56,19 @@ CREATE TABLE IF NOT EXISTS reports (
   department VARCHAR(50),
   file_path VARCHAR(500) NOT NULL,
   generated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 4.1 Аудит логов
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+  action VARCHAR(100) NOT NULL,
+  entity_type VARCHAR(100) NULL,
+  entity_id VARCHAR(100) NULL,
+  details JSONB NULL,
+  ip VARCHAR(64) NULL,
+  user_agent VARCHAR(255) NULL,
+  created_at TIMESTAMP DEFAULT NOW()
 );
 
 -- 5. Email рассылка
@@ -118,6 +130,10 @@ CREATE INDEX IF NOT EXISTS idx_operational_data_department_date ON operational_d
 CREATE INDEX IF NOT EXISTS idx_monthly_plans_department_year_month ON monthly_plans(department, year, month);
 CREATE INDEX IF NOT EXISTS idx_department_metrics_department_date ON department_metrics(department, metric_date);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
 
 -- Комментарии
 COMMENT ON TABLE users IS 'Пользователи системы с ролями';

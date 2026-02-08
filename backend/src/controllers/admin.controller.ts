@@ -2,14 +2,20 @@ import { Request, Response, NextFunction } from 'express';
 import { AppDataSource } from '../config/data-source';
 import { User } from '../models/user.model';
 import { AppSetting } from '../models/app-setting.model';
+import { AuditLog } from '../models/audit-log.model';
+import { Report } from '../models/reports.model';
 import { logger } from '../utils/logger';
 import { sendInvitationEmail } from '../services/email.service';
+import { planWebSocketService } from '../services/websocket.service';
+import { recordAuditLog } from '../services/audit-log.service';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { QueryFailedError } from 'typeorm';
+import { Between, LessThanOrEqual, MoreThanOrEqual, QueryFailedError } from 'typeorm';
 
 const userRepository = AppDataSource.getRepository(User);
 const appSettingRepository = AppDataSource.getRepository(AppSetting);
+const auditLogRepository = AppDataSource.getRepository(AuditLog);
+const reportRepository = AppDataSource.getRepository(Report);
 
 export const getUsers = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -68,6 +74,15 @@ export const inviteUser = async (req: Request, res: Response, next: NextFunction
     // Send invitation email (department is now role)
     await sendInvitationEmail(email, fullName, role, temporaryPassword);
 
+    await recordAuditLog({
+      action: 'USER_INVITED',
+      userId: req.user?.id,
+      entityType: 'user',
+      entityId: user.id,
+      details: { email, role },
+      req,
+    });
+
     logger.info(`User invited: ${email} (${role})`);
 
     res.status(201).json({
@@ -105,6 +120,15 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
     if (typeof isActive === 'boolean') user.isActive = isActive;
 
     await userRepository.save(user);
+
+    await recordAuditLog({
+      action: 'USER_UPDATED',
+      userId: req.user?.id,
+      entityType: 'user',
+      entityId: user.id,
+      details: { email: user.email, role: user.role, isActive: user.isActive },
+      req,
+    });
 
     logger.info(`User updated: ${id}`);
 
@@ -177,6 +201,15 @@ export const reassignAndDeleteUser = async (req: Request, res: Response, next: N
       await manager.delete(User, { id });
     });
 
+    await recordAuditLog({
+      action: 'USER_REASSIGN_DELETE',
+      userId: req.user?.id,
+      entityType: 'user',
+      entityId: id,
+      details: { targetUserId },
+      req,
+    });
+
     logger.info(`User ${id} reassigned to ${targetUserId} and deleted`);
     res.json({ message: 'Пользователь удален, связанные записи переназначены' });
   } catch (error) {
@@ -204,6 +237,14 @@ export const resetUserPassword = async (req: Request, res: Response, next: NextF
       logger.warn(`Password reset email failed for user ${user.id}`, mailError as any);
     }
 
+    await recordAuditLog({
+      action: 'USER_PASSWORD_RESET',
+      userId: req.user?.id,
+      entityType: 'user',
+      entityId: user.id,
+      req,
+    });
+
     res.json({
       message: 'Пароль пользователя сброшен',
       temporaryPassword,
@@ -229,6 +270,13 @@ export const deleteUser = async (req: Request, res: Response, next: NextFunction
       await userRepository.remove(user);
       
       logger.info(`User deleted: ${id}`);
+      await recordAuditLog({
+        action: 'USER_DELETED',
+        userId: req.user?.id,
+        entityType: 'user',
+        entityId: id,
+        req,
+      });
       res.json({ message: 'User deleted' });
     } catch (deleteError: any) {
       // Check if it's a foreign key constraint violation
@@ -244,13 +292,42 @@ export const deleteUser = async (req: Request, res: Response, next: NextFunction
   }
 };
 
-export const getAuditLog = async (_req: Request, res: Response, next: NextFunction) => {
+export const getAuditLog = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Placeholder: query audit log from a separate table
-    const logs = [
-      { id: 1, userId: '...', action: 'LOGIN', timestamp: new Date(), details: {} },
-      { id: 2, userId: '...', action: 'DATA_UPDATE', timestamp: new Date(), details: {} },
-    ];
+    const { userId, action, startDate, endDate, limit } = req.query;
+    const where: any = {};
+
+    if (userId) where.userId = String(userId);
+    if (action) where.action = String(action);
+
+    const normalizeDate = (value: string, mode: 'start' | 'end') => {
+      const trimmed = value.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        return mode === 'start'
+          ? new Date(`${trimmed}T00:00:00.000Z`)
+          : new Date(`${trimmed}T23:59:59.999Z`);
+      }
+      return new Date(trimmed);
+    };
+
+    if (startDate && endDate) {
+      where.createdAt = Between(
+        normalizeDate(String(startDate), 'start'),
+        normalizeDate(String(endDate), 'end')
+      );
+    } else if (startDate) {
+      where.createdAt = MoreThanOrEqual(normalizeDate(String(startDate), 'start'));
+    } else if (endDate) {
+      where.createdAt = LessThanOrEqual(normalizeDate(String(endDate), 'end'));
+    }
+
+    const safeLimit = Math.min(Number(limit) || 200, 1000);
+    const logs = await auditLogRepository.find({
+      where,
+      order: { createdAt: 'DESC' },
+      take: safeLimit,
+    });
+
     res.json(logs);
   } catch (error) {
     next(error);
@@ -260,14 +337,35 @@ export const getAuditLog = async (_req: Request, res: Response, next: NextFuncti
 export const getSystemStats = async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const userCount = await userRepository.count();
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [dailyReports, monthlyReports] = await Promise.all([
+      reportRepository.count({
+        where: {
+          type: 'daily',
+          generatedAt: MoreThanOrEqual(startOfDay),
+        },
+      }),
+      reportRepository.count({
+        where: {
+          type: 'monthly',
+          generatedAt: MoreThanOrEqual(startOfMonth),
+        },
+      }),
+    ]);
+
+    const lastBackupSetting = await appSettingRepository.findOne({ where: { key: 'last_backup' } });
+    const uptimeSeconds = Math.floor(process.uptime());
 
     res.json({
       users: userCount,
-      activeSessions: userCount,
-      dailyReports: 0,
-      monthlyReports: 0,
-      lastBackup: null,
-      uptime: null,
+      activeSessions: planWebSocketService.getClientCount(),
+      dailyReports,
+      monthlyReports,
+      lastBackup: lastBackupSetting?.value ?? null,
+      uptime: uptimeSeconds,
     });
   } catch (error) {
     next(error);

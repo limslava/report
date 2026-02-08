@@ -69,10 +69,11 @@
 - **FinancialPlanValue / FinancialVatRate** – финплан и НДС
 - **EmailSchedule / SmtpConfig** – рассылки и SMTP
 - **AppSetting / PlanHistory** – настройки приложения и история сохранений
+- **AuditLog** – журнал действий
 
 ### 5. Middleware
 - **authenticate** – проверка JWT-токена
-- **authorize** – проверка ролей (admin, director, sales, manager_* и роли-направления)
+- **authorize** – проверка ролей (admin, director, financer, manager_sales, manager_*)
 - **express-validator** – валидация входящих данных
 - **error‑handler** – централизованная обработка ошибок
 - **logger** – структурированное логирование (Winston)
@@ -181,7 +182,7 @@
 ## Безопасность
 
 - **Аутентификация** – JWT с сроком жизни 7 дней.
-- **Авторизация** – ролевая модель (admin, director, sales, manager_* и роли-направления). Роль определяет доступ к сегменту/направлению, отдельного поля `department` у пользователя нет.
+- **Авторизация** – ролевая модель (admin, director, financer, manager_sales, manager_*). Роль определяет доступ к сегменту/направлению, отдельного поля `department` у пользователя нет.
 - **Регистрация** – по умолчанию закрыта (`INVITE_ONLY=true`), пользователи добавляются через админ‑приглашения.
 - **Валидация** – все входящие данные проверяются на стороне сервера.
 - **HTTPS** – обязателен в продакшене (через Nginx + Let's Encrypt).

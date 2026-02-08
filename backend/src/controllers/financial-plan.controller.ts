@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from 'express';
 import { financialPlanService } from '../services/financial-plan.service';
 import { planWebSocketService } from '../services/websocket.service';
 import { sendError } from '../utils/http';
+import { recordAuditLog } from '../services/audit-log.service';
 
 const VIEW_ROLES = new Set(['admin', 'director', 'financer']);
 const EDIT_ROLES = new Set(['admin', 'director', 'financer']);
@@ -60,6 +61,18 @@ export const batchUpsertFinancialPlanValues = async (req: Request, res: Response
 
     if (result.updated > 0) {
       planWebSocketService.notifyFinancialPlanUpdated({ year, userId: user?.id });
+
+      await recordAuditLog({
+        action: 'FIN_RESULT_UPDATED',
+        userId: user?.id,
+        entityType: 'financial_plan',
+        entityId: String(year),
+        details: {
+          year,
+          updated: result.updated,
+        },
+        req,
+      });
     }
 
     res.json(result);

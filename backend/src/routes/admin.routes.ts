@@ -88,10 +88,10 @@ router.delete('/users/:id',
 // Audit logs
 router.get('/audit',
   [
-    query('userId').optional().isUUID(),
+    query('userId').optional().matches(/^[0-9a-fA-F-]{36}$/),
     query('action').optional().isString(),
-    query('startDate').optional().isDate(),
-    query('endDate').optional().isDate(),
+    query('startDate').optional().isISO8601({ strict: false }),
+    query('endDate').optional().isISO8601({ strict: false }),
     query('limit').optional().isInt({ min: 1, max: 1000 }),
   ],
   handleValidationErrors,

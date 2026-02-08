@@ -41,7 +41,7 @@ export function canEditSegment(role: string | undefined, segmentCode: PlanningSe
     return true;
   }
 
-  if (role === 'director' || role === 'sales' || role === 'manager_sales') {
+  if (role === 'director' || role === 'manager_sales') {
     return false;
   }
 

@@ -7,6 +7,7 @@ import { AppSetting } from '../models/app-setting.model';
 import { logger } from '../utils/logger';
 import { sendError } from '../utils/http';
 import { sendInvitationEmail, sendPasswordResetEmail } from '../services/email.service';
+import { recordAuditLog } from '../services/audit-log.service';
 import { getJwtExpiresIn, getJwtSecret } from '../config/env';
 
 const userRepository = AppDataSource.getRepository(User);
@@ -44,6 +45,18 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       getJwtSecret(),
       { expiresIn: getJwtExpiresIn() }
     );
+
+    try {
+      await recordAuditLog({
+        action: 'LOGIN',
+        userId: user.id,
+        entityType: 'user',
+        entityId: user.id,
+        req,
+      });
+    } catch (auditError) {
+      logger.warn('Failed to write audit log for login', auditError as any);
+    }
 
     logger.info('Login successful', { email, userId: user.id });
     res.json({

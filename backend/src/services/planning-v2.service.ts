@@ -30,15 +30,6 @@ export interface BatchUpsertPayload {
 
 const FULL_ACCESS_ROLES = new Set<string>(PLANNING_FULL_ACCESS_ROLES);
 
-const LEGACY_SEGMENT_ROLE: Record<string, PlanningSegmentCode | null> = {
-  container_vladivostok: PlanningSegmentCode.KTK_VVO,
-  container_moscow: PlanningSegmentCode.KTK_MOW,
-  autotruck: PlanningSegmentCode.AUTO,
-  railway: PlanningSegmentCode.RAIL,
-  additional: PlanningSegmentCode.EXTRA,
-  to_auto: PlanningSegmentCode.TO,
-};
-
 function toIsoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -50,11 +41,6 @@ function parseDate(value: string): Date {
 
 function hasSegmentAccess(role: string, segmentCode: PlanningSegmentCode): boolean {
   if (FULL_ACCESS_ROLES.has(role)) {
-    return true;
-  }
-
-  const legacySegment = LEGACY_SEGMENT_ROLE[role];
-  if (legacySegment && legacySegment === segmentCode) {
     return true;
   }
 
@@ -356,11 +342,6 @@ export class PlanningV2Service {
   canEditSegment(role: string, segmentCode: PlanningSegmentCode): boolean {
     if (FULL_ACCESS_ROLES.has(role)) {
       return role === PlanningRole.ADMIN;
-    }
-
-    const legacySegment = LEGACY_SEGMENT_ROLE[role];
-    if (legacySegment) {
-      return legacySegment === segmentCode;
     }
 
     return role === SEGMENT_MANAGER_ROLE[segmentCode];

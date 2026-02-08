@@ -32,7 +32,6 @@ export enum PlanningPlanMetricCode {
 export enum PlanningRole {
   ADMIN = 'admin',
   DIRECTOR = 'director',
-  SALES = 'sales',
   MANAGER_KTK_VVO = 'manager_ktk_vvo',
   MANAGER_KTK_MOW = 'manager_ktk_mow',
   MANAGER_AUTO = 'manager_auto',

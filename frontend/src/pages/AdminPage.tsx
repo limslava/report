@@ -5,6 +5,8 @@ import {
   Collapse,
   Typography,
   Paper,
+  Tabs,
+  Tab,
   Table,
   TableBody,
   TableCell,
@@ -33,6 +35,7 @@ import {
   updateUser,
   deleteUser,
   getSystemStats,
+  getAuditLog,
   resetUserPasswordByAdmin,
   reassignAndDeleteUserByAdmin,
 } from '../services/api';
@@ -40,6 +43,7 @@ import {
 const AdminPage = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [tabValue, setTabValue] = useState(0);
 
   const [users, setUsers] = useState<any[]>([]);
   const [_loading, setLoading] = useState(false);
@@ -55,6 +59,16 @@ const AdminPage = () => {
   const [deletingUser, setDeletingUser] = useState<any>(null);
   const [targetUserId, setTargetUserId] = useState('');
   const [isSavingUser, setIsSavingUser] = useState(false);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
+  const [auditFilters, setAuditFilters] = useState({
+    userId: '',
+    action: '',
+    startDate: '',
+    endDate: '',
+    limit: '200',
+  });
   const [formData, setFormData] = useState({
     email: '',
     fullName: '',
@@ -153,32 +167,32 @@ const AdminPage = () => {
   }, []);
 
   const roleLabels: Record<string, string> = {
-    container_vladivostok: 'Менеджер КТК Владивосток',
-    container_moscow: 'Менеджер КТК Москва',
-    railway: 'Менеджер ЖД',
-    autotruck: 'Менеджер отправки авто',
-    additional: 'Менеджер доп.услуг',
-    to_auto: 'Менеджер ТО авто',
-    manager_to: 'Менеджер ТО авто',
     manager_ktk_vvo: 'Менеджер КТК Владивосток',
     manager_ktk_mow: 'Менеджер КТК Москва',
     manager_auto: 'Менеджер отправки авто',
     manager_rail: 'Менеджер ЖД',
     manager_extra: 'Менеджер доп.услуг',
-    sales: 'Менеджер по продажам',
+    manager_to: 'Менеджер ТО авто',
     manager_sales: 'Менеджер по продажам',
     director: 'Директор',
     admin: 'Администратор',
     financer: 'Финансист',
   };
 
+  const auditActions = [
+    { value: '', label: 'Все действия' },
+    { value: 'LOGIN', label: 'LOGIN' },
+    { value: 'DAILY_REPORT_SAVED', label: 'DAILY_REPORT_SAVED' },
+    { value: 'OPERATIONAL_PLAN_SAVED', label: 'OPERATIONAL_PLAN_SAVED' },
+    { value: 'FIN_RESULT_UPDATED', label: 'FIN_RESULT_UPDATED' },
+    { value: 'USER_INVITED', label: 'USER_INVITED' },
+    { value: 'USER_UPDATED', label: 'USER_UPDATED' },
+    { value: 'USER_PASSWORD_RESET', label: 'USER_PASSWORD_RESET' },
+    { value: 'USER_REASSIGN_DELETE', label: 'USER_REASSIGN_DELETE' },
+    { value: 'USER_DELETED', label: 'USER_DELETED' },
+  ];
+
   const roles = [
-    { value: 'container_vladivostok', label: 'КТК Владивосток' },
-    { value: 'container_moscow', label: 'КТК Москва' },
-    { value: 'railway', label: 'ЖД' },
-    { value: 'autotruck', label: 'Отправка авто' },
-    { value: 'additional', label: 'Доп.услуги' },
-    { value: 'to_auto', label: 'ТО авто' },
     { value: 'manager_ktk_vvo', label: 'Менеджер КТК Владивосток' },
     { value: 'manager_ktk_mow', label: 'Менеджер КТК Москва' },
     { value: 'manager_auto', label: 'Менеджер отправки авто' },
@@ -186,11 +200,15 @@ const AdminPage = () => {
     { value: 'manager_extra', label: 'Менеджер доп.услуг' },
     { value: 'manager_to', label: 'Менеджер ТО авто' },
     { value: 'manager_sales', label: 'Менеджер по продажам' },
-    { value: 'sales', label: 'Менеджер по продажам' },
     { value: 'director', label: 'Директор' },
     { value: 'admin', label: 'Администратор' },
     { value: 'financer', label: 'Финансист' },
   ];
+
+  const userNameById = users.reduce<Record<string, string>>((acc, user) => {
+    acc[user.id] = user.fullName || user.email || user.id;
+    return acc;
+  }, {});
 
   const formatLocalDateTime = (value?: string | null) => {
     if (!value) return '—';
@@ -204,6 +222,59 @@ const AdminPage = () => {
       minute: '2-digit',
     }).format(parsed);
   };
+
+  const formatUptime = (seconds?: number | null) => {
+    if (seconds == null) return '—';
+    const total = Math.max(0, Math.floor(seconds));
+    const days = Math.floor(total / 86400);
+    const hours = Math.floor((total % 86400) / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    if (days > 0) return `${days}д ${hours}ч ${minutes}м`;
+    if (hours > 0) return `${hours}ч ${minutes}м`;
+    return `${minutes}м`;
+  };
+
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue);
+  };
+
+  const loadAuditLogs = async () => {
+    if (!auditFilters.startDate || !auditFilters.endDate) {
+      setAuditError('Выберите "Дата с" и "Дата по", затем нажмите "Обновить".');
+      return;
+    }
+    try {
+      setAuditLoading(true);
+      setAuditError(null);
+      const params: Record<string, any> = {};
+      if (auditFilters.userId) params.userId = auditFilters.userId;
+      if (auditFilters.action) params.action = auditFilters.action;
+      if (auditFilters.startDate) params.startDate = auditFilters.startDate;
+      if (auditFilters.endDate) params.endDate = auditFilters.endDate;
+      if (auditFilters.limit) params.limit = auditFilters.limit;
+      const response = await getAuditLog(params);
+      setAuditLogs(Array.isArray(response.data) ? response.data : []);
+    } catch (err: any) {
+      setAuditError(err?.message || 'Не удалось загрузить журнал действий');
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  const statsRows = [
+    { label: 'Всего пользователей', value: stats?.users ?? '—' },
+    { label: 'Активные сессии', value: stats?.activeSessions ?? '—' },
+    { label: 'Отчетов сегодня', value: stats?.dailyReports ?? '—' },
+    { label: 'Отчетов за месяц', value: stats?.monthlyReports ?? '—' },
+    { label: 'DB latency (avg)', value: dbMetrics?.avgLatencyMs != null ? `${dbMetrics.avgLatencyMs} ms` : '—' },
+    { label: 'DB ошибки', value: dbMetrics?.totalErrors ?? '—' },
+    { label: 'Redis', value: redisStatus ?? '—', chip: true },
+    { label: 'Scheduler', value: schedulerStatus?.status ?? '—', chip: true },
+    { label: 'Scheduler last run', value: formatLocalDateTime(schedulerStatus?.lastRunAt) },
+    { label: 'Последняя ошибка БД', value: dbMetrics?.lastError ? `${dbMetrics.lastError} (${dbMetrics.lastErrorAt ?? '—'})` : '—' },
+    { label: 'Последний бэкап', value: stats?.lastBackup ?? '—' },
+    { label: 'Uptime', value: formatUptime(stats?.uptime) },
+  ];
 
   const handleOpenDialog = (user: any = null) => {
     setSelectedUser(user);
@@ -343,128 +414,240 @@ const AdminPage = () => {
         </Alert>
       </Collapse>
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-          <Typography variant="h6">Пользователи системы</Typography>
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={() => handleOpenDialog()}
-          >
-            Добавить пользователя
-          </Button>
-        </Box>
-        <TableContainer>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>ФИО</TableCell>
-                <TableCell>Email</TableCell>
-                <TableCell>Роль</TableCell>
-                <TableCell>Статус</TableCell>
-                <TableCell>Действия</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {users.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell>{user.fullName}</TableCell>
-                  <TableCell>{user.email}</TableCell>
-                  <TableCell>
-                    <Chip
-                      label={roleLabels[user.role] || user.role}
-                      size="small"
-                      color={user.role === 'admin' ? 'error' : user.role === 'director' ? 'warning' : 'default'}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      label={user.isActive ? 'Активен' : 'Отключен'}
-                      color={user.isActive ? 'success' : 'default'}
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Tooltip title="Редактировать">
-                      <IconButton size="small" onClick={() => handleOpenDialog(user)}>
-                        <Edit fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Сбросить пароль">
-                      <IconButton size="small" onClick={() => handleResetPassword(user.id)}>
-                        <LockReset fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title={user.isActive ? 'Деактивировать' : 'Активировать'}>
-                      <IconButton size="small" onClick={() => handleToggleActive(user)}>
-                        <PowerSettingsNew fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Переназначить и удалить">
-                      <IconButton size="small" onClick={() => openReassignDeleteDialog(user)}>
-                        <SwapHoriz fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Удалить">
-                      <IconButton size="small" onClick={() => handleDeleteUser(user.id)}>
-                        <Delete fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Paper>
+        <Tabs value={tabValue} onChange={handleTabChange}>
+          <Tab label="Пользователи системы" />
+          <Tab label="Статистика" />
+          <Tab label="Журнал действий" />
+        </Tabs>
 
-      <Paper sx={{ p: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Статистика
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-          <Box>
-            <Typography variant="body2" color="textSecondary">Всего пользователей</Typography>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{stats?.users ?? '—'}</Typography>
+        {tabValue === 0 && (
+          <Box sx={{ pt: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+              <Typography variant="h6">Пользователи системы</Typography>
+              <Button
+                variant="contained"
+                startIcon={<Add />}
+                onClick={() => handleOpenDialog()}
+              >
+                Добавить пользователя
+              </Button>
+            </Box>
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>ФИО</TableCell>
+                    <TableCell>Email</TableCell>
+                    <TableCell>Роль</TableCell>
+                    <TableCell>Статус</TableCell>
+                    <TableCell>Действия</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {users.map((user) => (
+                    <TableRow key={user.id}>
+                      <TableCell>{user.fullName}</TableCell>
+                      <TableCell>{user.email}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={roleLabels[user.role] || user.role}
+                          size="small"
+                          color={user.role === 'admin' ? 'error' : user.role === 'director' ? 'warning' : 'default'}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={user.isActive ? 'Активен' : 'Отключен'}
+                          color={user.isActive ? 'success' : 'default'}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Tooltip title="Редактировать">
+                          <IconButton size="small" onClick={() => handleOpenDialog(user)}>
+                            <Edit fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Сбросить пароль">
+                          <IconButton size="small" onClick={() => handleResetPassword(user.id)}>
+                            <LockReset fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title={user.isActive ? 'Деактивировать' : 'Активировать'}>
+                          <IconButton size="small" onClick={() => handleToggleActive(user)}>
+                            <PowerSettingsNew fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Переназначить и удалить">
+                          <IconButton size="small" onClick={() => openReassignDeleteDialog(user)}>
+                            <SwapHoriz fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Удалить">
+                          <IconButton size="small" onClick={() => handleDeleteUser(user.id)}>
+                            <Delete fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
           </Box>
-          <Box>
-            <Typography variant="body2" color="textSecondary">Активные сессии</Typography>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{stats?.activeSessions ?? '—'}</Typography>
-          </Box>
-          <Box>
-            <Typography variant="body2" color="textSecondary">За сегодня</Typography>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{stats?.dailyReports ?? '—'}</Typography>
-          </Box>
-          <Box>
-            <Typography variant="body2" color="textSecondary">DB latency (avg)</Typography>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-              {dbMetrics?.avgLatencyMs != null ? `${dbMetrics.avgLatencyMs} ms` : '—'}
+        )}
+
+        {tabValue === 1 && (
+          <Box sx={{ pt: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Статистика
             </Typography>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' },
+                gap: 2,
+              }}
+            >
+              {statsRows.map((row) => (
+                <Paper key={row.label} variant="outlined" sx={{ p: 2 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    {row.label}
+                  </Typography>
+                  <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {row.chip ? (
+                      <Chip
+                        label={row.value ?? '—'}
+                        size="small"
+                        color={row.value === 'OK' ? 'success' : row.value === 'DOWN' ? 'error' : 'default'}
+                      />
+                    ) : (
+                      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                        {row.value ?? '—'}
+                      </Typography>
+                    )}
+                  </Box>
+                </Paper>
+              ))}
+            </Box>
           </Box>
-          <Box>
-            <Typography variant="body2" color="textSecondary">DB ошибки</Typography>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{dbMetrics?.totalErrors ?? '—'}</Typography>
-          </Box>
-          <Box>
-            <Typography variant="body2" color="textSecondary">Redis</Typography>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{redisStatus ?? '—'}</Typography>
-          </Box>
-          <Box>
-            <Typography variant="body2" color="textSecondary">Scheduler</Typography>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{schedulerStatus?.status ?? '—'}</Typography>
-          </Box>
-          <Box sx={{ minWidth: 220 }}>
-            <Typography variant="body2" color="textSecondary">Scheduler last run</Typography>
-            <Typography variant="body2">
-              {formatLocalDateTime(schedulerStatus?.lastRunAt)}
+        )}
+
+        {tabValue === 2 && (
+          <Box sx={{ pt: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Журнал действий
             </Typography>
-          </Box>
-          <Box sx={{ minWidth: 220 }}>
-            <Typography variant="body2" color="textSecondary">Последняя ошибка</Typography>
-            <Typography variant="body2">
-              {dbMetrics?.lastError ? `${dbMetrics.lastError} (${dbMetrics.lastErrorAt ?? '—'})` : '—'}
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'flex-end', mb: 2 }}>
+              <TextField
+                label="Дата с"
+                type="date"
+                size="small"
+                InputLabelProps={{ shrink: true }}
+                value={auditFilters.startDate}
+                onChange={(e) => setAuditFilters((prev) => ({ ...prev, startDate: e.target.value }))}
+              />
+              <TextField
+                label="Дата по"
+                type="date"
+                size="small"
+                InputLabelProps={{ shrink: true }}
+                value={auditFilters.endDate}
+                onChange={(e) => setAuditFilters((prev) => ({ ...prev, endDate: e.target.value }))}
+              />
+              <FormControl size="small" sx={{ minWidth: 220 }}>
+                <InputLabel shrink>Пользователь</InputLabel>
+                <Select
+                  label="Пользователь"
+                  value={auditFilters.userId}
+                  displayEmpty
+                  renderValue={(selected) => {
+                    if (!selected) return 'Все пользователи';
+                    return userNameById[String(selected)] || String(selected);
+                  }}
+                  onChange={(e) => setAuditFilters((prev) => ({ ...prev, userId: String(e.target.value) }))}
+                >
+                  <MenuItem value="">Все пользователи</MenuItem>
+                  {users.map((user) => (
+                    <MenuItem key={user.id} value={user.id}>
+                      {user.fullName} ({user.email})
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: 220 }}>
+                <InputLabel>Действие</InputLabel>
+                <Select
+                  label="Действие"
+                  value={auditFilters.action}
+                  onChange={(e) => setAuditFilters((prev) => ({ ...prev, action: String(e.target.value) }))}
+                >
+                  {auditActions.map((action) => (
+                    <MenuItem key={action.value} value={action.value}>
+                      {action.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                label="Лимит"
+                type="number"
+                size="small"
+                value={auditFilters.limit}
+                onChange={(e) => setAuditFilters((prev) => ({ ...prev, limit: e.target.value }))}
+                sx={{ width: 120 }}
+              />
+              <Button variant="contained" onClick={loadAuditLogs} disabled={auditLoading}>
+                {auditLoading ? 'Загрузка...' : 'Обновить'}
+              </Button>
+            </Box>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+              Для загрузки журнала выберите период и нажмите «Обновить».
             </Typography>
+
+            {auditError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {auditError}
+              </Alert>
+            )}
+
+            <TableContainer sx={{ overflowX: 'auto' }}>
+              <Table size="small" sx={{ minWidth: 900 }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Дата</TableCell>
+                    <TableCell>Пользователь</TableCell>
+                    <TableCell>Действие</TableCell>
+                    <TableCell>Объект</TableCell>
+                    <TableCell>Детали</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {auditLogs.map((log) => (
+                    <TableRow key={log.id}>
+                      <TableCell>{formatLocalDateTime(log.createdAt)}</TableCell>
+                      <TableCell>{log.userId ? userNameById[log.userId] || log.userId : '—'}</TableCell>
+                      <TableCell>{log.action}</TableCell>
+                      <TableCell sx={{ maxWidth: 220, wordBreak: 'break-word' }}>
+                        {log.entityType ? `${log.entityType}${log.entityId ? `:${log.entityId}` : ''}` : '—'}
+                      </TableCell>
+                      <TableCell sx={{ maxWidth: 320, wordBreak: 'break-word' }}>
+                        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                          {log.details ? JSON.stringify(log.details) : '—'}
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {auditLogs.length === 0 && !auditLoading && (
+                    <TableRow>
+                      <TableCell colSpan={5}>Нет записей</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
           </Box>
-        </Box>
+        )}
       </Paper>
 
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>

@@ -19,13 +19,6 @@ export class User {
     length: 50,
   })
   role!:
-    | 'container_vladivostok'
-    | 'container_moscow'
-    | 'railway'
-    | 'autotruck'
-    | 'additional'
-    | 'to_auto'
-    | 'sales'
     | 'manager_sales'
     | 'manager_ktk_vvo'
     | 'manager_ktk_mow'

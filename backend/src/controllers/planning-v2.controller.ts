@@ -8,6 +8,7 @@ import { logger } from '../utils/logger';
 import { planWebSocketService } from '../services/websocket.service';
 import { PLANNING_FULL_ACCESS_ROLES } from '../constants/roles';
 import { sendError } from '../utils/http';
+import { recordAuditLog } from '../services/audit-log.service';
 
 function parseSegmentCode(raw: string): PlanningSegmentCode {
   if (!Object.values(PlanningSegmentCode).includes(raw as PlanningSegmentCode)) {
@@ -179,6 +180,22 @@ export const batchUpsertPlanningValues = async (req: Request, res: Response, nex
       userId: user.id,
     });
 
+    if (result.updated > 0) {
+      await recordAuditLog({
+        action: 'DAILY_REPORT_SAVED',
+        userId: user.id,
+        entityType: 'planning_values',
+        entityId: segmentCode,
+        details: {
+          segmentCode,
+          year,
+          month,
+          updated: result.updated,
+        },
+        req,
+      });
+    }
+
     res.json({ message: 'Values updated', ...result });
   } catch (error) {
     next(error);
@@ -317,6 +334,21 @@ export const updatePlanningBasePlan = async (req: Request, res: Response, next: 
       segmentCode,
       planMetricCode,
       basePlan,
+    });
+
+    await recordAuditLog({
+      action: 'OPERATIONAL_PLAN_SAVED',
+      userId: user.id,
+      entityType: 'base_plan',
+      entityId: `${segmentCode}:${planMetricCode}`,
+      details: {
+        segmentCode,
+        planMetricCode,
+        year,
+        month,
+        basePlan,
+      },
+      req,
     });
 
     res.json(result);
