@@ -268,6 +268,11 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const dirtyCount = Object.keys(draft).length;
   const lastSavedAt = lastSavedLocal;
+  const lastSavedServer = useMemo(() => {
+    if (!report?.lastUpdatedAt) return null;
+    const parsed = new Date(report.lastUpdatedAt);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }, [report?.lastUpdatedAt]);
 
   useEffect(() => {
     contextRef.current = currentContext;
@@ -753,11 +758,9 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
           <Typography variant="h6">{report?.segment.name}</Typography>
           <Typography variant="body2" color="text.secondary">
             Период: {currentContext.month}.{currentContext.year} • Отчетная дата: {report?.asOfDate}
-            {isEditable && (
-              lastSavedAt
-                ? ` • Сохранено: ${formatLocalDateTime(lastSavedAt)}`
-                : ' • Сохранено: —'
-            )}
+            {lastSavedServer
+              ? ` • Сохранено: ${formatLocalDateTime(lastSavedServer)}`
+              : ' • Сохранено: —'}
           </Typography>
           <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2}>
             <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
