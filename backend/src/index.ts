@@ -1,109 +1,26 @@
 import 'reflect-metadata';
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import compression from 'compression';
 import { config } from 'dotenv';
-import fs from 'fs';
-import path from 'path';
 import { AppDataSource } from './config/data-source';
-import { authRouter } from './routes/auth.routes';
-import { adminRouter } from './routes/admin.routes';
-import emailRouter from './routes/email.routes';
-import smtpConfigRouter from './routes/smtp-config.routes';
-import { planningV2Router } from './routes/planning-v2.routes';
-import { financialPlanRouter } from './routes/financial-plan.routes';
-import { errorHandler } from './middleware/error-handler';
 import { logger } from './utils/logger';
 import { planWebSocketService } from './services/websocket.service';
-import { assertProductionEnv, getAllowedCorsOrigins, getAppPort } from './config/env';
-import { createRateLimiter } from './middleware/rate-limit';
+import { assertProductionEnv, getAppPort } from './config/env';
 import { ensureDefaultAdmin } from './services/bootstrap.service';
+import { withRetry } from './utils/db-retry';
+import { createApp } from './app';
 
 config();
 
-const app = express();
 const PORT = getAppPort();
-const allowedOrigins = getAllowedCorsOrigins();
-const apiRateLimiter = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 120,
-  message: 'Слишком много запросов. Повторите позже.',
-});
-
-// Middleware
-app.use(helmet());
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    return callback(new Error('CORS origin is not allowed'));
-  },
-  credentials: true,
-}));
-app.use(compression());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
-app.use('/api', apiRateLimiter);
-
-// Logging middleware
-app.use((req, _res, next) => {
-  const pathLower = req.path.toLowerCase();
-  const isStaticAsset =
-    pathLower === '/vite.svg' ||
-    pathLower.startsWith('/assets/') ||
-    pathLower === '/favicon.ico';
-
-  if (!isStaticAsset) {
-    logger.info(`${req.method} ${req.url}`);
-  }
-  next();
-});
-
-// Routes
-app.use('/api/auth', authRouter);
-app.use('/api/v2/planning', planningV2Router);
-app.use('/api/v2/financial-plan', financialPlanRouter);
-app.use('/api/admin', adminRouter);
-app.use('/api/email-schedules', emailRouter);
-app.use('/api/smtp-config', smtpConfigRouter);
-
-// Health check
-app.get('/health', (_req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
-});
-
-// Serve built frontend in production (single-container mode)
-const frontendDistPath = path.resolve(process.cwd(), 'frontend', 'dist');
-const frontendIndexPath = path.join(frontendDistPath, 'index.html');
-if (fs.existsSync(frontendIndexPath)) {
-  app.use(express.static(frontendDistPath));
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api') || req.path === '/health') {
-      return next();
-    }
-    return res.sendFile(frontendIndexPath);
-  });
-}
-
-// 404 handler
-app.use('*', (_req, res) => {
-  res.status(404).json({ error: 'Not Found' });
-});
-
-// Error handler
-app.use(errorHandler);
 
 async function startServer() {
   try {
     assertProductionEnv();
-    // Initialize database connection
-    await AppDataSource.initialize();
+    await withRetry(() => AppDataSource.initialize(), { attempts: 5, baseDelayMs: 500, maxDelayMs: 5000 });
     logger.info('Database connected successfully');
     await ensureDefaultAdmin();
 
-    // Start email scheduler (Bull queue)
+    const app = createApp();
+
     import('./services/scheduler')
       .then((module) => {
         const startScheduler =
@@ -124,7 +41,6 @@ async function startServer() {
       logger.info(`Server running on port ${PORT}`);
     });
 
-    // Initialize WebSocket server
     planWebSocketService.initialize(server);
     logger.info('WebSocket server initialized');
   } catch (error) {

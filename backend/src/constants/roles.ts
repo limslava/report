@@ -6,4 +6,5 @@ export const DEPARTMENT_ROLES = [
   'railway',
   'autotruck',
   'additional',
+  'to_auto',
 ] as const;

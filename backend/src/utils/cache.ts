@@ -10,15 +10,20 @@ interface CacheEntry<T> {
 
 class MemoryCache {
   private cache: Map<string, CacheEntry<any>>;
-  private cleanupInterval: NodeJS.Timeout;
+  private cleanupInterval: NodeJS.Timeout | null;
 
   constructor() {
     this.cache = new Map();
     
     // Автоматическая очистка устаревших записей каждые 5 минут
-    this.cleanupInterval = setInterval(() => {
-      this.cleanup();
-    }, 5 * 60 * 1000);
+    if (process.env.NODE_ENV === 'test') {
+      this.cleanupInterval = null;
+    } else {
+      this.cleanupInterval = setInterval(() => {
+        this.cleanup();
+      }, 5 * 60 * 1000);
+      this.cleanupInterval.unref();
+    }
   }
 
   /**
@@ -121,7 +126,9 @@ class MemoryCache {
    * Очистить интервал при завершении приложения
    */
   destroy(): void {
-    clearInterval(this.cleanupInterval);
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
     this.clear();
   }
 }

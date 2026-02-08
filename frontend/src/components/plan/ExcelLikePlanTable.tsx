@@ -60,6 +60,31 @@ function keyFor(metricCode: string, dayIndex: number): string {
   return `${metricCode}:${dayIndex}`;
 }
 
+function localSavedKey(ctx: Pick<ReportContext, 'segmentCode' | 'year' | 'month'>): string {
+  return `planning-v2:last-saved:${ctx.segmentCode}:${ctx.year}:${ctx.month}`;
+}
+
+function loadLocalSaved(ctx: Pick<ReportContext, 'segmentCode' | 'year' | 'month'>): Date | null {
+  try {
+    const raw = window.localStorage.getItem(localSavedKey(ctx));
+    if (!raw) {
+      return null;
+    }
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  } catch {
+    return null;
+  }
+}
+
+function storeLocalSaved(ctx: Pick<ReportContext, 'segmentCode' | 'year' | 'month'>, value: Date): void {
+  try {
+    window.localStorage.setItem(localSavedKey(ctx), value.toISOString());
+  } catch {
+    // ignore storage failures
+  }
+}
+
 function getPlanningWebSocketUrl(): string {
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
@@ -129,6 +154,18 @@ function formatDashboardValue(value: unknown, kind: DashboardValueKind = 'number
   }
 
   return formatValue(value);
+}
+
+function formatLocalDateTime(value: Date): string {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return new Intl.DateTimeFormat('ru-RU', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone,
+  }).format(value);
 }
 
 function buildDashboardCards(segmentCode: ExcelLikePlanTableProps['segmentCode'], dashboard: Record<string, unknown>): DashboardCard[] {
@@ -216,7 +253,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   const [editingValue, setEditingValue] = useState<string>('');
   const [selectedCell, setSelectedCell] = useState<CellCoord>(null);
   const [showDashboard, setShowDashboard] = useState<boolean>(false);
-  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [lastSavedLocal, setLastSavedLocal] = useState<Date | null>(() => loadLocalSaved(desiredContext));
   const [remoteUpdatePending, setRemoteUpdatePending] = useState<boolean>(false);
   const [pendingContext, setPendingContext] = useState<ReportContext | null>(null);
   const [confirmSwitchOpen, setConfirmSwitchOpen] = useState(false);
@@ -230,10 +267,11 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   const cellRefs = useRef<Record<string, HTMLTableCellElement | null>>({});
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const dirtyCount = Object.keys(draft).length;
+  const lastSavedAt = lastSavedLocal;
 
   useEffect(() => {
     contextRef.current = currentContext;
-    setLastSavedAt(null);
+    setLastSavedLocal(loadLocalSaved(currentContext));
   }, [currentContext]);
 
   useEffect(() => {
@@ -632,8 +670,10 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
       setError(null);
       const ok = await saveDraft();
       if (ok) {
+        const savedAt = new Date();
+        setLastSavedLocal(savedAt);
+        storeLocalSaved(currentContext, savedAt);
         await loadData(currentContext);
-        setLastSavedAt(new Date());
       }
     } finally {
       setSaving(false);
@@ -715,10 +755,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
             Период: {currentContext.month}.{currentContext.year} • Отчетная дата: {report?.asOfDate}
             {isEditable && (
               lastSavedAt
-                ? ` • Сохранено: ${lastSavedAt.toLocaleDateString('ru-RU')} ${lastSavedAt.toLocaleTimeString('ru-RU', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}`
+                ? ` • Сохранено: ${formatLocalDateTime(lastSavedAt)}`
                 : ' • Сохранено: —'
             )}
           </Typography>

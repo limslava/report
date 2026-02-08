@@ -7,6 +7,7 @@ import { buildPlanningDailyExcel, buildPlanningTotalsExcel } from '../services/e
 import { logger } from '../utils/logger';
 import { planWebSocketService } from '../services/websocket.service';
 import { PLANNING_FULL_ACCESS_ROLES } from '../constants/roles';
+import { sendError } from '../utils/http';
 
 function parseSegmentCode(raw: string): PlanningSegmentCode {
   if (!Object.values(PlanningSegmentCode).includes(raw as PlanningSegmentCode)) {
@@ -67,7 +68,7 @@ export const getPlanningSegments = async (req: Request, res: Response, next: Nex
   try {
     const user = req.user;
     if (!user) {
-      res.status(401).json({ error: 'Authentication required' });
+      sendError(res, 401, 'Authentication required', { code: 'UNAUTHORIZED' });
       return;
     }
 
@@ -82,7 +83,7 @@ export const getPlanningMetricsBySegment = async (req: Request, res: Response, n
   try {
     const user = req.user;
     if (!user) {
-      res.status(401).json({ error: 'Authentication required' });
+      sendError(res, 401, 'Authentication required', { code: 'UNAUTHORIZED' });
       return;
     }
 
@@ -112,7 +113,7 @@ export const getPlanningValuesByMonth = async (req: Request, res: Response, next
   try {
     const user = req.user;
     if (!user) {
-      res.status(401).json({ error: 'Authentication required' });
+      sendError(res, 401, 'Authentication required', { code: 'UNAUTHORIZED' });
       return;
     }
 
@@ -141,7 +142,7 @@ export const batchUpsertPlanningValues = async (req: Request, res: Response, nex
   try {
     const user = req.user;
     if (!user) {
-      res.status(401).json({ error: 'Authentication required' });
+      sendError(res, 401, 'Authentication required', { code: 'UNAUTHORIZED' });
       return;
     }
 
@@ -188,7 +189,7 @@ export const getPlanningSegmentReport = async (req: Request, res: Response, next
   try {
     const user = req.user;
     if (!user) {
-      res.status(401).json({ error: 'Authentication required' });
+      sendError(res, 401, 'Authentication required', { code: 'UNAUTHORIZED' });
       return;
     }
 
@@ -224,7 +225,7 @@ export const getPlanningSummaryReport = async (req: Request, res: Response, next
   try {
     const user = req.user;
     if (!user) {
-      res.status(401).json({ error: 'Authentication required' });
+      sendError(res, 401, 'Authentication required', { code: 'UNAUTHORIZED' });
       return;
     }
 
@@ -254,7 +255,7 @@ export const getPlanningYearTotals = async (req: Request, res: Response, next: N
   try {
     const user = req.user;
     if (!user) {
-      res.status(401).json({ error: 'Authentication required' });
+      sendError(res, 401, 'Authentication required', { code: 'UNAUTHORIZED' });
       return;
     }
 
@@ -281,7 +282,7 @@ export const updatePlanningBasePlan = async (req: Request, res: Response, next: 
   try {
     const user = req.user;
     if (!user) {
-      res.status(401).json({ error: 'Authentication required' });
+      sendError(res, 401, 'Authentication required', { code: 'UNAUTHORIZED' });
       return;
     }
 
@@ -328,7 +329,7 @@ export const exportPlanningDailyExcel = async (req: Request, res: Response, next
   try {
     const user = req.user;
     if (!user) {
-      res.status(401).json({ error: 'Authentication required' });
+      sendError(res, 401, 'Authentication required', { code: 'UNAUTHORIZED' });
       return;
     }
 
@@ -398,7 +399,7 @@ export const exportPlanningTotalsExcel = async (req: Request, res: Response, nex
   try {
     const user = req.user;
     if (!user) {
-      res.status(401).json({ error: 'Authentication required' });
+      sendError(res, 401, 'Authentication required', { code: 'UNAUTHORIZED' });
       return;
     }
 

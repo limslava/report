@@ -28,8 +28,10 @@ describe('PlanningV2TotalsService', () => {
     }
 
     service.ensureYearPlanMetrics = jest.fn().mockResolvedValue({ monthMetricMap });
+    service.getYearPlanMetrics = jest.fn().mockResolvedValue({ monthMetricMap });
     service.getFactsForYear = jest.fn().mockResolvedValue([80, 150, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     service.segmentRepo = {
+      find: jest.fn().mockResolvedValue([{ code: PlanningSegmentCode.KTK_VVO, name: 'Контейнерные перевозки - Владивосток' }]),
       findOne: jest.fn().mockResolvedValue({ id: 'segment-1', name: 'Контейнерные перевозки - Владивосток' }),
     };
 

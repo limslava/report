@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { sendError } from '../utils/http';
 
 /**
  * Middleware для проверки прав администратора
@@ -8,12 +9,12 @@ export const adminOnly = (req: Request, res: Response, next: NextFunction) => {
   const user = (req as any).user;
   
   if (!user) {
-    return res.status(401).json({ error: 'Требуется аутентификация' });
+    return sendError(res, 401, 'Требуется аутентификация', { code: 'UNAUTHORIZED' });
   }
   
   if (user.role !== 'admin') {
-    return res.status(403).json({
-      error: 'Требуются права администратора',
+    return sendError(res, 403, 'Требуются права администратора', {
+      code: 'FORBIDDEN',
       requiredRole: 'admin',
       userRole: user.role,
     });
@@ -30,7 +31,7 @@ export const roleOrAdmin = (...allowedRoles: string[]) => {
     const user = (req as any).user;
     
     if (!user) {
-      return res.status(401).json({ error: 'Требуется аутентификация' });
+      return sendError(res, 401, 'Требуется аутентификация', { code: 'UNAUTHORIZED' });
     }
     
     // Администратор имеет доступ ко всему
@@ -43,8 +44,8 @@ export const roleOrAdmin = (...allowedRoles: string[]) => {
       return next();
     }
     
-    return res.status(403).json({ 
-      error: 'Недостаточно прав',
+    return sendError(res, 403, 'Недостаточно прав', {
+      code: 'FORBIDDEN',
       requiredRoles: ['admin', ...allowedRoles],
       userRole: user.role,
     });
@@ -61,7 +62,7 @@ export const categoryAccess = (req: Request, res: Response, next: NextFunction) 
   // const category = req.params.category; // Зарезервировано для будущей логики
   
   if (!user) {
-    return res.status(401).json({ error: 'Требуется аутентификация' });
+    return sendError(res, 401, 'Требуется аутентификация', { code: 'UNAUTHORIZED' });
   }
   
   // Администратор имеет доступ ко всем категориям
@@ -79,8 +80,8 @@ export const categoryAccess = (req: Request, res: Response, next: NextFunction) 
   }
   
   // Для операций записи требуем права администратора
-  return res.status(403).json({ 
-    error: 'Требуются права администратора для изменения данных',
+  return sendError(res, 403, 'Требуются права администратора для изменения данных', {
+    code: 'FORBIDDEN',
     userRole: user.role,
   });
 };

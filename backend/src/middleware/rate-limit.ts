@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { sendError } from '../utils/http';
 
 type RateLimitOptions = {
   windowMs: number;
@@ -24,14 +25,16 @@ export function createRateLimiter(options: RateLimitOptions) {
   const windowMs = options.windowMs;
   const max = options.max;
 
-  setInterval(() => {
-    const now = Date.now();
-    for (const [key, value] of storage.entries()) {
-      if (value.resetAt <= now) {
-        storage.delete(key);
+  if (process.env.NODE_ENV !== 'test') {
+    setInterval(() => {
+      const now = Date.now();
+      for (const [key, value] of storage.entries()) {
+        if (value.resetAt <= now) {
+          storage.delete(key);
+        }
       }
-    }
-  }, Math.min(windowMs, 60_000)).unref();
+    }, Math.min(windowMs, 60_000)).unref();
+  }
 
   return (req: Request, res: Response, next: NextFunction) => {
     const key = `${getClientKey(req)}:${req.path}`;
@@ -45,9 +48,12 @@ export function createRateLimiter(options: RateLimitOptions) {
 
     if (current.count >= max) {
       res.setHeader('Retry-After', Math.ceil((current.resetAt - now) / 1000));
-      return res.status(429).json({
-        error: options.message || 'Too many requests. Please try again later.',
-      });
+      return sendError(
+        res,
+        429,
+        options.message || 'Too many requests. Please try again later.',
+        { code: 'RATE_LIMITED' }
+      );
     }
 
     current.count += 1;

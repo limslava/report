@@ -1,13 +1,18 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/auth-store';
 
+const apiBaseUrl = import.meta.env.VITE_API_URL || '/api';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: apiBaseUrl,
   headers: {
     'Content-Type': 'application/json',
   },
   timeout: 30000,
 });
+
+const MAX_GET_RETRIES = 2;
+const BASE_RETRY_DELAY_MS = 300;
 
 api.interceptors.request.use(
   (config) => {
@@ -21,12 +26,41 @@ api.interceptors.request.use(
 );
 
 api.interceptors.response.use(
-  (response) => response,
-  (error) => {
+  (response) => {
+    window.dispatchEvent(new CustomEvent('app:service-ok'));
+    return response;
+  },
+  async (error) => {
     if (error.response?.status === 401) {
       useAuthStore.getState().logout();
       window.location.href = '/login';
     }
+    const config = error.config as (typeof error.config & { __retryCount?: number }) | undefined;
+    const status = error.response?.status;
+    const isGet = config?.method?.toLowerCase() === 'get';
+    const shouldRetry =
+      isGet &&
+      config &&
+      (status === 503 || !status) &&
+      (config.__retryCount ?? 0) < MAX_GET_RETRIES;
+
+    if (shouldRetry) {
+      config.__retryCount = (config.__retryCount ?? 0) + 1;
+      const delay = BASE_RETRY_DELAY_MS * 2 ** (config.__retryCount - 1);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return api.request(config);
+    }
+
+    if (error.response?.status === 503) {
+      const message =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        'Сервис временно недоступен. Повторите попытку позже.';
+      const wrapped = new Error(message);
+      window.dispatchEvent(new CustomEvent('app:service-unavailable', { detail: { message } }));
+      return Promise.reject(wrapped);
+    }
+
     return Promise.reject(error);
   }
 );

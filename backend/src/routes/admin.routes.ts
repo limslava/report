@@ -15,6 +15,7 @@ import {
 import { handleValidationErrors } from '../middleware/express-validator.middleware';
 import { authenticate } from '../middleware/authenticate';
 import { authorizeRole } from '../middleware/authorize';
+import { ROLE_VALUES } from '../constants/role-definitions';
 
 const router = Router();
 
@@ -37,25 +38,7 @@ router.post('/users/invite',
       .isEmail()
       .customSanitizer((value: string) => String(value).trim().toLowerCase()),
     body('fullName').notEmpty().trim(),
-    body('role').isIn([
-      'container_vladivostok',
-      'container_moscow',
-      'railway',
-      'autotruck',
-      'additional',
-      'to_auto',
-      'manager_ktk_vvo',
-      'manager_ktk_mow',
-      'manager_auto',
-      'manager_rail',
-      'manager_extra',
-      'manager_to',
-      'manager_sales',
-      'admin',
-      'director',
-      'sales',
-      'financer',
-    ]),
+    body('role').isIn(ROLE_VALUES),
   ],
   handleValidationErrors,
   inviteUser
@@ -70,7 +53,7 @@ router.put('/users/:id',
       .customSanitizer((value: string) => String(value).trim().toLowerCase()),
     body('fullName').optional().notEmpty(),
     body('department').optional().isString(),
-    body('role').optional().isString(),
+    body('role').optional().isIn(ROLE_VALUES),
     body('isActive').optional().isBoolean(),
   ],
   handleValidationErrors,

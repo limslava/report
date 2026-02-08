@@ -5,6 +5,7 @@ import { AppSetting } from '../models/app-setting.model';
 import { logger } from '../utils/logger';
 import { sendInvitationEmail } from '../services/email.service';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { QueryFailedError } from 'typeorm';
 
 const userRepository = AppDataSource.getRepository(User);
@@ -51,7 +52,7 @@ export const inviteUser = async (req: Request, res: Response, next: NextFunction
     }
 
     // Generate temporary password
-    const temporaryPassword = Math.random().toString(36).slice(-8);
+    const temporaryPassword = crypto.randomBytes(8).toString('base64url');
     const hashedPassword = await bcrypt.hash(temporaryPassword, 12);
 
     const user = userRepository.create({
@@ -193,7 +194,7 @@ export const resetUserPassword = async (req: Request, res: Response, next: NextF
       throw error;
     }
 
-    const temporaryPassword = Math.random().toString(36).slice(-10);
+    const temporaryPassword = crypto.randomBytes(8).toString('base64url');
     user.passwordHash = await bcrypt.hash(temporaryPassword, 12);
     await userRepository.save(user);
 

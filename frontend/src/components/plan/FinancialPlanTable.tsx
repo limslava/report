@@ -100,6 +100,7 @@ export default function FinancialPlanTable({ year, onYearChange, canEdit }: Fina
   const [confirmYearSwitchOpen, setConfirmYearSwitchOpen] = useState(false);
   const [pendingYear, setPendingYear] = useState<number | null>(null);
   const cellRefs = useRef<Record<string, HTMLTableCellElement | null>>({});
+  const isAdmin = useAuthStore((state) => state.user?.role === 'admin');
   const userId = useAuthStore((state) => state.user?.id);
   const userIdRef = useRef(userId);
   const yearRef = useRef(year);
@@ -558,11 +559,21 @@ export default function FinancialPlanTable({ year, onYearChange, canEdit }: Fina
         </Alert>
       )}
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1.5}>
-          <Box>
+        <Box display="flex" alignItems="center" flexWrap="wrap" gap={1.5}>
+          <Box sx={{ flexGrow: 1, minWidth: 240 }}>
             <Typography variant="h6">Финансовый результат плановый • {year}</Typography>
           </Box>
-          <Box display="flex" gap={1} alignItems="center" flexWrap="wrap" justifyContent="flex-end">
+          <Box
+            display="flex"
+            gap={1}
+            alignItems="center"
+            flexWrap="wrap"
+            justifyContent="flex-end"
+            sx={{
+              ml: 'auto',
+              width: { xs: '100%', md: 'auto' },
+            }}
+          >
             <TextField
               label="Год"
               type="number"
@@ -602,7 +613,9 @@ export default function FinancialPlanTable({ year, onYearChange, canEdit }: Fina
             <Button variant="outlined" onClick={handleDownloadExcel} disabled={downloading || loading}>
               {downloading ? 'Скачивание...' : 'Скачать Excel'}
             </Button>
-            <Button variant="outlined" onClick={loadData} disabled={saving}>Обновить</Button>
+            {isAdmin && (
+              <Button variant="outlined" onClick={loadData} disabled={saving}>Обновить</Button>
+            )}
             {canEdit && (
               <Button variant="contained" disabled={draftCount === 0 || saving} onClick={handleSaveAll}>
                 {saving ? 'Сохранение...' : `Сохранить (${draftCount})`}

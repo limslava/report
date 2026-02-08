@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import { financialPlanService } from '../services/financial-plan.service';
 import { planWebSocketService } from '../services/websocket.service';
+import { sendError } from '../utils/http';
 
 const VIEW_ROLES = new Set(['admin', 'director', 'financer']);
 const EDIT_ROLES = new Set(['admin', 'director', 'financer']);
@@ -71,7 +72,7 @@ export const addFinancialVatRate = async (req: Request, res: Response, next: Nex
   try {
     const user = req.user;
     if (!user) {
-      res.status(401).json({ error: 'Authentication required' });
+      sendError(res, 401, 'Authentication required', { code: 'UNAUTHORIZED' });
       return;
     }
 

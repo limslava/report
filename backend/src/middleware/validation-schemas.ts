@@ -1,4 +1,5 @@
 import Joi from 'joi';
+import { ROLE_VALUES } from '../constants/role-definitions';
 
 // Схема валидации для оперативных данных
 export const operationalDataSchema = Joi.array().items(
@@ -95,17 +96,7 @@ export const registerSchema = Joi.object({
   email: Joi.string().required().email(),
   password: Joi.string().required().min(6),
   fullName: Joi.string().required().min(2).max(100),
-  role: Joi.string().required().valid(
-    'admin',
-    'director',
-    'financer',
-    'sales',
-    'container_vladivostok',
-    'container_moscow',
-    'railway',
-    'autotruck',
-    'additional'
-  ),
+  role: Joi.string().required().valid(...ROLE_VALUES),
 });
 
 // Схема валидации для входа

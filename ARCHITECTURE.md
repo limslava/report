@@ -11,7 +11,8 @@
 ┌────────────────────────────▼────────────────────────────────┐
 │                    Backend (Node.js + Express)              │
 │  ┌──────────────────────────────────────────────────────┐  │
-│  │  Контроллеры: auth, data, reports, admin, metrics    │  │
+│  │  Контроллеры: auth, planning-v2, financial-plan,     │  │
+│  │  admin, email-schedules, smtp-config                 │  │
 │  └──────────────────────────────────────────────────────┘  │
 │  ┌──────────────────────────────────────────────────────┐  │
 │  │  Сервисы: бизнес-логика, email, отчёты, планировщик  │  │
@@ -33,42 +34,46 @@
 ## Компоненты backend
 
 ### 1. Маршрутизация (Express Router)
-- **auth.routes** – регистрация, вход, восстановление пароля
-- **data.routes** – CRUD оперативных данных и месячных планов
-- **reports.routes** – генерация и рассылка отчётов
-- **admin.routes** – управление пользователями, аудит
-- **metrics.routes** – расчёт метрик направлений
+- **auth.routes** – вход, восстановление пароля, регистрация (может быть отключена через `INVITE_ONLY=true`)
+- **planning-v2.routes** – сегменты, значения, отчеты, экспорты
+- **financial-plan.routes** – финплан и ставки НДС
+- **admin.routes** – управление пользователями, аудит, системная статистика
+- **email.routes** – расписания email‑рассылки
+- **smtp-config.routes** – настройки SMTP
+- **health endpoints** – `/health/*` (db/redis/scheduler)
 
 ### 2. Контроллеры
 Каждый контроллер обрабатывает HTTP-запросы, делегируя бизнес-логику сервисам.
 
-- **AuthController** – `login`, `register`, `forgotPassword`, `resetPassword`
-- **DataController** – `getOperationalData`, `saveOperationalData`, `getMonthlyPlan`, `updateMonthlyPlan`
-- **ReportController** – `generateDailyReport`, `generateMonthlyReport`, `scheduleEmail`, `getReportHistory`
-- **AdminController** – `getUsers`, `inviteUser`, `updateUser`, `getAuditLog`
-- **MetricsController** – `getMetrics`, `updateMetrics`, `getBalances`, `setBalances`
+- **AuthController** – `login`, `register` (опционально), `forgotPassword`, `resetPassword`
+- **PlanningV2Controller** – сегменты, значения, отчеты, итоги, экспорт
+- **FinancialPlanController** – финплан, выгрузка Excel, ставки НДС
+- **EmailScheduleController** – CRUD расписаний и тестовая отправка
+- **SmtpConfigController** – настройки SMTP и тест подключения
+- **AdminController** – `getUsers`, `inviteUser`, `updateUser`, `getAuditLog`, `getSystemStats`
 
 ### 3. Сервисы (бизнес-логика)
-- **EmailService** – отправка писем через SMTP/SendGrid
-- **ReportGenerationService** – формирование PDF/Excel отчётов (с использованием библиотек типа `pdfkit`, `exceljs`)
-- **EmailSchedulerService** – управление периодическими задачами (через Bull)
-- **CalculationService** – расчёт формул (план с переносом, % выполнения, средние значения)
-- **MetricsService** – агрегация метрик направлений
+- **PlanningV2Service** – доступ и права по сегментам, работа с данными
+- **PlanningV2ReportService** – расчеты дашбордов и отчетов
+- **PlanningV2TotalsService** – годовые итоги и план с переносом
+- **FinancialPlanService** – финплан и НДС
+- **EmailService** – отправка писем через SMTP
+- **EmailSchedulerService** – управление расписаниями отправки
+- **ReportGenerationService** – формирование Excel/PDF (по необходимости)
 
 ### 4. Модели данных (TypeORM)
-- **User** – пользователи системы (поля: email, passwordHash, fullName, role)
-- **OperationalData** – оперативные записи (план/факт по категориям)
-- **MonthlyPlan** – месячные планы и факты
-- **Report** – сгенерированные отчёты
-- **EmailSchedule** – расписания email‑рассылок
-- **DepartmentMetric** – расчётные метрики направлений
-- **InitialBalance** – начальные остатки (автовозы)
-- **ManualEntry** – ручной ввод финансовых показателей
+- **User** – пользователи системы (email, passwordHash, fullName, role)
+- **PlanningSegment / PlanningMetric** – справочники планирования
+- **PlanningDailyValue** – ежедневные значения
+- **PlanningMonthlyPlan / PlanningMonthlyPlanMetric** – агрегаты по месяцу
+- **FinancialPlanValue / FinancialVatRate** – финплан и НДС
+- **EmailSchedule / SmtpConfig** – рассылки и SMTP
+- **AppSetting / PlanHistory** – настройки приложения и история сохранений
 
 ### 5. Middleware
 - **authenticate** – проверка JWT-токена
-- **authorize** – проверка ролей (admin, director, sales, container_vladivostok, container_moscow, railway, autotruck, additional)
-- **validate** – валидация входящих данных (через Joi/Yup)
+- **authorize** – проверка ролей (admin, director, sales, manager_* и роли-направления)
+- **express-validator** – валидация входящих данных
 - **error‑handler** – централизованная обработка ошибок
 - **logger** – структурированное логирование (Winston)
 
@@ -107,7 +112,7 @@
 ### 5) EXTRA
 - `Итог` = `Сборный груз` + `Шторы (тенты)` + `Экспедирование` + `Перетарка/доукрепление`.
 
-### 6) План с переносом (ИТОГО v2)
+### 6) План с переносом (Операционный отчет v2)
 - Январь: `carry(1) = base(1)`.
 - Для месяца `m > 1`:
   - `carry(m) = base(m) + max(0, carry(m-1) - fact(m-1))`.
@@ -124,11 +129,11 @@
 - **layouts/DashboardLayout** – общий макет с боковым меню и шапкой
 - **pages/** – страницы приложения:
   - `LoginPage` – страница входа
-  - `DashboardPage` – главная панель с метриками
-  - `DepartmentPage` – таблица ввода данных по направлению
-  - `SummaryReportPage` – сводный отчёт (СВ‑план)
+  - `PlansPage` – планирование по сегментам
+  - `SummaryReportPage` – сводный отчёт
   - `AdminPage` – административная панель
-  - `SettingsPage` – настройки email‑рассылки
+  - `SettingsPage` – настройки (email, SMTP, НДС)
+  - `ResetPasswordPage` – сброс пароля
 
 ### 2. Управление состоянием (Zustand)
 - **auth‑store** – токен, данные пользователя, методы login/logout
@@ -136,14 +141,14 @@
 - **ui‑store** – состояние UI (тема, уведомления, загрузки)
 
 ### 3. Сервисы
-- **api.ts** – Axios-инстанс с интерсепторами для авторизации и обработки ошибок
-- **report‑service.ts** – вызовы API для генерации отчётов
-- **metrics‑service.ts** – расчёт метрик на клиенте (дублирует логику backend для мгновенного отклика)
+- **api.ts** – Axios-инстанс с интерсепторами и обработкой 401/503
+- **planning-v2.api.ts** – API планирования v2
+- **financial-plan.api.ts** – API финплана
 
 ### 4. Компоненты
-- **DataGrid** – таблица с Excel‑подобным редактированием (на основе AG Grid)
-- **MetricsCard** – карточка с ключевым показателем (план, факт, %)
-- **Chart** – графики Recharts (линейные, столбчатые, pie)
+- **ExcelLikePlanTable** – Excel‑подобный ввод данных
+- **PlanDashboard** – карточки ключевых показателей
+- **YearTotalsV2Table** – итоги по году
 - **DatePicker** – выбор даты (MUI X Date Pickers)
 - **Notification** – уведомления (Snackbar)
 
@@ -151,8 +156,7 @@
 
 ### PostgreSQL
 - **Логическая схема** соответствует моделям TypeORM.
-- **Индексы** на полях `department`, `date`, `metric_type` для ускорения выборок.
-- **Триггеры** для автоматического пересчёта метрик при изменении оперативных данных (опционально).
+- **Индексы** на полях `segment`, `date`, `metric_type` для ускорения выборок.
 - **Репликация** (в продакшене) для отказоустойчивости.
 
 ### Redis
@@ -177,7 +181,8 @@
 ## Безопасность
 
 - **Аутентификация** – JWT с сроком жизни 7 дней.
-- **Авторизация** – ролевая модель (admin, director, sales, container_vladivostok, container_moscow, railway, autotruck, additional). Роль одновременно определяет направление (для ролей-направлений).
+- **Авторизация** – ролевая модель (admin, director, sales, manager_* и роли-направления). Роль определяет доступ к сегменту/направлению, отдельного поля `department` у пользователя нет.
+- **Регистрация** – по умолчанию закрыта (`INVITE_ONLY=true`), пользователи добавляются через админ‑приглашения.
 - **Валидация** – все входящие данные проверяются на стороне сервера.
 - **HTTPS** – обязателен в продакшене (через Nginx + Let's Encrypt).
 - **Защита от инъекций** – TypeORM использует параметризованные запросы.

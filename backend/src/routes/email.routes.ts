@@ -14,7 +14,7 @@ const router = Router();
 
 // Все endpoints требуют аутентификации и роли администратора или менеджера
 router.use(authenticate);
-router.use(authorizeRole('admin', 'manager'));
+router.use(authorizeRole('admin'));
 
 router.get('/', getSchedules);
 router.get('/:id', getScheduleById);

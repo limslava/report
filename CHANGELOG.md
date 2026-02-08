@@ -1,0 +1,31 @@
+# Changelog
+
+## Unreleased
+- Roles & auth
+  - Closed open registration with `INVITE_ONLY=true` gate.
+  - Added admin-only email schedule access.
+  - Validated role on admin user update.
+  - Switched temporary password generation to `crypto.randomBytes`.
+  - Synced frontend role list with backend (including `to_auto`).
+- DB & schema
+  - `users.role` widened to `VARCHAR(50)` and `is_active` added in SQL init.
+  - Added prod migrations: drop legacy `users.department`, add `is_active`, widen role.
+  - Fixed docker-compose init mount to use root `database/init`.
+- Health & reliability
+  - Added DB/Redis/Scheduler health endpoints + metrics (doc updates).
+  - Added DB circuit breaker metrics and retries (doc updates).
+- UI
+  - Settings tabs updated: "Почта" separate from "Уведомления".
+  - Financial plan header alignment tweaks.
+- Security & ops
+  - Redact sensitive fields in error logs.
+  - Added `TRUST_PROXY` support.
+  - JWT TTL now uses `JWT_EXPIRES_IN`.
+  - `VITE_API_URL` supported in frontend API client.
+  - Added `.xlsx/.xls` to `.gitignore`.
+- Tests
+  - Added admin role validation test.
+  - Added invite-only register test.
+  - Expanded planning-v2 test coverage.
+- Docs
+  - Updated README, ARCHITECTURE, ROADMAP, PRODUCTION_CHECKLIST, AMVERA_DEPLOY.

@@ -16,6 +16,9 @@ let emailQueue: Queue.Queue | null = null;
 let schedulerEnabled = true;
 let localSchedulerTimer: NodeJS.Timeout | null = null;
 let localSchedulerAlignTimer: NodeJS.Timeout | null = null;
+let lastRunAt: string | null = null;
+let lastError: string | null = null;
+let lastErrorAt: string | null = null;
 const schedulerIntervalMinutes = Math.max(1, Number(process.env.SCHEDULER_INTERVAL_MINUTES || 5));
 const schedulerCron = `*/${schedulerIntervalMinutes} * * * *`;
 const schedulerUseQueue = (process.env.SCHEDULER_USE_QUEUE ?? 'false').toLowerCase() === 'true';
@@ -39,7 +42,10 @@ const runScheduledEmails = async () => {
   logger.info('Processing scheduled emails (scheduler tick)');
   try {
     await processScheduledEmails();
+    lastRunAt = new Date().toISOString();
   } catch (error) {
+    lastError = (error as Error)?.message || 'Scheduler error';
+    lastErrorAt = new Date().toISOString();
     logger.error('Failed to process scheduled emails:', error);
   }
 };
@@ -86,7 +92,7 @@ const stopLocalSchedulerFallback = () => {
   localSchedulerTimer = null;
 };
 
-const canConnectRedis = async (): Promise<boolean> => {
+export const canConnectRedis = async (): Promise<boolean> => {
   const client = new Redis({
     host: redisConfig.host,
     port: redisConfig.port,
@@ -206,6 +212,15 @@ export const startScheduler = async () => {
     startLocalSchedulerFallback();
   }
 };
+
+export const getSchedulerStatus = () => ({
+  schedulerEnabled: schedulerEnvEnabled() && schedulerEnabled,
+  schedulerUseQueue,
+  redisEnabled: redisEnabled(),
+  lastRunAt,
+  lastError,
+  lastErrorAt,
+});
 
 // Остановка планировщика (для graceful shutdown)
 export const stopScheduler = async () => {

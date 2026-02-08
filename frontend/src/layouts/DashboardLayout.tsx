@@ -1,8 +1,10 @@
 import { Outlet } from 'react-router-dom';
 import {
   AppBar,
+  Alert,
   Box,
   Button,
+  Collapse,
   CssBaseline,
   Dialog,
   DialogActions,
@@ -29,6 +31,7 @@ import {
   TableChart,
   ChevronLeft,
   ChevronRight,
+  Close,
 } from '@mui/icons-material';
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -36,6 +39,7 @@ import { useAuthStore } from '../store/auth-store';
 import { canAccessAdmin, canViewFinancialPlan, canViewSummary, canViewTotalsInPlans } from '../utils/rolePermissions';
 import { getHasUnsavedChanges, getUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import { getRuntimeAppSettings } from '../services/api';
+import { useServiceHealth } from '../hooks/useServiceHealth';
 
 const expandedDrawerWidth = 280;
 const collapsedDrawerWidth = 86;
@@ -56,6 +60,8 @@ const DashboardLayout = () => {
   const drawerWidth = isPinnedOpen ? expandedDrawerWidth : collapsedDrawerWidth;
   const canViewTotals = canViewTotalsInPlans(user?.role);
   const canViewFinancial = canViewFinancialPlan(user?.role);
+  const isAdmin = user?.role === 'admin';
+  const serviceHealth = useServiceHealth();
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -112,6 +118,7 @@ const DashboardLayout = () => {
     };
     loadTitle();
   }, []);
+
 
   const closeUnsavedDialog = () => {
     if (processingUnsavedAction) return;
@@ -295,6 +302,41 @@ const DashboardLayout = () => {
           mt: 8,
         }}
       >
+        <Collapse in={serviceHealth.isUnavailable}>
+          <Alert
+            severity="warning"
+            sx={{ mb: 2 }}
+            action={(
+              <Box display="flex" alignItems="center" gap={1}>
+                <Button color="inherit" size="small" onClick={() => serviceHealth.checkNow()}>
+                  Повторить
+                </Button>
+                {isAdmin && (
+                  <Button color="inherit" size="small" onClick={() => serviceHealth.checkNow()}>
+                    Статус
+                  </Button>
+                )}
+                <IconButton
+                  color="inherit"
+                  size="small"
+                  onClick={() => serviceHealth.setIsUnavailable(false)}
+                  aria-label="close"
+                >
+                  <Close fontSize="small" />
+                </IconButton>
+              </Box>
+            )}
+          >
+            <Box>
+              <Typography variant="body2">{serviceHealth.message}</Typography>
+              {isAdmin && serviceHealth.statusText && (
+                <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+                  {serviceHealth.statusText}
+                </Typography>
+              )}
+            </Box>
+          </Alert>
+        </Collapse>
         <Outlet />
       </Box>
       <Dialog open={unsavedDialogOpen} onClose={closeUnsavedDialog}>

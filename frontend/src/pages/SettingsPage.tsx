@@ -548,7 +548,7 @@ const SettingsPage = () => {
   const tabs = [
     { label: 'Профиль', show: true },
     { label: 'Уведомления', show: isAdmin },
-    { label: 'Интеграции', show: isAdmin },
+    { label: 'Почта', show: isAdmin },
     { label: 'НДС', show: isAdmin },
   ];
   
@@ -836,18 +836,6 @@ const SettingsPage = () => {
               </Paper>
             </TabPanel>
             <TabPanel value={tabValue} index={2}>
-              <Typography variant="body1" paragraph>
-                Интеграция с внешними системами.
-              </Typography>
-              <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-                <Typography variant="subtitle2">Excel импорт/экспорт</Typography>
-                <Typography variant="body2" color="textSecondary">
-                  Настройки формата файлов.
-                </Typography>
-                <Button size="small" sx={{ mt: 1 }}>
-                  Настроить
-                </Button>
-              </Paper>
               <SmtpConfigForm />
             </TabPanel>
             <TabPanel value={tabValue} index={3}>

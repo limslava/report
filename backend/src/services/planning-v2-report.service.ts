@@ -160,6 +160,7 @@ export class PlanningV2ReportService {
     month: number;
     asOfDate: string;
     daysInMonth: number;
+    lastUpdatedAt: string | null;
     gridRows: PlanningGridRow[];
     dashboard: SegmentDashboard;
   }> {
@@ -195,6 +196,16 @@ export class PlanningV2ReportService {
         toDate: toIsoDate(monthEnd),
       })
       .getMany();
+
+    let lastUpdatedAt: string | null = null;
+    let lastUpdatedAtMs = -Infinity;
+    for (const row of dailyRows) {
+      const updatedAtMs = row.updatedAt ? new Date(row.updatedAt).getTime() : NaN;
+      if (Number.isFinite(updatedAtMs) && updatedAtMs > lastUpdatedAtMs) {
+        lastUpdatedAtMs = updatedAtMs;
+        lastUpdatedAt = new Date(updatedAtMs).toISOString();
+      }
+    }
 
     const valuesByMetric = new Map<string, Array<number | null>>();
     for (const metric of metrics) {
@@ -280,6 +291,7 @@ export class PlanningV2ReportService {
       month: params.month,
       asOfDate: toIsoDate(effectiveAsOf),
       daysInMonth,
+      lastUpdatedAt,
       gridRows,
       dashboard,
     };

@@ -1,16 +1,21 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Alert,
   Container,
   Paper,
   TextField,
   Button,
   Typography,
   Box,
+  Collapse,
+  IconButton,
 } from '@mui/material';
+import { Close } from '@mui/icons-material';
 import { useAuthStore } from '../store/auth-store';
 import type { User } from '../store/auth-store';
 import { login } from '../services/api';
+import { useServiceHealth } from '../hooks/useServiceHealth';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -19,6 +24,7 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { login: setAuth } = useAuthStore();
+  const serviceHealth = useServiceHealth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,6 +67,29 @@ const LoginPage = () => {
 
   return (
     <Container maxWidth="sm" sx={{ mt: 8 }}>
+      <Collapse in={serviceHealth.isUnavailable}>
+        <Alert
+          severity="warning"
+          sx={{ mb: 2 }}
+          action={(
+            <Box display="flex" alignItems="center" gap={1}>
+              <Button color="inherit" size="small" onClick={() => serviceHealth.checkNow()}>
+                Повторить
+              </Button>
+              <IconButton
+                color="inherit"
+                size="small"
+                onClick={() => serviceHealth.setIsUnavailable(false)}
+                aria-label="close"
+              >
+                <Close fontSize="small" />
+              </IconButton>
+            </Box>
+          )}
+        >
+          {serviceHealth.message}
+        </Alert>
+      </Collapse>
       <Paper elevation={3} sx={{ p: 4 }}>
         <Typography variant="h4" align="center" gutterBottom>
           Вход в систему
@@ -103,6 +132,16 @@ const LoginPage = () => {
             </Button>
           </Box>
         </form>
+
+        <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
+          <Button
+            variant="text"
+            size="small"
+            onClick={() => navigate('/forgot-password')}
+          >
+            Забыли пароль?
+          </Button>
+        </Box>
 
         <Typography variant="body2" align="center" sx={{ mt: 3 }}>
           Для доступа обратитесь к администратору

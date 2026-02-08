@@ -28,3 +28,7 @@ logs/
 # Local temp files
 *.tmp
 *.swp
+
+# Local spreadsheets
+*.xlsx
+*.xls

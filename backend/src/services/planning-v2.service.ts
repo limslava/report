@@ -36,6 +36,7 @@ const LEGACY_SEGMENT_ROLE: Record<string, PlanningSegmentCode | null> = {
   autotruck: PlanningSegmentCode.AUTO,
   railway: PlanningSegmentCode.RAIL,
   additional: PlanningSegmentCode.EXTRA,
+  to_auto: PlanningSegmentCode.TO,
 };
 
 function toIsoDate(date: Date): string {

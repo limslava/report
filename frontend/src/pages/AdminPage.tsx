@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Box,
+  Alert,
+  Collapse,
   Typography,
   Paper,
   Table,
@@ -24,7 +26,7 @@ import {
   FormHelperText,
   Tooltip,
 } from '@mui/material';
-import { Add, Edit, Delete, Email, LockReset, SwapHoriz, PowerSettingsNew } from '@mui/icons-material';
+import { Add, Edit, Delete, LockReset, SwapHoriz, PowerSettingsNew, Close } from '@mui/icons-material';
 import {
   getUsers,
   inviteUser,
@@ -43,6 +45,12 @@ const AdminPage = () => {
   const [_loading, setLoading] = useState(false);
   const [_error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<any>(null);
+  const [dbMetrics, setDbMetrics] = useState<any>(null);
+  const [redisStatus, setRedisStatus] = useState<string | null>(null);
+  const [schedulerStatus, setSchedulerStatus] = useState<any>(null);
+  const [dbAlertOpen, setDbAlertOpen] = useState(false);
+  const [dbAlertMessage, setDbAlertMessage] = useState('');
+  const prevDbErrorsRef = useRef<number | null>(null);
   const [reassignDialogOpen, setReassignDialogOpen] = useState(false);
   const [deletingUser, setDeletingUser] = useState<any>(null);
   const [targetUserId, setTargetUserId] = useState('');
@@ -72,6 +80,78 @@ const AdminPage = () => {
     loadData();
   }, []);
 
+  useEffect(() => {
+    let stopped = false;
+    const loadDbMetrics = async () => {
+      try {
+        const response = await fetch('/health/db/metrics', { cache: 'no-store' });
+        if (!response.ok) {
+          return;
+        }
+        const data = await response.json();
+        if (!stopped) {
+          const messages: string[] = [];
+          const prevErrors = prevDbErrorsRef.current;
+          if (typeof data?.totalErrors === 'number') {
+            if (prevErrors !== null && data.totalErrors > prevErrors) {
+              messages.push(`DB ошибки увеличились: +${data.totalErrors - prevErrors}`);
+            }
+            prevDbErrorsRef.current = data.totalErrors;
+          }
+          if (typeof data?.avgLatencyMs === 'number' && data.avgLatencyMs > 800) {
+            messages.push(`Высокая средняя задержка БД: ${data.avgLatencyMs} ms`);
+          }
+          if (messages.length > 0) {
+            setDbAlertMessage(messages.join(' • '));
+            setDbAlertOpen(true);
+          }
+          setDbMetrics(data);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    loadDbMetrics();
+    const timer = window.setInterval(loadDbMetrics, 30000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    let stopped = false;
+    const loadHealth = async () => {
+      try {
+        const [redisRes, schedulerRes] = await Promise.all([
+          fetch('/health/redis', { cache: 'no-store' }),
+          fetch('/health/scheduler', { cache: 'no-store' }),
+        ]);
+
+        if (!stopped) {
+          const redisData = await redisRes.json().catch(() => ({}));
+          setRedisStatus(redisData?.status ?? (redisRes.ok ? 'OK' : 'DOWN'));
+
+          const schedulerData = await schedulerRes.json().catch(() => ({}));
+          setSchedulerStatus({ status: schedulerRes.ok ? 'OK' : 'DOWN', ...schedulerData });
+        }
+      } catch {
+        if (!stopped) {
+          setRedisStatus('DOWN');
+          setSchedulerStatus({ status: 'DOWN' });
+        }
+      }
+    };
+
+    loadHealth();
+    const timer = window.setInterval(loadHealth, 30000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
   const roleLabels: Record<string, string> = {
     container_vladivostok: 'Менеджер КТК Владивосток',
     container_moscow: 'Менеджер КТК Москва',
@@ -93,6 +173,12 @@ const AdminPage = () => {
   };
 
   const roles = [
+    { value: 'container_vladivostok', label: 'КТК Владивосток' },
+    { value: 'container_moscow', label: 'КТК Москва' },
+    { value: 'railway', label: 'ЖД' },
+    { value: 'autotruck', label: 'Отправка авто' },
+    { value: 'additional', label: 'Доп.услуги' },
+    { value: 'to_auto', label: 'ТО авто' },
     { value: 'manager_ktk_vvo', label: 'Менеджер КТК Владивосток' },
     { value: 'manager_ktk_mow', label: 'Менеджер КТК Москва' },
     { value: 'manager_auto', label: 'Менеджер отправки авто' },
@@ -100,10 +186,24 @@ const AdminPage = () => {
     { value: 'manager_extra', label: 'Менеджер доп.услуг' },
     { value: 'manager_to', label: 'Менеджер ТО авто' },
     { value: 'manager_sales', label: 'Менеджер по продажам' },
+    { value: 'sales', label: 'Менеджер по продажам' },
     { value: 'director', label: 'Директор' },
     { value: 'admin', label: 'Администратор' },
     { value: 'financer', label: 'Финансист' },
   ];
+
+  const formatLocalDateTime = (value?: string | null) => {
+    if (!value) return '—';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return new Intl.DateTimeFormat('ru-RU', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(parsed);
+  };
 
   const handleOpenDialog = (user: any = null) => {
     setSelectedUser(user);
@@ -216,10 +316,6 @@ const AdminPage = () => {
     }
   };
 
-  const handleInvite = (email: string) => {
-    alert(`Приглашение отправлено на ${email}`);
-  };
-
   const handleResetPassword = async (id: string) => {
     if (!confirm('Сбросить пароль пользователя?')) return;
     try {
@@ -233,6 +329,19 @@ const AdminPage = () => {
 
   return (
     <Box>
+      <Collapse in={dbAlertOpen}>
+        <Alert
+          severity="warning"
+          sx={{ mb: 2 }}
+          action={(
+            <IconButton color="inherit" size="small" onClick={() => setDbAlertOpen(false)}>
+              <Close fontSize="small" />
+            </IconButton>
+          )}
+        >
+          {dbAlertMessage}
+        </Alert>
+      </Collapse>
       <Paper sx={{ p: 3, mb: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
           <Typography variant="h6">Пользователи системы</Typography>
@@ -275,11 +384,6 @@ const AdminPage = () => {
                     />
                   </TableCell>
                   <TableCell>
-                    <Tooltip title="Отправить приглашение">
-                      <IconButton size="small" onClick={() => handleInvite(user.email)}>
-                        <Email fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
                     <Tooltip title="Редактировать">
                       <IconButton size="small" onClick={() => handleOpenDialog(user)}>
                         <Edit fontSize="small" />
@@ -317,18 +421,48 @@ const AdminPage = () => {
         <Typography variant="h6" gutterBottom>
           Статистика
         </Typography>
-        <Box sx={{ display: 'flex', gap: 3 }}>
+        <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
           <Box>
             <Typography variant="body2" color="textSecondary">Всего пользователей</Typography>
-            <Typography variant="h4">{stats?.users ?? '—'}</Typography>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{stats?.users ?? '—'}</Typography>
           </Box>
           <Box>
             <Typography variant="body2" color="textSecondary">Активные сессии</Typography>
-            <Typography variant="h4">{stats?.activeSessions ?? '—'}</Typography>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{stats?.activeSessions ?? '—'}</Typography>
           </Box>
           <Box>
             <Typography variant="body2" color="textSecondary">За сегодня</Typography>
-            <Typography variant="h4">{stats?.dailyReports ?? '—'}</Typography>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{stats?.dailyReports ?? '—'}</Typography>
+          </Box>
+          <Box>
+            <Typography variant="body2" color="textSecondary">DB latency (avg)</Typography>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+              {dbMetrics?.avgLatencyMs != null ? `${dbMetrics.avgLatencyMs} ms` : '—'}
+            </Typography>
+          </Box>
+          <Box>
+            <Typography variant="body2" color="textSecondary">DB ошибки</Typography>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{dbMetrics?.totalErrors ?? '—'}</Typography>
+          </Box>
+          <Box>
+            <Typography variant="body2" color="textSecondary">Redis</Typography>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{redisStatus ?? '—'}</Typography>
+          </Box>
+          <Box>
+            <Typography variant="body2" color="textSecondary">Scheduler</Typography>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{schedulerStatus?.status ?? '—'}</Typography>
+          </Box>
+          <Box sx={{ minWidth: 220 }}>
+            <Typography variant="body2" color="textSecondary">Scheduler last run</Typography>
+            <Typography variant="body2">
+              {formatLocalDateTime(schedulerStatus?.lastRunAt)}
+            </Typography>
+          </Box>
+          <Box sx={{ minWidth: 220 }}>
+            <Typography variant="body2" color="textSecondary">Последняя ошибка</Typography>
+            <Typography variant="body2">
+              {dbMetrics?.lastError ? `${dbMetrics.lastError} (${dbMetrics.lastErrorAt ?? '—'})` : '—'}
+            </Typography>
           </Box>
         </Box>
       </Paper>

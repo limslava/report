@@ -1,13 +1,20 @@
 -- Создание таблиц для системы управления логистикой и отчетности
 
+-- Требуется для gen_random_uuid()
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- 1. Пользователи
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email VARCHAR(255) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   full_name VARCHAR(255) NOT NULL,
-  department VARCHAR(50) NOT NULL CHECK (department IN ('container_vladivostok', 'container_moscow', 'railway', 'autotruck', 'additional', 'admin')),
-  role VARCHAR(20) NOT NULL CHECK (role IN ('operator', 'manager', 'admin')),
+  role VARCHAR(50) NOT NULL CHECK (role IN (
+    'admin', 'director', 'financer', 'sales', 'manager_sales',
+    'manager_ktk_vvo', 'manager_ktk_mow', 'manager_auto', 'manager_rail', 'manager_extra', 'manager_to',
+    'container_vladivostok', 'container_moscow', 'railway', 'autotruck', 'additional', 'to_auto'
+  )),
+  is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -111,10 +118,9 @@ CREATE INDEX IF NOT EXISTS idx_operational_data_department_date ON operational_d
 CREATE INDEX IF NOT EXISTS idx_monthly_plans_department_year_month ON monthly_plans(department, year, month);
 CREATE INDEX IF NOT EXISTS idx_department_metrics_department_date ON department_metrics(department, metric_date);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE INDEX IF NOT EXISTS idx_users_department ON users(department);
 
 -- Комментарии
-COMMENT ON TABLE users IS 'Пользователи системы с ролями и направлениями';
+COMMENT ON TABLE users IS 'Пользователи системы с ролями';
 COMMENT ON TABLE operational_data IS 'Ежедневные оперативные данные по направлениям';
 COMMENT ON TABLE monthly_plans IS 'Месячные планы и факты по направлениям';
 COMMENT ON TABLE reports IS 'Сгенерированные отчеты';

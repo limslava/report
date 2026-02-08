@@ -20,6 +20,10 @@ export function getJwtSecret(): string {
   return secret;
 }
 
+export function getJwtExpiresIn(): string {
+  return process.env.JWT_EXPIRES_IN || '7d';
+}
+
 export function getAllowedCorsOrigins(): string[] {
   const fromCsv = splitCsv(process.env.CORS_ALLOWED_ORIGINS);
   if (fromCsv.length > 0) {

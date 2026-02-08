@@ -113,6 +113,43 @@ export const sendInvitationEmail = async (
   }
 };
 
+export const sendPasswordResetEmail = async (
+  email: string,
+  fullName: string,
+  resetToken: string
+) => {
+  try {
+    logger.info(`Sending password reset email to ${email}`);
+    const frontendBaseUrl = (process.env.FRONTEND_URL || 'https://report-limslava.amvera.io').replace(/\/+$/, '');
+    const resetUrl = `${frontendBaseUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+
+    const transporter = await createTransporter();
+    const from = await getFromAddress();
+
+    const mailOptions = {
+      from,
+      to: email,
+      subject: 'Сброс пароля',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px;">
+          <h2>Здравствуйте, ${fullName}!</h2>
+          <p>Вы запросили сброс пароля.</p>
+          <p>Перейдите по ссылке, чтобы задать новый пароль:</p>
+          <p><a href="${resetUrl}">${resetUrl}</a></p>
+          <p>Ссылка действует 1 час.</p>
+          <hr>
+          <p style="color: #666;">Если вы не запрашивали сброс пароля — просто игнорируйте это письмо.</p>
+        </div>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+    logger.info(`Password reset email sent to ${email}`);
+  } catch (error) {
+    logger.error('Failed to send password reset email:', error);
+  }
+};
+
 export const sendEmailWithAttachment = async (
   to: string | string[],
   subject: string,

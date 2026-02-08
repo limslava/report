@@ -5,8 +5,9 @@ import { AppDataSource } from '../config/data-source';
 import { User } from '../models/user.model';
 import { AppSetting } from '../models/app-setting.model';
 import { logger } from '../utils/logger';
-import { sendInvitationEmail } from '../services/email.service';
-import { getJwtSecret } from '../config/env';
+import { sendError } from '../utils/http';
+import { sendInvitationEmail, sendPasswordResetEmail } from '../services/email.service';
+import { getJwtExpiresIn, getJwtSecret } from '../config/env';
 
 const userRepository = AppDataSource.getRepository(User);
 const appSettingRepository = AppDataSource.getRepository(AppSetting);
@@ -16,32 +17,32 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+      return sendError(res, 400, 'Email and password are required', { code: 'VALIDATION_ERROR' });
     }
 
     const user = await userRepository.findOne({ where: { email } });
     
     if (!user) {
       logger.warn('User not found', { email });
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return sendError(res, 401, 'Invalid credentials', { code: 'INVALID_CREDENTIALS' });
     }
 
     if (!user.isActive) {
       logger.warn('Inactive user login attempt', { email });
-      return res.status(403).json({ error: 'User account is deactivated' });
+      return sendError(res, 403, 'User account is deactivated', { code: 'FORBIDDEN' });
     }
 
     const isValidPassword = await bcrypt.compare(password, user.passwordHash);
     
     if (!isValidPassword) {
       logger.warn('Invalid password', { email });
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return sendError(res, 401, 'Invalid credentials', { code: 'INVALID_CREDENTIALS' });
     }
 
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
       getJwtSecret(),
-      { expiresIn: '7d' }
+      { expiresIn: getJwtExpiresIn() }
     );
 
     logger.info('Login successful', { email, userId: user.id });
@@ -90,7 +91,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
       getJwtSecret(),
-      { expiresIn: '7d' }
+      { expiresIn: getJwtExpiresIn() }
     );
 
     res.status(201).json({
@@ -125,8 +126,7 @@ export const forgotPassword = async (req: Request, res: Response, next: NextFunc
       { expiresIn: '1h' }
     );
 
-    // TODO: Send email with reset link
-    void resetToken;
+    await sendPasswordResetEmail(user.email, user.fullName, resetToken);
 
     return res.json({ message: 'If the email exists, a reset link has been sent' });
   } catch (error) {
@@ -136,12 +136,34 @@ export const forgotPassword = async (req: Request, res: Response, next: NextFunc
 
 export const resetPassword = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { token: _token, password: _password } = req.body;
+    const { token, password } = req.body;
 
-    // Verify token
-    // TODO: Implement proper token verification and update password
+    if (!token || !password) {
+      return sendError(res, 400, 'Token and password are required', { code: 'VALIDATION_ERROR' });
+    }
 
-    res.json({ message: 'Password reset successfully' });
+    let payload: { id: string; email: string };
+    try {
+      const decoded = jwt.decode(token) as { id?: string; email?: string } | null;
+      if (!decoded?.id) {
+        return sendError(res, 400, 'Invalid token', { code: 'INVALID_TOKEN' });
+      }
+
+      const user = await userRepository.findOne({ where: { id: decoded.id } });
+      if (!user) {
+        return sendError(res, 404, 'User not found', { code: 'NOT_FOUND' });
+      }
+
+      payload = jwt.verify(token, `${getJwtSecret()}${user.passwordHash}`) as { id: string; email: string };
+
+      const hashedPassword = await bcrypt.hash(password, 12);
+      user.passwordHash = hashedPassword;
+      await userRepository.save(user);
+    } catch (err: any) {
+      return sendError(res, 400, 'Invalid or expired token', { code: 'INVALID_TOKEN' });
+    }
+
+    return res.json({ message: 'Password reset successfully', userId: payload.id });
   } catch (error) {
     return next(error);
   }

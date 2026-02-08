@@ -4,6 +4,7 @@ import { login, register, forgotPassword, resetPassword, changePassword, getAppS
 import { handleValidationErrors } from '../middleware/express-validator.middleware';
 import { authenticate } from '../middleware/authenticate';
 import { createRateLimiter } from '../middleware/rate-limit';
+import { ROLE_VALUES } from '../constants/role-definitions';
 
 const router = Router();
 const loginRateLimiter = createRateLimiter({
@@ -11,6 +12,23 @@ const loginRateLimiter = createRateLimiter({
   max: 10,
   message: 'Слишком много попыток входа. Повторите позже.',
 });
+const forgotPasswordRateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: 'Слишком много запросов сброса пароля. Повторите позже.',
+});
+
+const blockRegisterIfInviteOnly = (_req: any, res: any, next: any) => {
+  const inviteOnly = (process.env.INVITE_ONLY ?? 'true').toLowerCase() === 'true';
+  if (inviteOnly) {
+    return res.status(403).json({
+      error: 'Registration disabled',
+      message: 'Регистрация доступна только по приглашению администратора.',
+      statusCode: 403,
+    });
+  }
+  return next();
+};
 
 router.post('/login',
   loginRateLimiter,
@@ -25,20 +43,21 @@ router.post('/login',
 );
 
 router.post('/register',
+  blockRegisterIfInviteOnly,
   [
     body('email')
       .isEmail()
       .customSanitizer((value: string) => String(value).trim().toLowerCase()),
     body('password').isLength({ min: 8 }),
     body('fullName').notEmpty().trim(),
-    body('department').isIn(['container_vladivostok', 'container_moscow', 'railway', 'autotruck', 'additional', 'admin']),
-    body('role').isIn(['operator', 'manager', 'admin']),
+    body('role').isIn(ROLE_VALUES),
   ],
   handleValidationErrors,
   register
 );
 
 router.post('/forgot-password',
+  forgotPasswordRateLimiter,
   [
     body('email')
       .isEmail()

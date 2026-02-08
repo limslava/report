@@ -18,6 +18,7 @@ export interface PlanningSegmentReport {
   month: number;
   asOfDate: string;
   daysInMonth: number;
+  lastUpdatedAt?: string | null;
   gridRows: PlanningGridRow[];
   dashboard: Record<string, unknown>;
 }

@@ -1,6 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { QueryFailedError } from 'typeorm';
 import { logger } from '../utils/logger';
+import { isTransientDbError } from '../utils/db-errors';
+import { dbCircuit } from '../utils/db-circuit';
+import { dbMetrics } from '../utils/db-metrics';
 
 interface CustomError extends Error {
   statusCode?: number;
@@ -16,13 +19,38 @@ export const errorHandler = (
   res: Response,
   _next: NextFunction
 ) => {
+  const sanitize = (value: any): any => {
+    if (!value || typeof value !== 'object') return value;
+    const sensitiveKeys = new Set([
+      'password',
+      'currentPassword',
+      'newPassword',
+      'passwordHash',
+      'token',
+      'refreshToken',
+      'authorization',
+    ]);
+    if (Array.isArray(value)) {
+      return value.map((item) => sanitize(item));
+    }
+    const result: Record<string, any> = {};
+    for (const [key, val] of Object.entries(value)) {
+      if (sensitiveKeys.has(key)) {
+        result[key] = '[REDACTED]';
+      } else {
+        result[key] = sanitize(val);
+      }
+    }
+    return result;
+  };
+
   // Логируем ошибку
   logger.error('Error occurred:', {
     message: err.message,
     stack: err.stack,
     path: req.path,
     method: req.method,
-    body: req.body,
+    body: sanitize(req.body),
     params: req.params,
     query: req.query,
     user: req.user?.id,
@@ -70,6 +98,15 @@ export const errorHandler = (
     message = 'Resource already exists';
   }
 
+  // Недоступность БД (сетевые ошибки / рестарт)
+  if (isTransientDbError(err)) {
+    statusCode = 503;
+    message = 'Database temporarily unavailable';
+    res.locals.dbFailure = true;
+    dbCircuit.recordFailure(err);
+    dbMetrics.recordError(message);
+  }
+
   // Нарушение foreign key constraint
   if ((err as any).code === '23503') {
     statusCode = 400;
@@ -79,6 +116,7 @@ export const errorHandler = (
   // Формируем ответ
   const response: any = {
     error: message,
+    message,
     statusCode,
   };
 
