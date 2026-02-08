@@ -5,6 +5,7 @@ type ErrorPayload = {
   message: string;
   statusCode: number;
   code?: string;
+  [key: string]: unknown;
 };
 
 export function sendError(

@@ -1,3 +1,5 @@
+import type { SignOptions } from 'jsonwebtoken';
+
 const FALLBACK_JWT_SECRET = 'fallback-secret';
 
 function splitCsv(value?: string): string[] {
@@ -20,8 +22,8 @@ export function getJwtSecret(): string {
   return secret;
 }
 
-export function getJwtExpiresIn(): string {
-  return process.env.JWT_EXPIRES_IN || '7d';
+export function getJwtExpiresIn(): SignOptions['expiresIn'] {
+  return (process.env.JWT_EXPIRES_IN || '7d') as SignOptions['expiresIn'];
 }
 
 export function getAllowedCorsOrigins(): string[] {

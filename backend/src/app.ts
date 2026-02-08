@@ -62,7 +62,7 @@ export function createApp() {
     next();
   });
 
-  app.use('/api', (req, res, next) => {
+  app.use('/api', (_req, res, next) => {
     if (dbCircuit.isOpen() || !dbCircuit.canPass()) {
       res.status(503).json({
         error: 'Service Unavailable',

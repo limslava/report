@@ -8,19 +8,19 @@ jest.mock('./config/data-source', () => ({
   },
 }));
 
-const updateUser = jest.fn((req, res) => res.json({ ok: true }));
+const updateUser = jest.fn((_req, res) => res.json({ ok: true }));
 
 jest.mock('./controllers/admin.controller', () => ({
-  getUsers: jest.fn((req, res) => res.json([])),
-  inviteUser: jest.fn((req, res) => res.json({ ok: true })),
-  updateUser: (...args: any[]) => updateUser(...args),
-  reassignAndDeleteUser: jest.fn((req, res) => res.json({ ok: true })),
-  resetUserPassword: jest.fn((req, res) => res.json({ ok: true })),
-  deleteUser: jest.fn((req, res) => res.json({ ok: true })),
-  getAuditLog: jest.fn((req, res) => res.json([])),
-  getSystemStats: jest.fn((req, res) => res.json({})),
-  getAppSettings: jest.fn((req, res) => res.json({})),
-  updateAppSettings: jest.fn((req, res) => res.json({ ok: true })),
+  getUsers: jest.fn((_req, res) => res.json([])),
+  inviteUser: jest.fn((_req, res) => res.json({ ok: true })),
+  updateUser,
+  reassignAndDeleteUser: jest.fn((_req, res) => res.json({ ok: true })),
+  resetUserPassword: jest.fn((_req, res) => res.json({ ok: true })),
+  deleteUser: jest.fn((_req, res) => res.json({ ok: true })),
+  getAuditLog: jest.fn((_req, res) => res.json([])),
+  getSystemStats: jest.fn((_req, res) => res.json({})),
+  getAppSettings: jest.fn((_req, res) => res.json({})),
+  updateAppSettings: jest.fn((_req, res) => res.json({ ok: true })),
 }));
 
 jest.mock('./middleware/authenticate', () => ({

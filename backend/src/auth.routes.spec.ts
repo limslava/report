@@ -9,12 +9,12 @@ jest.mock('./config/data-source', () => ({
 }));
 
 jest.mock('./controllers/auth.controller', () => ({
-  login: jest.fn((req, res) => res.json({ ok: true })),
-  register: jest.fn((req, res) => res.json({ ok: true })),
-  forgotPassword: jest.fn((req, res) => res.json({ ok: true })),
-  resetPassword: jest.fn((req, res) => res.json({ ok: true })),
-  changePassword: jest.fn((req, res) => res.json({ ok: true })),
-  getAppSettings: jest.fn((req, res) => res.json({})),
+  login: jest.fn((_req, res) => res.json({ ok: true })),
+  register: jest.fn((_req, res) => res.json({ ok: true })),
+  forgotPassword: jest.fn((_req, res) => res.json({ ok: true })),
+  resetPassword: jest.fn((_req, res) => res.json({ ok: true })),
+  changePassword: jest.fn((_req, res) => res.json({ ok: true })),
+  getAppSettings: jest.fn((_req, res) => res.json({})),
 }));
 
 import { createApp } from './app';

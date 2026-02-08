@@ -17,7 +17,7 @@ describe('Health endpoints', () => {
   });
 
   it('returns 503 when datasource is not initialized', async () => {
-    AppDataSource.isInitialized = false;
+    (AppDataSource as any).isInitialized = false;
     const app = createApp();
 
     const res = await request(app).get('/health/db');
@@ -26,7 +26,7 @@ describe('Health endpoints', () => {
   });
 
   it('returns 200 when db query succeeds', async () => {
-    AppDataSource.isInitialized = true;
+    (AppDataSource as any).isInitialized = true;
     (AppDataSource.query as jest.Mock).mockResolvedValueOnce([{ '?column?': 1 }]);
     const app = createApp();
 
@@ -36,7 +36,7 @@ describe('Health endpoints', () => {
   });
 
   it('returns 503 when db query fails', async () => {
-    AppDataSource.isInitialized = true;
+    (AppDataSource as any).isInitialized = true;
     (AppDataSource.query as jest.Mock).mockRejectedValueOnce(new Error('DB down'));
     const app = createApp();
 
