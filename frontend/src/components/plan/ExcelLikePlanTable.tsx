@@ -60,30 +60,6 @@ function keyFor(metricCode: string, dayIndex: number): string {
   return `${metricCode}:${dayIndex}`;
 }
 
-function localSavedKey(ctx: Pick<ReportContext, 'segmentCode' | 'year' | 'month'>): string {
-  return `planning-v2:last-saved:${ctx.segmentCode}:${ctx.year}:${ctx.month}`;
-}
-
-function loadLocalSaved(ctx: Pick<ReportContext, 'segmentCode' | 'year' | 'month'>): Date | null {
-  try {
-    const raw = window.localStorage.getItem(localSavedKey(ctx));
-    if (!raw) {
-      return null;
-    }
-    const parsed = new Date(raw);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  } catch {
-    return null;
-  }
-}
-
-function storeLocalSaved(ctx: Pick<ReportContext, 'segmentCode' | 'year' | 'month'>, value: Date): void {
-  try {
-    window.localStorage.setItem(localSavedKey(ctx), value.toISOString());
-  } catch {
-    // ignore storage failures
-  }
-}
 
 function getPlanningWebSocketUrl(): string {
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -253,7 +229,6 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   const [editingValue, setEditingValue] = useState<string>('');
   const [selectedCell, setSelectedCell] = useState<CellCoord>(null);
   const [showDashboard, setShowDashboard] = useState<boolean>(false);
-  const [lastSavedLocal, setLastSavedLocal] = useState<Date | null>(() => loadLocalSaved(desiredContext));
   const [remoteUpdatePending, setRemoteUpdatePending] = useState<boolean>(false);
   const [pendingContext, setPendingContext] = useState<ReportContext | null>(null);
   const [confirmSwitchOpen, setConfirmSwitchOpen] = useState(false);
@@ -275,7 +250,6 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
 
   useEffect(() => {
     contextRef.current = currentContext;
-    setLastSavedLocal(loadLocalSaved(currentContext));
   }, [currentContext]);
 
   useEffect(() => {
@@ -674,9 +648,6 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
       setError(null);
       const ok = await saveDraft();
       if (ok) {
-        const savedAt = new Date();
-        setLastSavedLocal(savedAt);
-        storeLocalSaved(currentContext, savedAt);
         await loadData(currentContext);
       }
     } finally {
