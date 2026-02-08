@@ -267,7 +267,6 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   const cellRefs = useRef<Record<string, HTMLTableCellElement | null>>({});
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const dirtyCount = Object.keys(draft).length;
-  const lastSavedAt = lastSavedLocal;
   const lastSavedServer = useMemo(() => {
     if (!report?.lastUpdatedAt) return null;
     const parsed = new Date(report.lastUpdatedAt);
