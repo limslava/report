@@ -33,7 +33,7 @@ import {
   ChevronRight,
   Close,
 } from '@mui/icons-material';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/auth-store';
 import { canAccessAdmin, canViewFinancialPlan, canViewSummary, canViewTotalsInPlans } from '../utils/rolePermissions';
@@ -43,6 +43,15 @@ import { useServiceHealth } from '../hooks/useServiceHealth';
 
 const expandedDrawerWidth = 280;
 const collapsedDrawerWidth = 86;
+const DEFAULT_IDLE_TIMEOUT_MIN = 60;
+const IDLE_TIMEOUT_MIN = (() => {
+  const raw = Number(import.meta.env.VITE_IDLE_TIMEOUT_MIN);
+  if (!Number.isFinite(raw)) return DEFAULT_IDLE_TIMEOUT_MIN;
+  if (raw <= 0) return DEFAULT_IDLE_TIMEOUT_MIN;
+  return raw;
+})();
+const IDLE_TIMEOUT_MS = IDLE_TIMEOUT_MIN * 60 * 1000;
+const LAST_ACTIVITY_KEY = 'last-activity-at';
 
 const DashboardLayout = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -62,6 +71,7 @@ const DashboardLayout = () => {
   const canViewFinancial = canViewFinancialPlan(user?.role);
   const isAdmin = user?.role === 'admin';
   const serviceHealth = useServiceHealth();
+  const idleTimeoutRef = useRef<number | null>(null);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -118,6 +128,54 @@ const DashboardLayout = () => {
     };
     loadTitle();
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const updateActivity = () => {
+      const now = Date.now();
+      localStorage.setItem(LAST_ACTIVITY_KEY, String(now));
+    };
+
+    const scheduleIdleCheck = () => {
+      if (idleTimeoutRef.current) {
+        window.clearTimeout(idleTimeoutRef.current);
+      }
+      const lastRaw = localStorage.getItem(LAST_ACTIVITY_KEY);
+      const last = lastRaw ? Number(lastRaw) : Date.now();
+      const remaining = Math.max(0, IDLE_TIMEOUT_MS - (Date.now() - last));
+      idleTimeoutRef.current = window.setTimeout(() => {
+        logout();
+        navigate('/login');
+      }, remaining);
+    };
+
+    const handleActivity = () => {
+      updateActivity();
+      scheduleIdleCheck();
+    };
+
+    const lastRaw = localStorage.getItem(LAST_ACTIVITY_KEY);
+    const last = lastRaw ? Number(lastRaw) : Date.now();
+    if (Date.now() - last >= IDLE_TIMEOUT_MS) {
+      logout();
+      navigate('/login');
+      return;
+    }
+
+    scheduleIdleCheck();
+    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach((event) => window.addEventListener(event, handleActivity, { passive: true }));
+
+    return () => {
+      if (idleTimeoutRef.current) {
+        window.clearTimeout(idleTimeoutRef.current);
+      }
+      events.forEach((event) => window.removeEventListener(event, handleActivity));
+    };
+  }, [user, logout, navigate]);
 
 
   const closeUnsavedDialog = () => {

@@ -292,6 +292,14 @@ export class FinancialPlanService {
               const avg = marginValues.reduce((acc, item) => acc + item, 0) / marginValues.length;
               yearTotal = round(avg);
             }
+          } else if (metric.code === 'PRICE_WITH_VAT') {
+            const priceValues = months
+              .map((item) => item.value)
+              .filter((value): value is number => value !== null && value !== undefined);
+            if (priceValues.length > 0) {
+              const avg = priceValues.reduce((acc, item) => acc + item, 0) / priceValues.length;
+              yearTotal = round(avg);
+            }
           } else if (metric.includeYearTotal) {
             const numericValues = months.map((item) => item.value ?? 0);
             const hasAny = months.some((item) => item.value !== null && item.value !== undefined);
@@ -510,6 +518,7 @@ export class FinancialPlanService {
         const total = row.yearTotal === null || row.yearTotal === undefined ? null : row.yearTotal * scale;
         const excelRow = sheet.addRow(['', row.metricLabel ?? '', ...values, total]);
         const shouldHighlight = row.metricCode === 'SALES_WITH_VAT' || row.metricCode === 'FIN_RESULT';
+        const isFinResult = row.metricCode === 'FIN_RESULT';
 
         if (format) {
           for (let idx = 0; idx < 12; idx += 1) {
@@ -535,6 +544,31 @@ export class FinancialPlanService {
           };
           cell.border = thinBorder;
         });
+
+        if (isFinResult) {
+          for (let idx = 0; idx < 12; idx += 1) {
+            const rawValue = row.months?.[idx]?.value;
+            if (rawValue === null || rawValue === undefined) continue;
+            const cell = excelRow.getCell(monthStartCol + idx);
+            cell.font = {
+              ...(cell.font || {}),
+              bold: true,
+              color: {
+                argb: rawValue < 0 ? 'FFD32F2F' : rawValue > 0 ? 'FF1B5E20' : 'FF000000',
+              },
+            };
+          }
+          if (row.yearTotal !== null && row.yearTotal !== undefined) {
+            const totalCell = excelRow.getCell(totalCol);
+            totalCell.font = {
+              ...(totalCell.font || {}),
+              bold: true,
+              color: {
+                argb: row.yearTotal < 0 ? 'FFD32F2F' : row.yearTotal > 0 ? 'FF1B5E20' : 'FF000000',
+              },
+            };
+          }
+        }
 
         updateWidth(2, String(row.metricLabel ?? ''));
         (row.months ?? []).forEach((item, idx) => {

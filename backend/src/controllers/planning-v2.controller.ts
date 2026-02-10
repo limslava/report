@@ -411,7 +411,7 @@ export const exportPlanningDailyExcel = async (req: Request, res: Response, next
       month,
       asOfDate,
       segmentCodes: fullAccess ? segments.map((segment) => segment.code) : [segmentCode as PlanningSegmentCode],
-      includeMonthTotalColumn: !fullAccess,
+      includeMonthTotalColumn: true,
     });
 
     const ddmmyyyy = formatDdMmYyyy(asOfDate);

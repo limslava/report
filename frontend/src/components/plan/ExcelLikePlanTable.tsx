@@ -1047,9 +1047,32 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
                   gap={1.5}
                 >
                   {row.map((card) => (
-                    <Box key={card.label} sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                      <Typography variant="caption" color="text.secondary">{card.label}</Typography>
-                      <Typography variant="body2" fontWeight={600}>
+                    <Box
+                      key={card.label}
+                      sx={{
+                        p: { xs: 1, sm: 1.5 },
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 1,
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {card.label}
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        fontWeight={600}
+                        sx={{ fontSize: { xs: '0.95rem', sm: '1rem' } }}
+                      >
                         {formatDashboardValue(card.value, card.kind)}
                       </Typography>
                     </Box>
@@ -1060,9 +1083,32 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
           ) : (
             <Box display="grid" gridTemplateColumns="repeat(auto-fit, minmax(220px, 1fr))" gap={1.5}>
               {dashboardCards.map((card) => (
-                <Box key={card.label} sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                  <Typography variant="caption" color="text.secondary">{card.label}</Typography>
-                  <Typography variant="body2" fontWeight={600}>
+                <Box
+                  key={card.label}
+                  sx={{
+                    p: { xs: 1, sm: 1.5 },
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {card.label}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    fontWeight={600}
+                    sx={{ fontSize: { xs: '0.95rem', sm: '1rem' } }}
+                  >
                     {formatDashboardValue(card.value, card.kind)}
                   </Typography>
                 </Box>

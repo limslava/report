@@ -9,6 +9,8 @@ export interface User {
   role: string;
 }
 
+const LAST_ACTIVITY_KEY = 'last-activity-at';
+
 interface AuthState {
   token: string | null;
   user: User | null;
@@ -22,8 +24,22 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       token: null,
       user: null,
-      login: (token, user) => set({ token, user }),
-      logout: () => set({ token: null, user: null }),
+      login: (token, user) => {
+        try {
+          localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
+        } catch {
+          // ignore storage errors
+        }
+        set({ token, user });
+      },
+      logout: () => {
+        try {
+          localStorage.removeItem(LAST_ACTIVITY_KEY);
+        } catch {
+          // ignore storage errors
+        }
+        set({ token: null, user: null });
+      },
       updateUser: (updated) =>
         set((state) => ({
           user: state.user ? { ...state.user, ...updated } : null,

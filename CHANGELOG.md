@@ -17,6 +17,9 @@
 - UI
   - Settings tabs updated: "Почта" separate from "Уведомления".
   - Financial plan header alignment tweaks.
+  - Excel exports: removed "Факт за месяц" from dashboard block.
+- Финансовый план
+  - «Цена с НДС, руб/шт» теперь считает итог за год как среднее арифметическое по месяцам.
 - Security & ops
   - Redact sensitive fields in error logs.
   - Added `TRUST_PROXY` support.

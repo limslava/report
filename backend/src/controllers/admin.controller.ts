@@ -294,18 +294,23 @@ export const deleteUser = async (req: Request, res: Response, next: NextFunction
 
 export const getAuditLog = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { userId, action, startDate, endDate, limit } = req.query;
+    const { userId, action, startDate, endDate, limit, tzOffsetMinutes } = req.query;
     const where: any = {};
 
     if (userId) where.userId = String(userId);
     if (action) where.action = String(action);
 
+    const offsetMinutesRaw = Number(tzOffsetMinutes);
+    const offsetMinutes = Number.isFinite(offsetMinutesRaw) ? offsetMinutesRaw : 0;
+
     const normalizeDate = (value: string, mode: 'start' | 'end') => {
       const trimmed = value.trim();
       if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-        return mode === 'start'
-          ? new Date(`${trimmed}T00:00:00.000Z`)
-          : new Date(`${trimmed}T23:59:59.999Z`);
+        const [year, month, day] = trimmed.split('-').map(Number);
+        const baseUtc = mode === 'start'
+          ? Date.UTC(year, month - 1, day, 0, 0, 0, 0)
+          : Date.UTC(year, month - 1, day, 23, 59, 59, 999);
+        return new Date(baseUtc + offsetMinutes * 60_000);
       }
       return new Date(trimmed);
     };

@@ -827,6 +827,7 @@ export default function FinancialPlanTable({ year, onYearChange, canEdit }: Fina
                 const isStriped = metricRowIndex % 2 === 0;
                 metricRowIndex += 1;
                 const isAutoHighlight = row.metricCode === 'SALES_WITH_VAT' || row.metricCode === 'FIN_RESULT';
+                const isFinResultRow = row.metricCode === 'FIN_RESULT';
                 const rowBg = isAutoHighlight ? highlightRowBg : (isStriped ? rowBgStriped : rowBgDefault);
                 return (
                   <TableRow key={row.rowId} sx={{ backgroundColor: rowBg }}>
@@ -868,6 +869,12 @@ export default function FinancialPlanTable({ year, onYearChange, canEdit }: Fina
                         selectedCell?.month === month &&
                         !isEditing;
                       const value = getDraftValue(row, month);
+                      const finResultColor =
+                        isFinResultRow && value !== null && value !== undefined
+                          ? (value < 0 ? 'error.main' : value > 0 ? 'success.dark' : 'inherit')
+                          : 'inherit';
+                      const finResultFontWeight =
+                        isFinResultRow && value !== null && value !== undefined ? 700 : 400;
                       const cellBg = isAutoHighlight ? highlightRowBg : (row.editable ? rowBg : highlightRowBg);
                       const cellKey = makeDraftKey(row.rowId, month);
                       const monthBorder = {
@@ -897,10 +904,14 @@ export default function FinancialPlanTable({ year, onYearChange, canEdit }: Fina
                                   outline: isSelected ? '2px solid' : 'none',
                                   outlineColor: 'primary.main',
                                   outlineOffset: '-2px',
+                                  color: finResultColor,
+                                  fontWeight: finResultFontWeight,
                                 }
                               : {
                                   backgroundColor: cellBg,
                                   ...monthBorder,
+                                  color: finResultColor,
+                                  fontWeight: finResultFontWeight,
                                 }
                           }
                           onDoubleClick={isEditable ? () => startEdit(row, month) : undefined}
@@ -1016,6 +1027,12 @@ export default function FinancialPlanTable({ year, onYearChange, canEdit }: Fina
                         borderLeft: '2px dotted',
                         borderLeftColor: 'divider',
                         backgroundColor: isAutoHighlight ? highlightRowBg : (row.editable ? rowBg : highlightRowBg),
+                        color:
+                          isFinResultRow && row.yearTotal !== null && row.yearTotal !== undefined
+                            ? (row.yearTotal < 0 ? 'error.main' : row.yearTotal > 0 ? 'success.dark' : 'inherit')
+                            : 'inherit',
+                        fontWeight:
+                          isFinResultRow && row.yearTotal !== null && row.yearTotal !== undefined ? 700 : 400,
                       }}
                     >
                       {row.yearTotal !== null && row.yearTotal !== undefined ? formatValue(row.yearTotal, row.valueType) : ''}

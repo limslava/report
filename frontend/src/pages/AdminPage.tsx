@@ -252,6 +252,7 @@ const AdminPage = () => {
       if (auditFilters.startDate) params.startDate = auditFilters.startDate;
       if (auditFilters.endDate) params.endDate = auditFilters.endDate;
       if (auditFilters.limit) params.limit = auditFilters.limit;
+      params.tzOffsetMinutes = new Date().getTimezoneOffset();
       const response = await getAuditLog(params);
       setAuditLogs(Array.isArray(response.data) ? response.data : []);
     } catch (err: any) {
@@ -520,9 +521,10 @@ const AdminPage = () => {
                         label={row.value ?? '—'}
                         size="small"
                         color={row.value === 'OK' ? 'success' : row.value === 'DOWN' ? 'error' : 'default'}
+                        sx={{ fontSize: '0.75rem', height: 22 }}
                       />
                     ) : (
-                      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      <Typography sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
                         {row.value ?? '—'}
                       </Typography>
                     )}
