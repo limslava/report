@@ -45,6 +45,9 @@ const LoginPage = () => {
 
   useEffect(() => {
     if (!retryAfterSec || retryAfterSec <= 0) {
+      if (error.startsWith('Слишком много попыток входа.')) {
+        setError('');
+      }
       return;
     }
     const timer = window.setInterval(() => {
@@ -57,7 +60,7 @@ const LoginPage = () => {
       });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [retryAfterSec]);
+  }, [retryAfterSec, error]);
 
   const formatRetryAfter = (seconds: number) => {
     const min = Math.floor(seconds / 60);
