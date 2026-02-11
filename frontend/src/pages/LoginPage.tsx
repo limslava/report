@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -22,9 +22,51 @@ const LoginPage = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [retryAfterSec, setRetryAfterSec] = useState<number | null>(null);
+  const retryUntilKey = 'login-retry-until';
   const navigate = useNavigate();
   const { login: setAuth } = useAuthStore();
   const serviceHealth = useServiceHealth();
+
+  useEffect(() => {
+    const stored = localStorage.getItem(retryUntilKey);
+    if (stored) {
+      const retryUntil = Number(stored);
+      if (Number.isFinite(retryUntil) && retryUntil > Date.now()) {
+        const remaining = Math.ceil((retryUntil - Date.now()) / 1000);
+        if (remaining > 0) {
+          setRetryAfterSec(remaining);
+        }
+      } else {
+        localStorage.removeItem(retryUntilKey);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!retryAfterSec || retryAfterSec <= 0) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setRetryAfterSec((prev) => {
+        if (!prev || prev <= 1) {
+          localStorage.removeItem(retryUntilKey);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [retryAfterSec]);
+
+  const formatRetryAfter = (seconds: number) => {
+    const min = Math.floor(seconds / 60);
+    const sec = seconds % 60;
+    if (min > 0) {
+      return `${min}м ${String(sec).padStart(2, '0')}с`;
+    }
+    return `${sec}с`;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,6 +86,8 @@ const LoginPage = () => {
         throw new Error('Неверная структура данных пользователя');
       }
 
+      localStorage.removeItem(retryUntilKey);
+      setRetryAfterSec(null);
       setAuth(token, user as User);
       navigate('/');
     } catch (err: unknown) {
@@ -53,6 +97,19 @@ const LoginPage = () => {
         const status = axiosError.response?.status;
         if (status === 400 || status === 401 || status === 403) {
           errorMessage = 'Логин или пароль неверный';
+        } else if (status === 429) {
+          const retry = Number(
+            axiosError.response?.data?.retryAfterSec
+              ?? axiosError.response?.headers?.['retry-after']
+          );
+          if (Number.isFinite(retry) && retry > 0) {
+            const retrySeconds = Math.ceil(retry);
+            setRetryAfterSec(retrySeconds);
+            localStorage.setItem(retryUntilKey, String(Date.now() + retrySeconds * 1000));
+            errorMessage = `Слишком много попыток входа. Попробуйте снова через ${formatRetryAfter(Math.ceil(retry))}.`;
+          } else {
+            errorMessage = 'Слишком много попыток входа. Попробуйте снова позже.';
+          }
         } else {
           errorMessage = axiosError.response?.data?.error || errorMessage;
         }
@@ -117,7 +174,9 @@ const LoginPage = () => {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             error={Boolean(error)}
-            helperText={error || ' '}
+            helperText={retryAfterSec && retryAfterSec > 0
+              ? `Слишком много попыток входа. Попробуйте снова через ${formatRetryAfter(retryAfterSec)}.`
+              : error || ' '}
             required
           />
           <Box sx={{ mt: 3 }}>
@@ -126,7 +185,7 @@ const LoginPage = () => {
               variant="contained"
               fullWidth
               size="large"
-              disabled={loading}
+              disabled={loading || Boolean(retryAfterSec && retryAfterSec > 0)}
             >
               {loading ? 'Вход...' : 'Войти'}
             </Button>

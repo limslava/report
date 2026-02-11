@@ -105,6 +105,8 @@ export class PlanningV2Service {
         this.metricSeed('auto_total_waiting', 'Итого - В ожидании', false, PlanningMetricValueType.INT, PlanningMetricAggregation.FORMULA, 'AUTO_TOTAL_WAITING', 120),
         this.metricSeed('auto_manual_debt_overload', 'Задолженность перегруз (₽)', true, PlanningMetricValueType.CURRENCY, PlanningMetricAggregation.LAST, null, 200),
         this.metricSeed('auto_manual_debt_cashback', 'Задолженность кэшбек (₽)', true, PlanningMetricValueType.CURRENCY, PlanningMetricAggregation.LAST, null, 210),
+        this.metricSeed('auto_debt_unpaid', 'ДЗ (не оплаченная) (₽)', true, PlanningMetricValueType.CURRENCY, PlanningMetricAggregation.LAST, null, 220),
+        this.metricSeed('auto_debt_paid_cards', 'ДЗ (оплачено на карты) (₽)', true, PlanningMetricValueType.CURRENCY, PlanningMetricAggregation.LAST, null, 230),
       ],
       [PlanningSegmentCode.RAIL]: [
         this.metricSeed('rail_from_vvo_20', 'Из Владивостока - 20', true, PlanningMetricValueType.INT, PlanningMetricAggregation.SUM, null, 10),

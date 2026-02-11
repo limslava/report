@@ -8,9 +8,9 @@ import { ROLE_VALUES } from '../constants/role-definitions';
 
 const router = Router();
 const loginRateLimiter = createRateLimiter({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 5 * 60 * 1000,
   max: 10,
-  message: 'Слишком много попыток входа. Повторите позже.',
+  message: 'Слишком много попыток входа. Попробуйте снова через',
 });
 const forgotPasswordRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,

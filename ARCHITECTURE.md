@@ -86,7 +86,10 @@
 - `daysInMonth` — количество дней в месяце.
 - `completedDays` — завершенные дни: `day(asOfDate) - 1`.
 - `planMonth` — месячный план (обычно `carryPlan`, если есть; иначе `basePlan`).
-- `planToDate` — план на дату: `(planMonth / daysInMonth) * completedDays`.
+- `planToDate` — план на дату:
+  - прошлые месяцы: `planToDate = planMonth`
+  - будущие месяцы: `planToDate = 0`
+  - текущий месяц: `(planMonth / daysInMonth) * completedDays`.
 - `factToDate` — сумма факта за дни `1..completedDays`.
 - `monthFact` — сумма факта за весь месяц.
 
@@ -187,6 +190,7 @@
 
 - **Аутентификация** – JWT с сроком жизни 7 дней.
 - **Авторизация** – ролевая модель (admin, director, financer, manager_sales, manager_*). Роль определяет доступ к сегменту/направлению, отдельного поля `department` у пользователя нет.
+- **Email report types** – `planning_v2_segment`, `sv_pdf`, `monthly_final` (итоговый СВ за прошлый месяц).
 - **Регистрация** – по умолчанию закрыта (`INVITE_ONLY=true`), пользователи добавляются через админ‑приглашения.
 - **Валидация** – все входящие данные проверяются на стороне сервера.
 - **HTTPS** – обязателен в продакшене (через Nginx + Let's Encrypt).

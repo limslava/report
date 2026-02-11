@@ -186,7 +186,12 @@ export class PlanningV2ReportService {
       Math.min(Math.max(asOfDate.getTime(), monthStart.getTime()), monthEnd.getTime())
     );
 
-    const completedDays = clamp(effectiveAsOf.getUTCDate() - 1, 0, daysInMonth);
+    let completedDays = clamp(effectiveAsOf.getUTCDate() - 1, 0, daysInMonth);
+    if (asOfDate.getTime() <= monthStart.getTime()) {
+      completedDays = 0;
+    } else if (asOfDate.getTime() >= monthEnd.getTime()) {
+      completedDays = daysInMonth;
+    }
 
     const dailyRows = await this.valuesRepo
       .createQueryBuilder('value')
@@ -679,6 +684,8 @@ export class PlanningV2ReportService {
 
       const debtOverload = lastUntil(valuesByMetric.get('auto_manual_debt_overload') ?? [], dataDays);
       const debtCashback = lastUntil(valuesByMetric.get('auto_manual_debt_cashback') ?? [], dataDays);
+      const debtUnpaid = lastUntil(valuesByMetric.get('auto_debt_unpaid') ?? [], dataDays);
+      const debtPaidCards = lastUntil(valuesByMetric.get('auto_debt_paid_cards') ?? [], dataDays);
 
       const factToDate = truckFactToDate + ktkFactToDate;
       const planMonth = planTruckMonth + planKtkMonth;
@@ -716,6 +723,8 @@ export class PlanningV2ReportService {
         waitingCurtain,
         debtOverload,
         debtCashback,
+        debtUnpaid,
+        debtPaidCards,
       };
     }
 

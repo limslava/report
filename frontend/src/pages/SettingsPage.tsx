@@ -668,13 +668,19 @@ const SettingsPage = () => {
                       primary={
                         schedule.schedule?.reportType === 'sv_pdf'
                           ? `${frequencyLabels[schedule.frequency] ?? schedule.frequency} • ${schedule.schedule?.time ?? '--:--'} • СВ отчет`
-                          : `${frequencyLabels[schedule.frequency] ?? schedule.frequency} • ${schedule.schedule?.time ?? '--:--'} • ${departmentLabels[schedule.department] ?? schedule.department}`
+                          : schedule.schedule?.reportType === 'monthly_final'
+                            ? `${frequencyLabels[schedule.frequency] ?? schedule.frequency} • ${schedule.schedule?.time ?? '--:--'} • СВ за месяц`
+                            : `${frequencyLabels[schedule.frequency] ?? schedule.frequency} • ${schedule.schedule?.time ?? '--:--'} • ${departmentLabels[schedule.department] ?? schedule.department}`
                       }
                       secondary={
                         <>
                           {`Получатели: ${(schedule.recipients ?? []).join(', ')}`}
                           {' • '}
-                          {schedule.schedule?.reportType === 'sv_pdf' ? 'Отчет: СВ (Excel из данных)' : 'Отчет: Планирование v2'}
+                          {schedule.schedule?.reportType === 'sv_pdf'
+                            ? 'Отчет: СВ (Excel из данных)'
+                            : schedule.schedule?.reportType === 'monthly_final'
+                              ? 'Отчет: СВ за месяц (итоговый)'
+                              : 'Отчет: Планирование v2'}
                           {schedule.frequency === 'weekly' && (schedule.schedule?.daysOfWeek ?? []).length > 0
                             ? ` • Дни: ${(schedule.schedule?.daysOfWeek ?? [])
                                 .map((d: number) => (['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][d - 1] ?? String(d)))
@@ -723,10 +729,17 @@ const SettingsPage = () => {
                     label="Тип отчета"
                     size="small"
                     value={newSchedule.reportType}
-                    onChange={(e) => setNewSchedule((prev) => ({ ...prev, reportType: e.target.value }))}
+                    onChange={(e) =>
+                      setNewSchedule((prev) => ({
+                        ...prev,
+                        reportType: e.target.value,
+                        frequency: e.target.value === 'monthly_final' ? 'monthly' : prev.frequency,
+                      }))
+                    }
                   >
                     <MenuItem value="planning_v2_segment">Планирование v2 по сегменту</MenuItem>
                     <MenuItem value="sv_pdf">СВ (Excel из данных системы)</MenuItem>
+                    <MenuItem value="monthly_final">СВ за месяц (итоговый)</MenuItem>
                   </TextField>
                   <TextField
                     select
@@ -734,7 +747,7 @@ const SettingsPage = () => {
                     size="small"
                     value={newSchedule.department}
                     onChange={(e) => setNewSchedule((prev) => ({ ...prev, department: e.target.value }))}
-                    disabled={newSchedule.reportType === 'sv_pdf'}
+                    disabled={newSchedule.reportType !== 'planning_v2_segment'}
                   >
                     <MenuItem value="container_vladivostok">КТК Владивосток</MenuItem>
                     <MenuItem value="container_moscow">КТК Москва</MenuItem>
@@ -749,6 +762,7 @@ const SettingsPage = () => {
                     size="small"
                     value={newSchedule.frequency}
                     onChange={(e) => setNewSchedule((prev) => ({ ...prev, frequency: e.target.value }))}
+                    disabled={newSchedule.reportType === 'monthly_final'}
                   >
                     <MenuItem value="daily">Ежедневно</MenuItem>
                     <MenuItem value="weekly">Еженедельно</MenuItem>

@@ -264,6 +264,8 @@ describe('PlanningV2ReportService dashboard', () => {
       auto_curtain_waiting: [1, 1, 1],
       auto_manual_debt_overload: [100, 110, 120],
       auto_manual_debt_cashback: [50, 55, 60],
+      auto_debt_unpaid: [70, 80, 90],
+      auto_debt_paid_cards: [10, 20, 30],
     });
 
     const monthlyPlan = createMonthlyPlan([
@@ -286,6 +288,8 @@ describe('PlanningV2ReportService dashboard', () => {
     expect(dashboard.waitingTotal).toBe(8);
     expect(dashboard.debtOverload).toBe(120);
     expect(dashboard.debtCashback).toBe(60);
+    expect(dashboard.debtUnpaid).toBe(90);
+    expect(dashboard.debtPaidCards).toBe(30);
   });
 
   it('calculates KTK dashboard with zero completed days', () => {

@@ -148,11 +148,11 @@ function buildDashboardCards(segmentCode: ExcelLikePlanTableProps['segmentCode']
   if (segmentCode === 'AUTO') {
     const truck = asRecord(dashboard.truck);
     const ktk = asRecord(dashboard.ktk);
-      return [
-        { label: 'План месяц (автовоз + шторы)', value: truck.planMonth },
-        { label: 'План на дату (автовоз + шторы)', value: truck.planToDate },
-        { label: 'Выполнение на дату (автовоз + шторы)', value: truck.factToDate },
-        { label: 'Выполнение % на дату (автовоз + шторы)', value: truck.completionToDatePct, kind: 'percent' },
+    return [
+      { label: 'План месяц (автовоз + шторы)', value: truck.planMonth },
+      { label: 'План на дату (автовоз + шторы)', value: truck.planToDate },
+      { label: 'Выполнение на дату (автовоз + шторы)', value: truck.factToDate },
+      { label: 'Выполнение % на дату (автовоз + шторы)', value: truck.completionToDatePct, kind: 'percent' },
       { label: 'План месяц (авто в ктк)', value: ktk.planMonth },
       { label: 'План на дату (авто в ктк)', value: ktk.planToDate },
       { label: 'Выполнение на дату (авто в ктк)', value: ktk.factToDate },
@@ -162,6 +162,8 @@ function buildDashboardCards(segmentCode: ExcelLikePlanTableProps['segmentCode']
       { label: 'В ожидании отгрузки Штора', value: dashboard.waitingCurtain },
       { label: 'Задолженность перегруз', value: dashboard.debtOverload, kind: 'currency' },
       { label: 'Задолженность кэшбек', value: dashboard.debtCashback, kind: 'currency' },
+      { label: 'ДЗ (не оплаченная)', value: dashboard.debtUnpaid, kind: 'currency' },
+      { label: 'ДЗ (оплачено на карты)', value: dashboard.debtPaidCards, kind: 'currency' },
     ];
   }
 
@@ -199,7 +201,8 @@ function buildDashboardRows(segmentCode: ExcelLikePlanTableProps['segmentCode'],
   return [
     cards.slice(0, 4),
     cards.slice(4, 8),
-    cards.slice(8, 13),
+    cards.slice(8, 12),
+    cards.slice(12, 16),
   ];
 }
 
@@ -457,7 +460,22 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
     });
   }, [report?.daysInMonth, currentContext.year, currentContext.month]);
 
-  const rows: PlanningGridRow[] = report?.gridRows ?? [];
+  const hideSalesDebts = segmentCode === 'AUTO' && user?.role === 'manager_sales';
+  const hiddenDebtMetricCodes = new Set([
+    'auto_manual_debt_overload',
+    'auto_manual_debt_cashback',
+    'auto_debt_unpaid',
+    'auto_debt_paid_cards',
+  ]);
+  const hiddenDebtLabels = new Set([
+    'Задолженность перегруз',
+    'Задолженность кэшбек',
+    'ДЗ (не оплаченная)',
+    'ДЗ (оплачено на карты)',
+  ]);
+
+  const rows: PlanningGridRow[] = (report?.gridRows ?? [])
+    .filter((row) => !(hideSalesDebts && hiddenDebtMetricCodes.has(row.metricCode)));
   const rowByMetric = useMemo(() => {
     const map = new Map<string, PlanningGridRow>();
     rows.forEach((row) => map.set(row.metricCode, row));
@@ -677,7 +695,8 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
     }
   };
 
-  const dashboardCards = buildDashboardCards(segmentCode, asRecord(report?.dashboard));
+  const dashboardCards = buildDashboardCards(segmentCode, asRecord(report?.dashboard))
+    .filter((card) => !(hideSalesDebts && hiddenDebtLabels.has(card.label)));
   const dashboardRows = buildDashboardRows(segmentCode, dashboardCards);
   const compactMode = true;
   const monthOptions = [

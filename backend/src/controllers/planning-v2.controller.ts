@@ -406,12 +406,17 @@ export const exportPlanningDailyExcel = async (req: Request, res: Response, next
       }
     }
 
+    const hideSalesDebts = user.role === 'manager_sales';
     const buffer = await buildPlanningDailyExcel({
       year,
       month,
       asOfDate,
       segmentCodes: fullAccess ? segments.map((segment) => segment.code) : [segmentCode as PlanningSegmentCode],
       includeMonthTotalColumn: true,
+      includeAutoDebtRows: !hideSalesDebts,
+      excludeMetricCodes: hideSalesDebts
+        ? ['auto_manual_debt_overload', 'auto_manual_debt_cashback', 'auto_debt_unpaid', 'auto_debt_paid_cards']
+        : undefined,
     });
 
     const ddmmyyyy = formatDdMmYyyy(asOfDate);

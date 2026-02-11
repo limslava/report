@@ -22,7 +22,7 @@ export class EmailSchedule {
     time: string; // '09:00'
     daysOfWeek?: number[]; // 1-7 для weekly
     dayOfMonth?: number; // 1-31 для monthly
-    reportType?: 'sv_pdf' | 'planning_v2_segment';
+    reportType?: 'sv_pdf' | 'planning_v2_segment' | 'monthly_final';
     timezone?: string; // IANA TZ, e.g. Asia/Vladivostok
   };
 

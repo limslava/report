@@ -18,6 +18,10 @@
   - Settings tabs updated: "Почта" separate from "Уведомления".
   - Financial plan header alignment tweaks.
   - Excel exports: removed "Факт за месяц" from dashboard block.
+  - AUTO: added debt fields (unpaid / paid to cards) and hide debt rows for `manager_sales` in UI/Excel.
+- Reports & scheduler
+  - Added `monthly_final` schedule type (СВ за месяц, итоговый).
+  - Plan-to-date for past months equals month plan; future months show zero.
 - Финансовый план
   - «Цена с НДС, руб/шт» теперь считает итог за год как среднее арифметическое по месяцам.
 - Security & ops

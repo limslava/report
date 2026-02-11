@@ -38,6 +38,20 @@ const DEFAULT_SEGMENT_ORDER: PlanningSegmentCode[] = [
 
 const WEEK_DAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const DEFAULT_TZ = process.env.SCHEDULER_TIMEZONE || 'Asia/Vladivostok';
+const MONTH_NAMES_RU = [
+  'Январь',
+  'Февраль',
+  'Март',
+  'Апрель',
+  'Май',
+  'Июнь',
+  'Июль',
+  'Август',
+  'Сентябрь',
+  'Октябрь',
+  'Ноябрь',
+  'Декабрь',
+];
 
 const COLORS = {
   sectionTitle: 'FFE6E6E6',
@@ -47,7 +61,7 @@ const COLORS = {
   dashboard: 'FFEDEDED',
 };
 
-type ReportType = 'sv_pdf' | 'planning_v2_segment';
+type ReportType = 'sv_pdf' | 'planning_v2_segment' | 'monthly_final';
 
 const normalizeReportType = (value: unknown): ReportType => {
   // Backward compatibility for schedules created before cleanup.
@@ -55,6 +69,7 @@ const normalizeReportType = (value: unknown): ReportType => {
     return 'planning_v2_segment';
   }
   if (value === 'sv_pdf') return 'sv_pdf';
+  if (value === 'monthly_final') return 'monthly_final';
   return 'planning_v2_segment';
 };
 
@@ -255,6 +270,38 @@ export const sendScheduledEmailNow = async (schedule: EmailSchedule) => {
   const reportType = normalizeReportType(schedule.schedule?.reportType);
 
   try {
+    if (reportType === 'monthly_final') {
+      const prevMonthDate = new Date(Date.UTC(year, month - 2, 1));
+      const prevYear = prevMonthDate.getUTCFullYear();
+      const prevMonth = prevMonthDate.getUTCMonth() + 1;
+      const lastDayPrevMonth = new Date(Date.UTC(prevYear, prevMonth, 0)).getUTCDate();
+      const prevMonthLabel = `${MONTH_NAMES_RU[prevMonth - 1]} ${prevYear}`;
+      const prevMonthAsOf = `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(lastDayPrevMonth).padStart(2, '0')}`;
+      const prevMonthDdMm = `${String(lastDayPrevMonth).padStart(2, '0')}.${String(prevMonth).padStart(2, '0')}.${prevYear}`;
+
+      const content = await buildSvExcelFromData(prevYear, prevMonth, prevMonthAsOf);
+      await sendEmailWithAttachment(
+        schedule.recipients,
+        `СВ за ${prevMonthLabel}`,
+        [
+          '<p>Уважаемые коллеги,</p>',
+          `<p>Итоговый отчет за ${prevMonthLabel} во вложении.</p>`,
+          `<p><strong>Период:</strong> ${prevMonthLabel}</p>`,
+          `<p><strong>Дата отчёта:</strong> ${prevMonthDdMm}</p>`,
+          '<p>Отчёт сгенерирован автоматически системой мониторинга логистики.</p>',
+          '<p>© 2026 Система управления логистикой и отчётности</p>',
+          '<p>Это письмо отправлено автоматически, пожалуйста, не отвечайте на него.</p>',
+        ].join(''),
+        {
+          filename: `СВ - ${String(prevMonth).padStart(2, '0')}.${prevYear}.xlsx`,
+          content,
+          contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        }
+      );
+      logger.info(`Monthly final SV Excel sent for ${prevMonthLabel}`);
+      return;
+    }
+
     if (reportType === 'sv_pdf') {
       const content = await buildSvExcelFromData(year, month, date);
       await sendEmailWithAttachment(
@@ -352,6 +399,8 @@ type DailyExportOptions = {
   asOfDate: string;
   segmentCodes?: PlanningSegmentCode[];
   includeMonthTotalColumn?: boolean;
+  excludeMetricCodes?: string[];
+  includeAutoDebtRows?: boolean;
 };
 
 type TotalsExportOptions = {
@@ -408,7 +457,14 @@ function resolveSegmentOrder(segmentCodes?: PlanningSegmentCode[]): PlanningSegm
 }
 
 async function fillDailyReportSheet(sheet: ExcelJS.Worksheet, options: DailyExportOptions): Promise<void> {
-  const { year, month, asOfDate, includeMonthTotalColumn = true } = options;
+  const {
+    year,
+    month,
+    asOfDate,
+    includeMonthTotalColumn = true,
+    excludeMetricCodes,
+    includeAutoDebtRows,
+  } = options;
   const daysInMonth = new Date(year, month, 0).getDate();
   const segmentOrder = resolveSegmentOrder(options.segmentCodes);
 
@@ -420,7 +476,11 @@ async function fillDailyReportSheet(sheet: ExcelJS.Worksheet, options: DailyExpo
       month,
       asOfDate,
     });
-    cursor = appendSegmentReportBlock(sheet, report, year, month, cursor, { includeMonthTotalColumn });
+    cursor = appendSegmentReportBlock(sheet, report, year, month, cursor, {
+      includeMonthTotalColumn,
+      excludeMetricCodes,
+      includeAutoDebtRows,
+    });
     cursor += 2;
   }
 
@@ -535,6 +595,8 @@ function normalizeMetricName(metricCode: string, name: string): string {
     auto_total_waiting: 'Итого - В ожидании',
     auto_manual_debt_overload: 'Задолженность перегруз (₽)',
     auto_manual_debt_cashback: 'Задолженность кэшбек (₽)',
+    auto_debt_unpaid: 'ДЗ (не оплаченная) (₽)',
+    auto_debt_paid_cards: 'ДЗ (оплачено на карты) (₽)',
     rail_from_vvo_20: 'Из Владивостока - 20',
     rail_from_vvo_40: 'Из Владивостока - 40',
     rail_from_vvo_total: 'Из Владивостока - Итого',
@@ -588,6 +650,8 @@ function totalsSortOrder(row: any): number {
 
 type SegmentBlockOptions = {
   includeMonthTotalColumn?: boolean;
+  excludeMetricCodes?: string[];
+  includeAutoDebtRows?: boolean;
 };
 
 function appendSegmentReportBlock(
@@ -599,6 +663,8 @@ function appendSegmentReportBlock(
   options: SegmentBlockOptions = {}
 ): number {
   const includeMonthTotalColumn = options.includeMonthTotalColumn ?? true;
+  const excludeMetricCodes = new Set(options.excludeMetricCodes ?? []);
+  const includeAutoDebtRows = options.includeAutoDebtRows ?? true;
   const blockStartCol = 1;
   const dataEndCol = report.daysInMonth + (includeMonthTotalColumn ? 2 : 1);
   const spacerCol = dataEndCol + 1;
@@ -642,7 +708,9 @@ function appendSegmentReportBlock(
   headerRow.commit();
 
   let rowCursor = startRow + 2;
-  report.gridRows.forEach((row: any) => {
+  report.gridRows
+    .filter((row: any) => !excludeMetricCodes.has(row.metricCode))
+    .forEach((row: any) => {
     const dataRow = sheet.getRow(rowCursor);
     dataRow.height = 20;
     dataRow.getCell(1).value = normalizeMetricName(row.metricCode, row.name);
@@ -668,10 +736,17 @@ function appendSegmentReportBlock(
       });
     }
     dataRow.commit();
-    rowCursor += 1;
-  });
+      rowCursor += 1;
+    });
 
-  const dashboardHeight = writeDashboardInline(sheet, report.segment.code, report.dashboard || {}, startRow, dashboardStartCol);
+  const dashboardHeight = writeDashboardInline(
+    sheet,
+    report.segment.code,
+    report.dashboard || {},
+    startRow,
+    dashboardStartCol,
+    includeAutoDebtRows
+  );
 
   const blockEndRow = Math.max(rowCursor - 1, startRow + dashboardHeight - 1);
   applyDottedGridRange(sheet, startRow, blockEndRow, 1, dataEndCol);
@@ -692,7 +767,8 @@ function writeDashboardInline(
   segmentCode: PlanningSegmentCode,
   dashboard: Record<string, unknown>,
   startRow: number,
-  startCol: number
+  startCol: number,
+  includeAutoDebtRows = true
 ): number {
   if (segmentCode === PlanningSegmentCode.AUTO) {
     const truck = (dashboard.truck || {}) as Record<string, unknown>;
@@ -730,22 +806,40 @@ function writeDashboardInline(
       row.commit();
     });
 
-    const debtStart = startRow + 1 + rows.length + 1;
-    const debtOverloadRow = sheet.getRow(debtStart);
-    debtOverloadRow.getCell(startCol).value = 'Задолженность перегруз (₽)';
-    debtOverloadRow.getCell(startCol + 1).value = Number(dashboard.debtOverload ?? 0);
-    debtOverloadRow.getCell(startCol + 1).numFmt = '#,##0';
-    debtOverloadRow.getCell(startCol + 1).alignment = { horizontal: 'center' };
-    debtOverloadRow.commit();
+    if (includeAutoDebtRows) {
+      const debtStart = startRow + 1 + rows.length + 1;
+      const debtOverloadRow = sheet.getRow(debtStart);
+      debtOverloadRow.getCell(startCol).value = 'Задолженность перегруз (₽)';
+      debtOverloadRow.getCell(startCol + 1).value = Number(dashboard.debtOverload ?? 0);
+      debtOverloadRow.getCell(startCol + 1).numFmt = '#,##0';
+      debtOverloadRow.getCell(startCol + 1).alignment = { horizontal: 'center' };
+      debtOverloadRow.commit();
 
-    const debtCashbackRow = sheet.getRow(debtStart + 1);
-    debtCashbackRow.getCell(startCol).value = 'Задолженность кэшбек (₽)';
-    debtCashbackRow.getCell(startCol + 1).value = Number(dashboard.debtCashback ?? 0);
-    debtCashbackRow.getCell(startCol + 1).numFmt = '#,##0';
-    debtCashbackRow.getCell(startCol + 1).alignment = { horizontal: 'center' };
-    debtCashbackRow.commit();
+      const debtCashbackRow = sheet.getRow(debtStart + 1);
+      debtCashbackRow.getCell(startCol).value = 'Задолженность кэшбек (₽)';
+      debtCashbackRow.getCell(startCol + 1).value = Number(dashboard.debtCashback ?? 0);
+      debtCashbackRow.getCell(startCol + 1).numFmt = '#,##0';
+      debtCashbackRow.getCell(startCol + 1).alignment = { horizontal: 'center' };
+      debtCashbackRow.commit();
 
-    return 1 + rows.length + 1 + 2;
+      const debtUnpaidRow = sheet.getRow(debtStart + 2);
+      debtUnpaidRow.getCell(startCol).value = 'ДЗ (не оплаченная) (₽)';
+      debtUnpaidRow.getCell(startCol + 1).value = Number(dashboard.debtUnpaid ?? 0);
+      debtUnpaidRow.getCell(startCol + 1).numFmt = '#,##0';
+      debtUnpaidRow.getCell(startCol + 1).alignment = { horizontal: 'center' };
+      debtUnpaidRow.commit();
+
+      const debtPaidCardsRow = sheet.getRow(debtStart + 3);
+      debtPaidCardsRow.getCell(startCol).value = 'ДЗ (оплачено на карты) (₽)';
+      debtPaidCardsRow.getCell(startCol + 1).value = Number(dashboard.debtPaidCards ?? 0);
+      debtPaidCardsRow.getCell(startCol + 1).numFmt = '#,##0';
+      debtPaidCardsRow.getCell(startCol + 1).alignment = { horizontal: 'center' };
+      debtPaidCardsRow.commit();
+
+      return 1 + rows.length + 1 + 4;
+    }
+
+    return 1 + rows.length;
   }
 
   const rows = toDashboardRows(segmentCode, dashboard);
@@ -792,7 +886,9 @@ function toDashboardRows(
       { key: 'waitingKtk', label: 'В ожидании - Авто в ктк', kind: 'integer' },
       { key: 'waitingCurtain', label: 'В ожидании - Шторы', kind: 'integer' },
       { key: 'debtOverload', label: 'Задолженность перегруз', kind: 'currency' },
-      { key: 'debtCashback', label: 'Задолженность кэшбек', kind: 'currency' }
+      { key: 'debtCashback', label: 'Задолженность кэшбек', kind: 'currency' },
+      { key: 'debtUnpaid', label: 'ДЗ (не оплаченная)', kind: 'currency' },
+      { key: 'debtPaidCards', label: 'ДЗ (оплачено на карты)', kind: 'currency' }
     );
     dashboard.truckPlanMonth = Number(truck.planMonth ?? 0);
     dashboard.ktkPlanMonth = Number(ktk.planMonth ?? 0);
