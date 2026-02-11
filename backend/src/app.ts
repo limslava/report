@@ -158,11 +158,24 @@ export function createApp() {
   const frontendDistPath = path.resolve(process.cwd(), 'frontend', 'dist');
   const frontendIndexPath = path.join(frontendDistPath, 'index.html');
   if (fs.existsSync(frontendIndexPath)) {
-    app.use(express.static(frontendDistPath));
+    app.use(
+      express.static(frontendDistPath, {
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith(`${path.sep}index.html`)) {
+            res.setHeader('Cache-Control', 'no-cache');
+            return;
+          }
+          if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          }
+        },
+      })
+    );
     app.get('*', (req, res, next) => {
       if (req.path.startsWith('/api') || req.path === '/health' || req.path === '/health/db') {
         return next();
       }
+      res.setHeader('Cache-Control', 'no-cache');
       return res.sendFile(frontendIndexPath);
     });
   }
