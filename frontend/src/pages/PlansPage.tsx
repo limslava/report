@@ -3,7 +3,7 @@ import PlanDashboard from '../components/plan/PlanDashboard';
 import { Box } from '@mui/material';
 import { useAuthStore } from '../store/auth-store';
 import YearTotalsV2Table from '../components/plan/YearTotalsV2Table';
-import { canEditFinancialPlan, canViewFinancialPlan, canViewTotalsInPlans } from '../utils/rolePermissions';
+import { canEditFinancialPlan, canEditTotalsPlan, canViewFinancialPlan, canViewTotalsInPlans } from '../utils/rolePermissions';
 import FinancialPlanTable from '../components/plan/FinancialPlanTable';
 
 interface PlansPageProps {
@@ -25,7 +25,7 @@ const PlansPage: React.FC<PlansPageProps> = ({ mode }) => {
       {mode === 'totals' && canViewYearTotals && (
         <YearTotalsV2Table
           year={totalsYear}
-          isAdmin={user?.role === 'admin' || user?.role === 'director'}
+          isAdmin={canEditTotalsPlan(user?.role)}
           onYearChange={setTotalsYear}
         />
       )}

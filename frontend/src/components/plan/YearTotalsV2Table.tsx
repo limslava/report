@@ -332,14 +332,19 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
 
   const updateDraft = (rowId: string, month: number, raw: string, committedValue?: number) => {
     const key = makeDraftKey(rowId, month);
-    const value = Number(raw);
+    const trimmed = raw.trim();
+    const value = Number(trimmed === '' ? 0 : raw);
 
-    if (raw.trim() === '') {
-      setDraft((prev) => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
+    if (trimmed === '') {
+      if (committedValue !== undefined && committedValue === 0) {
+        setDraft((prev) => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+        return;
+      }
+      setDraft((prev) => ({ ...prev, [key]: 0 }));
       return;
     }
 
@@ -634,9 +639,10 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
                               }
                             }}
                             tabIndex={isAdmin && metric.key === 'base' ? 0 : -1}
-                            onClick={() => {
+                            onClick={(e) => {
                               if (isAdmin && metric.key === 'base') {
-                                setSelectedCell({ rowId: row.rowId, month });
+                                focusCell({ rowId: row.rowId, month });
+                                (e.currentTarget as HTMLTableCellElement).focus();
                               }
                             }}
                             onKeyDown={(e) => {
