@@ -135,10 +135,10 @@ export class PlanningV2Service {
 
     const defaultPlanBySegment: Record<PlanningSegmentCode, { params?: Record<string, unknown>; metrics: Array<{ code: PlanningPlanMetricCode; basePlan: number; carryPlan: number; carryMode: string }> }> = {
       [PlanningSegmentCode.KTK_VVO]: {
-        metrics: [{ code: PlanningPlanMetricCode.KTK_PLAN_REQUESTS, basePlan: 850, carryPlan: 850, carryMode: 'NONE' }],
+        metrics: [{ code: PlanningPlanMetricCode.KTK_PLAN_REQUESTS, basePlan: 0, carryPlan: 0, carryMode: 'NONE' }],
       },
       [PlanningSegmentCode.KTK_MOW]: {
-        metrics: [{ code: PlanningPlanMetricCode.KTK_PLAN_REQUESTS, basePlan: 392, carryPlan: 392, carryMode: 'NONE' }],
+        metrics: [{ code: PlanningPlanMetricCode.KTK_PLAN_REQUESTS, basePlan: 0, carryPlan: 0, carryMode: 'NONE' }],
       },
       [PlanningSegmentCode.AUTO]: {
         params: {
@@ -146,18 +146,18 @@ export class PlanningV2Service {
           waitingTotalStart: 63,
         },
         metrics: [
-          { code: PlanningPlanMetricCode.AUTO_PLAN_TRUCK, basePlan: 258, carryPlan: 258, carryMode: 'NONE' },
-          { code: PlanningPlanMetricCode.AUTO_PLAN_KTK, basePlan: 162, carryPlan: 162, carryMode: 'NONE' },
+          { code: PlanningPlanMetricCode.AUTO_PLAN_TRUCK, basePlan: 0, carryPlan: 0, carryMode: 'NONE' },
+          { code: PlanningPlanMetricCode.AUTO_PLAN_KTK, basePlan: 0, carryPlan: 0, carryMode: 'NONE' },
         ],
       },
       [PlanningSegmentCode.RAIL]: {
-        metrics: [{ code: PlanningPlanMetricCode.RAIL_PLAN_KTK, basePlan: 91, carryPlan: 91, carryMode: 'NONE' }],
+        metrics: [{ code: PlanningPlanMetricCode.RAIL_PLAN_KTK, basePlan: 0, carryPlan: 0, carryMode: 'NONE' }],
       },
       [PlanningSegmentCode.EXTRA]: {
         metrics: [],
       },
       [PlanningSegmentCode.TO]: {
-        metrics: [{ code: PlanningPlanMetricCode.TO_PLAN, basePlan: 50, carryPlan: 50, carryMode: 'NONE' }],
+        metrics: [{ code: PlanningPlanMetricCode.TO_PLAN, basePlan: 0, carryPlan: 0, carryMode: 'NONE' }],
       },
     };
 
@@ -222,10 +222,6 @@ export class PlanningV2Service {
             carryMode: metricPlanSeed.carryMode,
             meta: null,
           });
-        } else {
-          monthlyMetric.basePlan = metricPlanSeed.basePlan;
-          monthlyMetric.carryPlan = metricPlanSeed.carryPlan;
-          monthlyMetric.carryMode = metricPlanSeed.carryMode;
         }
 
         await this.monthlyMetricRepo.save(monthlyMetric);

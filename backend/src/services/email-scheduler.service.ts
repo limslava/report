@@ -362,6 +362,24 @@ export const sendScheduledEmailNow = async (schedule: EmailSchedule) => {
       const planMonth = Number(report.dashboard?.planMonth ?? 0);
       const factToDate = Number(report.dashboard?.factToDate ?? 0);
       const completionMonth = Number(report.dashboard?.completionMonthPct ?? 0);
+      const autoTruck = report.segment.code === PlanningSegmentCode.AUTO
+        ? (report.dashboard?.truck as Record<string, unknown> | undefined)
+        : undefined;
+      const autoKtk = report.segment.code === PlanningSegmentCode.AUTO
+        ? (report.dashboard?.ktk as Record<string, unknown> | undefined)
+        : undefined;
+
+      const renderKeyMetrics = (title: string, metrics: Record<string, unknown>) => {
+        const pm = Number(metrics.planMonth ?? 0);
+        const ftd = Number(metrics.factToDate ?? 0);
+        const cm = Number(metrics.completionMonthPct ?? 0);
+        return [
+          `<h4>${title}</h4>`,
+          `<p><strong>План на месяц:</strong> ${pm.toLocaleString('ru-RU')}</p>`,
+          `<p><strong>Выполнение на дату:</strong> ${ftd.toLocaleString('ru-RU')}</p>`,
+          `<p><strong>Выполнение % по месяцу:</strong> ${cm.toFixed(1)}%</p>`,
+        ].join('');
+      };
 
       await sendEmailWithAttachment(
         schedule.recipients,
@@ -370,9 +388,17 @@ export const sendScheduledEmailNow = async (schedule: EmailSchedule) => {
           `<p>Отчет по ${reportTitle}</p>`,
           `<p>Дата: ${ddmmyyyy}</p>`,
           '<h3>Ключевые показатели</h3>',
-          `<p><strong>План на месяц:</strong> ${planMonth.toLocaleString('ru-RU')}</p>`,
-          `<p><strong>Выполнение на дату:</strong> ${factToDate.toLocaleString('ru-RU')}</p>`,
-          `<p><strong>Выполнение % по месяцу:</strong> ${completionMonth.toFixed(1)}%</p>`,
+          report.segment.code === PlanningSegmentCode.AUTO && autoKtk && autoTruck
+            ? [
+                renderKeyMetrics('Авто в КТК', autoKtk),
+                '<hr />',
+                renderKeyMetrics('Автовозы / Шторы', autoTruck),
+              ].join('')
+            : [
+                `<p><strong>План на месяц:</strong> ${planMonth.toLocaleString('ru-RU')}</p>`,
+                `<p><strong>Выполнение на дату:</strong> ${factToDate.toLocaleString('ru-RU')}</p>`,
+                `<p><strong>Выполнение % по месяцу:</strong> ${completionMonth.toFixed(1)}%</p>`,
+              ].join(''),
           `<p><strong>Вложение:</strong> Детальный отчёт в формате Excel содержит все операционные данные на ${ddmmyyyy}.</p>`,
           '<p>Отчёт сгенерирован автоматически системой мониторинга логистики.</p>',
           '<p>© 2026 Система управления логистикой и отчётности</p>',

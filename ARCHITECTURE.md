@@ -85,11 +85,13 @@
 ### 1) Базовые обозначения
 - `daysInMonth` — количество дней в месяце.
 - `completedDays` — завершенные дни: `day(asOfDate) - 1`.
-- `planMonth` — месячный план (обычно `carryPlan`, если есть; иначе `basePlan`).
+- `planMonth` — месячный план (используется `carryPlan`, если задан; иначе `basePlan`).
 - `planToDate` — план на дату:
   - прошлые месяцы: `planToDate = planMonth`
   - будущие месяцы: `planToDate = 0`
   - текущий месяц: `(planMonth / daysInMonth) * completedDays`.
+- Инициализация справочников (`/v2/planning/bootstrap`) добавляет отсутствующие метрики.
+  Существующие значения `basePlan/carryPlan` не перезаписываются.
 - `factToDate` — сумма факта за дни `1..completedDays`.
 - `monthFact` — сумма факта за весь месяц.
 
