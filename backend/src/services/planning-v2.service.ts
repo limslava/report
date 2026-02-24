@@ -116,6 +116,8 @@ export class PlanningV2Service {
         this.metricSeed('rail_to_vvo_40', 'Во Владивосток - 40', true, PlanningMetricValueType.INT, PlanningMetricAggregation.SUM, null, 50),
         this.metricSeed('rail_to_vvo_total', 'Во Владивосток - Итого', false, PlanningMetricValueType.INT, PlanningMetricAggregation.FORMULA, 'RAIL_TO_VVO_TOTAL', 60),
         this.metricSeed('rail_total', 'ЖД - Итого', false, PlanningMetricValueType.INT, PlanningMetricAggregation.FORMULA, 'RAIL_TOTAL', 70),
+        this.metricSeed('rail_total_received', 'Принято всего', true, PlanningMetricValueType.INT, PlanningMetricAggregation.SUM, null, 80),
+        this.metricSeed('rail_total_waiting', 'В ожидании отгрузки всего', false, PlanningMetricValueType.INT, PlanningMetricAggregation.FORMULA, 'RAIL_TOTAL_WAITING', 90),
       ],
       [PlanningSegmentCode.EXTRA]: [
         this.metricSeed('extra_groupage', 'Сборный груз', true, PlanningMetricValueType.INT, PlanningMetricAggregation.SUM, null, 10),

@@ -863,7 +863,13 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
           <TableBody>
             {rows.map((row) => {
               const autoRowBg = '#dceeff';
-              const rowBg = row.isEditable ? 'background.paper' : autoRowBg;
+              const waitingRowBg = '#dff5e1';
+              const rowBg =
+                row.metricCode === 'rail_total_waiting'
+                  ? waitingRowBg
+                  : row.isEditable
+                    ? 'background.paper'
+                    : autoRowBg;
               return (
               <TableRow
                 key={row.metricCode}

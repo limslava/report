@@ -115,7 +115,8 @@ function isWaitingMetricCode(metricCode: string): boolean {
   return metricCode === 'auto_truck_waiting'
     || metricCode === 'auto_ktk_waiting'
     || metricCode === 'auto_curtain_waiting'
-    || metricCode === 'auto_total_waiting';
+    || metricCode === 'auto_total_waiting'
+    || metricCode === 'rail_total_waiting';
 }
 
 function isKtkGrossMetricCode(metricCode: string): boolean {
@@ -254,7 +255,10 @@ export class PlanningV2ReportService {
     const autoWaitingStart = segment.code === PlanningSegmentCode.AUTO
       ? await this.resolveAutoWaitingStart(segment.id, metrics, params.year, params.month)
       : undefined;
-    this.applyFormulaRows(segment.code, valuesByMetric, daysInMonth, monthlyPlan, autoWaitingStart);
+    const railWaitingStart = segment.code === PlanningSegmentCode.RAIL
+      ? await this.resolveRailWaitingStart(segment.id, metrics, params.year, params.month)
+      : undefined;
+    this.applyFormulaRows(segment.code, valuesByMetric, daysInMonth, monthlyPlan, autoWaitingStart, railWaitingStart);
 
     const gridRows: PlanningGridRow[] = metrics.map((metric) => {
       const dayValues = valuesByMetric.get(metric.code) ?? [];
@@ -402,6 +406,9 @@ export class PlanningV2ReportService {
       }
 
       if (segment.code === PlanningSegmentCode.RAIL) {
+        const receivedRow = report.gridRows.find((row) => row.metricCode === 'rail_total_received');
+        const waitingRow = report.gridRows.find((row) => row.metricCode === 'rail_total_waiting');
+
         items.push({
           segmentCode: segment.code,
           segmentName: 'Из/Во Владивосток',
@@ -414,6 +421,36 @@ export class PlanningV2ReportService {
           completionToDate: Number(report.dashboard.completionToDatePct ?? 0),
           completionMonth: Number(report.dashboard.completionMonthPct ?? 0),
         });
+
+        if (receivedRow) {
+          items.push({
+            segmentCode: segment.code,
+            segmentName: 'Принято всего',
+            parentSegmentCode: segment.code,
+            detailCode: 'RAIL_RECEIVED_TOTAL',
+            planMonth: 0,
+            planToDate: 0,
+            factToDate: report.daysInMonth > 0 ? sumUntil(receivedRow.dayValues ?? [], report.dashboard.completedDays as number) : 0,
+            monthFact: receivedRow.monthTotal ?? 0,
+            completionToDate: 0,
+            completionMonth: 0,
+          });
+        }
+
+        if (waitingRow) {
+          items.push({
+            segmentCode: segment.code,
+            segmentName: 'В ожидании отгрузки всего',
+            parentSegmentCode: segment.code,
+            detailCode: 'RAIL_WAITING_TOTAL',
+            planMonth: 0,
+            planToDate: 0,
+            factToDate: report.daysInMonth > 0 ? lastUntil(waitingRow.dayValues ?? [], report.dashboard.completedDays as number) : 0,
+            monthFact: waitingRow.monthTotal ?? 0,
+            completionToDate: 0,
+            completionMonth: 0,
+          });
+        }
       }
     }
 
@@ -425,7 +462,8 @@ export class PlanningV2ReportService {
     valuesByMetric: Map<string, Array<number | null>>,
     daysInMonth: number,
     monthlyPlan: PlanningMonthlyPlan | null,
-    autoWaitingStart?: Record<string, number | undefined>
+    autoWaitingStart?: Record<string, number | undefined>,
+    railWaitingStart?: number
   ): void {
     if (segmentCode === PlanningSegmentCode.KTK_VVO) {
       this.fillDailySum(valuesByMetric, 'ktk_vvo_plan_total_per_day', ['ktk_vvo_plan_unload_load', 'ktk_vvo_plan_move'], daysInMonth);
@@ -452,6 +490,7 @@ export class PlanningV2ReportService {
       this.fillDailySum(valuesByMetric, 'rail_from_vvo_total', ['rail_from_vvo_20', 'rail_from_vvo_40'], daysInMonth);
       this.fillDailySum(valuesByMetric, 'rail_to_vvo_total', ['rail_to_vvo_20', 'rail_to_vvo_40'], daysInMonth);
       this.fillDailySum(valuesByMetric, 'rail_total', ['rail_from_vvo_total', 'rail_to_vvo_total'], daysInMonth);
+      this.fillRailWaiting(valuesByMetric, daysInMonth, safeNumber(railWaitingStart));
       return;
     }
 
@@ -544,6 +583,81 @@ export class PlanningV2ReportService {
     };
   }
 
+  private async resolveRailWaitingStart(
+    segmentId: string,
+    metrics: PlanningMetric[],
+    year: number,
+    month: number,
+    depth = 0
+  ): Promise<number> {
+    if (depth > 36) {
+      return 0;
+    }
+
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    const prevDaysInMonth = getDaysInMonth(prevYear, prevMonth);
+    const prevStartDate = new Date(Date.UTC(prevYear, prevMonth - 1, 1));
+    const prevEndDate = new Date(Date.UTC(prevYear, prevMonth - 1, prevDaysInMonth));
+
+    const prevRows = await this.valuesRepo
+      .createQueryBuilder('value')
+      .where('value.segment_id = :segmentId', { segmentId })
+      .andWhere('value.date BETWEEN :fromDate AND :toDate', {
+        fromDate: toIsoDate(prevStartDate),
+        toDate: toIsoDate(prevEndDate),
+      })
+      .getMany();
+
+    if (prevRows.length === 0) {
+      return this.resolveRailWaitingStart(segmentId, metrics, prevYear, prevMonth, depth + 1);
+    }
+
+    const prevStart = await this.resolveRailWaitingStart(
+      segmentId,
+      metrics,
+      prevYear,
+      prevMonth,
+      depth + 1
+    );
+
+    const metricById = new Map(metrics.map((metric) => [metric.id, metric.code]));
+    const valuesByCode = new Map<string, Array<number | null>>();
+    [
+      'rail_total_received',
+      'rail_from_vvo_20',
+      'rail_from_vvo_40',
+      'rail_to_vvo_20',
+      'rail_to_vvo_40',
+      'rail_from_vvo_total',
+      'rail_to_vvo_total',
+      'rail_total',
+      'rail_total_waiting',
+    ].forEach((code) => valuesByCode.set(code, Array.from({ length: prevDaysInMonth }, () => null)));
+
+    for (const row of prevRows) {
+      const code = metricById.get(row.metricId);
+      if (!code || !valuesByCode.has(code)) {
+        continue;
+      }
+      const rowDate = row.date instanceof Date ? row.date : new Date(String(row.date));
+      const day = rowDate.getUTCDate();
+      const metricValues = valuesByCode.get(code);
+      if (!metricValues || day < 1 || day > prevDaysInMonth) {
+        continue;
+      }
+      metricValues[day - 1] = row.value === null ? null : Number(row.value);
+    }
+
+    this.fillDailySum(valuesByCode, 'rail_from_vvo_total', ['rail_from_vvo_20', 'rail_from_vvo_40'], prevDaysInMonth);
+    this.fillDailySum(valuesByCode, 'rail_to_vvo_total', ['rail_to_vvo_20', 'rail_to_vvo_40'], prevDaysInMonth);
+    this.fillDailySum(valuesByCode, 'rail_total', ['rail_from_vvo_total', 'rail_to_vvo_total'], prevDaysInMonth);
+    this.fillRailWaiting(valuesByCode, prevDaysInMonth, prevStart);
+
+    const waiting = valuesByCode.get('rail_total_waiting') ?? [];
+    return lastUntil(waiting, waiting.length);
+  }
+
   private fillDailySum(
     valuesByMetric: Map<string, Array<number | null>>,
     targetMetric: string,
@@ -605,6 +719,26 @@ export class PlanningV2ReportService {
         carry = carry + safeNumber(received[day]) - safeNumber(sent[day]);
         waiting[day] = carry;
       }
+    }
+  }
+
+  private fillRailWaiting(
+    valuesByMetric: Map<string, Array<number | null>>,
+    daysInMonth: number,
+    waitingStart: number
+  ): void {
+    const received = valuesByMetric.get('rail_total_received') ?? Array.from({ length: daysInMonth }, () => 0);
+    const sent = valuesByMetric.get('rail_total') ?? Array.from({ length: daysInMonth }, () => 0);
+    const waiting = valuesByMetric.get('rail_total_waiting');
+
+    if (!waiting) {
+      return;
+    }
+
+    let carry = safeNumber(waitingStart);
+    for (let day = 0; day < daysInMonth; day += 1) {
+      carry = carry + safeNumber(received[day]) - safeNumber(sent[day]);
+      waiting[day] = carry;
     }
   }
 

@@ -60,7 +60,7 @@ const METRICS = [
   { code: 'SALES_WITH_VAT', label: 'План продаж с НДС, руб', editable: false, valueType: 'currency', includeYearTotal: true },
   { code: 'QUANTITY_PLAN', label: 'Количественный план, шт', editable: true, valueType: 'number', includeYearTotal: true },
   { code: 'PRICE_WITH_VAT', label: 'Цена с НДС, руб/шт', editable: true, valueType: 'currency', includeYearTotal: true },
-  { code: 'FIN_RESULT', label: 'Финансовый результат плановый', editable: false, valueType: 'currency', includeYearTotal: true },
+  { code: 'FIN_RESULT', label: 'Валовая прибыль, план', editable: false, valueType: 'currency', includeYearTotal: true },
 ] as const;
 
 const EDITABLE_METRICS = new Set<string>(METRICS.filter((metric) => metric.editable).map((metric) => metric.code));

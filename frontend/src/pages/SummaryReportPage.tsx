@@ -147,6 +147,7 @@ const SummaryReportPage = () => {
   const topLevelRows = useMemo(() => {
     const includeDetailForTotals = new Set([
       'AUTO_TRUCK',
+      'AUTO_TRUCK_CURTAIN',
       'AUTO_KTK',
       'AUTO_CURTAIN',
       'EXTRA_GROUPAGE',
@@ -155,13 +156,24 @@ const SummaryReportPage = () => {
       'EXTRA_REPACK',
       'RAIL_FROM_VVO',
       'RAIL_TO_VVO',
+      'RAIL_TOTAL_FLOW',
+      'RAIL_RECEIVED_TOTAL',
+      'RAIL_WAITING_TOTAL',
     ]);
 
     return rows.filter((row) => !row.detailCode || includeDetailForTotals.has(row.detailCode));
   }, [rows]);
   const totalPlan = useMemo(() => topLevelRows.reduce((acc, row) => acc + row.planMonth, 0), [topLevelRows]);
   const totalPlanToDate = useMemo(() => topLevelRows.reduce((acc, row) => acc + row.planToDate, 0), [topLevelRows]);
-  const totalFact = useMemo(() => topLevelRows.reduce((acc, row) => acc + row.factToDate, 0), [topLevelRows]);
+  const totalFact = useMemo(() => {
+    const excludedFactDetails = new Set(['RAIL_RECEIVED_TOTAL', 'RAIL_WAITING_TOTAL']);
+    return topLevelRows.reduce((acc, row) => {
+      if (row.segmentCode === 'RAIL' && row.detailCode && excludedFactDetails.has(row.detailCode)) {
+        return acc;
+      }
+      return acc + row.factToDate;
+    }, 0);
+  }, [topLevelRows]);
   const totalMonthFact = useMemo(() => topLevelRows.reduce((acc, row) => acc + row.monthFact, 0), [topLevelRows]);
   const totalCompletion = totalPlan > 0 ? (totalMonthFact / totalPlan) * 100 : 0;
   const orderedRows = useMemo(() => {
@@ -177,6 +189,9 @@ const SummaryReportPage = () => {
       AUTO_TRUCK: 1,
       AUTO_KTK: 2,
       AUTO_CURTAIN: 3,
+      RAIL_TOTAL_FLOW: 1,
+      RAIL_RECEIVED_TOTAL: 2,
+      RAIL_WAITING_TOTAL: 3,
       EXTRA_GROUPAGE: 1,
       EXTRA_CURTAINS: 2,
       EXTRA_FORWARDING: 3,
@@ -290,6 +305,9 @@ const SummaryReportPage = () => {
               {orderedRows.map((row, index) => {
                 const prev = index > 0 ? orderedRows[index - 1] : null;
                 const showGroup = !prev || segmentGroupTitle(prev.segmentCode) !== segmentGroupTitle(row.segmentCode);
+                const hidePlanColumns =
+                  row.segmentCode === 'RAIL' &&
+                  (row.detailCode === 'RAIL_RECEIVED_TOTAL' || row.detailCode === 'RAIL_WAITING_TOTAL');
 
                 return (
                   <Fragment key={`${row.segmentCode}-${row.detailCode ?? 'main'}`}>
@@ -319,11 +337,11 @@ const SummaryReportPage = () => {
                           • {rowLabel(row)}
                         </Typography>
                       </TableCell>
-                      <TableCell align="right">{formatInt(row.planMonth)}</TableCell>
-                      <TableCell align="right">{formatInt(row.planToDate)}</TableCell>
+                      <TableCell align="right">{hidePlanColumns ? '-' : formatInt(row.planMonth)}</TableCell>
+                      <TableCell align="right">{hidePlanColumns ? '-' : formatInt(row.planToDate)}</TableCell>
                       <TableCell align="right">{formatInt(row.factToDate)}</TableCell>
-                      <TableCell align="right">{formatPct(row.completionToDate)}</TableCell>
-                      <TableCell align="right">{formatPct(row.completionMonth)}</TableCell>
+                      <TableCell align="right">{hidePlanColumns ? '-' : formatPct(row.completionToDate)}</TableCell>
+                      <TableCell align="right">{hidePlanColumns ? '-' : formatPct(row.completionMonth)}</TableCell>
                     </TableRow>
                   </Fragment>
                 );

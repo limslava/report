@@ -629,6 +629,8 @@ function normalizeMetricName(metricCode: string, name: string): string {
     rail_to_vvo_20: 'Во Владивосток - 20',
     rail_to_vvo_40: 'Во Владивосток - 40',
     rail_to_vvo_total: 'Во Владивосток - Итого',
+    rail_total_received: 'Принято всего',
+    rail_total_waiting: 'В ожидании отгрузки всего',
     rail_total: 'ЖД - Итого',
     extra_groupage: 'Сборный груз',
     extra_curtains: 'Шторы (тенты)',

@@ -137,7 +137,7 @@ export const exportFinancialPlanExcel = async (req: Request, res: Response, next
     }
 
     const buffer = await financialPlanService.buildExcelReport(year);
-    const filename = `Финансовый результат плановый — ${year}.xlsx`;
+    const filename = `Валовая прибыль, план — ${year}.xlsx`;
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', buildContentDisposition(filename));

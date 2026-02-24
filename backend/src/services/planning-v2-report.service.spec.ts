@@ -203,6 +203,25 @@ describe('PlanningV2ReportService formulas', () => {
     expect(valuesByMetric.get('rail_total')).toEqual([8, 10, 12]);
   });
 
+  it('calculates RAIL waiting total', () => {
+    const valuesByMetric = createValuesMap({
+      rail_from_vvo_20: [1, 0, 2],
+      rail_from_vvo_40: [1, 1, 1],
+      rail_from_vvo_total: [null, null, null],
+      rail_to_vvo_20: [0, 1, 0],
+      rail_to_vvo_40: [1, 0, 1],
+      rail_to_vvo_total: [null, null, null],
+      rail_total: [null, null, null],
+      rail_total_received: [3, 0, 4],
+      rail_total_waiting: [null, null, null],
+    });
+
+    (service as any).applyFormulaRows(PlanningSegmentCode.RAIL, valuesByMetric, 3, null, undefined, 10);
+
+    expect(valuesByMetric.get('rail_total')).toEqual([3, 2, 4]);
+    expect(valuesByMetric.get('rail_total_waiting')).toEqual([10, 8, 8]);
+  });
+
   it('calculates EXTRA total', () => {
     const valuesByMetric = createValuesMap({
       extra_groupage: [1, 2, 3],
