@@ -5,6 +5,7 @@ import { logger } from './utils/logger';
 import { planWebSocketService } from './services/websocket.service';
 import { assertProductionEnv, getAppPort } from './config/env';
 import { ensureDefaultAdmin } from './services/bootstrap.service';
+import { planningV2Service } from './services/planning-v2.service';
 import { withRetry } from './utils/db-retry';
 import { createApp } from './app';
 
@@ -18,6 +19,12 @@ async function startServer() {
     await withRetry(() => AppDataSource.initialize(), { attempts: 5, baseDelayMs: 500, maxDelayMs: 5000 });
     logger.info('Database connected successfully');
     await ensureDefaultAdmin();
+    try {
+      await planningV2Service.bootstrapCatalog();
+      logger.info('Planning catalog bootstrapped');
+    } catch (err) {
+      logger.error('Failed to bootstrap planning catalog:', err);
+    }
 
     const app = createApp();
 
