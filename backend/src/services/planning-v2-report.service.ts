@@ -820,6 +820,7 @@ export class PlanningV2ReportService {
       const debtCashback = lastUntil(valuesByMetric.get('auto_manual_debt_cashback') ?? [], dataDays);
       const debtUnpaid = lastUntil(valuesByMetric.get('auto_debt_unpaid') ?? [], dataDays);
       const debtPaidCards = lastUntil(valuesByMetric.get('auto_debt_paid_cards') ?? [], dataDays);
+      const debtContractorsVvo = lastUntil(valuesByMetric.get('auto_debt_contractors_vvo') ?? [], dataDays);
 
       const factToDate = truckFactToDate + ktkFactToDate;
       const planMonth = planTruckMonth + planKtkMonth;
@@ -859,6 +860,7 @@ export class PlanningV2ReportService {
         debtCashback,
         debtUnpaid,
         debtPaidCards,
+        debtContractorsVvo,
       };
     }
 

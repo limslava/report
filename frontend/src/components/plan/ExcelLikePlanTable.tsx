@@ -164,6 +164,7 @@ function buildDashboardCards(segmentCode: ExcelLikePlanTableProps['segmentCode']
       { label: 'Задолженность кэшбек', value: dashboard.debtCashback, kind: 'currency' },
       { label: 'ДЗ (не оплаченная)', value: dashboard.debtUnpaid, kind: 'currency' },
       { label: 'ДЗ (оплачено на карты)', value: dashboard.debtPaidCards, kind: 'currency' },
+      { label: 'Подрядчики Владивосток', value: dashboard.debtContractorsVvo, kind: 'currency' },
     ];
   }
 
@@ -466,12 +467,14 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
     'auto_manual_debt_cashback',
     'auto_debt_unpaid',
     'auto_debt_paid_cards',
+    'auto_debt_contractors_vvo',
   ]);
   const hiddenDebtLabels = new Set([
     'Задолженность перегруз',
     'Задолженность кэшбек',
     'ДЗ (не оплаченная)',
     'ДЗ (оплачено на карты)',
+    'Подрядчики Владивосток',
   ]);
 
   const rows: PlanningGridRow[] = (report?.gridRows ?? [])

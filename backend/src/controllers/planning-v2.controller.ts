@@ -415,7 +415,7 @@ export const exportPlanningDailyExcel = async (req: Request, res: Response, next
       includeMonthTotalColumn: true,
       includeAutoDebtRows: !hideSalesDebts,
       excludeMetricCodes: hideSalesDebts
-        ? ['auto_manual_debt_overload', 'auto_manual_debt_cashback', 'auto_debt_unpaid', 'auto_debt_paid_cards']
+        ? ['auto_manual_debt_overload', 'auto_manual_debt_cashback', 'auto_debt_unpaid', 'auto_debt_paid_cards', 'auto_debt_contractors_vvo']
         : undefined,
     });
 

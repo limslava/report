@@ -623,6 +623,7 @@ function normalizeMetricName(metricCode: string, name: string): string {
     auto_manual_debt_cashback: 'Задолженность кэшбек (₽)',
     auto_debt_unpaid: 'ДЗ (не оплаченная) (₽)',
     auto_debt_paid_cards: 'ДЗ (оплачено на карты) (₽)',
+    auto_debt_contractors_vvo: 'Подрядчики Владивосток (₽)',
     rail_from_vvo_20: 'Из Владивостока - 20',
     rail_from_vvo_40: 'Из Владивостока - 40',
     rail_from_vvo_total: 'Из Владивостока - Итого',
@@ -864,7 +865,14 @@ function writeDashboardInline(
       debtPaidCardsRow.getCell(startCol + 1).alignment = { horizontal: 'center' };
       debtPaidCardsRow.commit();
 
-      return 1 + rows.length + 1 + 4;
+      const debtContractorsRow = sheet.getRow(debtStart + 4);
+      debtContractorsRow.getCell(startCol).value = 'Подрядчики Владивосток (₽)';
+      debtContractorsRow.getCell(startCol + 1).value = Number(dashboard.debtContractorsVvo ?? 0);
+      debtContractorsRow.getCell(startCol + 1).numFmt = '#,##0';
+      debtContractorsRow.getCell(startCol + 1).alignment = { horizontal: 'center' };
+      debtContractorsRow.commit();
+
+      return 1 + rows.length + 1 + 5;
     }
 
     return 1 + rows.length;
@@ -916,7 +924,8 @@ function toDashboardRows(
       { key: 'debtOverload', label: 'Задолженность перегруз', kind: 'currency' },
       { key: 'debtCashback', label: 'Задолженность кэшбек', kind: 'currency' },
       { key: 'debtUnpaid', label: 'ДЗ (не оплаченная)', kind: 'currency' },
-      { key: 'debtPaidCards', label: 'ДЗ (оплачено на карты)', kind: 'currency' }
+      { key: 'debtPaidCards', label: 'ДЗ (оплачено на карты)', kind: 'currency' },
+      { key: 'debtContractorsVvo', label: 'Подрядчики Владивосток', kind: 'currency' }
     );
     dashboard.truckPlanMonth = Number(truck.planMonth ?? 0);
     dashboard.ktkPlanMonth = Number(ktk.planMonth ?? 0);

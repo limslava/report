@@ -87,6 +87,7 @@
 - RAIL totals: `из ВВО(итого) = 20 + 40`, `во ВВО(итого) = 20 + 40`, `жд(итого) = из + во`.
 - RAIL received: `принято всего` — ввод по дням (сумма за месяц).
 - RAIL waiting: `waiting[d] = waiting[d-1] + received[d] - sent[d]` (на 1-й день с `waitingStart`), где `sent = жд(итого)`, `received = принято всего`.
+- AUTO debts: добавлены `Подрядчики Владивосток (₽)` (тип `currency`, агрегация `LAST`).
 - EXTRA total: сумма 4 подсегментов.
 - Carry-over (классический):
   - `carry(янв) = base(янв)`

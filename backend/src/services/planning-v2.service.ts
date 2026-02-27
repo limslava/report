@@ -107,6 +107,7 @@ export class PlanningV2Service {
         this.metricSeed('auto_manual_debt_cashback', 'Задолженность кэшбек (₽)', true, PlanningMetricValueType.CURRENCY, PlanningMetricAggregation.LAST, null, 210),
         this.metricSeed('auto_debt_unpaid', 'ДЗ (не оплаченная) (₽)', true, PlanningMetricValueType.CURRENCY, PlanningMetricAggregation.LAST, null, 220),
         this.metricSeed('auto_debt_paid_cards', 'ДЗ (оплачено на карты) (₽)', true, PlanningMetricValueType.CURRENCY, PlanningMetricAggregation.LAST, null, 230),
+        this.metricSeed('auto_debt_contractors_vvo', 'Подрядчики Владивосток (₽)', true, PlanningMetricValueType.CURRENCY, PlanningMetricAggregation.LAST, null, 240),
       ],
       [PlanningSegmentCode.RAIL]: [
         this.metricSeed('rail_from_vvo_20', 'Из Владивостока - 20', true, PlanningMetricValueType.INT, PlanningMetricAggregation.SUM, null, 10),
