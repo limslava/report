@@ -143,6 +143,45 @@ export const processScheduledEmails = async () => {
   }
 };
 
+const asTzParts = (date: Date, timezone: string) => {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    weekday: 'short',
+  });
+  const parts = dtf.formatToParts(date);
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  const weekdayMap: Record<string, number> = {
+    Sun: 7,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+
+  return {
+    year: Number(map.year),
+    month: Number(map.month),
+    day: Number(map.day),
+    hour: Number(map.hour),
+    minute: Number(map.minute),
+    isoWeekday: weekdayMap[map.weekday] ?? 1,
+    dayKey: `${map.year}-${map.month}-${map.day}`,
+  };
+};
+
+const formatTzDate = (date: Date, timezone: string): string => {
+  const parts = asTzParts(date, timezone);
+  return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
+};
+
 const checkSchedule = (
   schedule: EmailSchedule,
   now: Date
@@ -160,49 +199,15 @@ const checkSchedule = (
   const [hour, minute] = scheduledTime.split(':').map(Number);
   const timezone = String(config.timezone || DEFAULT_TZ);
 
-  const asTzParts = (date: Date) => {
-    const dtf = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-      weekday: 'short',
-    });
-    const parts = dtf.formatToParts(date);
-    const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
-    const weekdayMap: Record<string, number> = {
-      Sun: 7,
-      Mon: 1,
-      Tue: 2,
-      Wed: 3,
-      Thu: 4,
-      Fri: 5,
-      Sat: 6,
-    };
-
-    return {
-      year: Number(map.year),
-      month: Number(map.month),
-      day: Number(map.day),
-      hour: Number(map.hour),
-      minute: Number(map.minute),
-      isoWeekday: weekdayMap[map.weekday] ?? 1,
-      dayKey: `${map.year}-${map.month}-${map.day}`,
-    };
-  };
-
-  const nowTz = asTzParts(now);
+  const nowTz = asTzParts(now, timezone);
   const nowLocal = `${String(nowTz.day).padStart(2, '0')}.${String(nowTz.month).padStart(2, '0')}.${nowTz.year} ${String(nowTz.hour).padStart(2, '0')}:${String(nowTz.minute).padStart(2, '0')}`;
   const isExactTime = nowTz.hour === hour && nowTz.minute === minute;
   const lastSentLocal = lastSent ? (() => {
-    const s = asTzParts(lastSent);
+    const s = asTzParts(lastSent, timezone);
     return `${String(s.day).padStart(2, '0')}.${String(s.month).padStart(2, '0')}.${s.year} ${String(s.hour).padStart(2, '0')}:${String(s.minute).padStart(2, '0')}`;
   })() : null;
 
-  if (lastSent && asTzParts(lastSent).dayKey === nowTz.dayKey) {
+  if (lastSent && asTzParts(lastSent, timezone).dayKey === nowTz.dayKey) {
     return { shouldSend: false, reason: 'already_sent_today', timezone, scheduledTime, nowLocal, lastSentLocal };
   }
 
@@ -263,17 +268,18 @@ export const sendScheduledEmailNow = async (schedule: EmailSchedule) => {
   logger.info(`Sending scheduled email for ${schedule.department}`);
   
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-  const date = now.toISOString().split('T')[0];
-  const ddmmyyyy = `${String(now.getDate()).padStart(2, '0')}.${String(month).padStart(2, '0')}.${year}`;
+  const timezone = String(schedule.schedule?.timezone || DEFAULT_TZ);
+  const nowTz = asTzParts(now, timezone);
+  const year = nowTz.year;
+  const month = nowTz.month;
+  const date = formatTzDate(now, timezone);
+  const ddmmyyyy = `${String(nowTz.day).padStart(2, '0')}.${String(nowTz.month).padStart(2, '0')}.${nowTz.year}`;
   const reportType = normalizeReportType(schedule.schedule?.reportType);
 
   try {
     if (reportType === 'monthly_final') {
-      const prevMonthDate = new Date(Date.UTC(year, month - 2, 1));
-      const prevYear = prevMonthDate.getUTCFullYear();
-      const prevMonth = prevMonthDate.getUTCMonth() + 1;
+      const prevMonth = month === 1 ? 12 : month - 1;
+      const prevYear = month === 1 ? year - 1 : year;
       const lastDayPrevMonth = new Date(Date.UTC(prevYear, prevMonth, 0)).getUTCDate();
       const prevMonthLabel = `${MONTH_NAMES_RU[prevMonth - 1]} ${prevYear}`;
       const prevMonthAsOf = `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(lastDayPrevMonth).padStart(2, '0')}`;
