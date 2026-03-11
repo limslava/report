@@ -550,6 +550,8 @@ async function fillTotalsSheet(sheet: ExcelJS.Worksheet, options: TotalsExportOp
 
   const sortedTotals = [...filteredTotals].sort((a, b) => totalsSortOrder(a) - totalsSortOrder(b));
   let lastGroup = '';
+  let lastVvoBlockRow: number | null = null;
+  let lastAutoTruckBlockRow: number | null = null;
   sortedTotals.forEach((row) => {
     const group = totalsGroupTitle(row);
     if (group !== lastGroup) {
@@ -573,11 +575,23 @@ async function fillTotalsSheet(sheet: ExcelJS.Worksheet, options: TotalsExportOp
           if (colNumber >= 3) cell.numFmt = '#,##0';
         })
       );
+      if (row.segmentCode === PlanningSegmentCode.KTK_VVO) {
+        lastVvoBlockRow = pctRow.number;
+      }
+      if (row.segmentCode === PlanningSegmentCode.AUTO && row.planMetricCode === 'AUTO_PLAN_TRUCK') {
+        lastAutoTruckBlockRow = pctRow.number;
+      }
     } else {
       const factRow = sheet.addRow([totalsSegmentLabel(row), 'Факт', ...row.months.map((m) => m.fact), row.yearlyFact]);
       factRow.eachCell((cell, colNumber) => {
         if (colNumber >= 3) cell.numFmt = '#,##0';
       });
+      if (row.segmentCode === PlanningSegmentCode.KTK_VVO) {
+        lastVvoBlockRow = factRow.number;
+      }
+      if (row.segmentCode === PlanningSegmentCode.AUTO && row.planMetricCode === 'AUTO_PLAN_TRUCK') {
+        lastAutoTruckBlockRow = factRow.number;
+      }
     }
   });
 
@@ -591,6 +605,14 @@ async function fillTotalsSheet(sheet: ExcelJS.Worksheet, options: TotalsExportOp
     cell.font = { ...(cell.font || {}), bold: true };
   });
   applyGrid(sheet);
+
+  const totalCols = 15;
+  if (lastVvoBlockRow) {
+    applyDoubleBottomBorder(sheet, lastVvoBlockRow, 1, totalCols);
+  }
+  if (lastAutoTruckBlockRow) {
+    applyDoubleBottomBorder(sheet, lastAutoTruckBlockRow, 1, totalCols);
+  }
 }
 
 function normalizeMetricName(metricCode: string, name: string): string {
@@ -998,5 +1020,22 @@ function applyOuterBorder(
         right: c === endCol ? medium : current.right,
       };
     }
+  }
+}
+
+function applyDoubleBottomBorder(
+  sheet: ExcelJS.Worksheet,
+  rowNumber: number,
+  startCol: number,
+  endCol: number
+): void {
+  const doubleBorder = { style: 'double' as const, color: { argb: 'FF2F2F2F' } };
+  for (let c = startCol; c <= endCol; c += 1) {
+    const cell = sheet.getRow(rowNumber).getCell(c);
+    const current = cell.border ?? {};
+    cell.border = {
+      ...current,
+      bottom: doubleBorder,
+    };
   }
 }
