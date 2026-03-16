@@ -17,8 +17,10 @@
 - UI
   - Settings tabs updated: "Почта" separate from "Уведомления".
   - Financial plan header alignment tweaks.
-  - Excel exports: removed "Факт за месяц" from dashboard block.
-  - AUTO: added debt fields (unpaid / paid to cards) and hide debt rows for `manager_sales` in UI/Excel.
+- Excel exports: removed "Факт за месяц" from dashboard block.
+- AUTO: added debt fields (unpaid / paid to cards) and hide debt rows for `manager_sales` in UI/Excel.
+- KTK dashboard: added `Ср. стоимость заявки` (gross / factToDate).
+- AUTO dashboard: `Δ ДЗ/КЗ` uses debt totals formula in dashboard/Excel.
 - Reports & scheduler
   - Added `monthly_final` schedule type (СВ за месяц, итоговый).
   - Plan-to-date for past months equals month plan; future months show zero.

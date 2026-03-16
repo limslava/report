@@ -264,6 +264,14 @@ export class PlanningV2ReportService {
       const dayValues = valuesByMetric.get(metric.code) ?? [];
 
       const monthTotal = (() => {
+        if (metric.code === 'auto_debt_delta') {
+          const debtOverload = lastUntil(valuesByMetric.get('auto_manual_debt_overload') ?? [], dayValues.length);
+          const debtCashback = lastUntil(valuesByMetric.get('auto_manual_debt_cashback') ?? [], dayValues.length);
+          const debtUnpaid = lastUntil(valuesByMetric.get('auto_debt_unpaid') ?? [], dayValues.length);
+          const debtPaidCards = lastUntil(valuesByMetric.get('auto_debt_paid_cards') ?? [], dayValues.length);
+          const debtContractorsVvo = lastUntil(valuesByMetric.get('auto_debt_contractors_vvo') ?? [], dayValues.length);
+          return debtUnpaid + debtPaidCards - debtOverload - debtCashback - debtContractorsVvo;
+        }
         if (
           metric.aggregation === PlanningMetricAggregation.LAST
           || isWaitingMetricCode(metric.code)
@@ -483,6 +491,7 @@ export class PlanningV2ReportService {
       this.fillDailySum(valuesByMetric, 'auto_total_received', ['auto_truck_received', 'auto_ktk_received', 'auto_curtain_received'], daysInMonth);
       this.fillDailySum(valuesByMetric, 'auto_total_sent', ['auto_truck_sent', 'auto_ktk_sent', 'auto_curtain_sent'], daysInMonth);
       this.fillDailySum(valuesByMetric, 'auto_total_waiting', ['auto_truck_waiting', 'auto_ktk_waiting', 'auto_curtain_waiting'], daysInMonth);
+      this.fillDailyDebtDelta(valuesByMetric, daysInMonth);
       return;
     }
 
@@ -497,6 +506,33 @@ export class PlanningV2ReportService {
     if (segmentCode === PlanningSegmentCode.EXTRA) {
       this.fillDailySum(valuesByMetric, 'extra_total', ['extra_groupage', 'extra_curtains', 'extra_forwarding', 'extra_repack'], daysInMonth);
     }
+  }
+
+  private fillDailyDebtDelta(valuesByMetric: Map<string, Array<number | null>>, daysInMonth: number): void {
+    const overload = valuesByMetric.get('auto_manual_debt_overload') ?? Array.from({ length: daysInMonth }, () => null);
+    const cashback = valuesByMetric.get('auto_manual_debt_cashback') ?? Array.from({ length: daysInMonth }, () => null);
+    const unpaid = valuesByMetric.get('auto_debt_unpaid') ?? Array.from({ length: daysInMonth }, () => null);
+    const paidCards = valuesByMetric.get('auto_debt_paid_cards') ?? Array.from({ length: daysInMonth }, () => null);
+    const contractors = valuesByMetric.get('auto_debt_contractors_vvo') ?? Array.from({ length: daysInMonth }, () => null);
+
+    const delta = Array.from({ length: daysInMonth }, (_, idx) => {
+      const aRaw = unpaid[idx];
+      const bRaw = paidCards[idx];
+      const cRaw = overload[idx];
+      const dRaw = cashback[idx];
+      const eRaw = contractors[idx];
+      if (aRaw === null && bRaw === null && cRaw === null && dRaw === null && eRaw === null) {
+        return null;
+      }
+      const a = safeNumber(aRaw);
+      const b = safeNumber(bRaw);
+      const c = safeNumber(cRaw);
+      const d = safeNumber(dRaw);
+      const e = safeNumber(eRaw);
+      return a + b - c - d - e;
+    });
+
+    valuesByMetric.set('auto_debt_delta', delta);
   }
 
   private async resolveAutoWaitingStart(
@@ -778,6 +814,7 @@ export class PlanningV2ReportService {
       const factToDate = sumUntil(total, dataDays);
       const monthFact = sum(total);
       const grossToDate = lastUntil(gross, dataDays);
+      const avgRequestCost = factToDate > 0 ? grossToDate / factToDate : 0;
 
       return {
         ...base,
@@ -790,6 +827,7 @@ export class PlanningV2ReportService {
         avgPerDay: dataDays > 0 ? factToDate / dataDays : 0,
         grossTotal: grossToDate,
         grossAvgPerDay: dataDays > 0 ? grossToDate / dataDays : 0,
+        avgRequestCost,
         trucksAvgOnLine: avgUntil(trucks, dataDays),
       };
     }
@@ -821,6 +859,7 @@ export class PlanningV2ReportService {
       const debtUnpaid = lastUntil(valuesByMetric.get('auto_debt_unpaid') ?? [], dataDays);
       const debtPaidCards = lastUntil(valuesByMetric.get('auto_debt_paid_cards') ?? [], dataDays);
       const debtContractorsVvo = lastUntil(valuesByMetric.get('auto_debt_contractors_vvo') ?? [], dataDays);
+      const debtDelta = debtUnpaid + debtPaidCards - debtOverload - debtCashback - debtContractorsVvo;
 
       const factToDate = truckFactToDate + ktkFactToDate;
       const planMonth = planTruckMonth + planKtkMonth;
@@ -861,6 +900,7 @@ export class PlanningV2ReportService {
         debtUnpaid,
         debtPaidCards,
         debtContractorsVvo,
+        debtDelta,
       };
     }
 

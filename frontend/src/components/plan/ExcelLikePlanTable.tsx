@@ -144,11 +144,16 @@ function formatLocalDateTime(value: Date): string {
   }).format(value);
 }
 
-function buildDashboardCards(segmentCode: ExcelLikePlanTableProps['segmentCode'], dashboard: Record<string, unknown>): DashboardCard[] {
+function buildDashboardCards(
+  segmentCode: ExcelLikePlanTableProps['segmentCode'],
+  dashboard: Record<string, unknown>,
+  role?: string
+): DashboardCard[] {
   if (segmentCode === 'AUTO') {
+    const isSalesManager = role === 'manager_sales';
     const truck = asRecord(dashboard.truck);
     const ktk = asRecord(dashboard.ktk);
-    return [
+    const cards: DashboardCard[] = [
       { label: 'План месяц (автовоз + шторы)', value: truck.planMonth },
       { label: 'План на дату (автовоз + шторы)', value: truck.planToDate },
       { label: 'Выполнение на дату (автовоз + шторы)', value: truck.factToDate },
@@ -160,12 +165,17 @@ function buildDashboardCards(segmentCode: ExcelLikePlanTableProps['segmentCode']
       { label: 'В ожидании отгрузки Автовоз', value: dashboard.waitingTruck },
       { label: 'В ожидании отгрузки Авто в ктк', value: dashboard.waitingKtk },
       { label: 'В ожидании отгрузки Штора', value: dashboard.waitingCurtain },
-      { label: 'Задолженность перегруз', value: dashboard.debtOverload, kind: 'currency' },
-      { label: 'Задолженность кэшбек', value: dashboard.debtCashback, kind: 'currency' },
-      { label: 'ДЗ (не оплаченная)', value: dashboard.debtUnpaid, kind: 'currency' },
-      { label: 'ДЗ (оплачено на карты)', value: dashboard.debtPaidCards, kind: 'currency' },
-      { label: 'Подрядчики Владивосток', value: dashboard.debtContractorsVvo, kind: 'currency' },
+      ...(isSalesManager
+        ? []
+        : [
+            { label: 'Задолженность перегруз', value: dashboard.debtOverload, kind: 'currency' as const },
+            { label: 'Задолженность кэшбек', value: dashboard.debtCashback, kind: 'currency' as const },
+            { label: 'ДЗ (не оплаченная)', value: dashboard.debtUnpaid, kind: 'currency' as const },
+            { label: 'ДЗ (оплачено на карты)', value: dashboard.debtPaidCards, kind: 'currency' as const },
+            { label: 'Подрядчики Владивосток', value: dashboard.debtContractorsVvo, kind: 'currency' as const },
+          ]),
     ];
+    return cards;
   }
 
   if (segmentCode === 'KTK_VVO' || segmentCode === 'KTK_MOW' || segmentCode === 'RAIL' || segmentCode === 'TO') {
@@ -180,6 +190,7 @@ function buildDashboardCards(segmentCode: ExcelLikePlanTableProps['segmentCode']
         ? [
             { label: 'Вал. общий', value: dashboard.grossTotal, kind: 'currency' as const },
             { label: 'Ср. вал сутки', value: dashboard.grossAvgPerDay, kind: 'currency' as const },
+            { label: 'Ср. стоимость заявки', value: dashboard.avgRequestCost, kind: 'currency' as const },
             { label: 'Среднее ТС на линии', value: dashboard.trucksAvgOnLine },
           ]
         : []),
@@ -698,7 +709,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
     }
   };
 
-  const dashboardCards = buildDashboardCards(segmentCode, asRecord(report?.dashboard))
+  const dashboardCards = buildDashboardCards(segmentCode, asRecord(report?.dashboard), user?.role)
     .filter((card) => !(hideSalesDebts && hiddenDebtLabels.has(card.label)));
   const dashboardRows = buildDashboardRows(segmentCode, dashboardCards);
   const compactMode = true;

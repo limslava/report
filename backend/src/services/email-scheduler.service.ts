@@ -362,6 +362,7 @@ export const sendScheduledEmailNow = async (schedule: EmailSchedule) => {
       reportSheet.getColumn(dashboardStartCol + 1).width = 24; // dashboard metric
       reportSheet.getColumn(dashboardStartCol + 2).width = 14; // dashboard value 1
       reportSheet.getColumn(dashboardStartCol + 3).width = 14; // dashboard value 2
+      autoFitColumns(reportSheet, 5, 42);
 
       const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
       const reportTitle = SEGMENT_REPORT_TITLE[report.segment.code] ?? report.segment.name;
@@ -442,11 +443,28 @@ type TotalsExportOptions = {
 };
 
 const MONTH_NAMES_SHORT = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+const CURRENCY_NUMFMT = '#,##0.00';
+
+const CURRENCY_METRIC_CODES = new Set([
+  'ktk_vvo_manual_gross',
+  'ktk_mow_manual_gross',
+  'auto_manual_debt_overload',
+  'auto_manual_debt_cashback',
+  'auto_debt_unpaid',
+  'auto_debt_paid_cards',
+  'auto_debt_contractors_vvo',
+  'auto_debt_delta',
+]);
+
+function isCurrencyMetricCode(code: string): boolean {
+  return CURRENCY_METRIC_CODES.has(code);
+}
 
 export const buildPlanningDailyExcel = async (options: DailyExportOptions): Promise<Buffer> => {
   const workbook = new ExcelJS.Workbook();
   const planningSheet = workbook.addWorksheet('Ежедневный отчет');
   await fillDailyReportSheet(planningSheet, options);
+  autoFitColumns(planningSheet, 5, 42);
   return Buffer.from(await workbook.xlsx.writeBuffer());
 };
 
@@ -454,6 +472,7 @@ export const buildPlanningTotalsExcel = async (options: TotalsExportOptions): Pr
   const workbook = new ExcelJS.Workbook();
   const totalSheet = workbook.addWorksheet('Операционный отчет');
   await fillTotalsSheet(totalSheet, options);
+  autoFitColumns(totalSheet, 5, 42);
   return Buffer.from(await workbook.xlsx.writeBuffer());
 };
 
@@ -470,6 +489,9 @@ async function buildSvExcelFromData(year: number, month: number, asOfDate: strin
     includeMonthTotalColumn: true,
   });
   await fillTotalsSheet(totalSheet, { year, highlightMonth: month });
+
+  autoFitColumns(planningSheet, 5, 42);
+  autoFitColumns(totalSheet, 5, 42);
 
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
@@ -772,9 +794,13 @@ function appendSegmentReportBlock(
     dataRow.height = 20;
     dataRow.getCell(1).value = normalizeMetricName(row.metricCode, row.name);
     dataRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
+    const currencyRow = isCurrencyMetricCode(row.metricCode);
     row.dayValues.forEach((value: number | null, idx: number) => {
       dataRow.getCell(idx + 2).value = value ?? null;
       dataRow.getCell(idx + 2).alignment = { horizontal: 'center', vertical: 'middle' };
+      if (currencyRow) {
+        dataRow.getCell(idx + 2).numFmt = CURRENCY_NUMFMT;
+      }
       const dayDate = new Date(year, month - 1, idx + 1);
       if (dayDate.getDay() === 0 || dayDate.getDay() === 6) {
         dataRow.getCell(idx + 2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.weekend } };
@@ -784,6 +810,9 @@ function appendSegmentReportBlock(
       dataRow.getCell(report.daysInMonth + 2).value = row.monthTotal;
       dataRow.getCell(report.daysInMonth + 2).font = { bold: true };
       dataRow.getCell(report.daysInMonth + 2).alignment = { horizontal: 'center', vertical: 'middle' };
+      if (currencyRow) {
+        dataRow.getCell(report.daysInMonth + 2).numFmt = CURRENCY_NUMFMT;
+      }
     }
     if (!row.isEditable) {
       dataRow.eachCell((cell, col) => {
@@ -868,39 +897,47 @@ function writeDashboardInline(
       const debtOverloadRow = sheet.getRow(debtStart);
       debtOverloadRow.getCell(startCol).value = 'Задолженность перегруз (₽)';
       debtOverloadRow.getCell(startCol + 1).value = Number(dashboard.debtOverload ?? 0);
-      debtOverloadRow.getCell(startCol + 1).numFmt = '#,##0';
+      debtOverloadRow.getCell(startCol + 1).numFmt = CURRENCY_NUMFMT;
       debtOverloadRow.getCell(startCol + 1).alignment = { horizontal: 'center' };
       debtOverloadRow.commit();
 
       const debtCashbackRow = sheet.getRow(debtStart + 1);
       debtCashbackRow.getCell(startCol).value = 'Задолженность кэшбек (₽)';
       debtCashbackRow.getCell(startCol + 1).value = Number(dashboard.debtCashback ?? 0);
-      debtCashbackRow.getCell(startCol + 1).numFmt = '#,##0';
+      debtCashbackRow.getCell(startCol + 1).numFmt = CURRENCY_NUMFMT;
       debtCashbackRow.getCell(startCol + 1).alignment = { horizontal: 'center' };
       debtCashbackRow.commit();
 
       const debtUnpaidRow = sheet.getRow(debtStart + 2);
       debtUnpaidRow.getCell(startCol).value = 'ДЗ (не оплаченная) (₽)';
       debtUnpaidRow.getCell(startCol + 1).value = Number(dashboard.debtUnpaid ?? 0);
-      debtUnpaidRow.getCell(startCol + 1).numFmt = '#,##0';
+      debtUnpaidRow.getCell(startCol + 1).numFmt = CURRENCY_NUMFMT;
       debtUnpaidRow.getCell(startCol + 1).alignment = { horizontal: 'center' };
       debtUnpaidRow.commit();
 
       const debtPaidCardsRow = sheet.getRow(debtStart + 3);
       debtPaidCardsRow.getCell(startCol).value = 'ДЗ (оплачено на карты) (₽)';
       debtPaidCardsRow.getCell(startCol + 1).value = Number(dashboard.debtPaidCards ?? 0);
-      debtPaidCardsRow.getCell(startCol + 1).numFmt = '#,##0';
+      debtPaidCardsRow.getCell(startCol + 1).numFmt = CURRENCY_NUMFMT;
       debtPaidCardsRow.getCell(startCol + 1).alignment = { horizontal: 'center' };
       debtPaidCardsRow.commit();
 
       const debtContractorsRow = sheet.getRow(debtStart + 4);
       debtContractorsRow.getCell(startCol).value = 'Подрядчики Владивосток (₽)';
       debtContractorsRow.getCell(startCol + 1).value = Number(dashboard.debtContractorsVvo ?? 0);
-      debtContractorsRow.getCell(startCol + 1).numFmt = '#,##0';
+      debtContractorsRow.getCell(startCol + 1).numFmt = CURRENCY_NUMFMT;
       debtContractorsRow.getCell(startCol + 1).alignment = { horizontal: 'center' };
       debtContractorsRow.commit();
 
-      return 1 + rows.length + 1 + 5;
+      const deltaRow = sheet.getRow(debtStart + 5);
+      const deltaValue = Number(dashboard.debtDelta ?? 0);
+      deltaRow.getCell(startCol).value = 'Δ ДЗ/КЗ';
+      deltaRow.getCell(startCol + 1).value = deltaValue;
+      deltaRow.getCell(startCol + 1).numFmt = CURRENCY_NUMFMT;
+      deltaRow.getCell(startCol + 1).alignment = { horizontal: 'center' };
+      deltaRow.commit();
+
+      return 1 + rows.length + 1 + 6;
     }
 
     return 1 + rows.length;
@@ -911,32 +948,41 @@ function writeDashboardInline(
     const row = sheet.getRow(startRow + index);
     row.getCell(startCol + 1).value = item.label;
     row.getCell(startCol + 2).value = item.kind === 'percent' ? item.value / 100 : item.value;
-    row.getCell(startCol + 2).numFmt = item.kind === 'percent' ? '0.0%' : '#,##0';
+    row.getCell(startCol + 2).numFmt = item.kind === 'percent'
+      ? '0.0%'
+      : item.kind === 'currency'
+        ? CURRENCY_NUMFMT
+        : item.kind === 'decimal'
+          ? '0.00'
+          : '#,##0';
     row.getCell(startCol + 2).alignment = { horizontal: 'center' };
     row.commit();
   });
   return rows.length;
 }
 
+type DashboardKind = 'percent' | 'integer' | 'currency' | 'decimal';
+
 function toDashboardRows(
   segmentCode: PlanningSegmentCode,
   dashboard: Record<string, unknown>
-): Array<{ label: string; value: number; kind: 'percent' | 'integer' | 'currency' }> {
+): Array<{ label: string; value: number; kind: DashboardKind }> {
   const base = [
     { key: 'planMonth', label: 'План на месяц', kind: 'integer' as const },
     { key: 'planToDate', label: 'План на дату', kind: 'integer' as const },
     { key: 'factToDate', label: 'Выполнение на дату', kind: 'integer' as const },
     { key: 'completionMonthPct', label: 'Выполнение % по месяцу', kind: 'percent' as const },
     { key: 'completionToDatePct', label: 'Выполнение % на дату', kind: 'percent' as const },
-    { key: 'avgPerDay', label: 'Среднее в день', kind: 'integer' as const },
+    { key: 'avgPerDay', label: 'Среднее в день', kind: 'decimal' as const },
   ];
 
-  const extra: Array<{ key: string; label: string; kind: 'percent' | 'integer' | 'currency' }> = [];
+  const extra: Array<{ key: string; label: string; kind: DashboardKind }> = [];
   if (segmentCode === PlanningSegmentCode.KTK_VVO || segmentCode === PlanningSegmentCode.KTK_MOW) {
     extra.push(
       { key: 'grossTotal', label: 'Вал. Общий', kind: 'currency' },
       { key: 'grossAvgPerDay', label: 'Ср. вал сутки', kind: 'currency' },
-      { key: 'trucksAvgOnLine', label: 'Средняя ТС на линии', kind: 'integer' }
+      { key: 'avgRequestCost', label: 'Ср. стоимость заявки', kind: 'currency' },
+      { key: 'trucksAvgOnLine', label: 'Средняя ТС на линии', kind: 'decimal' }
     );
   }
   if (segmentCode === PlanningSegmentCode.AUTO) {
@@ -953,7 +999,8 @@ function toDashboardRows(
       { key: 'debtCashback', label: 'Задолженность кэшбек', kind: 'currency' },
       { key: 'debtUnpaid', label: 'ДЗ (не оплаченная)', kind: 'currency' },
       { key: 'debtPaidCards', label: 'ДЗ (оплачено на карты)', kind: 'currency' },
-      { key: 'debtContractorsVvo', label: 'Подрядчики Владивосток', kind: 'currency' }
+      { key: 'debtContractorsVvo', label: 'Подрядчики Владивосток', kind: 'currency' },
+      { key: 'debtDelta', label: 'Δ ДЗ/КЗ', kind: 'currency' }
     );
     dashboard.truckPlanMonth = Number(truck.planMonth ?? 0);
     dashboard.ktkPlanMonth = Number(ktk.planMonth ?? 0);
@@ -976,6 +1023,43 @@ function applyGrid(sheet: ExcelJS.Worksheet): void {
     row.eachCell((cell) => {
       cell.border = border;
     });
+  });
+}
+
+function autoFitColumns(sheet: ExcelJS.Worksheet, minWidth = 6, maxWidth = 36): void {
+  sheet.columns.forEach((column) => {
+    if (!column || !column.eachCell) return;
+    let maxLength = 0;
+    column.eachCell({ includeEmpty: true }, (cell) => {
+      const raw = cell.value;
+      if (raw === null || raw === undefined) return;
+      let text: string;
+      if (typeof raw === 'number') {
+        if (cell.numFmt === CURRENCY_NUMFMT) {
+          text = new Intl.NumberFormat('ru-RU', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }).format(raw);
+        } else if (cell.numFmt === '0.0%') {
+          text = new Intl.NumberFormat('ru-RU', {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
+          }).format(raw * 100) + '%';
+        } else if (cell.numFmt === '0.00') {
+          text = new Intl.NumberFormat('ru-RU', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }).format(raw);
+        } else {
+          text = String(raw);
+        }
+      } else {
+        text = typeof raw === 'string' ? raw : String(raw);
+      }
+      maxLength = Math.max(maxLength, text.length);
+    });
+    const next = Math.min(maxWidth, Math.max(minWidth, maxLength + 2));
+    column.width = next;
   });
 }
 

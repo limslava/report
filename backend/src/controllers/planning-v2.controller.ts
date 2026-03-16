@@ -232,6 +232,26 @@ export const getPlanningSegmentReport = async (req: Request, res: Response, next
       asOfDate,
     });
 
+    if (user.role === 'manager_sales' && segmentCode === PlanningSegmentCode.AUTO) {
+      const hiddenMetrics = new Set([
+        'auto_manual_debt_overload',
+        'auto_manual_debt_cashback',
+        'auto_debt_unpaid',
+        'auto_debt_paid_cards',
+        'auto_debt_contractors_vvo',
+        'auto_debt_delta',
+      ]);
+      report.gridRows = report.gridRows.filter((row: any) => !hiddenMetrics.has(row.metricCode));
+      if (report.dashboard) {
+        delete (report.dashboard as Record<string, unknown>).debtOverload;
+        delete (report.dashboard as Record<string, unknown>).debtCashback;
+        delete (report.dashboard as Record<string, unknown>).debtUnpaid;
+        delete (report.dashboard as Record<string, unknown>).debtPaidCards;
+        delete (report.dashboard as Record<string, unknown>).debtContractorsVvo;
+        delete (report.dashboard as Record<string, unknown>).debtDelta;
+      }
+    }
+
     res.json(report);
   } catch (error) {
     next(error);
@@ -415,7 +435,7 @@ export const exportPlanningDailyExcel = async (req: Request, res: Response, next
       includeMonthTotalColumn: true,
       includeAutoDebtRows: !hideSalesDebts,
       excludeMetricCodes: hideSalesDebts
-        ? ['auto_manual_debt_overload', 'auto_manual_debt_cashback', 'auto_debt_unpaid', 'auto_debt_paid_cards', 'auto_debt_contractors_vvo']
+        ? ['auto_manual_debt_overload', 'auto_manual_debt_cashback', 'auto_debt_unpaid', 'auto_debt_paid_cards', 'auto_debt_contractors_vvo', 'auto_debt_delta']
         : undefined,
     });
 
