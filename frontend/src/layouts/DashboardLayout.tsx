@@ -34,7 +34,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Close,
-  FactCheck,
 } from '@mui/icons-material';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
