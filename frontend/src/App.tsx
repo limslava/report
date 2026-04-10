@@ -13,7 +13,8 @@ import RouteAccessGuard from './components/auth/RouteAccessGuard';
 import { canAccessAdmin, canViewCalendar, canViewFinancialPlan, canViewSummary } from './utils/rolePermissions';
 
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
-const OperationsPreview = lazy(() => import('./pages/OperationsPreview'));
+// TODO: Вернуть после завершения разработки ежемесячного обзора.
+// const OperationsPreview = lazy(() => import('./pages/OperationsPreview'));
 
 function App() {
   const { token, user } = useAuthStore();
@@ -65,11 +66,14 @@ function App() {
               </RouteAccessGuard>
             )}
           />
+          {/*
+            TODO: Вернуть после завершения разработки ежемесячного обзора.
           <Route path="operations-preview" element={(
               <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
                 <OperationsPreview />
               </Suspense>
             )} />
+          */}
         </Route>
       ) : (
         <Route path="*" element={<Navigate to="/login" replace />} />

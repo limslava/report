@@ -123,9 +123,10 @@ const DashboardLayout = () => {
     canViewCalendar(user?.role)
       ? { key: 'calendar', label: 'Календарь', icon: calendarIcon, onClick: () => handleNavigate('/calendar'), active: location.pathname.includes('/calendar') }
       : null,
-    isAdmin
-      ? { key: 'ops-preview', label: 'Ежедневный ввод (превью)', icon: <FactCheck />, onClick: () => handleNavigate('/operations-preview'), active: location.pathname.includes('/operations-preview') }
-      : null,
+    // TODO: Вернуть после завершения разработки ежемесячного обзора.
+    // isAdmin
+    //   ? { key: 'ops-preview', label: 'Ежедневный ввод (превью)', icon: <FactCheck />, onClick: () => handleNavigate('/operations-preview'), active: location.pathname.includes('/operations-preview') }
+    //   : null,
     canAccessAdmin(user?.role)
       ? { key: 'admin', label: 'Администрирование', icon: <People />, onClick: () => handleNavigate('/admin'), active: location.pathname.includes('/admin') }
       : null,
