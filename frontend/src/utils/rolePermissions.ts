@@ -24,6 +24,10 @@ export function canViewFinancialPlan(role?: string | null): boolean {
   return role === 'admin' || role === 'director' || role === 'financer';
 }
 
+export function canViewCalendar(role?: string | null): boolean {
+  return role === 'admin' || role === 'director' || role === 'manager_auto';
+}
+
 export function canEditFinancialPlan(role?: string | null): boolean {
   return role === 'admin' || role === 'director' || role === 'financer';
 }

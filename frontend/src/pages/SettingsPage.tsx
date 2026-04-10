@@ -14,13 +14,22 @@ import {
   ListItem,
   ListItemText,
   IconButton,
+  Chip,
+  Tooltip,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
   MenuItem,
   Select,
   FormControl,
   InputLabel,
   Alert,
 } from '@mui/material';
-import { Delete, Add, Edit } from '@mui/icons-material';
+import { Delete, Add, Edit, ExpandMore } from '@mui/icons-material';
 import {
   getSmtpConfig,
   saveSmtpConfig,
@@ -291,6 +300,10 @@ const SettingsPage = () => {
     recipientsText: '',
   });
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
+  const [editSchedule, setEditSchedule] = useState<typeof newSchedule | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [expandedScheduleId, setExpandedScheduleId] = useState<string | false>(false);
 
   // Password change state
   const [currentPassword, setCurrentPassword] = useState('');
@@ -311,6 +324,23 @@ const SettingsPage = () => {
   const [vatRate, setVatRate] = useState('');
   const [vatSaving, setVatSaving] = useState(false);
   const [vatShowAll, setVatShowAll] = useState(false);
+
+  const renderRecipients = (recipients: string[] = []) => {
+    const visible = recipients.slice(0, 3);
+    const hidden = recipients.slice(3);
+    return (
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+        {visible.map((email) => (
+          <Chip key={email} size="small" label={email} variant="outlined" />
+        ))}
+        {hidden.length > 0 && (
+          <Tooltip title={hidden.join(', ')}>
+            <Chip size="small" label={`+${hidden.length}`} variant="outlined" />
+          </Tooltip>
+        )}
+      </Box>
+    );
+  };
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -406,25 +436,13 @@ const SettingsPage = () => {
         schedule.dayOfMonth = newSchedule.dayOfMonth;
       }
 
-      if (editingScheduleId) {
-        await updateEmailSchedule(editingScheduleId, {
-          department: newSchedule.department,
-          frequency: newSchedule.frequency,
-          schedule,
-          recipients,
-        });
-        setEmailMessage({ type: 'success', text: 'Расписание обновлено' });
-      } else {
-        await createEmailSchedule({
-          department: newSchedule.department,
-          frequency: newSchedule.frequency,
-          schedule,
-          recipients,
-        });
-        setEmailMessage({ type: 'success', text: 'Расписание добавлено' });
-      }
-
-      setEditingScheduleId(null);
+      await createEmailSchedule({
+        department: newSchedule.department,
+        frequency: newSchedule.frequency,
+        schedule,
+        recipients,
+      });
+      setEmailMessage({ type: 'success', text: 'Расписание добавлено' });
       setNewSchedule((prev) => ({ ...prev, recipientsText: '' }));
       await loadEmailSchedules();
     } catch {
@@ -434,7 +452,7 @@ const SettingsPage = () => {
 
   const handleEditSchedule = (item: any) => {
     setEditingScheduleId(item.id);
-    setNewSchedule({
+    setEditSchedule({
       department: item.department ?? 'container_vladivostok',
       frequency: item.frequency ?? 'daily',
       reportType: item.schedule?.reportType ?? 'planning_v2_segment',
@@ -443,6 +461,45 @@ const SettingsPage = () => {
       dayOfMonth: item.schedule?.dayOfMonth ?? 1,
       recipientsText: (item.recipients ?? []).join(', '),
     });
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveEditSchedule = async () => {
+    if (!editingScheduleId || !editSchedule) return;
+    const recipients = editSchedule.recipientsText
+      .split(',')
+      .map((v) => v.trim())
+      .filter(Boolean);
+
+    if (recipients.length === 0) {
+      setEmailMessage({ type: 'error', text: 'Укажите хотя бы один email получателя' });
+      return;
+    }
+
+    try {
+      const schedule: any = { time: normalizeTimeToFiveMinutes(editSchedule.time), timezone: SCHEDULER_TIMEZONE };
+      schedule.reportType = editSchedule.reportType;
+      if (editSchedule.frequency === 'weekly') {
+        schedule.daysOfWeek = editSchedule.daysOfWeek;
+      }
+      if (editSchedule.frequency === 'monthly') {
+        schedule.dayOfMonth = editSchedule.dayOfMonth;
+      }
+
+      await updateEmailSchedule(editingScheduleId, {
+        department: editSchedule.department,
+        frequency: editSchedule.frequency,
+        schedule,
+        recipients,
+      });
+      setEmailMessage({ type: 'success', text: 'Расписание обновлено' });
+      setEditDialogOpen(false);
+      setEditingScheduleId(null);
+      setEditSchedule(null);
+      await loadEmailSchedules();
+    } catch {
+      setEmailMessage({ type: 'error', text: 'Ошибка при обновлении расписания' });
+    }
   };
 
   const departmentLabels: Record<string, string> = {
@@ -643,211 +700,380 @@ const SettingsPage = () => {
         {isAdmin && (
           <>
             <TabPanel value={tabValue} index={1}>
-              <Typography variant="h6" gutterBottom>
-                Настройка email-рассылки
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, mb: 1 }}>
+                <Typography variant="h6">Настройка email-рассылки</Typography>
+                <Button variant="contained" startIcon={<Add />} onClick={() => setAddDialogOpen(true)}>
+                  Добавить расписание
+                </Button>
+              </Box>
               {emailMessage && (
                 <Alert severity={emailMessage.type} sx={{ mb: 2 }}>
                   {emailMessage.text}
                 </Alert>
               )}
-              <List>
-                {emailSchedules.map((schedule) => (
-                  <ListItem
-                    key={schedule.id}
-                    sx={{
-                      py: 1.5,
-                      alignItems: 'flex-start',
-                      display: 'flex',
-                      gap: 2,
-                      flexWrap: 'wrap',
-                      justifyContent: 'space-between',
-                    }}
-                  >
-                    <ListItemText
-                      primary={
-                        schedule.schedule?.reportType === 'sv_pdf'
-                          ? `${frequencyLabels[schedule.frequency] ?? schedule.frequency} • ${schedule.schedule?.time ?? '--:--'} • СВ отчет`
-                          : schedule.schedule?.reportType === 'monthly_final'
-                            ? `${frequencyLabels[schedule.frequency] ?? schedule.frequency} • ${schedule.schedule?.time ?? '--:--'} • СВ за месяц`
-                            : `${frequencyLabels[schedule.frequency] ?? schedule.frequency} • ${schedule.schedule?.time ?? '--:--'} • ${departmentLabels[schedule.department] ?? schedule.department}`
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                {emailSchedules.map((schedule) => {
+                  const title =
+                    schedule.schedule?.reportType === 'sv_pdf'
+                      ? `${frequencyLabels[schedule.frequency] ?? schedule.frequency} • ${schedule.schedule?.time ?? '--:--'} • СВ отчет`
+                      : schedule.schedule?.reportType === 'monthly_final'
+                        ? `${frequencyLabels[schedule.frequency] ?? schedule.frequency} • ${schedule.schedule?.time ?? '--:--'} • СВ за месяц`
+                        : `${frequencyLabels[schedule.frequency] ?? schedule.frequency} • ${schedule.schedule?.time ?? '--:--'} • ${departmentLabels[schedule.department] ?? schedule.department}`;
+                  return (
+                    <Accordion
+                      key={schedule.id}
+                      variant="outlined"
+                      disableGutters
+                      expanded={expandedScheduleId === schedule.id}
+                      onChange={(_event, isExpanded) =>
+                        setExpandedScheduleId(isExpanded ? schedule.id : false)
                       }
-                      secondary={
-                        <>
-                          {`Получатели: ${(schedule.recipients ?? []).join(', ')}`}
-                          {' • '}
-                          {schedule.schedule?.reportType === 'sv_pdf'
-                            ? 'Отчет: СВ (Excel из данных)'
-                            : schedule.schedule?.reportType === 'monthly_final'
-                              ? 'Отчет: СВ за месяц (итоговый)'
-                              : 'Отчет: Планирование v2'}
-                          {schedule.frequency === 'weekly' && (schedule.schedule?.daysOfWeek ?? []).length > 0
-                            ? ` • Дни: ${(schedule.schedule?.daysOfWeek ?? [])
-                                .map((d: number) => (['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][d - 1] ?? String(d)))
-                                .join(', ')}`
-                            : ''}
-                        </>
-                      }
-                      sx={{ mr: 2 }}
-                    />
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-                      <FormControlLabel
-                        sx={{ m: 0 }}
-                        control={
-                          <Switch
-                            checked={Boolean(schedule.isActive)}
-                            onChange={(e) => handleToggleSchedule(schedule, e.target.checked)}
-                          />
-                        }
-                        label="Вкл"
-                      />
-                      <Button size="small" onClick={() => handleTestSchedule(schedule.id)}>
-                        Тест
-                      </Button>
-                      <IconButton onClick={() => handleEditSchedule(schedule)}>
-                        <Edit />
-                      </IconButton>
-                      <IconButton onClick={() => handleRemoveSchedule(schedule.id)}>
-                        <Delete />
-                      </IconButton>
-                    </Box>
-                  </ListItem>
-                ))}
+                    >
+                      <AccordionSummary expandIcon={<ExpandMore />}>
+                        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                          <Typography variant="subtitle1">{title}</Typography>
+                          {expandedScheduleId !== schedule.id && (
+                            <Typography variant="caption" color="text.secondary">
+                              Получатели: {(schedule.recipients ?? []).slice(0, 3).join(', ')}
+                              {(schedule.recipients ?? []).length > 3
+                                ? ` +${(schedule.recipients ?? []).length - 3}`
+                                : ''}
+                            </Typography>
+                          )}
+                        </Box>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.75 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              Получатели:
+                            </Typography>
+                            {renderRecipients(schedule.recipients ?? [])}
+                          </Box>
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              flexWrap: 'wrap',
+                              gap: 1,
+                            }}
+                          >
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+                              <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
+                                {schedule.schedule?.reportType === 'sv_pdf'
+                                  ? 'Отчет: СВ (Excel из данных)'
+                                  : schedule.schedule?.reportType === 'monthly_final'
+                                    ? 'Отчет: СВ за месяц (итоговый)'
+                                    : 'Отчет: Планирование v2'}
+                              </Typography>
+                              {schedule.frequency === 'weekly' && (schedule.schedule?.daysOfWeek ?? []).length > 0 ? (
+                                <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
+                                  {`Дни: ${(schedule.schedule?.daysOfWeek ?? [])
+                                    .map((d: number) => (['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][d - 1] ?? String(d)))
+                                    .join(', ')}`}
+                                </Typography>
+                              ) : null}
+                            </Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                              <FormControlLabel
+                                sx={{ m: 0, alignItems: 'center' }}
+                                control={
+                                  <Switch
+                                    checked={Boolean(schedule.isActive)}
+                                    onChange={(e) => handleToggleSchedule(schedule, e.target.checked)}
+                                  />
+                                }
+                                label="Вкл"
+                              />
+                              <Button size="small" onClick={() => handleTestSchedule(schedule.id)}>
+                                Тест
+                              </Button>
+                              <IconButton onClick={() => handleEditSchedule(schedule)}>
+                                <Edit />
+                              </IconButton>
+                              <IconButton onClick={() => handleRemoveSchedule(schedule.id)}>
+                                <Delete />
+                              </IconButton>
+                            </Box>
+                          </Box>
+                        </Box>
+                      </AccordionDetails>
+                    </Accordion>
+                  );
+                })}
                 {!emailLoading && emailSchedules.length === 0 && (
-                  <ListItem>
-                    <ListItemText primary="Расписания пока не созданы" />
-                  </ListItem>
+                  <Paper variant="outlined" sx={{ p: 2 }}>
+                    <Typography variant="body2">Расписания пока не созданы</Typography>
+                  </Paper>
                 )}
-              </List>
-              <Paper variant="outlined" sx={{ p: 2, mt: 1 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  {editingScheduleId ? 'Редактирование расписания' : 'Новое расписание'}
-                </Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 1.5 }}>
-                  <TextField
-                    select
-                    label="Тип отчета"
-                    size="small"
-                    value={newSchedule.reportType}
-                    onChange={(e) =>
-                      setNewSchedule((prev) => ({
-                        ...prev,
-                        reportType: e.target.value,
-                        frequency: e.target.value === 'monthly_final' ? 'monthly' : prev.frequency,
-                      }))
-                    }
-                  >
-                    <MenuItem value="planning_v2_segment">Планирование v2 по сегменту</MenuItem>
-                    <MenuItem value="sv_pdf">СВ (Excel из данных системы)</MenuItem>
-                    <MenuItem value="monthly_final">СВ за месяц (итоговый)</MenuItem>
-                  </TextField>
-                  <TextField
-                    select
-                    label="Направление"
-                    size="small"
-                    value={newSchedule.department}
-                    onChange={(e) => setNewSchedule((prev) => ({ ...prev, department: e.target.value }))}
-                    disabled={newSchedule.reportType !== 'planning_v2_segment'}
-                  >
-                    <MenuItem value="container_vladivostok">КТК Владивосток</MenuItem>
-                    <MenuItem value="container_moscow">КТК Москва</MenuItem>
-                    <MenuItem value="autotruck">Отправка авто</MenuItem>
-                    <MenuItem value="railway">ЖД</MenuItem>
-                    <MenuItem value="additional">Доп.услуги</MenuItem>
-                    <MenuItem value="to_auto">ТО авто</MenuItem>
-                  </TextField>
-                  <TextField
-                    select
-                    label="Частота"
-                    size="small"
-                    value={newSchedule.frequency}
-                    onChange={(e) => setNewSchedule((prev) => ({ ...prev, frequency: e.target.value }))}
-                    disabled={newSchedule.reportType === 'monthly_final'}
-                  >
-                    <MenuItem value="daily">Ежедневно</MenuItem>
-                    <MenuItem value="weekly">Еженедельно</MenuItem>
-                    <MenuItem value="monthly">Ежемесячно</MenuItem>
-                  </TextField>
-                  <TextField
-                    select
-                    label="Время"
-                    size="small"
-                    value={normalizeTimeToFiveMinutes(newSchedule.time)}
-                    onChange={(e) => setNewSchedule((prev) => ({ ...prev, time: e.target.value }))}
-                    helperText="Шаг: 5 минут (часовой пояс Владивосток)"
-                  >
-                    {TIME_OPTIONS_5_MINUTES.map((time) => (
-                      <MenuItem key={time} value={time}>
-                        {time}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  {newSchedule.frequency === 'monthly' && (
-                    <TextField
-                      label="День месяца"
-                      type="number"
-                      size="small"
-                      value={newSchedule.dayOfMonth}
-                      inputProps={{ min: 1, max: 31 }}
-                      onChange={(e) =>
-                        setNewSchedule((prev) => ({ ...prev, dayOfMonth: Math.min(31, Math.max(1, Number(e.target.value) || 1)) }))
-                      }
-                    />
-                  )}
-                  {newSchedule.frequency === 'weekly' && (
+              </Box>
+              <Dialog
+                open={addDialogOpen}
+                onClose={() => setAddDialogOpen(false)}
+                fullWidth
+                maxWidth="md"
+              >
+                <DialogTitle>Новое расписание</DialogTitle>
+                <DialogContent sx={{ pt: 1 }}>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 1.5, mt: 1 }}>
                     <TextField
                       select
-                      SelectProps={{ multiple: true }}
-                      label="Дни недели"
+                      label="Тип отчета"
                       size="small"
-                      value={newSchedule.daysOfWeek as any}
-                      onChange={(e) => {
-                        const next = (e.target.value as unknown as Array<string | number>).map((v) => Number(v));
-                        setNewSchedule((prev) => ({ ...prev, daysOfWeek: next }));
-                      }}
+                      value={newSchedule.reportType}
+                      onChange={(e) =>
+                        setNewSchedule((prev) => ({
+                          ...prev,
+                          reportType: e.target.value,
+                          frequency: e.target.value === 'monthly_final' ? 'monthly' : prev.frequency,
+                        }))
+                      }
                     >
-                      <MenuItem value={1}>Понедельник</MenuItem>
-                      <MenuItem value={2}>Вторник</MenuItem>
-                      <MenuItem value={3}>Среда</MenuItem>
-                      <MenuItem value={4}>Четверг</MenuItem>
-                      <MenuItem value={5}>Пятница</MenuItem>
-                      <MenuItem value={6}>Суббота</MenuItem>
-                      <MenuItem value={7}>Воскресенье</MenuItem>
+                      <MenuItem value="planning_v2_segment">Планирование v2 по сегменту</MenuItem>
+                      <MenuItem value="sv_pdf">СВ (Excel из данных системы)</MenuItem>
+                      <MenuItem value="monthly_final">СВ за месяц (итоговый)</MenuItem>
                     </TextField>
-                  )}
-                  <TextField
-                    label="Получатели (через запятую)"
-                    size="small"
-                    value={newSchedule.recipientsText}
-                    onChange={(e) => setNewSchedule((prev) => ({ ...prev, recipientsText: e.target.value }))}
-                    placeholder="a@x.ru, b@x.ru"
-                  />
-                </Box>
-                <Box sx={{ mt: 1.5, display: 'flex', gap: 1 }}>
-                  <Button startIcon={editingScheduleId ? <Edit /> : <Add />} onClick={handleAddSchedule}>
-                    {editingScheduleId ? 'Сохранить изменения' : 'Добавить расписание'}
-                  </Button>
-                  {editingScheduleId && (
-                    <Button
-                      variant="text"
-                      onClick={() => {
-                        setEditingScheduleId(null);
-                        setNewSchedule({
-                          department: 'container_vladivostok',
-                          frequency: 'daily',
-                          reportType: 'planning_v2_segment',
-                          time: '09:00',
-                          daysOfWeek: [1, 2, 3, 4, 5],
-                          dayOfMonth: 1,
-                          recipientsText: '',
-                        });
-                      }}
+                    <TextField
+                      select
+                      label="Направление"
+                      size="small"
+                      value={newSchedule.department}
+                      onChange={(e) => setNewSchedule((prev) => ({ ...prev, department: e.target.value }))}
+                      disabled={newSchedule.reportType !== 'planning_v2_segment'}
                     >
-                      Отмена
-                    </Button>
+                      <MenuItem value="container_vladivostok">КТК Владивосток</MenuItem>
+                      <MenuItem value="container_moscow">КТК Москва</MenuItem>
+                      <MenuItem value="autotruck">Отправка авто</MenuItem>
+                      <MenuItem value="railway">ЖД</MenuItem>
+                      <MenuItem value="additional">Доп.услуги</MenuItem>
+                      <MenuItem value="to_auto">ТО авто</MenuItem>
+                    </TextField>
+                    <TextField
+                      select
+                      label="Частота"
+                      size="small"
+                      value={newSchedule.frequency}
+                      onChange={(e) => setNewSchedule((prev) => ({ ...prev, frequency: e.target.value }))}
+                      disabled={newSchedule.reportType === 'monthly_final'}
+                    >
+                      <MenuItem value="daily">Ежедневно</MenuItem>
+                      <MenuItem value="weekly">Еженедельно</MenuItem>
+                      <MenuItem value="monthly">Ежемесячно</MenuItem>
+                    </TextField>
+                    <TextField
+                      select
+                      label="Время"
+                      size="small"
+                      value={normalizeTimeToFiveMinutes(newSchedule.time)}
+                      onChange={(e) => setNewSchedule((prev) => ({ ...prev, time: e.target.value }))}
+                      helperText="Время по Владивостоку (UTC+10)"
+                    >
+                      {TIME_OPTIONS_5_MINUTES.map((time) => (
+                        <MenuItem key={time} value={time}>
+                          {time}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                    {newSchedule.frequency === 'monthly' && (
+                      <TextField
+                        label="День месяца"
+                        type="number"
+                        size="small"
+                        value={newSchedule.dayOfMonth}
+                        inputProps={{ min: 1, max: 31 }}
+                        onChange={(e) =>
+                          setNewSchedule((prev) => ({ ...prev, dayOfMonth: Math.min(31, Math.max(1, Number(e.target.value) || 1)) }))
+                        }
+                      />
+                    )}
+                    {newSchedule.frequency === 'weekly' && (
+                      <TextField
+                        select
+                        SelectProps={{ multiple: true }}
+                        label="Дни недели"
+                        size="small"
+                        value={newSchedule.daysOfWeek as any}
+                        onChange={(e) => {
+                          const next = (e.target.value as unknown as Array<string | number>).map((v) => Number(v));
+                          setNewSchedule((prev) => ({ ...prev, daysOfWeek: next }));
+                        }}
+                      >
+                        <MenuItem value={1}>Понедельник</MenuItem>
+                        <MenuItem value={2}>Вторник</MenuItem>
+                        <MenuItem value={3}>Среда</MenuItem>
+                        <MenuItem value={4}>Четверг</MenuItem>
+                        <MenuItem value={5}>Пятница</MenuItem>
+                        <MenuItem value={6}>Суббота</MenuItem>
+                        <MenuItem value={7}>Воскресенье</MenuItem>
+                      </TextField>
+                    )}
+                    <TextField
+                      label="Получатели (через запятую)"
+                      size="small"
+                      value={newSchedule.recipientsText}
+                      onChange={(e) => setNewSchedule((prev) => ({ ...prev, recipientsText: e.target.value }))}
+                      placeholder="a@x.ru, b@x.ru"
+                    />
+                  </Box>
+                </DialogContent>
+                <DialogActions sx={{ pr: 3, pb: 2 }}>
+                  <Button onClick={() => setAddDialogOpen(false)} variant="text">
+                    Отмена
+                  </Button>
+                  <Button
+                    variant="contained"
+                    startIcon={<Add />}
+                    onClick={async () => {
+                      await handleAddSchedule();
+                      setAddDialogOpen(false);
+                    }}
+                  >
+                    Добавить
+                  </Button>
+                </DialogActions>
+              </Dialog>
+              <Dialog
+                open={editDialogOpen}
+                onClose={() => {
+                  setEditDialogOpen(false);
+                  setEditingScheduleId(null);
+                  setEditSchedule(null);
+                }}
+                fullWidth
+                maxWidth="md"
+              >
+                <DialogTitle>Редактирование расписания</DialogTitle>
+                <DialogContent sx={{ pt: 1 }}>
+                  {editSchedule && (
+                    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 1.5, mt: 1 }}>
+                      <TextField
+                        select
+                        label="Тип отчета"
+                        size="small"
+                        value={editSchedule.reportType}
+                        onChange={(e) =>
+                          setEditSchedule((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  reportType: e.target.value,
+                                  frequency: e.target.value === 'monthly_final' ? 'monthly' : prev.frequency,
+                                }
+                              : prev
+                          )
+                        }
+                      >
+                        <MenuItem value="planning_v2_segment">Планирование v2 по сегменту</MenuItem>
+                        <MenuItem value="sv_pdf">СВ (Excel из данных системы)</MenuItem>
+                        <MenuItem value="monthly_final">СВ за месяц (итоговый)</MenuItem>
+                      </TextField>
+                      <TextField
+                        select
+                        label="Направление"
+                        size="small"
+                        value={editSchedule.department}
+                        onChange={(e) =>
+                          setEditSchedule((prev) => (prev ? { ...prev, department: e.target.value } : prev))
+                        }
+                        disabled={editSchedule.reportType !== 'planning_v2_segment'}
+                      >
+                        <MenuItem value="container_vladivostok">КТК Владивосток</MenuItem>
+                        <MenuItem value="container_moscow">КТК Москва</MenuItem>
+                        <MenuItem value="autotruck">Отправка авто</MenuItem>
+                        <MenuItem value="railway">ЖД</MenuItem>
+                        <MenuItem value="additional">Доп.услуги</MenuItem>
+                        <MenuItem value="to_auto">ТО авто</MenuItem>
+                      </TextField>
+                      <TextField
+                        select
+                        label="Частота"
+                        size="small"
+                        value={editSchedule.frequency}
+                        onChange={(e) => setEditSchedule((prev) => (prev ? { ...prev, frequency: e.target.value } : prev))}
+                        disabled={editSchedule.reportType === 'monthly_final'}
+                      >
+                        <MenuItem value="daily">Ежедневно</MenuItem>
+                        <MenuItem value="weekly">Еженедельно</MenuItem>
+                        <MenuItem value="monthly">Ежемесячно</MenuItem>
+                      </TextField>
+                      <TextField
+                        select
+                        label="Время"
+                        size="small"
+                        value={normalizeTimeToFiveMinutes(editSchedule.time)}
+                        onChange={(e) => setEditSchedule((prev) => (prev ? { ...prev, time: e.target.value } : prev))}
+                        helperText="Время по Владивостоку (UTC+10)"
+                      >
+                        {TIME_OPTIONS_5_MINUTES.map((time) => (
+                          <MenuItem key={time} value={time}>
+                            {time}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                      {editSchedule.frequency === 'monthly' && (
+                        <TextField
+                          label="День месяца"
+                          type="number"
+                          size="small"
+                          value={editSchedule.dayOfMonth}
+                          inputProps={{ min: 1, max: 31 }}
+                          onChange={(e) =>
+                            setEditSchedule((prev) =>
+                              prev
+                                ? { ...prev, dayOfMonth: Math.min(31, Math.max(1, Number(e.target.value) || 1)) }
+                                : prev
+                            )
+                          }
+                        />
+                      )}
+                      {editSchedule.frequency === 'weekly' && (
+                        <TextField
+                          select
+                          SelectProps={{ multiple: true }}
+                          label="Дни недели"
+                          size="small"
+                          value={editSchedule.daysOfWeek as any}
+                          onChange={(e) => {
+                            const next = (e.target.value as unknown as Array<string | number>).map((v) => Number(v));
+                            setEditSchedule((prev) => (prev ? { ...prev, daysOfWeek: next } : prev));
+                          }}
+                        >
+                          <MenuItem value={1}>Понедельник</MenuItem>
+                          <MenuItem value={2}>Вторник</MenuItem>
+                          <MenuItem value={3}>Среда</MenuItem>
+                          <MenuItem value={4}>Четверг</MenuItem>
+                          <MenuItem value={5}>Пятница</MenuItem>
+                          <MenuItem value={6}>Суббота</MenuItem>
+                          <MenuItem value={7}>Воскресенье</MenuItem>
+                        </TextField>
+                      )}
+                      <TextField
+                        label="Получатели (через запятую)"
+                        size="small"
+                        value={editSchedule.recipientsText}
+                        onChange={(e) => setEditSchedule((prev) => (prev ? { ...prev, recipientsText: e.target.value } : prev))}
+                        placeholder="a@x.ru, b@x.ru"
+                      />
+                    </Box>
                   )}
-                </Box>
-              </Paper>
+                </DialogContent>
+                <DialogActions sx={{ pr: 3, pb: 2 }}>
+                  <Button
+                    variant="text"
+                    onClick={() => {
+                      setEditDialogOpen(false);
+                      setEditingScheduleId(null);
+                      setEditSchedule(null);
+                    }}
+                  >
+                    Отмена
+                  </Button>
+                  <Button variant="contained" startIcon={<Edit />} onClick={handleSaveEditSchedule}>
+                    Сохранить
+                  </Button>
+                </DialogActions>
+              </Dialog>
             </TabPanel>
             <TabPanel value={tabValue} index={2}>
               <SmtpConfigForm />

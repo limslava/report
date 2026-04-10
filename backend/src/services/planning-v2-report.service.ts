@@ -416,6 +416,7 @@ export class PlanningV2ReportService {
       if (segment.code === PlanningSegmentCode.RAIL) {
         const receivedRow = report.gridRows.find((row) => row.metricCode === 'rail_total_received');
         const waitingRow = report.gridRows.find((row) => row.metricCode === 'rail_total_waiting');
+        const dataDays = Math.max(1, Math.min(report.daysInMonth, (report.dashboard.completedDays as number) + 1));
 
         items.push({
           segmentCode: segment.code,
@@ -438,7 +439,7 @@ export class PlanningV2ReportService {
             detailCode: 'RAIL_RECEIVED_TOTAL',
             planMonth: 0,
             planToDate: 0,
-            factToDate: report.daysInMonth > 0 ? sumUntil(receivedRow.dayValues ?? [], report.dashboard.completedDays as number) : 0,
+            factToDate: report.daysInMonth > 0 ? sumUntil(receivedRow.dayValues ?? [], dataDays) : 0,
             monthFact: receivedRow.monthTotal ?? 0,
             completionToDate: 0,
             completionMonth: 0,
@@ -453,7 +454,7 @@ export class PlanningV2ReportService {
             detailCode: 'RAIL_WAITING_TOTAL',
             planMonth: 0,
             planToDate: 0,
-            factToDate: report.daysInMonth > 0 ? lastUntil(waitingRow.dayValues ?? [], report.dashboard.completedDays as number) : 0,
+            factToDate: report.daysInMonth > 0 ? lastUntil(waitingRow.dayValues ?? [], dataDays) : 0,
             monthFact: waitingRow.monthTotal ?? 0,
             completionToDate: 0,
             completionMonth: 0,

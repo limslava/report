@@ -8,6 +8,8 @@ import { authRouter } from './routes/auth.routes';
 import { adminRouter } from './routes/admin.routes';
 import emailRouter from './routes/email.routes';
 import smtpConfigRouter from './routes/smtp-config.routes';
+import { notesRouter } from './routes/notes.routes';
+import { usersRouter } from './routes/users.routes';
 import { planningV2Router } from './routes/planning-v2.routes';
 import { financialPlanRouter } from './routes/financial-plan.routes';
 import { errorHandler } from './middleware/error-handler';
@@ -85,8 +87,10 @@ export function createApp() {
   app.use('/api/v2/planning', planningV2Router);
   app.use('/api/v2/financial-plan', financialPlanRouter);
   app.use('/api/admin', adminRouter);
+  app.use('/api/users', usersRouter);
   app.use('/api/email-schedules', emailRouter);
   app.use('/api/smtp-config', smtpConfigRouter);
+  app.use('/api/notes', notesRouter);
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });

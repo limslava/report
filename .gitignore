@@ -32,3 +32,7 @@ logs/
 # Local spreadsheets
 *.xlsx
 *.xls
+
+# Monthly overview (local preview only)
+frontend/src/pages/OperationsPreview.tsx
+frontend/src/styles/operations-preview.css

@@ -82,6 +82,7 @@ export const changePassword = (data: { currentPassword: string; newPassword: str
 export const getRuntimeAppSettings = () => api.get('/auth/app-settings');
 
 export const getUsers = (params?: any) => api.get('/admin/users', { params });
+export const getUsersDirectory = () => api.get('/users/directory');
 export const inviteUser = (data: any) => api.post('/admin/users/invite', data);
 export const updateUser = (id: string, data: any) => api.put(`/admin/users/${id}`, data);
 export const resetUserPasswordByAdmin = (id: string) => api.post(`/admin/users/${id}/reset-password`);

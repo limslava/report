@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { Suspense, lazy } from 'react';
 import { useAuthStore } from './store/auth-store';
 import DashboardLayout from './layouts/DashboardLayout';
 import LoginPage from './pages/LoginPage';
@@ -9,7 +10,10 @@ import AdminPage from './pages/AdminPage';
 import SettingsPage from './pages/SettingsPage';
 import PlansPage from './pages/PlansPage';
 import RouteAccessGuard from './components/auth/RouteAccessGuard';
-import { canAccessAdmin, canViewFinancialPlan, canViewSummary } from './utils/rolePermissions';
+import { canAccessAdmin, canViewCalendar, canViewFinancialPlan, canViewSummary } from './utils/rolePermissions';
+
+const CalendarPage = lazy(() => import('./pages/CalendarPage'));
+const OperationsPreview = lazy(() => import('./pages/OperationsPreview'));
 
 function App() {
   const { token, user } = useAuthStore();
@@ -51,6 +55,21 @@ function App() {
               </RouteAccessGuard>
             )}
           />
+          <Route
+            path="calendar"
+            element={(
+              <RouteAccessGuard allow={canViewCalendar(user?.role)}>
+                <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
+                  <CalendarPage />
+                </Suspense>
+              </RouteAccessGuard>
+            )}
+          />
+          <Route path="operations-preview" element={(
+              <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
+                <OperationsPreview />
+              </Suspense>
+            )} />
         </Route>
       ) : (
         <Route path="*" element={<Navigate to="/login" replace />} />

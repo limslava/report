@@ -21,6 +21,7 @@ import {
   Typography,
   Divider,
   Tooltip,
+  Badge,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -29,17 +30,20 @@ import {
   Settings,
   Logout,
   TableChart,
+  CalendarMonth,
   ChevronLeft,
   ChevronRight,
   Close,
+  FactCheck,
 } from '@mui/icons-material';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/auth-store';
-import { canAccessAdmin, canViewFinancialPlan, canViewSummary, canViewTotalsInPlans } from '../utils/rolePermissions';
+import { canAccessAdmin, canViewCalendar, canViewFinancialPlan, canViewSummary, canViewTotalsInPlans } from '../utils/rolePermissions';
 import { getHasUnsavedChanges, getUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import { getRuntimeAppSettings } from '../services/api';
 import { useServiceHealth } from '../hooks/useServiceHealth';
+import { getNotesUnreadCount } from '../services/notes.api';
 
 const expandedDrawerWidth = 280;
 const collapsedDrawerWidth = 86;
@@ -62,6 +66,7 @@ const DashboardLayout = () => {
     const raw = localStorage.getItem('sidebar-pinned-open');
     return raw !== 'false';
   });
+  const [unreadNotesCount, setUnreadNotesCount] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
@@ -103,9 +108,23 @@ const DashboardLayout = () => {
     });
   };
 
+  const calendarIcon = unreadNotesCount > 0 ? (
+    <Badge color="error" badgeContent={unreadNotesCount > 9 ? '9+' : unreadNotesCount}>
+      <CalendarMonth />
+    </Badge>
+  ) : (
+    <CalendarMonth />
+  );
+
   const menuItems = [
     canViewSummary(user?.role)
       ? { key: 'summary', label: 'Сводный отчет', icon: <Assignment />, onClick: () => handleNavigate('/summary-report'), active: location.pathname.includes('/summary') }
+      : null,
+    canViewCalendar(user?.role)
+      ? { key: 'calendar', label: 'Календарь', icon: calendarIcon, onClick: () => handleNavigate('/calendar'), active: location.pathname.includes('/calendar') }
+      : null,
+    isAdmin
+      ? { key: 'ops-preview', label: 'Ежедневный ввод (превью)', icon: <FactCheck />, onClick: () => handleNavigate('/operations-preview'), active: location.pathname.includes('/operations-preview') }
       : null,
     canAccessAdmin(user?.role)
       ? { key: 'admin', label: 'Администрирование', icon: <People />, onClick: () => handleNavigate('/admin'), active: location.pathname.includes('/admin') }
@@ -128,6 +147,31 @@ const DashboardLayout = () => {
     };
     loadTitle();
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    let isActive = true;
+    const loadUnread = async () => {
+      try {
+        const response = await getNotesUnreadCount();
+        if (!isActive) return;
+        const count = Number(response.data?.count ?? 0);
+        setUnreadNotesCount(Number.isFinite(count) ? count : 0);
+      } catch {
+        if (!isActive) return;
+        setUnreadNotesCount(0);
+      }
+    };
+    loadUnread();
+    const interval = window.setInterval(loadUnread, 60000);
+    const handleRefresh = () => loadUnread();
+    window.addEventListener('notes:unread-refresh', handleRefresh);
+    return () => {
+      isActive = false;
+      window.clearInterval(interval);
+      window.removeEventListener('notes:unread-refresh', handleRefresh);
+    };
+  }, [user]);
 
   useEffect(() => {
     if (!user) {
@@ -355,7 +399,7 @@ const DashboardLayout = () => {
         component="main"
         sx={{
           flexGrow: 1,
-          p: { xs: 1.5, sm: 2 },
+          p: { xs: 0.75, sm: 1 },
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           mt: 8,
         }}
