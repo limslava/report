@@ -656,6 +656,27 @@
   color: var(--cal-muted);
 }
 
+.calendar .quick-add .recipient-list {
+  max-height: 220px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(60, 60, 67, 0.3) transparent;
+}
+
+.calendar .quick-add .recipient-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.calendar .quick-add .recipient-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.calendar .quick-add .recipient-list::-webkit-scrollbar-thumb {
+  background: rgba(60, 60, 67, 0.28);
+}
+
 .calendar .quick-targets {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -721,8 +742,44 @@
   background: #fff;
 }
 
+.calendar .event-recipients {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #e3e7f2;
+}
+
+.calendar .event-recipient-header {
+  font-size: 12px;
+  color: var(--cal-muted);
+}
+
+.calendar .recipient-error {
+  margin: 4px 0 2px;
+  color: #cc3a3a;
+  font-size: 12px;
+}
+
+.calendar .recipient-search {
+  display: flex;
+}
+
+.calendar .recipient-search input {
+  width: 100%;
+  border: 1px solid #dfe3ef;
+  border-radius: 10px;
+  padding: 6px 10px;
+  background: #fff;
+  font-size: 12px;
+  color: var(--cal-ink);
+}
 
 .calendar .recipient-list.scroll {
+  max-height: 220px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: rgba(60, 60, 67, 0.3) transparent;
 }
@@ -902,6 +959,8 @@
   width: 360px;
   z-index: 5;
   box-shadow: 0 16px 36px rgba(20, 24, 30, 0.18);
+  max-height: 488.5px;
+  overflow: hidden;
 }
 
 .calendar .event-preview.floating {
@@ -917,13 +976,15 @@
   box-shadow: 0 16px 36px rgba(20, 24, 30, 0.18);
   display: grid;
   gap: 6px;
+  overflow: visible;
+  max-height: none;
 }
 
 .calendar .event-preview.floating::before {
   content: "";
   position: absolute;
   left: -10px;
-  top: 14px;
+  top: var(--tail-top, 14px);
   width: 18px;
   height: 18px;
   background: #f7f8fc;
@@ -933,9 +994,20 @@
   border-radius: 4px;
 }
 
+
+.calendar .event-preview-content {
+  display: grid;
+  gap: 6px;
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
 .calendar .event-preview.floating.left::before {
   left: auto;
   right: -10px;
+  top: var(--tail-top, 14px);
   border-left: none;
   border-bottom: 1px solid #e1e5f2;
   border-right: 1px solid #e1e5f2;

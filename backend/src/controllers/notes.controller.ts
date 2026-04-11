@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { In } from 'typeorm';
+import { In, Not } from 'typeorm';
 import { AppDataSource } from '../config/data-source';
 import { Note, NoteVisibility } from '../models/note.model';
 import { NoteRecipient } from '../models/note-recipient.model';
@@ -216,10 +216,26 @@ export const updateNote = async (req: Request, res: Response, next: NextFunction
     if (startAt) note.startAt = new Date(startAt);
     if (endAt) note.endAt = new Date(endAt);
 
-    const userRecipients = Array.isArray(recipientUserIds) ? recipientUserIds : [];
-    const roleRecipients = Array.isArray(recipientRoleIds) ? recipientRoleIds : [];
-    validateRoleRecipients(roleRecipients);
-    const resolvedVisibility = getVisibility(visibility, userRecipients, roleRecipients);
+    const existingRecipients = toRecipientsPayload(note);
+    const hasRecipientUserIds = Array.isArray(recipientUserIds);
+    const hasRecipientRoleIds = Array.isArray(recipientRoleIds);
+    const hasRecipientPayload = hasRecipientUserIds || hasRecipientRoleIds;
+    const hasVisibilityPayload = typeof visibility === 'string';
+
+    const userRecipients = hasRecipientPayload
+      ? (hasRecipientUserIds ? recipientUserIds : [])
+      : existingRecipients.recipientUserIds;
+    const roleRecipients = hasRecipientPayload
+      ? (hasRecipientRoleIds ? recipientRoleIds : [])
+      : existingRecipients.recipientRoleIds;
+
+    if (hasRecipientPayload || hasVisibilityPayload) {
+      validateRoleRecipients(roleRecipients);
+    }
+
+    const resolvedVisibility = hasRecipientPayload || hasVisibilityPayload
+      ? getVisibility(visibility, userRecipients, roleRecipients)
+      : note.visibility;
 
     if (resolvedVisibility === 'targeted' && !userRecipients.length && !roleRecipients.length) {
       const error: any = new Error('Targeted notes require recipients');
@@ -230,15 +246,22 @@ export const updateNote = async (req: Request, res: Response, next: NextFunction
     note.visibility = resolvedVisibility;
     const saved = await noteRepository.save(note);
 
-    await recipientRepository.delete({ noteId: saved.id });
-    if (resolvedVisibility === 'targeted') {
-      const recipients = [
-        ...userRecipients.map((userId: string) => ({ noteId: saved.id, userId, roleId: null })),
-        ...roleRecipients.map((roleId: string) => ({ noteId: saved.id, userId: null, roleId })),
-      ];
-      if (recipients.length) {
-        await recipientRepository.save(recipients);
+    if (hasRecipientPayload || hasVisibilityPayload) {
+      await recipientRepository.delete({ noteId: saved.id });
+      if (resolvedVisibility === 'targeted') {
+        const recipients = [
+          ...userRecipients.map((userId: string) => ({ noteId: saved.id, userId, roleId: null })),
+          ...roleRecipients.map((roleId: string) => ({ noteId: saved.id, userId: null, roleId })),
+        ];
+        if (recipients.length) {
+          await recipientRepository.save(recipients);
+        }
       }
+    }
+
+    const didChange = typeof title === 'string' || Boolean(startAt) || Boolean(endAt) || hasRecipientPayload || hasVisibilityPayload;
+    if (didChange) {
+      await noteReadRepository.delete({ noteId: saved.id, userId: Not(user.id) });
     }
 
     const response = {

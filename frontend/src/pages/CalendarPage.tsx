@@ -117,6 +117,7 @@ function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
 
+
 function getStartTime(note: CalendarNote): string {
   return note.startTime ?? '09:00';
 }
@@ -124,6 +125,17 @@ function getStartTime(note: CalendarNote): string {
 function getEndTime(note: CalendarNote): string {
   return note.endTime ?? '10:00';
 }
+
+
+
+function getWeekIndex(date: Date): number {
+  return Math.floor((date.getDate() - 1) / 7) + 1;
+}
+
+function getEventPreviewTop(rect: DOMRect, container: DOMRect, gutter: number): number {
+  return Math.max(gutter, rect.top - container.top - gutter);
+}
+
 
 function addHour(time: string): string {
   const [h, m] = time.split(':').map(Number);
@@ -184,8 +196,10 @@ export default function CalendarPage() {
   const [quickEndManual, setQuickEndManual] = useState(false);
   const [showQuickTime, setShowQuickTime] = useState(false);
   const [quickVisibility, setQuickVisibility] = useState<'private' | 'broadcast' | 'roles' | 'users'>('private');
+  const [quickUserQuery, setQuickUserQuery] = useState('');
   const [quickRecipientUserIds, setQuickRecipientUserIds] = useState<string[]>([]);
   const [quickRecipientRoleIds, setQuickRecipientRoleIds] = useState<string[]>([]);
+  const [quickRecipientError, setQuickRecipientError] = useState('');
   const [selectedNote, setSelectedNote] = useState<CalendarNote | null>(null);
   const [showEventPreview, setShowEventPreview] = useState(false);
   const [eventDraft, setEventDraft] = useState('');
@@ -195,9 +209,16 @@ export default function CalendarPage() {
   const [eventStartTime, setEventStartTime] = useState('09:00');
   const [eventEndTime, setEventEndTime] = useState('10:00');
   const [eventEndManual, setEventEndManual] = useState(false);
+  const [eventVisibility, setEventVisibility] = useState<'private' | 'broadcast' | 'roles' | 'users'>('private');
+  const [eventRecipientUserIds, setEventRecipientUserIds] = useState<string[]>([]);
+  const [eventRecipientRoleIds, setEventRecipientRoleIds] = useState<string[]>([]);
+  const [eventUserQuery, setEventUserQuery] = useState('');
   const [showEventTimeEdit, setShowEventTimeEdit] = useState(false);
+  const [showEventRecipients, setShowEventRecipients] = useState(false);
   const [eventPos, setEventPos] = useState<{ top: number; left: number } | null>(null);
+  const [eventBasePos, setEventBasePos] = useState<{ top: number; left: number } | null>(null);
   const [eventPreviewSide, setEventPreviewSide] = useState<'left' | 'right'>('right');
+  const [eventTailOffset, setEventTailOffset] = useState(14);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -237,13 +258,37 @@ export default function CalendarPage() {
     [roleOptions, user?.role]
   );
   const filteredUsersDirectory = useMemo(
-    () => (user?.id ? usersDirectory.filter((entry) => entry.id !== user.id) : usersDirectory),
-    [usersDirectory, user?.id]
+    () => {
+      const trimmed = quickUserQuery.trim().toLowerCase();
+      const base = user?.id ? usersDirectory.filter((entry) => entry.id !== user.id) : usersDirectory;
+      if (!trimmed) return base;
+      return base.filter((entry) => entry.fullName.toLowerCase().includes(trimmed));
+    },
+    [usersDirectory, user?.id, quickUserQuery]
+  );
+  const eventFilteredUsersDirectory = useMemo(
+    () => {
+      const trimmed = eventUserQuery.trim().toLowerCase();
+      const base = user?.id ? usersDirectory.filter((entry) => entry.id !== user.id) : usersDirectory;
+      if (!trimmed) return base;
+      return base.filter((entry) => entry.fullName.toLowerCase().includes(trimmed));
+    },
+    [usersDirectory, user?.id, eventUserQuery]
   );
   const userNameMap = useMemo(
     () => new Map(usersDirectory.map((entry) => [entry.id, entry.fullName])),
     [usersDirectory]
   );
+  const isAdminExternalNote = (note: CalendarNote) => isAdminExternalNoteWithUser(note, user);
+  const isOwnNote = (note: CalendarNote) => isOwnNoteWithUser(note, user);
+  const canShowAuthor = (note: CalendarNote) => canShowAuthorWithUser(note, user);
+  const isUnreadNote = (note: CalendarNote) => isUnreadNoteWithUser(note, user);
+  const deriveNoteVisibility = (note: CalendarNote) => {
+    if (note.visibility === 'broadcast') return 'broadcast';
+    if (note.visibility === 'private') return 'private';
+    if (note.recipientUserIds?.length) return 'users';
+    return 'roles';
+  };
   useEffect(() => {
     if (!user?.role) return;
     setQuickRecipientRoleIds((prev) => prev.filter((id) => id !== user.role));
@@ -252,14 +297,29 @@ export default function CalendarPage() {
     if (!user?.id) return;
     setQuickRecipientUserIds((prev) => prev.filter((id) => id !== user.id));
   }, [user?.id]);
+  useEffect(() => {
+    if (!selectedNote) return;
+    setEventVisibility(deriveNoteVisibility(selectedNote));
+    setEventRecipientUserIds(selectedNote.recipientUserIds ?? []);
+    setEventRecipientRoleIds(selectedNote.recipientRoleIds ?? []);
+    setEventUserQuery('');
+  }, [selectedNote?.id]);
 
   const weekRowHeight = 44;
   const dayRowHeight = 32;
-
-  const isAdminExternalNote = (note: CalendarNote) => isAdminExternalNoteWithUser(note, user);
-  const isOwnNote = (note: CalendarNote) => isOwnNoteWithUser(note, user);
-  const canShowAuthor = (note: CalendarNote) => canShowAuthorWithUser(note, user);
-  const isUnreadNote = (note: CalendarNote) => isUnreadNoteWithUser(note, user);
+  const buildRecipientsPayload = (note: CalendarNote) => {
+    if (note.visibility === 'broadcast') {
+      return { visibility: 'broadcast' as const, recipientUserIds: [], recipientRoleIds: [] };
+    }
+    if (note.visibility === 'private') {
+      return { visibility: 'private' as const, recipientUserIds: [], recipientRoleIds: [] };
+    }
+    return {
+      visibility: 'targeted' as const,
+      recipientUserIds: note.recipientUserIds ?? [],
+      recipientRoleIds: note.recipientRoleIds ?? [],
+    };
+  };
   const formatRecipients = (note: CalendarNote) => {
     if (note.visibility === "broadcast") return "Всем";
     if (note.visibility === "private") return "Личное";
@@ -380,11 +440,14 @@ export default function CalendarPage() {
     });
   }, [authorRoleMap]);
 
-  const addQuickNote = async () => {
+  const addQuickNote = async (override?: { date?: Date; startTime?: string; endTime?: string }) => {
     const text = quickDraft.trim();
     if (!text) return;
-    const startAt = buildDateTime(quickDate, quickStartTime || '09:00');
-    const endAt = buildDateTime(quickDate, quickEndTime || '10:00');
+    const baseDate = override?.date ?? quickDate;
+    const startTime = override?.startTime ?? (quickStartTime || '09:00');
+    const endTime = override?.endTime ?? (quickEndTime || '10:00');
+    const startAt = buildDateTime(baseDate, startTime);
+    const endAt = buildDateTime(baseDate, endTime);
     const visibility =
       quickVisibility === 'private'
         ? 'private'
@@ -392,8 +455,16 @@ export default function CalendarPage() {
           ? 'broadcast'
           : 'targeted';
     if (visibility === 'targeted' && quickRecipientRoleIds.length === 0 && quickRecipientUserIds.length === 0) {
+      setQuickRecipientError(
+        quickVisibility === 'roles'
+          ? 'Выберите хотя бы одну роль.'
+          : quickVisibility === 'users'
+            ? 'Выберите хотя бы одного сотрудника.'
+            : 'Выберите хотя бы одного получателя.'
+      );
       return;
     }
+    setQuickRecipientError('');
     try {
       const response = await createNoteApi({
         title: text,
@@ -418,6 +489,18 @@ export default function CalendarPage() {
     setQuickEndManual(false);
     setShowQuickTime(false);
     setShowQuickAdd(false);
+  };
+
+  const handleQuickDateTimeSubmit = () => {
+    const parsed = parseDateParts(quickDateParts);
+    const targetDate = parsed ?? quickDate;
+    if (parsed) {
+      setQuickDate(parsed);
+      setSelectedDate(parsed);
+      setCursor(parsed);
+      setQuickDateParts(formatDateParts(parsed));
+    }
+    addQuickNote({ date: targetDate, startTime: quickStartTime, endTime: quickEndTime });
   };
 
   const upsertNoteInState = (note: CalendarNote) => {
@@ -448,7 +531,10 @@ export default function CalendarPage() {
     if (!canEditNote(note)) return;
     const nextText = text.trim() || note.text;
     try {
-      const response = await updateNoteApi(note.id, { title: nextText });
+      const response = await updateNoteApi(note.id, {
+        title: nextText,
+        ...buildRecipientsPayload(note),
+      });
       const updated = mapApiNote(response.data);
       upsertNoteInState(updated);
       if (selectedNote?.id === note.id) {
@@ -547,6 +633,7 @@ export default function CalendarPage() {
     setEventEndTime(getEndTime(note));
     setEventEndManual(false);
     setShowEventTimeEdit(false);
+    setShowEventRecipients(false);
     setShowQuickAdd(false);
     setShowQuickTime(false);
     setShowEventPreview(true);
@@ -566,16 +653,22 @@ export default function CalendarPage() {
     }
   };
 
-  const commitEventTitle = async () => {
+  const commitEventTitle = async (closeAfter = false) => {
     if (!selectedNote) return;
     if (!canEditNote(selectedNote)) {
       setEventTitleEditing(false);
       setEventDraft(selectedNote.text);
+      if (closeAfter) {
+        setShowEventPreview(false);
+      }
       return;
     }
     const nextText = eventDraft.trim() || selectedNote.text;
     try {
-      const response = await updateNoteApi(selectedNote.id, { title: nextText });
+      const response = await updateNoteApi(selectedNote.id, {
+        title: nextText,
+        ...buildRecipientsPayload(selectedNote),
+      });
       const updated = mapApiNote(response.data);
       upsertNoteInState(updated);
       setSelectedNote(updated);
@@ -586,6 +679,9 @@ export default function CalendarPage() {
       setEventDraft(nextText);
     }
     setEventTitleEditing(false);
+    if (closeAfter) {
+      setShowEventPreview(false);
+    }
   };
 
   const applyEventDateTime = async (nextDate: Date, nextStart: string, nextEnd: string) => {
@@ -601,6 +697,7 @@ export default function CalendarPage() {
         title: eventDraft.trim() || selectedNote.text,
         startAt: startAt.toISOString(),
         endAt: endAt.toISOString(),
+        ...buildRecipientsPayload(selectedNote),
       });
       const updated = mapApiNote(response.data);
       upsertNoteInState(updated);
@@ -612,6 +709,76 @@ export default function CalendarPage() {
       // ignore
     }
   };
+
+  const handleEventDateTimeSubmit = (closeAfter = true) => {
+    const parsed = parseDateParts(eventDateParts);
+    const targetDate = parsed ?? eventDate ?? selectedDate;
+    if (!targetDate) return;
+    if (parsed) {
+      setEventDateParts(formatDateParts(parsed));
+    }
+    applyEventDateTime(targetDate, eventStartTime, eventEndTime);
+    setShowEventTimeEdit(false);
+    if (closeAfter) {
+      setShowEventRecipients(false);
+      setShowEventPreview(false);
+    }
+  };
+
+  const resetEventTimeDraft = () => {
+    if (!selectedNote || !eventDate) return;
+    setEventDateParts(formatDateParts(eventDate));
+    setEventStartTime(getStartTime(selectedNote));
+    setEventEndTime(getEndTime(selectedNote));
+    setEventEndManual(false);
+  };
+
+  const resetEventRecipientsDraft = () => {
+    if (!selectedNote) return;
+    const baseVisibility = deriveNoteVisibility(selectedNote);
+    setEventVisibility(baseVisibility);
+    setEventRecipientUserIds(selectedNote.recipientUserIds ?? []);
+    setEventRecipientRoleIds(selectedNote.recipientRoleIds ?? []);
+    setEventUserQuery('');
+  };
+
+  const commitEventRecipientsIfValid = () => {
+    if (!selectedNote) return false;
+    if (!canEditNote(selectedNote)) return false;
+    if (eventVisibility === 'roles' && eventRecipientRoleIds.length === 0) return false;
+    if (eventVisibility === 'users' && eventRecipientUserIds.length === 0) return false;
+    commitEventRecipients(eventVisibility, eventRecipientUserIds, eventRecipientRoleIds);
+    return true;
+  };
+
+  const commitEventRecipients = async (nextVisibility = eventVisibility, nextUserIds = eventRecipientUserIds, nextRoleIds = eventRecipientRoleIds) => {
+    if (!selectedNote) return;
+    if (!canEditNote(selectedNote)) return;
+    const visibility =
+      nextVisibility === 'private'
+        ? 'private'
+        : nextVisibility === 'broadcast'
+          ? 'broadcast'
+          : 'targeted';
+    const userIds = visibility === 'targeted' ? nextUserIds : [];
+    const roleIds = visibility === 'targeted' ? nextRoleIds : [];
+    if (visibility === 'targeted' && userIds.length === 0 && roleIds.length === 0) {
+      return;
+    }
+    try {
+      const response = await updateNoteApi(selectedNote.id, {
+        visibility,
+        recipientUserIds: userIds,
+        recipientRoleIds: roleIds,
+      });
+      const updated = mapApiNote(response.data);
+      upsertNoteInState(updated);
+      setSelectedNote(updated);
+    } catch {
+      // ignore
+    }
+  };
+
 
   const shiftView = (delta: number) => {
     if (viewMode === 'day') {
@@ -663,12 +830,20 @@ export default function CalendarPage() {
     if (!showEventPreview) return;
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        if (showEventTimeEdit) {
+          resetEventTimeDraft();
+          setShowEventTimeEdit(false);
+        }
+        if (showEventRecipients) {
+          resetEventRecipientsDraft();
+          setShowEventRecipients(false);
+        }
         setShowEventPreview(false);
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [showEventPreview]);
+  }, [showEventPreview, showEventRecipients, showEventTimeEdit]);
 
   useEffect(() => {
     if (!showEventPreview) return;
@@ -684,14 +859,56 @@ export default function CalendarPage() {
         return;
       }
       if (eventTitleEditing) {
-        commitEventTitle();
+        commitEventTitle(true);
+        return;
+      }
+      if (showEventTimeEdit) {
+        handleEventDateTimeSubmit(true);
+        return;
+      }
+      if (showEventRecipients) {
+        const committed = commitEventRecipientsIfValid();
+        if (committed) {
+          setShowEventRecipients(false);
+          setShowEventPreview(false);
+        } else {
+          resetEventRecipientsDraft();
+          setShowEventRecipients(false);
+          setShowEventPreview(false);
+        }
+        return;
       }
       setShowEventPreview(false);
       setShowEventTimeEdit(false);
     };
     window.addEventListener('mousedown', handleClick, true);
     return () => window.removeEventListener('mousedown', handleClick, true);
-  }, [showEventPreview, eventTitleEditing]);
+  }, [showEventPreview, eventTitleEditing, showEventRecipients, showEventTimeEdit]);
+
+  useEffect(() => {
+    if (!showEventPreview || !eventPreviewRef.current || !eventBasePos || !eventDate) return;
+    const weekIndex = getWeekIndex(eventDate);
+    const gutter = 12;
+    const tailBase = 14;
+    const height = eventPreviewRef.current.getBoundingClientRect().height;
+    let shift = 0;
+    let nextTail = tailBase;
+    if (weekIndex === 3) {
+      shift = Math.max(0, height / 2 - tailBase);
+      nextTail = tailBase + shift;
+    } else if (weekIndex >= 4 && (showEventRecipients || showEventTimeEdit)) {
+      shift = Math.max(0, height - 2 * tailBase);
+      nextTail = Math.max(tailBase, height - tailBase);
+    }
+    const nextTop = Math.max(gutter, eventBasePos.top - shift);
+    setEventTailOffset(nextTail);
+    setEventPos((prev) => {
+      if (!prev || prev.left !== eventBasePos.left || Math.abs(prev.top - nextTop) > 1) {
+        return { left: eventBasePos.left, top: nextTop };
+      }
+      return prev;
+    });
+  }, [showEventPreview, eventBasePos, eventDate, showEventRecipients, eventVisibility, showEventTimeEdit]);
 
   useEffect(() => {
     if (!eventTitleEditing) return;
@@ -854,6 +1071,7 @@ export default function CalendarPage() {
                   value={quickDraft}
                   onChange={(event) => setQuickDraft(event.target.value)}
                   ref={quickInputRef}
+                  onFocus={() => setShowQuickTime(false)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' && !event.shiftKey) {
                       event.preventDefault();
@@ -866,106 +1084,16 @@ export default function CalendarPage() {
                     }
                   }}
                 />
-                <button
-                  className="quick-time-row"
-                  onClick={() => setShowQuickTime((prev) => !prev)}
-                  type="button"
-                >
-                  {formatMeta(quickDate)} {quickStartTime} — {quickEndTime}
-                </button>
-                <div className="quick-recipients">
-                  <div className="quick-recipient-header">Кому</div>
-                  <div className="quick-targets">
-                    <button
-                      type="button"
-                      className="quick-target"
-                      data-active={quickVisibility === 'private'}
-                      onClick={() => {
-                        setQuickVisibility('private');
-                        setQuickRecipientRoleIds([]);
-                        setQuickRecipientUserIds([]);
-                      }}
-                    >
-                      Лично
-                    </button>
-                    <button
-                      type="button"
-                      className="quick-target"
-                      data-active={quickVisibility === 'broadcast'}
-                      onClick={() => {
-                        setQuickVisibility('broadcast');
-                        setQuickRecipientRoleIds([]);
-                        setQuickRecipientUserIds([]);
-                      }}
-                    >
-                      Всем
-                    </button>
-                    <button
-                      type="button"
-                      className="quick-target"
-                      data-active={quickVisibility === 'roles'}
-                      onClick={() => {
-                        setQuickVisibility('roles');
-                        setQuickRecipientUserIds([]);
-                      }}
-                    >
-                      Роли
-                    </button>
-                    <button
-                      type="button"
-                      className="quick-target"
-                      data-active={quickVisibility === 'users'}
-                      onClick={() => {
-                        setQuickVisibility('users');
-                        setQuickRecipientRoleIds([]);
-                      }}
-                    >
-                      Люди
-                    </button>
-                  </div>
-                  {quickVisibility === 'roles' && (
-                    <div className="recipient-list">
-                      {filteredRoleOptions.map((role) => (
-                        <label key={role.value} className="recipient-item">
-                          <input
-                            type="checkbox"
-                            checked={quickRecipientRoleIds.includes(role.value)}
-                            onChange={(event) => {
-                              setQuickRecipientRoleIds((prev) => (
-                                event.target.checked
-                                  ? [...prev, role.value]
-                                  : prev.filter((id) => id !== role.value)
-                              ));
-                            }}
-                          />
-                          <span>{role.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                  {quickVisibility === 'users' && (
-                    <div className="recipient-list scroll">
-                      {filteredUsersDirectory.map((entry) => (
-                        <label key={entry.id} className="recipient-item">
-                          <input
-                            type="checkbox"
-                            checked={quickRecipientUserIds.includes(entry.id)}
-                            onChange={(event) => {
-                              setQuickRecipientUserIds((prev) => (
-                                event.target.checked
-                                  ? [...prev, entry.id]
-                                  : prev.filter((id) => id !== entry.id)
-                              ));
-                            }}
-                          />
-                          <span>{entry.fullName}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {showQuickTime && (
-                  <div className="time-panel">
+                {showQuickTime ? (
+                  <div
+                    className="time-panel"
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Escape') return;
+                      event.preventDefault();
+                      setShowQuickAdd(false);
+                      setShowQuickTime(false);
+                    }}
+                  >
                     <label className="date-label">
                       Дата
                       <div className="date-segments">
@@ -974,9 +1102,16 @@ export default function CalendarPage() {
                           inputMode="numeric"
                           value={quickDateParts.day}
                           maxLength={2}
+                          onFocus={(event) => event.currentTarget.select()}
                           onChange={(event) => {
                             const next = event.target.value.replace(/\D/g, '').slice(0, 2);
                             setQuickDateParts((prev) => ({ ...prev, day: next }));
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              handleQuickDateTimeSubmit();
+                            }
                           }}
                           onBlur={() => {
                             const parsed = parseDateParts(quickDateParts);
@@ -996,9 +1131,16 @@ export default function CalendarPage() {
                           inputMode="numeric"
                           value={quickDateParts.month}
                           maxLength={2}
+                          onFocus={(event) => event.currentTarget.select()}
                           onChange={(event) => {
                             const next = event.target.value.replace(/\D/g, '').slice(0, 2);
                             setQuickDateParts((prev) => ({ ...prev, month: next }));
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              handleQuickDateTimeSubmit();
+                            }
                           }}
                           onBlur={() => {
                             const parsed = parseDateParts(quickDateParts);
@@ -1018,9 +1160,16 @@ export default function CalendarPage() {
                           inputMode="numeric"
                           value={quickDateParts.year}
                           maxLength={4}
+                          onFocus={(event) => event.currentTarget.select()}
                           onChange={(event) => {
                             const next = event.target.value.replace(/\D/g, '').slice(0, 4);
                             setQuickDateParts((prev) => ({ ...prev, year: next }));
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              handleQuickDateTimeSubmit();
+                            }
                           }}
                           onBlur={() => {
                             const parsed = parseDateParts(quickDateParts);
@@ -1041,11 +1190,18 @@ export default function CalendarPage() {
                       <input
                         type="time"
                         value={quickStartTime}
+                        onFocus={(event) => event.currentTarget.select()}
                         onChange={(event) => {
                           const next = event.target.value;
                           setQuickStartTime(next);
                           if (!quickEndManual) {
                             setQuickEndTime(addHour(next));
+                          }
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            handleQuickDateTimeSubmit();
                           }
                         }}
                       />
@@ -1055,181 +1211,562 @@ export default function CalendarPage() {
                       <input
                         type="time"
                         value={quickEndTime}
+                        onFocus={(event) => event.currentTarget.select()}
                         onChange={(event) => {
                           setQuickEndTime(event.target.value);
                           setQuickEndManual(true);
                         }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            handleQuickDateTimeSubmit();
+                          }
+                        }}
                       />
                     </label>
                   </div>
+                ) : (
+                  <button
+                    className="quick-time-row"
+                    onClick={() => setShowQuickTime((prev) => !prev)}
+                    type="button"
+                  >
+                    {formatMeta(quickDate)} {quickStartTime} — {quickEndTime}
+                  </button>
                 )}
+                <div
+                  className="quick-recipients"
+                  onMouseDown={() => setShowQuickTime(false)}
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                      event.preventDefault();
+                      setShowQuickAdd(false);
+                      setShowQuickTime(false);
+                      return;
+                    }
+                    if (event.key !== 'Enter') return;
+                    event.preventDefault();
+                    addQuickNote();
+                  }}
+                >
+                  <div className="quick-recipient-header">Кому</div>
+                  <div className="quick-targets">
+                    <button
+                      type="button"
+                      className="quick-target"
+                      data-active={quickVisibility === 'private'}
+                      onClick={() => {
+                        setQuickVisibility('private');
+                        setQuickRecipientRoleIds([]);
+                        setQuickRecipientUserIds([]);
+                        setQuickRecipientError('');
+                      }}
+                    >
+                      Лично
+                    </button>
+                    <button
+                      type="button"
+                      className="quick-target"
+                      data-active={quickVisibility === 'broadcast'}
+                      onClick={() => {
+                        setQuickVisibility('broadcast');
+                        setQuickRecipientRoleIds([]);
+                        setQuickRecipientUserIds([]);
+                        setQuickRecipientError('');
+                      }}
+                    >
+                      Всем
+                    </button>
+                    <button
+                      type="button"
+                      className="quick-target"
+                      data-active={quickVisibility === 'roles'}
+                      onClick={() => {
+                        setQuickVisibility('roles');
+                        setQuickRecipientUserIds([]);
+                        setQuickRecipientError('');
+                      }}
+                    >
+                      Роли
+                    </button>
+                    <button
+                      type="button"
+                      className="quick-target"
+                      data-active={quickVisibility === 'users'}
+                      onClick={() => {
+                        setQuickVisibility('users');
+                        setQuickRecipientRoleIds([]);
+                        setQuickRecipientError('');
+                      }}
+                    >
+                      Люди
+                    </button>
+                  </div>
+                  {quickRecipientError && (
+                    <div className="recipient-error">{quickRecipientError}</div>
+                  )}
+                  {!showQuickTime && quickVisibility === 'roles' && (
+                    <div className="recipient-list">
+                      {filteredRoleOptions.map((role) => (
+                        <label key={role.value} className="recipient-item">
+                          <input
+                            type="checkbox"
+                            checked={quickRecipientRoleIds.includes(role.value)}
+                            onChange={(event) => {
+                              setQuickRecipientRoleIds((prev) => (
+                                event.target.checked
+                                  ? [...prev, role.value]
+                                  : prev.filter((id) => id !== role.value)
+                              ));
+                              setQuickRecipientError('');
+                            }}
+                          />
+                          <span>{role.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  {!showQuickTime && quickVisibility === 'users' && (
+                    <>
+                      <div className="recipient-search">
+                        <input
+                          type="text"
+                          placeholder="Поиск по людям"
+                          value={quickUserQuery}
+                          onChange={(event) => setQuickUserQuery(event.target.value)}
+                        />
+                      </div>
+                      <div className="recipient-list scroll">
+                        {filteredUsersDirectory.map((entry) => (
+                        <label key={entry.id} className="recipient-item">
+                          <input
+                            type="checkbox"
+                            checked={quickRecipientUserIds.includes(entry.id)}
+                            onChange={(event) => {
+                              setQuickRecipientUserIds((prev) => (
+                                event.target.checked
+                                  ? [...prev, entry.id]
+                                  : prev.filter((id) => id !== entry.id)
+                              ));
+                              setQuickRecipientError('');
+                            }}
+                          />
+                          <span>{entry.fullName}</span>
+                        </label>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             )}
 
             {showEventPreview && selectedNote && (
               <div
                 className={`event-preview floating ${eventPreviewSide}`}
-                style={eventPos ?? undefined}
+                style={eventPos ? { ...eventPos, ['--tail-top' as any]: `${eventTailOffset}px` } : undefined}
                 ref={eventPreviewRef}
               >
-                {eventTitleEditing ? (
-                  <textarea
-                    ref={eventTitleRef}
-                    className="event-preview-title-input"
-                    rows={2}
-                    value={eventDraft}
-                    onChange={(event) => setEventDraft(event.target.value)}
-                    onBlur={() => commitEventTitle()}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Escape') {
-                        event.preventDefault();
-                        setEventDraft(selectedNote.text);
-                        setEventTitleEditing(false);
-                      }
-                      if (event.key === 'Enter' && !event.shiftKey) {
-                        event.preventDefault();
-                        commitEventTitle();
-                      }
-                    }}
-                  />
-                ) : (
-                  <div
-                    className="event-preview-title"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => {
-                      if (!canEditNote(selectedNote)) {
-                        return;
-                      }
-                      setEventTitleEditing(true);
-                      setTimeout(() => eventTitleRef.current?.focus(), 0);
-                    }}
-                  >
-                    {selectedNote.text || 'Событие'}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  className="event-preview-time"
-                  onClick={() => {
-                    if (!canEditNote(selectedNote)) {
-                      return;
-                    }
-                    setShowEventTimeEdit((prev) => !prev);
-                  }}
-                  disabled={!canEditNote(selectedNote)}
-                >
-                  {formatMeta(eventDate ?? selectedDate)} {eventStartTime} — {eventEndTime}
-                </button>
-                <div className="event-preview-meta">
-                  {canShowAuthor(selectedNote) && (
-                    <span className="event-preview-author">от {selectedNote.authorName}</span>
+                <div className="event-preview-content">
+                  {eventTitleEditing ? (
+                    <textarea
+                      ref={eventTitleRef}
+                      className="event-preview-title-input"
+                      rows={2}
+                      value={eventDraft}
+                      onFocus={() => {
+                        setShowEventTimeEdit(false);
+                        setShowEventRecipients(false);
+                      }}
+                      onChange={(event) => setEventDraft(event.target.value)}
+                      onBlur={() => commitEventTitle()}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                          event.preventDefault();
+                          setEventDraft(selectedNote.text);
+                          setEventTitleEditing(false);
+                          setShowEventPreview(false);
+                        }
+                        if (event.key === 'Enter' && !event.shiftKey) {
+                          event.preventDefault();
+                          commitEventTitle(true);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div
+                      className="event-preview-title"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        if (!canEditNote(selectedNote)) {
+                          return;
+                        }
+                        setShowEventTimeEdit(false);
+                        setShowEventRecipients(false);
+                        setEventTitleEditing(true);
+                        setTimeout(() => eventTitleRef.current?.focus(), 0);
+                      }}
+                    >
+                      {selectedNote.text || 'Событие'}
+                    </div>
                   )}
-                  {isOwnNote(selectedNote) && (
-                    <span className="event-preview-recipient">Кому: {formatRecipients(selectedNote)}</span>
+                  {showEventTimeEdit ? (
+                    <div
+                      className="time-panel event-time-panel"
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Escape') return;
+                        event.preventDefault();
+                        resetEventTimeDraft();
+                        setShowEventTimeEdit(false);
+                        setShowEventPreview(false);
+                      }}
+                    >
+                      <label className="date-label">
+                        Дата
+                        <div className="date-segments">
+                          <input
+                            className="date-segment"
+                            inputMode="numeric"
+                            value={eventDateParts.day}
+                            maxLength={2}
+                            onFocus={(event) => event.currentTarget.select()}
+                            onChange={(event) => {
+                              const next = event.target.value.replace(/\D/g, '').slice(0, 2);
+                              setEventDateParts((prev) => ({ ...prev, day: next }));
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                handleEventDateTimeSubmit();
+                              }
+                            }}
+                            onBlur={() => {
+                              const parsed = parseDateParts(eventDateParts);
+                              if (parsed) {
+                                setEventDateParts(formatDateParts(parsed));
+                                setEventDate(parsed);
+                              } else if (eventDate) {
+                                setEventDateParts(formatDateParts(eventDate));
+                              }
+                            }}
+                          />
+                          <span className="date-sep">.</span>
+                          <input
+                            className="date-segment"
+                            inputMode="numeric"
+                            value={eventDateParts.month}
+                            maxLength={2}
+                            onFocus={(event) => event.currentTarget.select()}
+                            onChange={(event) => {
+                              const next = event.target.value.replace(/\D/g, '').slice(0, 2);
+                              setEventDateParts((prev) => ({ ...prev, month: next }));
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                handleEventDateTimeSubmit();
+                              }
+                            }}
+                            onBlur={() => {
+                              const parsed = parseDateParts(eventDateParts);
+                              if (parsed) {
+                                setEventDateParts(formatDateParts(parsed));
+                                setEventDate(parsed);
+                              } else if (eventDate) {
+                                setEventDateParts(formatDateParts(eventDate));
+                              }
+                            }}
+                          />
+                          <span className="date-sep">.</span>
+                          <input
+                            className="date-segment year"
+                            inputMode="numeric"
+                            value={eventDateParts.year}
+                            maxLength={4}
+                            onFocus={(event) => event.currentTarget.select()}
+                            onChange={(event) => {
+                              const next = event.target.value.replace(/\D/g, '').slice(0, 4);
+                              setEventDateParts((prev) => ({ ...prev, year: next }));
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                handleEventDateTimeSubmit();
+                              }
+                            }}
+                            onBlur={() => {
+                              const parsed = parseDateParts(eventDateParts);
+                              if (parsed) {
+                                setEventDateParts(formatDateParts(parsed));
+                                setEventDate(parsed);
+                              } else if (eventDate) {
+                                setEventDateParts(formatDateParts(eventDate));
+                              }
+                            }}
+                          />
+                        </div>
+                      </label>
+                      <label>
+                        Начало
+                        <input
+                          type="time"
+                          value={eventStartTime}
+                          onFocus={(event) => event.currentTarget.select()}
+                          onChange={(event) => {
+                            const next = event.target.value;
+                            setEventStartTime(next);
+                            const nextEnd = eventEndManual ? eventEndTime : addHour(next);
+                            if (!eventEndManual) {
+                              setEventEndTime(nextEnd);
+                            }
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              handleEventDateTimeSubmit();
+                            }
+                          }}
+                        />
+                      </label>
+                      <label>
+                        Конец
+                        <input
+                          type="time"
+                          value={eventEndTime}
+                          onFocus={(event) => event.currentTarget.select()}
+                          onChange={(event) => {
+                            const next = event.target.value;
+                            setEventEndManual(true);
+                            setEventEndTime(next);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              handleEventDateTimeSubmit();
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="event-preview-time"
+                      onClick={() => {
+                        if (!canEditNote(selectedNote)) {
+                          return;
+                        }
+                        if (showEventRecipients) {
+                          const committed = commitEventRecipientsIfValid();
+                          if (!committed) {
+                            resetEventRecipientsDraft();
+                            setShowEventRecipients(false);
+                          } else {
+                            setShowEventRecipients(false);
+                          }
+                        }
+                        setShowEventTimeEdit((prev) => !prev);
+                      }}
+                      disabled={!canEditNote(selectedNote)}
+                    >
+                      {formatMeta(eventDate ?? selectedDate)} {eventStartTime} — {eventEndTime}
+                    </button>
+                  )}
+                  <div className="event-preview-meta">
+                    {canShowAuthor(selectedNote) && (
+                      <span className="event-preview-author">от {selectedNote.authorName}</span>
+                    )}
+                    {isOwnNote(selectedNote) && !showEventRecipients && (
+                      <span
+                        className="event-preview-recipient"
+                        role={canEditNote(selectedNote) ? 'button' : undefined}
+                        tabIndex={canEditNote(selectedNote) ? 0 : undefined}
+                        onClick={() => {
+                          if (!canEditNote(selectedNote)) {
+                            return;
+                          }
+                          if (showEventTimeEdit) {
+                            handleEventDateTimeSubmit(false);
+                          } else {
+                            setShowEventTimeEdit(false);
+                          }
+                          setShowEventRecipients(true);
+                        }}
+                        onKeyDown={(event) => {
+                          if (!canEditNote(selectedNote)) {
+                            return;
+                          }
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            if (showEventTimeEdit) {
+                              handleEventDateTimeSubmit(false);
+                            } else {
+                              setShowEventTimeEdit(false);
+                            }
+                            setShowEventRecipients(true);
+                          }
+                        }}
+                      >
+                        Кому: {formatRecipients(selectedNote)}
+                      </span>
+                    )}
+                  </div>
+                  {canEditNote(selectedNote) && showEventRecipients && (
+                    <div
+                      className="event-recipients"
+                      onMouseDown={() => {
+                        setShowEventTimeEdit(false);
+                      }}
+                      tabIndex={0}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                          event.preventDefault();
+                          resetEventRecipientsDraft();
+                          setShowEventRecipients(false);
+                          setShowEventPreview(false);
+                          return;
+                        }
+                        if (event.key !== 'Enter') return;
+                        event.preventDefault();
+                        if (eventVisibility === 'private') {
+                          commitEventRecipients('private', [], []);
+                          setShowEventRecipients(false);
+                          setShowEventPreview(false);
+                          return;
+                        }
+                        if (eventVisibility === 'broadcast') {
+                          commitEventRecipients('broadcast', [], []);
+                          setShowEventRecipients(false);
+                          setShowEventPreview(false);
+                          return;
+                        }
+                        if (eventVisibility === 'roles') {
+                          if (eventRecipientRoleIds.length === 0) {
+                            resetEventRecipientsDraft();
+                            setShowEventRecipients(false);
+                            setShowEventPreview(false);
+                            return;
+                          }
+                          commitEventRecipients('roles', [], eventRecipientRoleIds);
+                          setShowEventRecipients(false);
+                          setShowEventPreview(false);
+                          return;
+                        }
+                        if (eventVisibility === 'users') {
+                          if (eventRecipientUserIds.length === 0) {
+                            resetEventRecipientsDraft();
+                            setShowEventRecipients(false);
+                            setShowEventPreview(false);
+                            return;
+                          }
+                          commitEventRecipients('users', eventRecipientUserIds, []);
+                          setShowEventRecipients(false);
+                          setShowEventPreview(false);
+                        }
+                      }}
+                    >
+                      <div className="event-recipient-header">Кому</div>
+                      <div className="quick-targets event-targets">
+                        <button
+                          type="button"
+                          className="quick-target"
+                          data-active={eventVisibility === 'private'}
+                          onClick={() => {
+                            setEventVisibility('private');
+                            setEventRecipientRoleIds([]);
+                            setEventRecipientUserIds([]);
+                          }}
+                        >
+                          Лично
+                        </button>
+                        <button
+                          type="button"
+                          className="quick-target"
+                          data-active={eventVisibility === 'broadcast'}
+                          onClick={() => {
+                            setEventVisibility('broadcast');
+                            setEventRecipientRoleIds([]);
+                            setEventRecipientUserIds([]);
+                          }}
+                        >
+                          Всем
+                        </button>
+                        <button
+                          type="button"
+                          className="quick-target"
+                          data-active={eventVisibility === 'roles'}
+                          onClick={() => {
+                            setEventVisibility('roles');
+                            setEventRecipientUserIds([]);
+                          }}
+                        >
+                          Роли
+                        </button>
+                        <button
+                          type="button"
+                          className="quick-target"
+                          data-active={eventVisibility === 'users'}
+                          onClick={() => {
+                            setEventVisibility('users');
+                            setEventRecipientRoleIds([]);
+                          }}
+                        >
+                          Люди
+                        </button>
+                      </div>
+                      {eventVisibility === 'roles' && (
+                        <div className="recipient-list">
+                          {filteredRoleOptions.map((role) => (
+                            <label key={role.value} className="recipient-item">
+                              <input
+                                type="checkbox"
+                                checked={eventRecipientRoleIds.includes(role.value)}
+                                onChange={(event) => {
+                                  const next = event.target.checked
+                                    ? [...eventRecipientRoleIds, role.value]
+                                    : eventRecipientRoleIds.filter((id) => id !== role.value);
+                                  setEventRecipientRoleIds(next);
+                                }}
+                              />
+                              <span>{role.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      {eventVisibility === 'users' && (
+                        <>
+                          <div className="recipient-search">
+                            <input
+                              type="text"
+                              placeholder="Поиск по людям"
+                              value={eventUserQuery}
+                              onChange={(event) => setEventUserQuery(event.target.value)}
+                            />
+                          </div>
+                          <div className="recipient-list scroll">
+                            {eventFilteredUsersDirectory.map((entry) => (
+                              <label key={entry.id} className="recipient-item">
+                                <input
+                                  type="checkbox"
+                                  checked={eventRecipientUserIds.includes(entry.id)}
+                                onChange={(event) => {
+                                  const next = event.target.checked
+                                    ? [...eventRecipientUserIds, entry.id]
+                                    : eventRecipientUserIds.filter((id) => id !== entry.id);
+                                  setEventRecipientUserIds(next);
+                                }}
+                              />
+                                <span>{entry.fullName}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
-                {showEventTimeEdit && (
-                  <div className="time-panel event-time-panel">
-                    <label className="date-label">
-                      Дата
-                      <div className="date-segments">
-                        <input
-                          className="date-segment"
-                          inputMode="numeric"
-                          value={eventDateParts.day}
-                          maxLength={2}
-                          onChange={(event) => {
-                            const next = event.target.value.replace(/\D/g, '').slice(0, 2);
-                            setEventDateParts((prev) => ({ ...prev, day: next }));
-                          }}
-                          onBlur={() => {
-                            const parsed = parseDateParts(eventDateParts);
-                            if (parsed) {
-                              setEventDateParts(formatDateParts(parsed));
-                              applyEventDateTime(parsed, eventStartTime, eventEndTime);
-                            } else if (eventDate) {
-                              setEventDateParts(formatDateParts(eventDate));
-                            }
-                          }}
-                        />
-                        <span className="date-sep">.</span>
-                        <input
-                          className="date-segment"
-                          inputMode="numeric"
-                          value={eventDateParts.month}
-                          maxLength={2}
-                          onChange={(event) => {
-                            const next = event.target.value.replace(/\D/g, '').slice(0, 2);
-                            setEventDateParts((prev) => ({ ...prev, month: next }));
-                          }}
-                          onBlur={() => {
-                            const parsed = parseDateParts(eventDateParts);
-                            if (parsed) {
-                              setEventDateParts(formatDateParts(parsed));
-                              applyEventDateTime(parsed, eventStartTime, eventEndTime);
-                            } else if (eventDate) {
-                              setEventDateParts(formatDateParts(eventDate));
-                            }
-                          }}
-                        />
-                        <span className="date-sep">.</span>
-                        <input
-                          className="date-segment year"
-                          inputMode="numeric"
-                          value={eventDateParts.year}
-                          maxLength={4}
-                          onChange={(event) => {
-                            const next = event.target.value.replace(/\D/g, '').slice(0, 4);
-                            setEventDateParts((prev) => ({ ...prev, year: next }));
-                          }}
-                          onBlur={() => {
-                            const parsed = parseDateParts(eventDateParts);
-                            if (parsed) {
-                              setEventDateParts(formatDateParts(parsed));
-                              applyEventDateTime(parsed, eventStartTime, eventEndTime);
-                            } else if (eventDate) {
-                              setEventDateParts(formatDateParts(eventDate));
-                            }
-                          }}
-                        />
-                      </div>
-                    </label>
-                    <label>
-                      Начало
-                      <input
-                        type="time"
-                        value={eventStartTime}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          setEventStartTime(next);
-                          const nextEnd = eventEndManual ? eventEndTime : addHour(next);
-                          if (!eventEndManual) {
-                            setEventEndTime(nextEnd);
-                          }
-                          if (eventDate) {
-                            applyEventDateTime(eventDate, next, nextEnd);
-                          }
-                        }}
-                      />
-                    </label>
-                    <label>
-                      Конец
-                      <input
-                        type="time"
-                        value={eventEndTime}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          setEventEndManual(true);
-                          setEventEndTime(next);
-                          if (eventDate) {
-                            applyEventDateTime(eventDate, eventStartTime, next);
-                          }
-                        }}
-                      />
-                    </label>
-                  </div>
-                )}
               </div>
             )}
 
@@ -1303,7 +1840,7 @@ export default function CalendarPage() {
                               const container = calendarMainRef.current?.getBoundingClientRect();
                               const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
                               if (container) {
-                                const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+                                const isWeekend = day.getDay() === 0 || day.getDay() === 6 || day.getDay() === 5;
                                 const popoverWidth = 300;
                                 const gutter = 12;
                                 const rawLeft = isWeekend
@@ -1313,7 +1850,8 @@ export default function CalendarPage() {
                                   Math.max(gutter, rawLeft),
                                   container.width - popoverWidth - gutter
                                 );
-                                const top = Math.max(gutter, rect.top - container.top - gutter);
+                                const top = getEventPreviewTop(rect, container, gutter);
+                                setEventBasePos({ left, top });
                                 setEventPos({ left, top });
                                 setEventPreviewSide(isWeekend ? 'left' : 'right');
                               }
@@ -1324,7 +1862,7 @@ export default function CalendarPage() {
                               const container = calendarMainRef.current?.getBoundingClientRect();
                               const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
                               if (container) {
-                                const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+                                const isWeekend = day.getDay() === 0 || day.getDay() === 6 || day.getDay() === 5;
                                 const popoverWidth = 300;
                                 const gutter = 12;
                                 const rawLeft = isWeekend
@@ -1334,7 +1872,8 @@ export default function CalendarPage() {
                                   Math.max(gutter, rawLeft),
                                   container.width - popoverWidth - gutter
                                 );
-                                const top = Math.max(gutter, rect.top - container.top - gutter);
+                                const top = getEventPreviewTop(rect, container, gutter);
+                                setEventBasePos({ left, top });
                                 setEventPos({ left, top });
                                 setEventPreviewSide(isWeekend ? 'left' : 'right');
                               }
@@ -1387,7 +1926,7 @@ export default function CalendarPage() {
                   <div
                     className={cx(
                       'day-weekday',
-                      (selectedDate.getDay() === 0 || selectedDate.getDay() === 6) && 'weekend'
+                      (selectedDate.getDay() === 0 || selectedDate.getDay() === 6 || selectedDate.getDay() === 5) && 'weekend'
                     )}
                   >
                     {selectedDate.toLocaleDateString('ru-RU', { weekday: 'long' })}
@@ -1453,7 +1992,7 @@ export default function CalendarPage() {
                               const container = calendarMainRef.current?.getBoundingClientRect();
                               const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
                               if (container) {
-                                const isWeekend = selectedDate.getDay() === 0 || selectedDate.getDay() === 6;
+                                const isWeekend = selectedDate.getDay() === 0 || selectedDate.getDay() === 6 || selectedDate.getDay() === 5;
                                 const popoverWidth = 300;
                                 const gutter = 12;
                                 const rawLeft = isWeekend
@@ -1463,7 +2002,8 @@ export default function CalendarPage() {
                                   Math.max(gutter, rawLeft),
                                   container.width - popoverWidth - gutter
                                 );
-                                const topPos = Math.max(gutter, rect.top - container.top - gutter);
+                                const topPos = getEventPreviewTop(rect, container, gutter);
+                                setEventBasePos({ left, top: topPos });
                                 setEventPos({ left, top: topPos });
                                 setEventPreviewSide(isWeekend ? 'left' : 'right');
                               }
@@ -1509,7 +2049,7 @@ export default function CalendarPage() {
                   {weekDays.map((day) => (
                     <div
                       key={formatDateKey(day)}
-                      className={cx('week-day', (day.getDay() === 0 || day.getDay() === 6) && 'weekend')}
+                      className={cx('week-day', (day.getDay() === 0 || day.getDay() === 6 || day.getDay() === 5) && 'weekend')}
                     >
                       <div className="cal-muted">{day.toLocaleDateString('ru-RU', { weekday: 'short' })}</div>
                       <div className={cx('week-day-num', sameDay(day, selectedDate) && 'active')}>{day.getDate()}</div>
@@ -1619,7 +2159,7 @@ export default function CalendarPage() {
                                   const container = calendarMainRef.current?.getBoundingClientRect();
                                   const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
                                   if (container) {
-                                    const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+                                    const isWeekend = day.getDay() === 0 || day.getDay() === 6 || day.getDay() === 5;
                                     const popoverWidth = 300;
                                     const gutter = 12;
                                     const rawLeft = isWeekend
@@ -1629,7 +2169,8 @@ export default function CalendarPage() {
                                       Math.max(gutter, rawLeft),
                                       container.width - popoverWidth - gutter
                                     );
-                                    const topPos = Math.max(gutter, rect.top - container.top - gutter);
+                                    const topPos = getEventPreviewTop(rect, container, gutter);
+                                    setEventBasePos({ left, top: topPos });
                                     setEventPos({ left, top: topPos });
                                     setEventPreviewSide(isWeekend ? 'left' : 'right');
                                   }
