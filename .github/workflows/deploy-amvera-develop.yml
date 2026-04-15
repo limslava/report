@@ -1,0 +1,43 @@
+name: Deploy Report Stage (develop -> Amvera stage)
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'develop'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Push to Amvera stage repository
+        env:
+          AMVERA_GIT_URL: ${{ secrets.AMVERA_STAGE_GIT_URL }}
+          AMVERA_USER: ${{ secrets.AMVERA_STAGE_USERNAME }}
+          AMVERA_PASS: ${{ secrets.AMVERA_STAGE_PASSWORD }}
+          AMVERA_TARGET_BRANCH: develop
+        run: |
+          if [ -z "$AMVERA_GIT_URL" ] || [ -z "$AMVERA_USER" ] || [ -z "$AMVERA_PASS" ]; then
+            echo "Missing required secrets: AMVERA_STAGE_GIT_URL / AMVERA_STAGE_USERNAME / AMVERA_STAGE_PASSWORD"
+            exit 1
+          fi
+
+          cat > /tmp/amvera-askpass.sh <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) echo "$AMVERA_USER" ;;
+            *Password*) echo "$AMVERA_PASS" ;;
+          esac
+          EOF
+          chmod +x /tmp/amvera-askpass.sh
+
+          git remote remove amvera 2>/dev/null || true
+          git remote add amvera "$AMVERA_GIT_URL"
+
+          GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/tmp/amvera-askpass.sh \
+            git push amvera "HEAD:${AMVERA_TARGET_BRANCH}"
