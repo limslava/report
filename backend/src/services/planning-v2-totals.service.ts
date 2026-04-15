@@ -12,6 +12,8 @@ interface TotalsConfig {
   planMetricCode: PlanningPlanMetricCode | null;
   planMetricName: string;
   factMetricCodes: string[];
+  factOwnMetricCodes?: string[];
+  factHiredMetricCodes?: string[];
   kind: 'PLAN_FLOW' | 'FACT_ONLY';
 }
 
@@ -20,6 +22,8 @@ export interface YearTotalsMonthCell {
   basePlan: number;
   carryPlan: number;
   fact: number;
+  factOwn: number;
+  factHired: number;
   completionPct: number;
 }
 
@@ -34,6 +38,8 @@ export interface YearTotalsRow {
   yearlyBasePlan: number;
   yearlyCarryPlan: number;
   yearlyFact: number;
+  yearlyFactOwn: number;
+  yearlyFactHired: number;
   yearlyCompletionPct: number;
 }
 
@@ -46,6 +52,8 @@ const TOTALS_CONFIG: TotalsConfig[] = [
     planMetricCode: PlanningPlanMetricCode.KTK_PLAN_REQUESTS,
     planMetricName: 'План заявок (КТК ВВО)',
     factMetricCodes: ['ktk_vvo_fact_total_per_day'],
+    factOwnMetricCodes: ['ktk_vvo_fact_move_own'],
+    factHiredMetricCodes: ['ktk_vvo_fact_move_hired'],
     kind: 'PLAN_FLOW',
   },
   {
@@ -54,6 +62,8 @@ const TOTALS_CONFIG: TotalsConfig[] = [
     planMetricCode: PlanningPlanMetricCode.KTK_PLAN_REQUESTS,
     planMetricName: 'План заявок (КТК МСК)',
     factMetricCodes: ['ktk_mow_fact_total_per_day'],
+    factOwnMetricCodes: ['ktk_mow_fact_move_own'],
+    factHiredMetricCodes: ['ktk_mow_fact_move_hired'],
     kind: 'PLAN_FLOW',
   },
   {
@@ -193,6 +203,8 @@ export class PlanningV2TotalsService {
         : new Map<number, PlanningMonthlyPlanMetric>();
 
       const facts = await this.getFactsForYear(config.segmentCode, config.factMetricCodes, year, reportCache);
+      const factsOwn = await this.getFactsForYear(config.segmentCode, config.factOwnMetricCodes ?? [], year, reportCache);
+      const factsHired = await this.getFactsForYear(config.segmentCode, config.factHiredMetricCodes ?? [], year, reportCache);
 
       const months: YearTotalsMonthCell[] = [];
       const basePlans = Array.from({ length: 12 }, (_, idx) => {
@@ -206,6 +218,8 @@ export class PlanningV2TotalsService {
       for (let month = 1; month <= 12; month += 1) {
         const basePlan = basePlans[month - 1];
         const fact = facts[month - 1];
+        const factOwn = factsOwn[month - 1];
+        const factHired = factsHired[month - 1];
         const carryPlan = carryPlans[month - 1];
 
         const completionPct = config.kind === 'PLAN_FLOW'
@@ -217,6 +231,8 @@ export class PlanningV2TotalsService {
           basePlan,
           carryPlan,
           fact,
+          factOwn,
+          factHired,
           completionPct,
         });
 
@@ -226,6 +242,8 @@ export class PlanningV2TotalsService {
       // В годовом итоге "План с переносом" показываем как сумму базовых планов.
       const yearlyCarryPlan = config.kind === 'PLAN_FLOW' ? yearlyBasePlan : 0;
       const yearlyFact = months.reduce((acc, month) => acc + month.fact, 0);
+      const yearlyFactOwn = months.reduce((acc, month) => acc + month.factOwn, 0);
+      const yearlyFactHired = months.reduce((acc, month) => acc + month.factHired, 0);
 
       rows.push({
         rowId: `${config.segmentCode}:${config.planMetricCode ?? config.factMetricCodes.join('+')}`,
@@ -238,6 +256,8 @@ export class PlanningV2TotalsService {
         yearlyBasePlan,
         yearlyCarryPlan,
         yearlyFact,
+        yearlyFactOwn,
+        yearlyFactHired,
         yearlyCompletionPct: config.kind === 'PLAN_FLOW' ? pct(yearlyFact, yearlyCarryPlan) : 0,
       });
     }

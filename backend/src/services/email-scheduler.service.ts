@@ -587,6 +587,25 @@ async function fillTotalsSheet(sheet: ExcelJS.Worksheet, options: TotalsExportOp
       const segmentLabel = totalsSegmentLabel(row);
       const baseRow = sheet.addRow([segmentLabel, 'Базовый план', ...row.months.map((m) => m.basePlan), row.yearlyBasePlan]);
       const factRow = sheet.addRow([segmentLabel, 'Факт', ...row.months.map((m) => m.fact), row.yearlyFact]);
+      if (row.segmentCode === PlanningSegmentCode.KTK_VVO || row.segmentCode === PlanningSegmentCode.KTK_MOW) {
+        const factOwnRow = sheet.addRow([
+          segmentLabel,
+          'в т.ч. Собственные ТС',
+          ...row.months.map((m) => m.factOwn ?? 0),
+          row.yearlyFactOwn ?? 0,
+        ]);
+        const factHiredRow = sheet.addRow([
+          segmentLabel,
+          'в т.ч. Наемные ТС',
+          ...row.months.map((m) => m.factHired ?? 0),
+          row.yearlyFactHired ?? 0,
+        ]);
+        [factOwnRow, factHiredRow].forEach((r) =>
+          r.eachCell((cell, colNumber) => {
+            if (colNumber >= 3) cell.numFmt = '#,##0';
+          })
+        );
+      }
       const carryRow = sheet.addRow([segmentLabel, 'План с переносом', ...row.months.map((m) => m.carryPlan), row.yearlyCarryPlan]);
       const pctRow = sheet.addRow([segmentLabel, 'Выполнение плана', ...row.months.map((m) => m.completionPct / 100), row.yearlyCompletionPct / 100]);
       pctRow.eachCell((cell, colNumber) => {

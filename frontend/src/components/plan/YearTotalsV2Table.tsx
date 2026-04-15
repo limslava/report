@@ -563,11 +563,18 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
           </TableHead>
           <TableBody>
             {sortedRows.map((row, rowIndex) => {
+              const showKtkBreakdown = row.kind === 'PLAN_FLOW' && (row.segmentCode === 'KTK_VVO' || row.segmentCode === 'KTK_MOW');
               const metricRows: Array<{ key: string; label: string }> =
                 row.kind === 'PLAN_FLOW'
                   ? [
                       { key: 'base', label: 'Базовый план' },
                       { key: 'fact', label: 'Факт' },
+                      ...(showKtkBreakdown
+                        ? [
+                            { key: 'fact_own', label: 'в т.ч. Собственные ТС' },
+                            { key: 'fact_hired', label: 'в т.ч. Наемные ТС' },
+                          ]
+                        : []),
                       { key: 'carry', label: 'План с переносом' },
                       { key: 'completion', label: 'Выполнение плана' },
                     ]
@@ -613,7 +620,12 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
                       )}
 
                       <TableCell>
-                        <Typography variant="body2" fontWeight={metric.key === 'completion' ? 700 : 400}>
+                        <Typography
+                          variant="body2"
+                          fontWeight={metric.key === 'completion' ? 700 : 400}
+                          color={metric.key === 'fact_own' || metric.key === 'fact_hired' ? 'text.secondary' : 'text.primary'}
+                          sx={metric.key === 'fact_own' || metric.key === 'fact_hired' ? { pl: 1 } : undefined}
+                        >
                           {metric.label}
                         </Typography>
                       </TableCell>
@@ -622,6 +634,8 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
                         const cell = row.months.find((m) => m.month === month);
                         const base = getBaseValue(row, month);
                         const monthFact = cell?.fact ?? 0;
+                        const monthFactOwn = cell?.factOwn ?? 0;
+                        const monthFactHired = cell?.factHired ?? 0;
                         const monthCarry = cell?.carryPlan ?? 0;
                         const monthPct = percent(monthFact, monthCarry);
                         const isEditing =
@@ -765,6 +779,10 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
                               )
                             ) : metric.key === 'fact' ? (
                               <Typography variant="body2">{formatInt(monthFact)}</Typography>
+                            ) : metric.key === 'fact_own' ? (
+                              <Typography variant="body2" color="text.secondary">{formatInt(monthFactOwn)}</Typography>
+                            ) : metric.key === 'fact_hired' ? (
+                              <Typography variant="body2" color="text.secondary">{formatInt(monthFactHired)}</Typography>
                             ) : metric.key === 'carry' ? (
                               <Typography variant="body2">{formatInt(monthCarry)}</Typography>
                             ) : (
@@ -780,6 +798,12 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
                         )}
                         {metric.key === 'fact' && (
                           <Typography variant="body2">{formatInt(row.yearlyFact)}</Typography>
+                        )}
+                        {metric.key === 'fact_own' && (
+                          <Typography variant="body2" color="text.secondary">{formatInt(row.yearlyFactOwn)}</Typography>
+                        )}
+                        {metric.key === 'fact_hired' && (
+                          <Typography variant="body2" color="text.secondary">{formatInt(row.yearlyFactHired)}</Typography>
                         )}
                         {metric.key === 'carry' && (
                           <Typography variant="body2">{formatInt(row.yearlyCarryPlan)}</Typography>

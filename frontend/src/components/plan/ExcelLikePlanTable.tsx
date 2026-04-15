@@ -823,7 +823,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
         </Box>
       </Paper>
 
-      <TableContainer ref={tableContainerRef} component={Paper} variant="outlined" sx={{ mb: 2, maxHeight: 560 }}>
+      <TableContainer ref={tableContainerRef} component={Paper} variant="outlined" sx={{ mb: 2, minHeight: 420, maxHeight: 'clamp(420px, calc(100dvh - 240px), 82dvh)' }}>
         <Table
           size="small"
           stickyHeader

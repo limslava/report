@@ -41,6 +41,8 @@ export interface PlanningYearTotalsMonthCell {
   basePlan: number;
   carryPlan: number;
   fact: number;
+  factOwn: number;
+  factHired: number;
   completionPct: number;
 }
 
@@ -55,5 +57,7 @@ export interface PlanningYearTotalsRow {
   yearlyBasePlan: number;
   yearlyCarryPlan: number;
   yearlyFact: number;
+  yearlyFactOwn: number;
+  yearlyFactHired: number;
   yearlyCompletionPct: number;
 }
