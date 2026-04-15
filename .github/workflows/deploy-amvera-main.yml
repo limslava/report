@@ -4,6 +4,7 @@ on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
+    branches: [main]
 
 jobs:
   deploy:
@@ -40,4 +41,4 @@ jobs:
           git remote add amvera "$AMVERA_GIT_URL"
 
           GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/tmp/amvera-askpass.sh \
-            git push amvera "HEAD:${AMVERA_TARGET_BRANCH}"
+            git push amvera "HEAD:refs/heads/${AMVERA_TARGET_BRANCH}"
