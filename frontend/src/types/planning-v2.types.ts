@@ -43,6 +43,7 @@ export interface PlanningYearTotalsMonthCell {
   fact: number;
   factOwn: number;
   factHired: number;
+  factCurtain: number;
   completionPct: number;
 }
 
@@ -59,5 +60,6 @@ export interface PlanningYearTotalsRow {
   yearlyFact: number;
   yearlyFactOwn: number;
   yearlyFactHired: number;
+  yearlyFactCurtain: number;
   yearlyCompletionPct: number;
 }

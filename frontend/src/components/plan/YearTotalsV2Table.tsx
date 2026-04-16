@@ -564,6 +564,7 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
           <TableBody>
             {sortedRows.map((row, rowIndex) => {
               const showKtkBreakdown = row.kind === 'PLAN_FLOW' && (row.segmentCode === 'KTK_VVO' || row.segmentCode === 'KTK_MOW');
+              const showAutoBreakdown = row.kind === 'PLAN_FLOW' && row.segmentCode === 'AUTO' && row.planMetricCode === 'AUTO_PLAN_TRUCK';
               const metricRows: Array<{ key: string; label: string }> =
                 row.kind === 'PLAN_FLOW'
                   ? [
@@ -573,6 +574,13 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
                         ? [
                             { key: 'fact_own', label: 'в т.ч. Собственные ТС' },
                             { key: 'fact_hired', label: 'в т.ч. Наемные ТС' },
+                          ]
+                        : []),
+                      ...(showAutoBreakdown
+                        ? [
+                            { key: 'fact_own', label: 'в т.ч. Собственные ТС' },
+                            { key: 'fact_hired', label: 'в т.ч. Наемные ТС' },
+                            { key: 'fact_curtain', label: 'в т.ч. Шторы' },
                           ]
                         : []),
                       { key: 'carry', label: 'План с переносом' },
@@ -623,8 +631,8 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
                         <Typography
                           variant="body2"
                           fontWeight={metric.key === 'completion' ? 700 : 400}
-                          color={metric.key === 'fact_own' || metric.key === 'fact_hired' ? 'text.secondary' : 'text.primary'}
-                          sx={metric.key === 'fact_own' || metric.key === 'fact_hired' ? { pl: 1 } : undefined}
+                          color={metric.key === 'fact_own' || metric.key === 'fact_hired' || metric.key === 'fact_curtain' ? 'text.secondary' : 'text.primary'}
+                          sx={metric.key === 'fact_own' || metric.key === 'fact_hired' || metric.key === 'fact_curtain' ? { pl: 1 } : undefined}
                         >
                           {metric.label}
                         </Typography>
@@ -636,6 +644,7 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
                         const monthFact = cell?.fact ?? 0;
                         const monthFactOwn = cell?.factOwn ?? 0;
                         const monthFactHired = cell?.factHired ?? 0;
+                        const monthFactCurtain = cell?.factCurtain ?? 0;
                         const monthCarry = cell?.carryPlan ?? 0;
                         const monthPct = percent(monthFact, monthCarry);
                         const isEditing =
@@ -783,6 +792,8 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
                               <Typography variant="body2" color="text.secondary">{formatInt(monthFactOwn)}</Typography>
                             ) : metric.key === 'fact_hired' ? (
                               <Typography variant="body2" color="text.secondary">{formatInt(monthFactHired)}</Typography>
+                            ) : metric.key === 'fact_curtain' ? (
+                              <Typography variant="body2" color="text.secondary">{formatInt(monthFactCurtain)}</Typography>
                             ) : metric.key === 'carry' ? (
                               <Typography variant="body2">{formatInt(monthCarry)}</Typography>
                             ) : (
@@ -804,6 +815,9 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
                         )}
                         {metric.key === 'fact_hired' && (
                           <Typography variant="body2" color="text.secondary">{formatInt(row.yearlyFactHired)}</Typography>
+                        )}
+                        {metric.key === 'fact_curtain' && (
+                          <Typography variant="body2" color="text.secondary">{formatInt(row.yearlyFactCurtain)}</Typography>
                         )}
                         {metric.key === 'carry' && (
                           <Typography variant="body2">{formatInt(row.yearlyCarryPlan)}</Typography>
