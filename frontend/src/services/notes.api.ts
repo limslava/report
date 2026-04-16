@@ -31,10 +31,13 @@ export const updateNote = (id: string, data: {
   title?: string;
   startAt?: string;
   endAt?: string;
+}) => api.patch<ApiNote>(`/notes/${id}`, data);
+
+export const updateNoteRecipients = (id: string, data: {
   visibility?: 'private' | 'targeted' | 'broadcast';
   recipientUserIds?: string[];
   recipientRoleIds?: string[];
-}) => api.patch<ApiNote>(`/notes/${id}`, data);
+}) => api.patch<ApiNote>(`/notes/${id}/recipients`, data);
 
 export const deleteNote = (id: string) => api.delete(`/notes/${id}`);
 
