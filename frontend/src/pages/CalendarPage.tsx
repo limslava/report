@@ -24,6 +24,7 @@ import {
   listNotes as listNotesApi,
   markNoteRead as markNoteReadApi,
   updateNote as updateNoteApi,
+  updateNoteRecipients as updateNoteRecipientsApi,
 } from '../services/notes.api';
 import '../styles/calendar.css';
 
@@ -307,19 +308,6 @@ export default function CalendarPage() {
 
   const weekRowHeight = 44;
   const dayRowHeight = 32;
-  const buildRecipientsPayload = (note: CalendarNote) => {
-    if (note.visibility === 'broadcast') {
-      return { visibility: 'broadcast' as const, recipientUserIds: [], recipientRoleIds: [] };
-    }
-    if (note.visibility === 'private') {
-      return { visibility: 'private' as const, recipientUserIds: [], recipientRoleIds: [] };
-    }
-    return {
-      visibility: 'targeted' as const,
-      recipientUserIds: note.recipientUserIds ?? [],
-      recipientRoleIds: note.recipientRoleIds ?? [],
-    };
-  };
   const formatRecipients = (note: CalendarNote) => {
     if (note.visibility === "broadcast") return "Всем";
     if (note.visibility === "private") return "Личное";
@@ -533,7 +521,6 @@ export default function CalendarPage() {
     try {
       const response = await updateNoteApi(note.id, {
         title: nextText,
-        ...buildRecipientsPayload(note),
       });
       const updated = mapApiNote(response.data);
       upsertNoteInState(updated);
@@ -667,7 +654,6 @@ export default function CalendarPage() {
     try {
       const response = await updateNoteApi(selectedNote.id, {
         title: nextText,
-        ...buildRecipientsPayload(selectedNote),
       });
       const updated = mapApiNote(response.data);
       upsertNoteInState(updated);
@@ -697,7 +683,6 @@ export default function CalendarPage() {
         title: eventDraft.trim() || selectedNote.text,
         startAt: startAt.toISOString(),
         endAt: endAt.toISOString(),
-        ...buildRecipientsPayload(selectedNote),
       });
       const updated = mapApiNote(response.data);
       upsertNoteInState(updated);
@@ -766,7 +751,7 @@ export default function CalendarPage() {
       return;
     }
     try {
-      const response = await updateNoteApi(selectedNote.id, {
+      const response = await updateNoteRecipientsApi(selectedNote.id, {
         visibility,
         recipientUserIds: userIds,
         recipientRoleIds: roleIds,

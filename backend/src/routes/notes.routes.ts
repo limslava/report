@@ -7,6 +7,7 @@ import {
   listNotes,
   createNote,
   updateNote,
+  updateNoteRecipients,
   deleteNote,
   markNoteRead,
   getNoteById,
@@ -61,12 +62,21 @@ router.patch(
     body('title').optional().isString(),
     body('startAt').optional().isISO8601({ strict: false }),
     body('endAt').optional().isISO8601({ strict: false }),
-    body('visibility').optional().isIn(['private', 'targeted', 'broadcast']),
+  ],
+  handleValidationErrors,
+  updateNote
+);
+
+router.patch(
+  '/:id/recipients',
+  [
+    param('id').isUUID(),
+    body('visibility').isIn(['private', 'targeted', 'broadcast']),
     body('recipientUserIds').optional().isArray(),
     body('recipientRoleIds').optional().isArray(),
   ],
   handleValidationErrors,
-  updateNote
+  updateNoteRecipients
 );
 
 router.delete(

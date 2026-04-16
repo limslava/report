@@ -197,7 +197,7 @@ export const updateNote = async (req: Request, res: Response, next: NextFunction
   try {
     const user = req.user!;
     const { id } = req.params;
-    const { title, startAt, endAt, visibility, recipientUserIds, recipientRoleIds } = req.body;
+    const { title, startAt, endAt } = req.body;
 
     const note = await noteRepository.findOne({ where: { id }, relations: ['recipients'] });
     if (!note) {
@@ -216,50 +216,10 @@ export const updateNote = async (req: Request, res: Response, next: NextFunction
     if (startAt) note.startAt = new Date(startAt);
     if (endAt) note.endAt = new Date(endAt);
 
-    const existingRecipients = toRecipientsPayload(note);
-    const hasRecipientUserIds = Array.isArray(recipientUserIds);
-    const hasRecipientRoleIds = Array.isArray(recipientRoleIds);
-    const hasRecipientPayload = hasRecipientUserIds || hasRecipientRoleIds;
-    const hasVisibilityPayload = typeof visibility === 'string';
-
-    const userRecipients = hasRecipientPayload
-      ? (hasRecipientUserIds ? recipientUserIds : [])
-      : existingRecipients.recipientUserIds;
-    const roleRecipients = hasRecipientPayload
-      ? (hasRecipientRoleIds ? recipientRoleIds : [])
-      : existingRecipients.recipientRoleIds;
-
-    if (hasRecipientPayload || hasVisibilityPayload) {
-      validateRoleRecipients(roleRecipients);
-    }
-
-    const resolvedVisibility = hasRecipientPayload || hasVisibilityPayload
-      ? getVisibility(visibility, userRecipients, roleRecipients)
-      : note.visibility;
-
-    if (resolvedVisibility === 'targeted' && !userRecipients.length && !roleRecipients.length) {
-      const error: any = new Error('Targeted notes require recipients');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    note.visibility = resolvedVisibility;
     const saved = await noteRepository.save(note);
+    const { recipientUserIds, recipientRoleIds } = toRecipientsPayload(note);
 
-    if (hasRecipientPayload || hasVisibilityPayload) {
-      await recipientRepository.delete({ noteId: saved.id });
-      if (resolvedVisibility === 'targeted') {
-        const recipients = [
-          ...userRecipients.map((userId: string) => ({ noteId: saved.id, userId, roleId: null })),
-          ...roleRecipients.map((roleId: string) => ({ noteId: saved.id, userId: null, roleId })),
-        ];
-        if (recipients.length) {
-          await recipientRepository.save(recipients);
-        }
-      }
-    }
-
-    const didChange = typeof title === 'string' || Boolean(startAt) || Boolean(endAt) || hasRecipientPayload || hasVisibilityPayload;
+    const didChange = typeof title === 'string' || Boolean(startAt) || Boolean(endAt);
     if (didChange) {
       await noteReadRepository.delete({ noteId: saved.id, userId: Not(user.id) });
     }
@@ -274,11 +234,77 @@ export const updateNote = async (req: Request, res: Response, next: NextFunction
       visibility: saved.visibility,
       createdAt: saved.createdAt,
       updatedAt: saved.updatedAt,
-      recipientUserIds: userRecipients,
-      recipientRoleIds: roleRecipients,
+      recipientUserIds,
+      recipientRoleIds,
     };
 
     res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateNoteRecipients = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = req.user!;
+    const { id } = req.params;
+    const { visibility, recipientUserIds, recipientRoleIds } = req.body;
+
+    const note = await noteRepository.findOne({ where: { id }, relations: ['recipients'] });
+    if (!note) {
+      const error: any = new Error('Note not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (note.authorId !== user.id && user.role !== 'admin') {
+      const error: any = new Error('Only the author can update this note');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const hasRecipientUserIds = Array.isArray(recipientUserIds);
+    const hasRecipientRoleIds = Array.isArray(recipientRoleIds);
+    const userRecipients = hasRecipientUserIds ? recipientUserIds : [];
+    const roleRecipients = hasRecipientRoleIds ? recipientRoleIds : [];
+    validateRoleRecipients(roleRecipients);
+
+    const resolvedVisibility = getVisibility(visibility, userRecipients, roleRecipients);
+    if (resolvedVisibility === 'targeted' && !userRecipients.length && !roleRecipients.length) {
+      const error: any = new Error('Targeted notes require recipients');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    note.visibility = resolvedVisibility;
+    const saved = await noteRepository.save(note);
+
+    await recipientRepository.delete({ noteId: saved.id });
+    if (resolvedVisibility === 'targeted') {
+      const recipients = [
+        ...userRecipients.map((userId: string) => ({ noteId: saved.id, userId, roleId: null })),
+        ...roleRecipients.map((roleId: string) => ({ noteId: saved.id, userId: null, roleId })),
+      ];
+      if (recipients.length) {
+        await recipientRepository.save(recipients);
+      }
+    }
+
+    await noteReadRepository.delete({ noteId: saved.id, userId: Not(user.id) });
+
+    res.json({
+      id: saved.id,
+      title: saved.title,
+      startAt: saved.startAt,
+      endAt: saved.endAt,
+      authorId: saved.authorId,
+      authorName: saved.authorName,
+      visibility: saved.visibility,
+      createdAt: saved.createdAt,
+      updatedAt: saved.updatedAt,
+      recipientUserIds: userRecipients,
+      recipientRoleIds: roleRecipients,
+    });
   } catch (error) {
     next(error);
   }

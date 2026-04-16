@@ -12,6 +12,7 @@ const recipientRepository = {
 
 const noteReadRepository = {
   findOne: jest.fn(),
+  delete: jest.fn(),
   create: jest.fn(),
   save: jest.fn(),
 };
@@ -31,6 +32,7 @@ jest.mock('./config/data-source', () => ({
 const {
   createNote,
   updateNote,
+  updateNoteRecipients,
   deleteNote,
   markNoteRead,
   getNoteById,
@@ -275,7 +277,7 @@ describe('Notes controller access rules', () => {
     expect(err.statusCode).toBe(400);
   });
 
-  it('rejects update with invalid role recipients', async () => {
+  it('rejects recipients update with invalid role recipients', async () => {
     noteRepository.findOne.mockResolvedValue({
       id: 'note-1',
       authorId: 'author-1',
@@ -290,7 +292,7 @@ describe('Notes controller access rules', () => {
     const res = makeRes();
     const next = makeNext();
 
-    await updateNote(req, res, next);
+    await updateNoteRecipients(req, res, next);
 
     expect(next).toHaveBeenCalled();
     const err = next.mock.calls[0][0];
