@@ -93,6 +93,8 @@ export class PlanningV2Service {
       [PlanningSegmentCode.AUTO]: [
         this.metricSeed('auto_truck_received', 'Автовоз - Принято', true, PlanningMetricValueType.INT, PlanningMetricAggregation.SUM, null, 10),
         this.metricSeed('auto_truck_sent', 'Автовоз - Отправлено', true, PlanningMetricValueType.INT, PlanningMetricAggregation.SUM, null, 20),
+        this.metricSeed('auto_truck_sent_own', 'Собственные ТС', true, PlanningMetricValueType.INT, PlanningMetricAggregation.SUM, null, 21),
+        this.metricSeed('auto_truck_sent_hired', 'Наемные ТС', true, PlanningMetricValueType.INT, PlanningMetricAggregation.SUM, null, 22),
         this.metricSeed('auto_truck_waiting', 'Автовоз - В ожидании', false, PlanningMetricValueType.INT, PlanningMetricAggregation.FORMULA, 'AUTO_WAITING_TRUCK', 30),
         this.metricSeed('auto_ktk_received', 'КТК - Принято', true, PlanningMetricValueType.INT, PlanningMetricAggregation.SUM, null, 40),
         this.metricSeed('auto_ktk_sent', 'КТК - Отправлено', true, PlanningMetricValueType.INT, PlanningMetricAggregation.SUM, null, 50),
