@@ -1,0 +1,48 @@
+name: Deploy Report (main -> Amvera prod)
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tested branch with full history
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+
+      - name: Pin exact tested commit
+        run: git checkout --detach ${{ github.event.workflow_run.head_sha }}
+
+      - name: Push to Amvera prod repository
+        env:
+          AMVERA_GIT_URL: ${{ secrets.AMVERA_PROD_GIT_URL }}
+          AMVERA_USER: ${{ secrets.AMVERA_PROD_USERNAME }}
+          AMVERA_PASS: ${{ secrets.AMVERA_PROD_PASSWORD }}
+          AMVERA_TARGET_BRANCH: main
+        run: |
+          if [ -z "$AMVERA_GIT_URL" ] || [ -z "$AMVERA_USER" ] || [ -z "$AMVERA_PASS" ]; then
+            echo "Missing required secrets: AMVERA_PROD_GIT_URL / AMVERA_PROD_USERNAME / AMVERA_PROD_PASSWORD"
+            exit 1
+          fi
+
+          cat > /tmp/amvera-askpass.sh <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) echo "$AMVERA_USER" ;;
+            *Password*) echo "$AMVERA_PASS" ;;
+          esac
+          EOF
+          chmod +x /tmp/amvera-askpass.sh
+
+          git remote remove amvera 2>/dev/null || true
+          git remote add amvera "$AMVERA_GIT_URL"
+
+          GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/tmp/amvera-askpass.sh \
+            git push --force --no-thin amvera "HEAD:refs/heads/${AMVERA_TARGET_BRANCH}"
