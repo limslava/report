@@ -39,7 +39,14 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/auth-store';
-import { canAccessAdmin, canViewCalendar, canViewFinancialPlan, canViewSummary, canViewTotalsInPlans } from '../utils/rolePermissions';
+import {
+  canAccessAdmin,
+  canAccessOperationsPreview,
+  canViewCalendar,
+  canViewFinancialPlan,
+  canViewSummary,
+  canViewTotalsInPlans,
+} from '../utils/rolePermissions';
 import { getHasUnsavedChanges, getUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import { getRuntimeAppSettings } from '../services/api';
 import { useServiceHealth } from '../hooks/useServiceHealth';
@@ -74,7 +81,7 @@ const DashboardLayout = () => {
   const drawerWidth = isPinnedOpen ? expandedDrawerWidth : collapsedDrawerWidth;
   const canViewTotals = canViewTotalsInPlans(user?.role);
   const canViewFinancial = canViewFinancialPlan(user?.role);
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = canAccessAdmin(user?.role);
   const serviceHealth = useServiceHealth();
   const idleTimeoutRef = useRef<number | null>(null);
 
@@ -123,7 +130,7 @@ const DashboardLayout = () => {
     canViewCalendar(user?.role)
       ? { key: 'calendar', label: 'Календарь', icon: calendarIcon, onClick: () => handleNavigate('/calendar'), active: location.pathname.includes('/calendar') }
       : null,
-    isAdmin
+    canAccessOperationsPreview(user?.role)
       ? { key: 'ops-preview', label: 'Ежедневный ввод (превью)', icon: <FactCheck />, onClick: () => handleNavigate('/operations-preview'), active: location.pathname.includes('/operations-preview') }
       : null,
     canAccessAdmin(user?.role)
