@@ -404,7 +404,7 @@ http://localhost:3000/api
 | GET | `/health` | Проверка процесса |
 | GET | `/health/db` | Проверка БД |
 | GET | `/health/db/metrics` | Метрики БД |
-| GET | `/health/redis` | Проверка Redis |
+| GET | `/health/redis` | Проверка Redis (`OK`/`DOWN`, либо `NOT_REQUIRED` при отключенной очереди) |
 | GET | `/health/scheduler` | Статус планировщика |
 
 ## 🗄 Модели данных
@@ -507,7 +507,7 @@ npm run build
 - `GET /health` — жив ли процесс.
 - `GET /health/db` — проверка доступности БД (`SELECT 1`, таймаут 2s, 2 попытки).
 - `GET /health/db/metrics` — метрики по доступности БД (latency + ошибки).
-- `GET /health/redis` — проверка Redis (для очередей/планировщика).
+- `GET /health/redis` — проверка Redis для очередей/планировщика; возвращает `NOT_REQUIRED`, если очередь отключена.
 - `GET /health/scheduler` — статус планировщика email.
 
 ### Circuit breaker для БД

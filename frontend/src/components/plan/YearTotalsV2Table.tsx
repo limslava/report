@@ -550,7 +550,20 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
       </Paper>
 
       <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 660 }}>
-        <Table size="small" stickyHeader sx={{ zoom: tableZoom }}>
+        <Table
+          size="small"
+          stickyHeader
+          sx={{
+            zoom: tableZoom,
+            transform: `scale(${tableZoom})`,
+            transformOrigin: 'top left',
+            width: `${100 / tableZoom}%`,
+            '@supports (zoom: 1)': {
+              transform: 'none',
+              width: '100%',
+            },
+          }}
+        >
           <TableHead>
             <TableRow>
               <TableCell sx={{ minWidth: 260 }}>Сегмент</TableCell>

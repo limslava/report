@@ -20,7 +20,7 @@ import { withRetry } from './utils/db-retry';
 import { dbCircuit } from './utils/db-circuit';
 import { AppDataSource } from './config/data-source';
 import { dbMetrics } from './utils/db-metrics';
-import { canConnectRedis, getSchedulerStatus } from './services/scheduler';
+import { canConnectRedis, getSchedulerStatus, isRedisRequiredForScheduler } from './services/scheduler';
 
 export function createApp() {
   const app = express();
@@ -132,8 +132,11 @@ export function createApp() {
   });
 
   app.get('/health/redis', async (_req, res) => {
-    if ((process.env.REDIS_ENABLED ?? 'true').toLowerCase() === 'false') {
-      res.json({ status: 'DISABLED' });
+    if (!isRedisRequiredForScheduler()) {
+      res.json({
+        status: 'NOT_REQUIRED',
+        reason: 'Redis queue is disabled for scheduler in current environment',
+      });
       return;
     }
     try {
