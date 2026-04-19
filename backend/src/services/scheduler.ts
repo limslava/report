@@ -102,6 +102,10 @@ export const canConnectRedis = async (): Promise<boolean> => {
     maxRetriesPerRequest: 1,
     enableOfflineQueue: false,
   });
+  client.on('error', () => {
+    // Prevent "Unhandled error event" from ioredis during health checks.
+    // The connection result is handled by connect/ping below.
+  });
 
   try {
     await client.connect();
@@ -118,6 +122,10 @@ export const canConnectRedis = async (): Promise<boolean> => {
     }
   }
 };
+
+export const isRedisRequiredForScheduler = (): boolean => (
+  schedulerEnvEnabled() && schedulerUseQueue && redisEnabled()
+);
 
 const createQueue = (): Queue.Queue | null => {
   if (!redisEnabled()) {

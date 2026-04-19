@@ -314,7 +314,7 @@ export default function CalendarPage() {
     const roles = (note.recipientRoleIds ?? []).map((id) => ROLE_LABELS[id] ?? id);
     const users = (note.recipientUserIds ?? []).map((id) => userNameMap.get(id) ?? id);
     const targets = [...roles, ...users].filter(Boolean);
-    if (targets.length === 0) return "Личное";
+    if (targets.length === 0) return "Адресаты не указаны";
     return targets.join(", ");
   };
   const canDeleteNote = (note: CalendarNote) => canDeleteNoteWithUser(note, user);

@@ -7,7 +7,6 @@ import { NoteRead } from '../models/note-read.model';
 import { ROLE_VALUES } from '../constants/role-definitions';
 
 const noteRepository = AppDataSource.getRepository(Note);
-const recipientRepository = AppDataSource.getRepository(NoteRecipient);
 const noteReadRepository = AppDataSource.getRepository(NoteRead);
 const ROLE_SET = new Set(ROLE_VALUES);
 
@@ -152,26 +151,31 @@ export const createNote = async (req: Request, res: Response, next: NextFunction
       throw error;
     }
 
-    const note = noteRepository.create({
-      title,
-      startAt: new Date(startAt),
-      endAt: new Date(endAt),
-      authorId: user.id,
-      authorName: user.fullName,
-      visibility: resolvedVisibility,
-    });
+    const saved = await AppDataSource.transaction(async (manager) => {
+      const txNoteRepository = manager.getRepository(Note);
+      const txRecipientRepository = manager.getRepository(NoteRecipient);
+      const note = txNoteRepository.create({
+        title,
+        startAt: new Date(startAt),
+        endAt: new Date(endAt),
+        authorId: user.id,
+        authorName: user.fullName,
+        visibility: resolvedVisibility,
+      });
+      const persisted = await txNoteRepository.save(note);
 
-    const saved = await noteRepository.save(note);
-
-    if (resolvedVisibility === 'targeted') {
-      const recipients = [
-        ...userRecipients.map((userId: string) => ({ noteId: saved.id, userId, roleId: null })),
-        ...roleRecipients.map((roleId: string) => ({ noteId: saved.id, userId: null, roleId })),
-      ];
-      if (recipients.length) {
-        await recipientRepository.save(recipients);
+      if (resolvedVisibility === 'targeted') {
+        const recipients = [
+          ...userRecipients.map((userId: string) => ({ noteId: persisted.id, userId, roleId: null })),
+          ...roleRecipients.map((roleId: string) => ({ noteId: persisted.id, userId: null, roleId })),
+        ];
+        if (recipients.length) {
+          await txRecipientRepository.save(recipients);
+        }
       }
-    }
+
+      return persisted;
+    });
 
     const response = {
       id: saved.id,
@@ -276,21 +280,28 @@ export const updateNoteRecipients = async (req: Request, res: Response, next: Ne
       throw error;
     }
 
-    note.visibility = resolvedVisibility;
-    const saved = await noteRepository.save(note);
+    const saved = await AppDataSource.transaction(async (manager) => {
+      const txNoteRepository = manager.getRepository(Note);
+      const txRecipientRepository = manager.getRepository(NoteRecipient);
+      const txNoteReadRepository = manager.getRepository(NoteRead);
 
-    await recipientRepository.delete({ noteId: saved.id });
-    if (resolvedVisibility === 'targeted') {
-      const recipients = [
-        ...userRecipients.map((userId: string) => ({ noteId: saved.id, userId, roleId: null })),
-        ...roleRecipients.map((roleId: string) => ({ noteId: saved.id, userId: null, roleId })),
-      ];
-      if (recipients.length) {
-        await recipientRepository.save(recipients);
+      note.visibility = resolvedVisibility;
+      const persisted = await txNoteRepository.save(note);
+
+      await txRecipientRepository.delete({ noteId: persisted.id });
+      if (resolvedVisibility === 'targeted') {
+        const recipients = [
+          ...userRecipients.map((userId: string) => ({ noteId: persisted.id, userId, roleId: null })),
+          ...roleRecipients.map((roleId: string) => ({ noteId: persisted.id, userId: null, roleId })),
+        ];
+        if (recipients.length) {
+          await txRecipientRepository.save(recipients);
+        }
       }
-    }
 
-    await noteReadRepository.delete({ noteId: saved.id, userId: Not(user.id) });
+      await txNoteReadRepository.delete({ noteId: persisted.id, userId: Not(user.id) });
+      return persisted;
+    });
 
     res.json({
       id: saved.id,

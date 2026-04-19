@@ -105,6 +105,8 @@ function normalizeMetricLabel(metricCode: string, name: string): string {
   if (metricCode === 'auto_ktk_received') return 'Авто в ктк - Принято';
   if (metricCode === 'auto_ktk_sent') return 'Авто в ктк - Отправлено';
   if (metricCode === 'auto_ktk_waiting') return 'Авто в ктк - В ожидании';
+  if (metricCode === 'auto_truck_sent_own') return 'в т.ч. Собственные ТС';
+  if (metricCode === 'auto_truck_sent_hired') return 'в т.ч. Наемные ТС';
   return name;
 }
 
