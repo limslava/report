@@ -350,7 +350,6 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
 
     setCurrentContext(desiredContext);
     void loadData(desiredContext);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [desiredContext, loadData]);
 
   useEffect(() => {
@@ -456,7 +455,6 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
     });
 
     return () => registerUnsavedHandlers(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentContext, draft, report]);
 
   const dayHeaders = useMemo(() => {
