@@ -168,6 +168,7 @@ const AdminPage = () => {
 
   const roleLabels: Record<string, string> = {
     manager_ktk_vvo: 'Менеджер КТК Владивосток',
+    head_ktk_vvo: 'Руководитель КТК Владивосток',
     manager_ktk_mow: 'Менеджер КТК Москва',
     manager_auto: 'Менеджер отправки авто',
     manager_rail: 'Менеджер ЖД',
@@ -194,6 +195,7 @@ const AdminPage = () => {
 
   const roles = [
     { value: 'manager_ktk_vvo', label: 'Менеджер КТК Владивосток' },
+    { value: 'head_ktk_vvo', label: 'Руководитель КТК Владивосток' },
     { value: 'manager_ktk_mow', label: 'Менеджер КТК Москва' },
     { value: 'manager_auto', label: 'Менеджер отправки авто' },
     { value: 'manager_rail', label: 'Менеджер ЖД' },

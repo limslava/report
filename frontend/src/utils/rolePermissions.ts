@@ -29,7 +29,7 @@ export function canViewCalendar(role?: string | null): boolean {
 }
 
 export function canAccessOperationsPreview(role?: string | null): boolean {
-  return role === 'admin' || role === 'manager_ktk_vvo';
+  return role === 'admin' || role === 'manager_ktk_vvo' || role === 'head_ktk_vvo';
 }
 
 export function canEditFinancialPlan(role?: string | null): boolean {

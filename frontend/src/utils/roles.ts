@@ -4,6 +4,7 @@ export const SUMMARY_ROLES = new Set(['admin', 'director', 'financer', 'manager_
 
 export const SEGMENT_BY_ROLE: Record<string, PlanningSegment['code'] | null> = {
   manager_ktk_vvo: 'KTK_VVO',
+  head_ktk_vvo: 'KTK_VVO',
   manager_ktk_mow: 'KTK_MOW',
   manager_auto: 'AUTO',
   manager_rail: 'RAIL',

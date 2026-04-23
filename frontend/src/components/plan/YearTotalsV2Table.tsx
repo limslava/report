@@ -128,6 +128,8 @@ function rowSegmentLabel(row: PlanningYearTotalsRow): string {
 const monthNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 
 export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearTotalsV2TableProps) {
+  const userRole = useAuthStore((state) => state.user?.role);
+  const isKtkVvoManager = userRole === 'manager_ktk_vvo' || userRole === 'head_ktk_vvo';
   const [rows, setRows] = useState<PlanningYearTotalsRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
@@ -494,46 +496,90 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
 
       <Paper sx={{ p: 2, mb: 2 }}>
         <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1.5}>
-          <Box>
-            <Typography variant="h6">Операционный отчет • {year}</Typography>
-          </Box>
-          <Box display="flex" gap={1} alignItems="center" flexWrap="wrap" justifyContent="flex-end">
-            <TextField
-              label="Год"
-              type="number"
-              size="small"
-              inputProps={{ min: 2020, max: 2100 }}
-              value={year}
-              onChange={(e) => {
-                const next = Number(e.target.value);
-                if (Number.isInteger(next) && next >= 2020 && next <= 2100) {
-                  onYearChange(next);
-                }
-              }}
-              sx={{ width: 120 }}
-            />
-            <Autocomplete
-              freeSolo
-              options={zoomOptions}
-              inputValue={zoomInput}
-              onInputChange={(_event, value) => setZoomInput(value)}
-              onChange={(_event, value) => {
-                if (typeof value === 'string') {
-                  setZoomInput(value);
-                  applyZoomFromInput(value);
-                }
-              }}
-              renderInput={(params) => (
+          <Box display="flex" gap={1} alignItems="center" flexWrap="wrap">
+            {!isKtkVvoManager && <Typography variant="h6">Операционный отчет • {year}</Typography>}
+            {isKtkVvoManager && (
+              <>
                 <TextField
-                  {...params}
-                  label="Масштаб"
+                  label="Год"
+                  type="number"
                   size="small"
-                  onBlur={() => applyZoomFromInput(zoomInput)}
-                  placeholder="например 80%"
+                  inputProps={{ min: 2020, max: 2100 }}
+                  value={year}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    if (Number.isInteger(next) && next >= 2020 && next <= 2100) {
+                      onYearChange(next);
+                    }
+                  }}
+                  sx={{ width: 120 }}
                 />
-              )}
-              sx={{ width: 140 }}
-            />
+                <Autocomplete
+                  freeSolo
+                  options={zoomOptions}
+                  inputValue={zoomInput}
+                  onInputChange={(_event, value) => setZoomInput(value)}
+                  onChange={(_event, value) => {
+                    if (typeof value === 'string') {
+                      setZoomInput(value);
+                      applyZoomFromInput(value);
+                    }
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Масштаб"
+                      size="small"
+                      onBlur={() => applyZoomFromInput(zoomInput)}
+                      placeholder="например 80%"
+                    />
+                  )}
+                  sx={{ width: 140 }}
+                />
+              </>
+            )}
+          </Box>
+          <Box display="flex" gap={1} alignItems="center" flexWrap="wrap" justifyContent="flex-end" sx={{ ml: 'auto' }}>
+            {!isKtkVvoManager && (
+              <>
+                <TextField
+                  label="Год"
+                  type="number"
+                  size="small"
+                  inputProps={{ min: 2020, max: 2100 }}
+                  value={year}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    if (Number.isInteger(next) && next >= 2020 && next <= 2100) {
+                      onYearChange(next);
+                    }
+                  }}
+                  sx={{ width: 120 }}
+                />
+                <Autocomplete
+                  freeSolo
+                  options={zoomOptions}
+                  inputValue={zoomInput}
+                  onInputChange={(_event, value) => setZoomInput(value)}
+                  onChange={(_event, value) => {
+                    if (typeof value === 'string') {
+                      setZoomInput(value);
+                      applyZoomFromInput(value);
+                    }
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Масштаб"
+                      size="small"
+                      onBlur={() => applyZoomFromInput(zoomInput)}
+                      placeholder="например 80%"
+                    />
+                  )}
+                  sx={{ width: 140 }}
+                />
+              </>
+            )}
             <Button variant="outlined" onClick={handleDownloadExcel} disabled={loading || downloading}>
               {downloading ? 'Скачивание...' : 'Скачать Excel'}
             </Button>

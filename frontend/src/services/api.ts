@@ -105,4 +105,20 @@ export const getSmtpConfig = () => api.get('/smtp-config');
 export const saveSmtpConfig = (data: any) => api.post('/smtp-config', data);
 export const testSmtpConfig = () => api.post('/smtp-config/test');
 
+export const getOperationsPreviewState = () => api.get('/operations-preview/state');
+export const saveOperationsPreviewState = (state: Record<string, unknown>) =>
+  api.put('/operations-preview/state', state);
+export const downloadOperationsPreviewExcel = async (params: {
+  section: 'containers' | 'auto' | 'dispatchers' | 'couriers';
+  year: number;
+  month: number;
+  mode: 'plan' | 'fact';
+  sortField?: 'manual' | 'name' | 'plate';
+  sortDirection?: 'asc' | 'desc';
+}) =>
+  api.get('/operations-preview/export', {
+    params,
+    responseType: 'blob',
+  });
+
 export default api;

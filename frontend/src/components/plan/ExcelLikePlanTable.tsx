@@ -230,6 +230,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   onMonthChange,
 }) => {
   const { user } = useAuthStore();
+  const isKtkVvoManager = user?.role === 'manager_ktk_vvo' || user?.role === 'head_ktk_vvo';
   const isAdmin = user?.role === 'admin';
   const desiredContext = useMemo<ReportContext>(
     () => ({ segmentCode, year, month, asOfDate }),
@@ -756,9 +757,9 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
         </Alert>
       )}
 
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Box display="flex" flexDirection="column" gap={1.5}>
-          <Typography variant="h6">{report?.segment.name}</Typography>
+      <Paper sx={{ p: 1.5, mb: 1.5 }}>
+        <Box display="flex" flexDirection="column" gap={1}>
+          {!isKtkVvoManager && <Typography variant="h6">{report?.segment.name}</Typography>}
           <Typography variant="body2" color="text.secondary">
             Период: {currentContext.month}.{currentContext.year} • Отчетная дата: {report?.asOfDate}
             {lastSavedServer
@@ -778,7 +779,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
                     const next = Number(e.target.value);
                     if (Number.isInteger(next) && next >= 2020 && next <= 2100) onYearChange(next);
                   }}
-                  sx={{ width: 120 }}
+                  sx={{ width: 110 }}
                 />
               )}
               {onMonthChange && (
@@ -788,7 +789,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
                   size="small"
                   value={currentContext.month}
                   onChange={(e) => onMonthChange(Number(e.target.value))}
-                  sx={{ width: 170 }}
+                  sx={{ width: 160 }}
                 >
                   {monthOptions.map((option) => (
                     <MenuItem key={option.value} value={option.value}>

@@ -30,6 +30,10 @@ export interface BatchUpsertPayload {
 
 const FULL_ACCESS_ROLES = new Set<string>(PLANNING_FULL_ACCESS_ROLES);
 
+function isKtkVvoScopedRole(role: string): boolean {
+  return role === PlanningRole.MANAGER_KTK_VVO || role === 'head_ktk_vvo';
+}
+
 function toIsoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -41,6 +45,10 @@ function parseDate(value: string): Date {
 
 function hasSegmentAccess(role: string, segmentCode: PlanningSegmentCode): boolean {
   if (FULL_ACCESS_ROLES.has(role)) {
+    return true;
+  }
+
+  if (segmentCode === PlanningSegmentCode.KTK_VVO && isKtkVvoScopedRole(role)) {
     return true;
   }
 
@@ -350,6 +358,10 @@ export class PlanningV2Service {
   canEditSegment(role: string, segmentCode: PlanningSegmentCode): boolean {
     if (FULL_ACCESS_ROLES.has(role)) {
       return role === PlanningRole.ADMIN;
+    }
+
+    if (segmentCode === PlanningSegmentCode.KTK_VVO && isKtkVvoScopedRole(role)) {
+      return true;
     }
 
     return role === SEGMENT_MANAGER_ROLE[segmentCode];
