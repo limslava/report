@@ -13,10 +13,10 @@ const isValidFilter = (value: unknown): value is 'Все' | 'Контейнер�
   value === 'Диспетчера' ||
   value === 'Курьеры';
 
-type PreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers';
+type PreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'efficiency';
 type PreviewMode = 'plan' | 'fact';
 type Department = 'Контейнеры' | 'Авто' | 'Диспетчера' | 'Курьеры';
-type CellCode = 'W' | 'O' | 'B' | 'H' | 'R' | 'N' | 'V';
+type CellCode = 'W' | 'O' | 'B' | 'H' | 'R' | 'N' | 'V' | 'E';
 type OverrideScopeKey = `${PreviewMode}|${string}`;
 type SortField = 'manual' | 'name' | 'plate';
 type SortDirection = 'asc' | 'desc';
@@ -44,13 +44,15 @@ const DEPARTMENT_BY_SECTION: Record<PreviewSection, Department> = {
   auto: 'Авто',
   dispatchers: 'Диспетчера',
   couriers: 'Курьеры',
+  efficiency: 'Контейнеры',
 };
 
 const SECTION_LABEL: Record<PreviewSection, string> = {
   containers: 'Контейнеровозы',
   auto: 'Автовозы',
   dispatchers: 'Диспетчера',
-  couriers: 'Курьеры (Оперативники)',
+  couriers: 'Оперативники',
+  efficiency: 'Эффективность',
 };
 
 const WEEKDAY_LABELS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
@@ -86,7 +88,7 @@ const sanitizePayload = (payload: unknown): Record<string, unknown> => {
 };
 
 const isValidSection = (value: unknown): value is PreviewSection =>
-  value === 'containers' || value === 'auto' || value === 'dispatchers' || value === 'couriers';
+  value === 'containers' || value === 'auto' || value === 'dispatchers' || value === 'couriers' || value === 'efficiency';
 
 const isValidSortField = (value: unknown): value is SortField =>
   value === 'manual' || value === 'name' || value === 'plate';
@@ -103,24 +105,13 @@ const getPrevMonthValue = (value: string): string | null => {
   return `${year}-${String(month - 1).padStart(2, '0')}`;
 };
 
-const getMonthlyCell = (rowIndex: number, day: number, department: Department): CellCode => {
-  if (department === 'Диспетчера' || department === 'Курьеры') {
-    if ((rowIndex + day) % 17 === 0) return 'V';
-    if ((rowIndex + day) % 7 === 0) return 'O';
-    return 'W';
-  }
-  if (day % 13 === 0) return 'R';
-  if (day % 17 === 0) return 'V';
-  if ((rowIndex + day) % 9 === 0) return 'B';
-  if ((rowIndex + day) % 7 === 0) return 'O';
-  if ((rowIndex + day) % 6 === 0) return 'H';
-  if ((rowIndex + day) % 11 === 0) return 'V';
-  if ((rowIndex + day) % 5 === 0) return 'N';
-  return 'W';
+const getMonthlyCell = (_rowIndex: number, _day: number, _department: Department): CellCode => {
+  return 'E';
 };
 
 const toCellLabel = (code: CellCode): string => {
   const map: Record<CellCode, string> = {
+    E: '',
     W: '1',
     O: 'В',
     V: 'О',
@@ -246,6 +237,219 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
   const payload = (row?.payload ?? {}) as PreviewPersistedState;
   const overrides = (payload.overrides ?? {}) as Record<OverrideScopeKey, Record<string, CellCode>>;
   const peopleByMonth = extractPeopleByMonth(payload);
+  if (section === 'efficiency') {
+    const workbook = new ExcelJS.Workbook();
+    const locationLabel = 'КТК Владивосток';
+    const sheet = workbook.addWorksheet('Эффективность КТК Влк');
+    const months = Array.from({ length: 12 }, (_, index) => index + 1);
+    const monthLabels = ['ЯНВАРЬ', 'ФЕВРАЛЬ', 'МАРТ', 'АПРЕЛЬ', 'МАЙ', 'ИЮНЬ', 'ИЮЛЬ', 'АВГУСТ', 'СЕНТЯБРЬ', 'ОКТЯБРЬ', 'НОЯБРЬ', 'ДЕКАБРЬ'];
+    const thin: ExcelJS.BorderStyle = 'thin';
+    const border: Partial<ExcelJS.Borders> = {
+      top: { style: thin, color: { argb: 'FFD6DCE8' } },
+      left: { style: thin, color: { argb: 'FFD6DCE8' } },
+      bottom: { style: thin, color: { argb: 'FFD6DCE8' } },
+      right: { style: thin, color: { argb: 'FFD6DCE8' } },
+    };
+
+    const toVehicleDayCode = (codes: CellCode[]): 'WORK' | 'REPAIR' | 'NO_DRIVER' | 'SICK' | 'OFF' | 'EMPTY' => {
+      if (codes.some((code) => code === 'W' || code === 'H')) return 'WORK';
+      if (codes.some((code) => code === 'R')) return 'REPAIR';
+      if (codes.some((code) => code === 'N')) return 'NO_DRIVER';
+      if (codes.some((code) => code === 'B')) return 'SICK';
+      if (codes.some((code) => code === 'O' || code === 'V')) return 'OFF';
+      return 'EMPTY';
+    };
+
+    const calculateDepartment = (departmentName: Department) => {
+      return months.map((monthIndex) => {
+        const monthValueForYear = `${year}-${String(monthIndex).padStart(2, '0')}`;
+        const monthPeople = resolvePeopleForMonth(monthValueForYear, peopleByMonth).filter(
+          (person) => person.department === departmentName
+        );
+        const daysInMonthForCalc = new Date(year, monthIndex, 0).getDate();
+        const factScopeKey = `fact|${monthValueForYear}` as OverrideScopeKey;
+        const factScope = overrides[factScopeKey] ?? {};
+
+        const uniquePlatesCount = new Set(
+          monthPeople.map((person) => person.plate.trim().toUpperCase()).filter((plate) => plate.length > 0)
+        ).size;
+        const totalAutoDays = uniquePlatesCount * daysInMonthForCalc;
+
+        let workAutoDays = 0;
+        let offOrVacationDays = 0;
+        let repairDays = 0;
+        let noDriverDays = 0;
+        let sickDays = 0;
+
+        monthPeople.forEach((person, rowIndex) => {
+          for (let day = 1; day <= daysInMonthForCalc; day += 1) {
+            const lane1 = factScope[`${person.id}-1-${day}`] ?? getMonthlyCell(rowIndex, day, departmentName);
+            const lane2 = person.secondName
+              ? factScope[`${person.id}-2-${day}`] ?? getMonthlyCell(rowIndex + 50, day, departmentName)
+              : null;
+            const vehicleDay = toVehicleDayCode([lane1, lane2].filter(Boolean) as CellCode[]);
+            if (vehicleDay === 'WORK') {
+              workAutoDays += 1;
+            } else if (vehicleDay === 'OFF') {
+              offOrVacationDays += 1;
+            } else if (vehicleDay === 'REPAIR') {
+              repairDays += 1;
+            } else if (vehicleDay === 'NO_DRIVER') {
+              noDriverDays += 1;
+            } else if (vehicleDay === 'SICK') {
+              sickDays += 1;
+            }
+          }
+        });
+
+        const totalIdleDays = offOrVacationDays + repairDays + noDriverDays + sickDays;
+        const technicalReadyDays = totalAutoDays - repairDays;
+        const loadFactor = totalAutoDays > 0 ? workAutoDays / totalAutoDays : 0;
+        const techReadyFactor = totalAutoDays > 0 ? technicalReadyDays / totalAutoDays : 0;
+
+        return {
+          uniquePlatesCount,
+          daysInMonth: daysInMonthForCalc,
+          totalAutoDays,
+          workAutoDays,
+          loadFactor,
+          offOrVacationDays,
+          repairDays,
+          noDriverDays,
+          sickDays,
+          totalIdleDays,
+          technicalReadyDays,
+          techReadyFactor,
+        };
+      });
+    };
+
+    const containers = calculateDepartment('Контейнеры');
+    const auto = calculateDepartment('Авто');
+
+    sheet.getColumn(1).width = 44;
+    for (let col = 2; col <= 13; col += 1) {
+      sheet.getColumn(col).width = 11;
+    }
+
+    const renderBlock = (startRow: number, title: string, firstRowLabel: string, data: ReturnType<typeof calculateDepartment>) => {
+      const endCol = 13;
+      const turquoiseFill = 'FFD4F3F1';
+      const peachFill = 'FFFFE8D8';
+      const isMetricRow = (label: string) =>
+        label === 'Коэффициент загрузки' ||
+        label === 'Итого дни простоя' ||
+        label === 'Коэффициент технической готовности';
+      const isTurquoiseRow = (label: string) =>
+        label === 'Коэффициент загрузки' || label === 'Коэффициент технической готовности';
+      const isPeachRow = (label: string) =>
+        label === 'Выходные, отпуск, автодни' ||
+        label === 'Ремонт, автодни' ||
+        label === 'Нет водителя, автодни';
+
+      sheet.mergeCells(startRow, 1, startRow, endCol);
+      const titleCell = sheet.getCell(startRow, 1);
+      titleCell.value = title;
+      titleCell.font = { name: 'Arial', size: 12, bold: true };
+      titleCell.alignment = { horizontal: 'left', vertical: 'middle' };
+      titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6E6E6' } };
+      titleCell.border = border;
+      sheet.getRow(startRow).height = 24;
+
+      const headerRow = startRow + 1;
+      sheet.getCell(headerRow, 1).value = 'Показатели';
+      monthLabels.forEach((label, index) => {
+        sheet.getCell(headerRow, index + 2).value = label;
+      });
+
+      const rows: Array<{ label: string; values: number[]; ratio?: boolean }> = [
+        { label: firstRowLabel, values: data.map((item) => item.uniquePlatesCount) },
+        { label: 'Дней в месяце', values: data.map((item) => item.daysInMonth) },
+        { label: 'Всего автодней в месяц', values: data.map((item) => item.totalAutoDays) },
+        { label: 'Рабочие автодни, автодни', values: data.map((item) => item.workAutoDays) },
+        { label: 'Коэффициент загрузки', values: data.map((item) => item.loadFactor), ratio: true },
+        { label: 'Выходные, отпуск, автодни', values: data.map((item) => item.offOrVacationDays) },
+        { label: 'Ремонт, автодни', values: data.map((item) => item.repairDays) },
+        { label: 'Нет водителя, автодни', values: data.map((item) => item.noDriverDays) },
+        { label: 'Неофициальный больничный, автодни', values: data.map((item) => item.sickDays) },
+        { label: 'Итого дни простоя', values: data.map((item) => item.totalIdleDays) },
+        { label: 'Технически готовы, автодни', values: data.map((item) => item.technicalReadyDays) },
+        { label: 'Коэффициент технической готовности', values: data.map((item) => item.techReadyFactor), ratio: true },
+      ];
+
+      rows.forEach((rowData, idx) => {
+        const rowNumber = headerRow + 1 + idx;
+        sheet.getCell(rowNumber, 1).value = rowData.label;
+        rowData.values.forEach((value, valueIndex) => {
+          const cell = sheet.getCell(rowNumber, valueIndex + 2);
+          cell.value = value;
+          if (rowData.ratio) {
+            cell.numFmt = '0.00';
+          }
+        });
+      });
+
+      for (let rowNumber = headerRow; rowNumber <= headerRow + rows.length; rowNumber += 1) {
+        for (let col = 1; col <= endCol; col += 1) {
+          const cell = sheet.getCell(rowNumber, col);
+          cell.border = border;
+          cell.alignment = { horizontal: col === 1 ? 'left' : 'center', vertical: 'middle' };
+          if (rowNumber === headerRow) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F4F9' } };
+            cell.font = { name: 'Arial', size: 11, bold: true };
+          } else {
+            cell.font = { name: 'Arial', size: 11 };
+          }
+        }
+      }
+
+      rows.forEach((rowData, idx) => {
+        const rowNumber = headerRow + 1 + idx;
+        if (isMetricRow(rowData.label)) {
+          const labelCell = sheet.getCell(rowNumber, 1);
+          labelCell.font = { name: 'Arial', size: 11, bold: true };
+          for (let col = 2; col <= endCol; col += 1) {
+            const valueCell = sheet.getCell(rowNumber, col);
+            valueCell.font = { name: 'Arial', size: 11, bold: true };
+          }
+        }
+
+        if (isTurquoiseRow(rowData.label)) {
+          for (let col = 1; col <= endCol; col += 1) {
+            const cell = sheet.getCell(rowNumber, col);
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: turquoiseFill } };
+          }
+        }
+
+        if (isPeachRow(rowData.label)) {
+          for (let col = 1; col <= endCol; col += 1) {
+            const cell = sheet.getCell(rowNumber, col);
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: peachFill } };
+          }
+        }
+      });
+    };
+
+    renderBlock(
+      1,
+      `Расчет показателей использования контейнеровозов ${year} г. — ${locationLabel}`,
+      'Количество контейнеровозов',
+      containers
+    );
+    renderBlock(
+      16,
+      `Расчет показателей использования автовозов ${year} г. — ${locationLabel}`,
+      'Количество автовозов',
+      auto
+    );
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const filename = `График эффективности - ${locationLabel}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', buildContentDisposition(filename));
+    res.send(Buffer.from(buffer));
+    return;
+  }
   const allPeople = resolvePeopleForMonth(monthValue, peopleByMonth);
   const sectionPeopleBase = allPeople
     .map((person, index) => ({ ...person, rowIndex: index }))
@@ -286,30 +490,78 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('График работы');
 
-  const startRow = 3;
+  const COLORS = {
+    border: 'FFD6DCE8',
+    titleBg: 'FFE6E6E6',
+    header: 'FFF2F4F9',
+    weekend: 'FFF3F3F3',
+    totalRow: 'FFEAF2FF',
+    white: 'FFFFFFFF',
+    cellWork: 'FF87D4A1',
+    cellHalfDay: 'FFE6CF73',
+    cellSick: 'FF87BDDE',
+    cellRepair: 'FF56C6CE',
+    cellNoDriver: 'FF95A5B6',
+    cellWeekend: 'FFEBC1C1',
+    cellVacation: 'FFB394E0',
+    cellEmpty: 'FFFFFFFF',
+    textDark: 'FF1F2937',
+    textRed: 'FFD32F2F',
+  } as const;
+
+  const startRow = 4;
   const nameCol = 1;
   const plateCol = isPersonnel ? -1 : 2;
   const noteCol = isPersonnel ? -1 : 3;
   const dayStartCol = isPersonnel ? 2 : 4;
   const totalCol = dayStartCol + monthDays.length;
 
-  sheet.getCell(1, 1).value = `График работы - ${SECTION_LABEL[section]} (${mode === 'plan' ? 'План' : 'Факт'})`;
-  sheet.getCell(1, 1).font = { bold: true, size: 14 };
-  sheet.getCell(2, 1).value = `Период: ${String(month).padStart(2, '0')}.${year}`;
-
-  sheet.getColumn(nameCol).width = 24;
+  sheet.getColumn(nameCol).width = 28;
   if (!isPersonnel) {
-    sheet.getColumn(plateCol).width = 12;
-    sheet.getColumn(noteCol).width = 14;
+    sheet.getColumn(plateCol).width = 13;
+    sheet.getColumn(noteCol).width = 17;
   }
   monthDays.forEach((_, idx) => {
-    sheet.getColumn(dayStartCol + idx).width = 4;
+    sheet.getColumn(dayStartCol + idx).width = 4.3;
   });
-  sheet.getColumn(totalCol).width = isPersonnel ? 17 : 11;
+  sheet.getColumn(totalCol).width = isPersonnel ? 18 : 12;
+
+  sheet.mergeCells(1, 1, 1, totalCol);
+  sheet.getCell(1, 1).value = `График работы - ${SECTION_LABEL[section]} (${mode === 'plan' ? 'План' : 'Факт'})`;
+  sheet.getCell(1, 1).font = { bold: true, size: 13, name: 'Arial', color: { argb: COLORS.textDark } };
+  sheet.getCell(1, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.titleBg } };
+  sheet.getCell(1, 1).alignment = { horizontal: 'left', vertical: 'middle' };
+  sheet.getRow(1).height = 24;
+
+  sheet.mergeCells(2, 1, 2, totalCol);
+  sheet.getCell(2, 1).value = `Период: ${String(month).padStart(2, '0')}.${year}`;
+  sheet.getCell(2, 1).font = { size: 11, name: 'Arial', color: { argb: 'FF5F6B7A' } };
+  sheet.getCell(2, 1).alignment = { horizontal: 'left', vertical: 'middle' };
+  sheet.getRow(2).height = 20;
 
   const headerDaysRow = startRow;
   const headerWeekdaysRow = startRow + 1;
   const verticalHeaderEnd = startRow + 1;
+
+  const thinBorderStyle: ExcelJS.BorderStyle = 'thin';
+  const fullBorder: Partial<ExcelJS.Borders> = {
+    top: { style: thinBorderStyle, color: { argb: COLORS.border } },
+    left: { style: thinBorderStyle, color: { argb: COLORS.border } },
+    bottom: { style: thinBorderStyle, color: { argb: COLORS.border } },
+    right: { style: thinBorderStyle, color: { argb: COLORS.border } },
+  };
+
+  const applyBorderRange = (rowNumber: number) => {
+    for (let col = 1; col <= totalCol; col += 1) {
+      sheet.getCell(rowNumber, col).border = fullBorder;
+    }
+  };
+
+  const applyHeaderFill = (rowNumber: number) => {
+    for (let col = 1; col <= totalCol; col += 1) {
+      sheet.getCell(rowNumber, col).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.header } };
+    }
+  };
 
   sheet.mergeCells(headerDaysRow, nameCol, verticalHeaderEnd, nameCol);
   sheet.getCell(headerDaysRow, nameCol).value = 'ФИО';
@@ -324,44 +576,47 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
 
   monthDays.forEach((day, index) => {
     const col = dayStartCol + index;
-    sheet.getCell(headerDaysRow, col).value = day;
+    const dateCell = sheet.getCell(headerDaysRow, col);
     const weekdayCell = sheet.getCell(headerWeekdaysRow, col);
+    dateCell.value = day;
     weekdayCell.value = weekdays[index];
-    if (weekdays[index] === 'сб' || weekdays[index] === 'вс') {
-      weekdayCell.font = { color: { argb: 'FFD32F2F' } };
+    const isWeekend = weekdays[index] === 'сб' || weekdays[index] === 'вс';
+    if (isWeekend) {
+      weekdayCell.font = { color: { argb: COLORS.textRed }, size: 11, name: 'Arial' };
+      dateCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.weekend } };
+      weekdayCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.weekend } };
     }
   });
-
-  const applyBorder = (rowNumber: number) => {
-    for (let col = 1; col <= totalCol; col += 1) {
-      sheet.getCell(rowNumber, col).border = {
-        top: { style: 'thin', color: { argb: 'FFD6DCE8' } },
-        left: { style: 'thin', color: { argb: 'FFD6DCE8' } },
-        bottom: { style: 'thin', color: { argb: 'FFD6DCE8' } },
-        right: { style: 'thin', color: { argb: 'FFD6DCE8' } },
-      };
-    }
-  };
-
-  const applyRowAlignment = (rowNumber: number) => {
-    sheet.getRow(rowNumber).height = 26;
-    for (let col = 1; col <= totalCol; col += 1) {
-      const isLeft = col === nameCol || (!isPersonnel && (col === plateCol || col === noteCol));
-      sheet.getCell(rowNumber, col).alignment = {
-        vertical: 'middle',
-        horizontal: isLeft ? 'left' : 'center',
-      };
-    }
-  };
 
   [headerDaysRow, headerWeekdaysRow].forEach((rowNumber) => {
-    applyBorder(rowNumber);
-    applyRowAlignment(rowNumber);
-    sheet.getRow(rowNumber).font = { size: 11, bold: false };
+    applyBorderRange(rowNumber);
+    applyHeaderFill(rowNumber);
+    const row = sheet.getRow(rowNumber);
+    row.height = rowNumber === headerDaysRow ? 30 : 26;
+    row.eachCell((cell, colNumber) => {
+      const isLeft = colNumber === nameCol || (!isPersonnel && (colNumber === plateCol || colNumber === noteCol));
+      cell.alignment = { vertical: 'middle', horizontal: isLeft ? 'left' : 'center' };
+      if (!cell.font) {
+        cell.font = { size: 11, name: 'Arial', color: { argb: COLORS.textDark } };
+      }
+    });
   });
 
-  sheet.getRow(headerDaysRow).height = 30;
-  sheet.getRow(headerWeekdaysRow).height = 28;
+  const styleDayCell = (cell: ExcelJS.Cell, code: CellCode, isWeekend: boolean) => {
+    const styleMap: Record<CellCode, { bg: string; color: string }> = {
+      W: { bg: COLORS.cellWork, color: 'FF0F172A' },
+      H: { bg: COLORS.cellHalfDay, color: 'FF0F172A' },
+      B: { bg: COLORS.cellSick, color: 'FF0F385E' },
+      R: { bg: COLORS.cellRepair, color: 'FF0A4A52' },
+      N: { bg: COLORS.cellNoDriver, color: 'FF1F2937' },
+      O: { bg: COLORS.cellWeekend, color: 'FF7B2323' },
+      V: { bg: COLORS.cellVacation, color: 'FF4A2C8A' },
+      E: { bg: isWeekend ? COLORS.weekend : COLORS.cellEmpty, color: 'FF374151' },
+    };
+    const s = styleMap[code];
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: s.bg } };
+    cell.font = { size: 11, name: 'Arial', bold: code !== 'E', color: { argb: s.color } };
+  };
 
   let cursorRow = startRow + 2;
   sectionPeople.forEach((person) => {
@@ -381,12 +636,28 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
       monthDays.forEach((day, index) => {
         const code = getCellCode(rowIndex, day, person.id, lane);
         if (code === 'W') workCount += 1;
-        sheet.getCell(cursorRow, dayStartCol + index).value = toCellLabel(code);
+        const dayCol = dayStartCol + index;
+        const cell = sheet.getCell(cursorRow, dayCol);
+        cell.value = toCellLabel(code);
+        styleDayCell(cell, code, weekdays[index] === 'сб' || weekdays[index] === 'вс');
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
       });
       sheet.getCell(cursorRow, totalCol).value = workCount;
-
-      applyBorder(cursorRow);
-      applyRowAlignment(cursorRow);
+      sheet.getRow(cursorRow).height = 28;
+      for (let col = 1; col <= totalCol; col += 1) {
+        const cell = sheet.getCell(cursorRow, col);
+        if (col === nameCol || (!isPersonnel && (col === plateCol || col === noteCol))) {
+          cell.alignment = { horizontal: 'left', vertical: 'middle' };
+          if (!cell.font) cell.font = { size: 11, name: 'Arial', color: { argb: COLORS.textDark } };
+        } else if (col === totalCol) {
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          cell.font = { size: 11, bold: true, name: 'Arial', color: { argb: COLORS.textDark } };
+        }
+        if (!cell.fill) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.white } };
+        }
+        cell.border = fullBorder;
+      }
       cursorRow += 1;
     });
   });
@@ -402,7 +673,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
   monthDays.forEach((day, index) => {
     const total = sectionPeople.reduce((acc, person) => {
       const code = getCellCode(person.rowIndex, day, person.id, '1');
-      if (section === 'containers') {
+      if (section === 'containers' || section === 'auto') {
         const primaryWorked = code === 'W' || code === 'H';
         const secondaryWorked = person.secondName
           ? (() => {
@@ -422,9 +693,54 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
     }, 0);
     sheet.getCell(cursorRow, dayStartCol + index).value = total;
   });
+  sheet.getRow(cursorRow).height = 30;
+  for (let col = 1; col <= totalCol; col += 1) {
+    const cell = sheet.getCell(cursorRow, col);
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.totalRow } };
+    cell.border = fullBorder;
+    if (col === nameCol || (!isPersonnel && (col === plateCol || col === noteCol))) {
+      cell.alignment = { horizontal: 'left', vertical: 'middle' };
+      cell.font = { size: 11, bold: true, name: 'Arial', color: { argb: COLORS.textDark } };
+    } else {
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.font = { size: 11, name: 'Arial', color: { argb: COLORS.textDark } };
+    }
+  }
 
-  applyBorder(cursorRow);
-  applyRowAlignment(cursorRow);
+  const legendStartRow = cursorRow + 2;
+  const legendItems = isPersonnel
+    ? [
+        { code: '1', text: 'рабочий день', bg: COLORS.cellWork, color: 'FF0F172A' },
+        { code: 'О', text: 'отпуск', bg: COLORS.cellVacation, color: 'FF4A2C8A' },
+        { code: 'В', text: 'выходной', bg: COLORS.cellWeekend, color: 'FF7B2323' },
+      ]
+    : [
+        { code: '1', text: 'на линии', bg: COLORS.cellWork, color: 'FF0F172A' },
+        { code: 'В', text: 'выходной', bg: COLORS.cellWeekend, color: 'FF7B2323' },
+        { code: 'О', text: 'отпуск', bg: COLORS.cellVacation, color: 'FF4A2C8A' },
+        { code: 'Б', text: 'больничный', bg: COLORS.cellSick, color: 'FF0F385E' },
+        { code: 'П', text: 'огрузка', bg: COLORS.cellHalfDay, color: 'FF0F172A' },
+        { code: 'Р', text: 'ремонт', bg: COLORS.cellRepair, color: 'FF0A4A52' },
+        { code: 'Н', text: 'нет водителя', bg: COLORS.cellNoDriver, color: 'FF1F2937' },
+      ];
+  let legendCol = 1;
+  legendItems.forEach((item) => {
+    sheet.mergeCells(legendStartRow, legendCol, legendStartRow, legendCol + 2);
+    const legendCell = sheet.getCell(legendStartRow, legendCol);
+    legendCell.value = `${item.code} — ${item.text}`;
+    legendCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: item.bg } };
+    legendCell.font = { size: 11, name: 'Arial', color: { argb: item.color }, bold: true };
+    legendCell.alignment = { horizontal: 'left', vertical: 'middle' };
+    legendCell.border = fullBorder;
+    for (let col = legendCol; col <= legendCol + 2; col += 1) {
+      sheet.getCell(legendStartRow, col).border = fullBorder;
+      sheet.getCell(legendStartRow, col).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: item.bg } };
+    }
+    legendCol += 4;
+  });
+  sheet.getRow(legendStartRow).height = 22;
+
+  sheet.views = [{ state: 'frozen', ySplit: startRow + 1, xSplit: dayStartCol - 1 }];
 
   const buffer = await workbook.xlsx.writeBuffer();
   const filename = `График работы - ${SECTION_LABEL[section]} - ${String(month).padStart(2, '0')}.${year}.xlsx`;

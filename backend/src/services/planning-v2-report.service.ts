@@ -5,6 +5,7 @@ import { PlanningMetricAggregation, PlanningPlanMetricCode, PlanningSegmentCode 
 import { PlanningMonthlyPlan } from '../models/planning-monthly-plan.model';
 import { PlanningMonthlyPlanMetric } from '../models/planning-monthly-plan-metric.model';
 import { PlanningSegment } from '../models/planning-segment.model';
+import { OperationsPreviewState } from '../models/operations-preview-state.model';
 
 interface SegmentReportParams {
   segmentCode: PlanningSegmentCode;
@@ -12,6 +13,21 @@ interface SegmentReportParams {
   month: number;
   asOfDate?: string;
 }
+
+type OpsPreviewDepartment = 'Контейнеры' | 'Авто' | 'Диспетчера' | 'Курьеры';
+type OpsPreviewCellCode = 'W' | 'O' | 'B' | 'H' | 'R' | 'N' | 'V' | 'E';
+type OpsPreviewScopeKey = `${'plan' | 'fact'}|${string}`;
+type OpsPreviewPersonRow = {
+  id: string;
+  secondName?: string;
+  department: OpsPreviewDepartment;
+};
+type OpsPreviewPersistedState = {
+  overrides?: Record<OpsPreviewScopeKey, Record<string, OpsPreviewCellCode>>;
+  peopleByMonth?: Record<string, OpsPreviewPersonRow[]>;
+  peopleState?: OpsPreviewPersonRow[];
+  monthValue?: string;
+};
 
 interface DashboardBase {
   asOfDate: string;
@@ -154,6 +170,76 @@ export class PlanningV2ReportService {
   private readonly metricRepo = AppDataSource.getRepository(PlanningMetric);
   private readonly valuesRepo = AppDataSource.getRepository(PlanningDailyValue);
   private readonly monthlyPlanRepo = AppDataSource.getRepository(PlanningMonthlyPlan);
+  private readonly operationsPreviewRepo = AppDataSource.getRepository(OperationsPreviewState);
+  private readonly operationsPreviewScopeKey = 'ktk_vvo_preview_v1';
+
+  private isKtkVvoTrucksOnLineAutoFromPreview(year: number, month: number): boolean {
+    return year > 2026 || (year === 2026 && month >= 5);
+  }
+
+  private getPrevMonthValue(value: string): string | null {
+    const [yearRaw, monthRaw] = value.split('-');
+    const year = Number(yearRaw);
+    const month = Number(monthRaw);
+    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) return null;
+    if (month === 1) return `${year - 1}-12`;
+    return `${year}-${String(month - 1).padStart(2, '0')}`;
+  }
+
+  private extractPeopleByMonth(payload: OpsPreviewPersistedState): Record<string, OpsPreviewPersonRow[]> {
+    if (payload.peopleByMonth && typeof payload.peopleByMonth === 'object') {
+      return payload.peopleByMonth;
+    }
+    if (Array.isArray(payload.peopleState) && payload.peopleState.length > 0) {
+      const baseMonth = typeof payload.monthValue === 'string' ? payload.monthValue : '2026-04';
+      return { [baseMonth]: payload.peopleState };
+    }
+    return {};
+  }
+
+  private resolveOpsPreviewPeopleForMonth(
+    targetMonth: string,
+    source: Record<string, OpsPreviewPersonRow[]>
+  ): OpsPreviewPersonRow[] {
+    if (Array.isArray(source[targetMonth]) && source[targetMonth].length > 0) return source[targetMonth];
+    const prevMonth = this.getPrevMonthValue(targetMonth);
+    if (prevMonth && Array.isArray(source[prevMonth]) && source[prevMonth].length > 0) return source[prevMonth];
+    return [];
+  }
+
+  private async resolveKtkVvoTrucksOnLineFromPreview(year: number, month: number, daysInMonth: number): Promise<number[] | null> {
+    const row = await this.operationsPreviewRepo.findOne({
+      where: { scopeKey: this.operationsPreviewScopeKey },
+    });
+    if (!row) return null;
+
+    const payload = (row.payload ?? {}) as OpsPreviewPersistedState;
+    const overrides = (payload.overrides ?? {}) as Record<OpsPreviewScopeKey, Record<string, OpsPreviewCellCode>>;
+    const peopleByMonth = this.extractPeopleByMonth(payload);
+    const monthValue = `${year}-${String(month).padStart(2, '0')}`;
+    const factScopeKey = `fact|${monthValue}` as OpsPreviewScopeKey;
+    const factScope = overrides[factScopeKey] ?? {};
+    const monthPeople = this.resolveOpsPreviewPeopleForMonth(monthValue, peopleByMonth).filter(
+      (person) => person.department === 'Контейнеры'
+    );
+    if (monthPeople.length === 0) {
+      return Array.from({ length: daysInMonth }, () => 0);
+    }
+
+    const totals = Array.from({ length: daysInMonth }, (_, dayIndex) => {
+      const day = dayIndex + 1;
+      let total = 0;
+      for (const person of monthPeople) {
+        const lane1 = factScope[`${person.id}-1-${day}`] ?? 'E';
+        const lane2 = person.secondName ? factScope[`${person.id}-2-${day}`] ?? 'E' : null;
+        const worked = lane1 === 'W' || lane1 === 'H' || lane2 === 'W' || lane2 === 'H';
+        if (worked) total += 1;
+      }
+      return total;
+    });
+
+    return totals;
+  }
 
   async getSegmentReport(params: SegmentReportParams): Promise<{
     segment: { code: PlanningSegmentCode; name: string };
@@ -236,6 +322,16 @@ export class PlanningV2ReportService {
       metricValues[day - 1] = row.value === null ? null : Number(row.value);
     }
 
+    if (segment.code === PlanningSegmentCode.KTK_VVO && this.isKtkVvoTrucksOnLineAutoFromPreview(params.year, params.month)) {
+      const previewTotals = await this.resolveKtkVvoTrucksOnLineFromPreview(params.year, params.month, daysInMonth);
+      if (previewTotals) {
+        valuesByMetric.set(
+          'ktk_vvo_fact_trucks_on_line',
+          previewTotals.map((value) => Number(value))
+        );
+      }
+    }
+
     const monthlyPlan = await this.monthlyPlanRepo.findOne({
       where: {
         segmentId: segment.id,
@@ -285,7 +381,13 @@ export class PlanningV2ReportService {
       return {
         metricCode: metric.code,
         name: metric.name,
-        isEditable: metric.isEditable,
+        isEditable:
+          metric.isEditable
+          && !(
+            segment.code === PlanningSegmentCode.KTK_VVO
+            && metric.code === 'ktk_vvo_fact_trucks_on_line'
+            && this.isKtkVvoTrucksOnLineAutoFromPreview(params.year, params.month)
+          ),
         aggregation: metric.aggregation,
         dayValues,
         monthTotal,

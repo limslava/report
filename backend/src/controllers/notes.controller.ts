@@ -5,6 +5,7 @@ import { Note, NoteVisibility } from '../models/note.model';
 import { NoteRecipient } from '../models/note-recipient.model';
 import { NoteRead } from '../models/note-read.model';
 import { ROLE_VALUES } from '../constants/role-definitions';
+import { planWebSocketService } from '../services/websocket.service';
 
 const noteRepository = AppDataSource.getRepository(Note);
 const noteReadRepository = AppDataSource.getRepository(NoteRead);
@@ -191,6 +192,7 @@ export const createNote = async (req: Request, res: Response, next: NextFunction
       recipientRoleIds: roleRecipients,
     };
 
+    planWebSocketService.notifyNotesUnreadRefresh();
     res.status(201).json(response);
   } catch (error) {
     next(error);
@@ -242,6 +244,7 @@ export const updateNote = async (req: Request, res: Response, next: NextFunction
       recipientRoleIds,
     };
 
+    planWebSocketService.notifyNotesUnreadRefresh();
     res.json(response);
   } catch (error) {
     next(error);
@@ -316,6 +319,7 @@ export const updateNoteRecipients = async (req: Request, res: Response, next: Ne
       recipientUserIds: userRecipients,
       recipientRoleIds: roleRecipients,
     });
+    planWebSocketService.notifyNotesUnreadRefresh();
   } catch (error) {
     next(error);
   }
@@ -340,6 +344,7 @@ export const deleteNote = async (req: Request, res: Response, next: NextFunction
     }
 
     await noteRepository.delete({ id });
+    planWebSocketService.notifyNotesUnreadRefresh();
     res.status(204).send();
   } catch (error) {
     next(error);
@@ -372,6 +377,7 @@ export const markNoteRead = async (req: Request, res: Response, next: NextFuncti
 
     const read = noteReadRepository.create({ noteId: id, userId: user.id });
     await noteReadRepository.save(read);
+    planWebSocketService.notifyNotesUnreadRefresh();
     res.status(201).json({ noteId: id, userId: user.id, readAt: read.readAt });
   } catch (error) {
     next(error);

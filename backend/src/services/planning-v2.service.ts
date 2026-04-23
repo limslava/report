@@ -56,6 +56,10 @@ function hasSegmentAccess(role: string, segmentCode: PlanningSegmentCode): boole
   return role === managerRole;
 }
 
+function isKtkVvoTrucksOnLineAutoFromPreviewPeriod(year: number, month: number): boolean {
+  return year > 2026 || (year === 2026 && month >= 5);
+}
+
 export class PlanningV2Service {
   private readonly segmentRepo = AppDataSource.getRepository(PlanningSegment);
   private readonly metricRepo = AppDataSource.getRepository(PlanningMetric);
@@ -307,7 +311,15 @@ export class PlanningV2Service {
 
     const filteredUpdates = payload.updates.filter((update) => {
       const metric = metricByCode.get(update.metricCode);
-      return Boolean(metric?.isEditable);
+      if (!metric?.isEditable) return false;
+      if (
+        payload.segmentCode === PlanningSegmentCode.KTK_VVO
+        && update.metricCode === 'ktk_vvo_fact_trucks_on_line'
+        && isKtkVvoTrucksOnLineAutoFromPreviewPeriod(payload.year, payload.month)
+      ) {
+        return false;
+      }
+      return true;
     });
 
     if (filteredUpdates.length === 0) {

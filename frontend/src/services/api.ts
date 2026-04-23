@@ -109,7 +109,7 @@ export const getOperationsPreviewState = () => api.get('/operations-preview/stat
 export const saveOperationsPreviewState = (state: Record<string, unknown>) =>
   api.put('/operations-preview/state', state);
 export const downloadOperationsPreviewExcel = async (params: {
-  section: 'containers' | 'auto' | 'dispatchers' | 'couriers';
+  section: 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'efficiency';
   year: number;
   month: number;
   mode: 'plan' | 'fact';

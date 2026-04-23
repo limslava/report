@@ -26,6 +26,7 @@ import {
   updateNote as updateNoteApi,
   updateNoteRecipients as updateNoteRecipientsApi,
 } from '../services/notes.api';
+import useNotesUnreadStore from '../store/notes-unread-store';
 import '../styles/calendar.css';
 
 function monthLabel(date: Date): string {
@@ -185,6 +186,8 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default function CalendarPage() {
+  const refreshUnread = useNotesUnreadStore((state) => state.refresh);
+  const setUnreadCount = useNotesUnreadStore((state) => state.setCount);
   const [cursor, setCursor] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [notesByDate, setNotesByDate] = useState<NotesByDate>({});
@@ -470,7 +473,7 @@ export default function CalendarPage() {
         next[key] = [...(next[key] ?? []), created];
         return next;
       });
-      window.dispatchEvent(new CustomEvent('notes:unread-refresh'));
+      void refreshUnread();
     } catch {
       // ignore for now
     }
@@ -548,7 +551,7 @@ export default function CalendarPage() {
         setShowEventPreview(false);
         setSelectedNote(null);
       }
-      window.dispatchEvent(new CustomEvent('notes:unread-refresh'));
+      void refreshUnread();
     } catch {
       // ignore
     }
@@ -567,7 +570,7 @@ export default function CalendarPage() {
         setShowEventPreview(false);
         setSelectedNote(null);
       }
-      window.dispatchEvent(new CustomEvent('notes:unread-refresh'));
+      void refreshUnread();
     } catch {
       // ignore
     }
@@ -626,6 +629,8 @@ export default function CalendarPage() {
     setShowQuickTime(false);
     setShowEventPreview(true);
     if (user && note.authorId && note.authorId !== user.id && !note.isRead) {
+      const prevCount = useNotesUnreadStore.getState().unreadCount;
+      setUnreadCount(Math.max(0, prevCount - 1));
       markNoteReadApi(note.id).then(() => {
         setNotesByDate((prev) => {
           const next: NotesByDate = {};
@@ -636,8 +641,10 @@ export default function CalendarPage() {
           });
           return next;
         });
-        window.dispatchEvent(new CustomEvent('notes:unread-refresh'));
-      }).catch(() => {});
+        void refreshUnread();
+      }).catch(() => {
+        setUnreadCount(prevCount);
+      });
     }
   };
 

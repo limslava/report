@@ -7,7 +7,7 @@ import { registerUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedC
 import { downloadBlob } from '../utils/download';
 import '../styles/operations-preview.css';
 
-type PreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers';
+type PreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'efficiency';
 type PreviewMode = 'plan' | 'fact';
 type Department = 'Контейнеры' | 'Авто' | 'Диспетчера' | 'Курьеры';
 type SortField = 'manual' | 'name' | 'plate';
@@ -38,6 +38,7 @@ const MONTH_OPTIONS = [
   { value: 11, label: 'Ноябрь' },
   { value: 12, label: 'Декабрь' },
 ];
+const MONTH_LABELS_SHORT = ['ЯНВ', 'ФЕВ', 'МАР', 'АПР', 'МАЙ', 'ИЮН', 'ИЮЛ', 'АВГ', 'СЕН', 'ОКТ', 'НОЯ', 'ДЕК'];
 
 type PersonRow = {
   id: string;
@@ -51,7 +52,7 @@ type PersonRow = {
 
 const PREVIEW_PEOPLE: PersonRow[] = [];
 
-type CellCode = 'W' | 'O' | 'B' | 'H' | 'R' | 'N' | 'V';
+type CellCode = 'W' | 'O' | 'B' | 'H' | 'R' | 'N' | 'V' | 'E';
 type OverrideScopeKey = `${PreviewMode}|${string}`;
 type ScopedOverrides = Record<OverrideScopeKey, Record<string, CellCode>>;
 type PeopleByMonth = Record<string, PersonRow[]>;
@@ -65,6 +66,7 @@ type PreviewPersistedState = {
 };
 
 const CELL_META: Record<CellCode, { code: string; label: string; css: string }> = {
+  E: { code: '', label: 'пусто', css: 'empty' },
   W: { code: '1', label: 'на линии', css: 'work' },
   O: { code: 'В', label: 'выходной', css: 'off' },
   V: { code: 'О', label: 'отпуск', css: 'vacation' },
@@ -74,20 +76,8 @@ const CELL_META: Record<CellCode, { code: string; label: string; css: string }> 
   N: { code: 'Н', label: 'нет водителя', css: 'idle' },
 };
 
-const getMonthlyCell = (rowIndex: number, day: number, department: Department): CellCode => {
-  if (department === 'Диспетчера' || department === 'Курьеры') {
-    if ((rowIndex + day) % 17 === 0) return 'V';
-    if ((rowIndex + day) % 7 === 0) return 'O';
-    return 'W';
-  }
-  if (day % 13 === 0) return 'R';
-  if (day % 17 === 0) return 'V';
-  if ((rowIndex + day) % 9 === 0) return 'B';
-  if ((rowIndex + day) % 7 === 0) return 'O';
-  if ((rowIndex + day) % 6 === 0) return 'H';
-  if ((rowIndex + day) % 11 === 0) return 'V';
-  if ((rowIndex + day) % 5 === 0) return 'N';
-  return 'W';
+const getMonthlyCell = (_rowIndex: number, _day: number, _department: Department): CellCode => {
+  return 'E';
 };
 
 const clonePeople = (rows: PersonRow[]): PersonRow[] => rows.map((row) => ({ ...row }));
@@ -131,7 +121,7 @@ export default function OperationsPreview() {
   const [lastSavedSignature, setLastSavedSignature] = useState<string>('');
   const [lastSavedSnapshot, setLastSavedSnapshot] = useState<PreviewPersistedState | null>(null);
   const [hydrated, setHydrated] = useState(false);
-  const [activeCell, setActiveCell] = useState<{
+  const [, setActiveCell] = useState<{
     key: string;
     personName: string;
     day: number;
@@ -176,6 +166,7 @@ export default function OperationsPreview() {
   const [sortBySection, setSortBySection] = useState<SortBySection>(DEFAULT_SORT_BY_SECTION);
   const [sortHydrated, setSortHydrated] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [copyConfirmOpen, setCopyConfirmOpen] = useState(false);
   const [newPerson, setNewPerson] = useState<{
     name: string;
     secondName: string;
@@ -246,6 +237,100 @@ export default function OperationsPreview() {
     [monthDays, parsedMonth.month, parsedMonth.year]
   );
 
+  const efficiencyBySection = useMemo(() => {
+    const calcForDepartment = (department: Department) => {
+      return Array.from({ length: 12 }, (_, monthIndex) => {
+        const month = monthIndex + 1;
+        const monthValueForYear = `${parsedMonth.year}-${String(month).padStart(2, '0')}`;
+        const monthPeople = resolvePeopleForMonth(monthValueForYear, peopleByMonth).filter(
+          (person) => person.department === department
+        );
+        const factScopeKey = `fact|${monthValueForYear}` as OverrideScopeKey;
+        const factOverrides = allOverrides[factScopeKey] ?? {};
+        const daysInMonth = new Date(parsedMonth.year, month, 0).getDate();
+
+        const getCellCodeForMonth = (
+          rowIndex: number,
+          day: number,
+          personId: string,
+          lane: '1' | '2' = '1'
+        ): CellCode => {
+          const key = `${personId}-${lane}-${day}`;
+          return factOverrides[key] ?? getMonthlyCell(rowIndex, day, department);
+        };
+
+        const uniquePlatesCount = new Set(
+          monthPeople.map((person) => person.plate.trim().toUpperCase()).filter((plate) => plate.length > 0)
+        ).size;
+        const totalAutoDays = uniquePlatesCount * daysInMonth;
+
+        let workAutoDays = 0;
+        let offOrVacationDays = 0;
+        let repairDays = 0;
+        let noDriverDays = 0;
+        let sickDays = 0;
+
+        monthPeople.forEach((person) => {
+          const rowIndex = monthPeople.findIndex((p) => p.id === person.id);
+          if (rowIndex < 0) return;
+
+          for (let day = 1; day <= daysInMonth; day += 1) {
+            const code1 = getCellCodeForMonth(rowIndex, day, person.id, '1');
+            const code2 = person.secondName ? getCellCodeForMonth(rowIndex + 50, day, person.id, '2') : null;
+            const dayCodes = [code1, code2].filter(Boolean) as CellCode[];
+
+            const isWorked = dayCodes.some((code) => code === 'W' || code === 'H');
+            if (isWorked) {
+              workAutoDays += 1;
+              continue;
+            }
+            if (dayCodes.some((code) => code === 'R')) {
+              repairDays += 1;
+              continue;
+            }
+            if (dayCodes.some((code) => code === 'N')) {
+              noDriverDays += 1;
+              continue;
+            }
+            if (dayCodes.some((code) => code === 'B')) {
+              sickDays += 1;
+              continue;
+            }
+            if (dayCodes.some((code) => code === 'O' || code === 'V')) {
+              offOrVacationDays += 1;
+            }
+          }
+        });
+
+        const totalIdleDays = offOrVacationDays + repairDays + noDriverDays + sickDays;
+        const technicalReadyDays = totalAutoDays - repairDays;
+        const loadFactor = totalAutoDays > 0 ? workAutoDays / totalAutoDays : null;
+        const technicalReadyFactor = totalAutoDays > 0 ? technicalReadyDays / totalAutoDays : null;
+
+        return {
+          month,
+          daysInMonth,
+          uniquePlatesCount,
+          totalAutoDays,
+          workAutoDays,
+          loadFactor,
+          offOrVacationDays,
+          repairDays,
+          noDriverDays,
+          sickDays,
+          totalIdleDays,
+          technicalReadyDays,
+          technicalReadyFactor,
+        };
+      });
+    };
+
+    return {
+      containers: calcForDepartment('Контейнеры'),
+      auto: calcForDepartment('Авто'),
+    };
+  }, [allOverrides, parsedMonth.year, peopleByMonth]);
+
   const sortedPeopleBySection = useMemo(() => {
     const compareByField = (a: PersonRow, b: PersonRow, field: Exclude<SortField, 'manual'>) => {
       const left = field === 'name' ? a.name : a.plate;
@@ -289,6 +374,7 @@ export default function OperationsPreview() {
   const overrides = allOverrides[currentScopeKey] ?? {};
 
   const activeSection = (searchParams.get('section') as PreviewSection | null) ?? null;
+  const isEfficiencySection = activeSection === 'efficiency';
   const filterFromSection = (section: PreviewSection | null): ('Все' | Department) | null => {
     if (section === 'containers') return 'Контейнеры';
     if (section === 'auto') return 'Авто';
@@ -358,6 +444,7 @@ export default function OperationsPreview() {
   };
 
   const resolveSectionForExport = (): PreviewSection => {
+    if (activeSection === 'efficiency') return 'efficiency';
     if (filter === 'Контейнеры') return 'containers';
     if (filter === 'Авто') return 'auto';
     if (filter === 'Диспетчера') return 'dispatchers';
@@ -608,21 +695,13 @@ export default function OperationsPreview() {
     return false;
   }, [allOverrides, monthValue, peopleState, monthDays]);
 
-  const handleCopyPlanToFact = () => {
-    if (hasManualFactEditsForMonth) {
-      setCopyStatus({
-        type: 'error',
-        text: 'Копирование запрещено: во Факте уже есть ручные правки за этот месяц.',
-      });
-      return;
-    }
-
+  const applyCopyPlanToFact = (options?: { switchToFactAfterCopy?: boolean }) => {
+    const switchToFactAfterCopy = options?.switchToFactAfterCopy ?? false;
     const planKey = `plan|${monthValue}` as OverrideScopeKey;
     const factKey = `fact|${monthValue}` as OverrideScopeKey;
     const planMap = allOverrides[planKey] ?? {};
-    const factMap = allOverrides[factKey] ?? {};
     const sectionPeople = peopleState.filter((person) => person.department === 'Контейнеры');
-    const nextFactMap = { ...factMap };
+    const nextFactMap: Record<string, CellCode> = {};
 
     sectionPeople.forEach((person) => {
       const rowIndex = peopleState.findIndex((candidate) => candidate.id === person.id);
@@ -631,12 +710,16 @@ export default function OperationsPreview() {
       monthDays.forEach((day) => {
         const keyLane1 = `${person.id}-1-${day}`;
         const planLane1 = planMap[keyLane1] ?? getMonthlyCell(rowIndex, day, 'Контейнеры');
-        nextFactMap[keyLane1] = planLane1;
+        if (planLane1 !== 'E') {
+          nextFactMap[keyLane1] = planLane1;
+        }
 
         if (person.secondName) {
           const keyLane2 = `${person.id}-2-${day}`;
           const planLane2 = planMap[keyLane2] ?? getMonthlyCell(rowIndex + 50, day, 'Контейнеры');
-          nextFactMap[keyLane2] = planLane2;
+          if (planLane2 !== 'E') {
+            nextFactMap[keyLane2] = planLane2;
+          }
         }
       });
     });
@@ -645,8 +728,18 @@ export default function OperationsPreview() {
       ...prev,
       [factKey]: nextFactMap,
     }));
-    setMode('fact');
+    if (switchToFactAfterCopy) {
+      setMode('fact');
+    }
     setCopyStatus({ type: 'success', text: 'План успешно скопирован во Факт за выбранный месяц.' });
+  };
+
+  const handleCopyPlanToFact = () => {
+    if (hasManualFactEditsForMonth && canManagePlanFact) {
+      setCopyConfirmOpen(true);
+      return;
+    }
+    applyCopyPlanToFact({ switchToFactAfterCopy: false });
   };
 
   const handleDeletePerson = (personId: string) => {
@@ -768,17 +861,11 @@ export default function OperationsPreview() {
         '1': 'W',
         'в': 'O',
         'о': 'V',
-        'o': 'V',
-        'b': 'B',
         'б': 'B',
         'н': 'N',
-        'h': 'N',
         'п': 'H',
-        'g': 'H',
         'р': 'R',
-        'p': 'R',
         'м': 'V',
-        'v': 'V',
       };
       const code = keyMap[key];
       if (!code) return;
@@ -849,7 +936,7 @@ export default function OperationsPreview() {
       }
       setLastSavedSnapshot(currentSnapshot);
       setLastSavedSignature(currentDataSignature);
-      setCopyStatus({ type: 'success', text: 'Изменения сохранены.' });
+      setCopyStatus((prev) => (prev?.type === 'error' ? prev : null));
       return true;
     } catch {
       setCopyStatus({ type: 'error', text: 'Не удалось сохранить изменения. Повторите попытку.' });
@@ -952,29 +1039,31 @@ export default function OperationsPreview() {
                 '& .MuiInputBase-root': { height: 40 },
               }}
             />
-            <TextField
-              label="Месяц"
-              select
-              size="small"
-              value={parsedMonth.month}
-              onChange={(event) => {
-                const next = Number(event.target.value);
-                if (Number.isInteger(next)) {
-                  setPeriod(parsedMonth.year, next);
-                }
-              }}
-              sx={{
-                width: 160,
-                '& .MuiInputBase-root': { height: 40 },
-              }}
-            >
-              {MONTH_OPTIONS.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </TextField>
-            {canManagePlanFact && filter === 'Контейнеры' && (
+            {!isEfficiencySection && (
+              <TextField
+                label="Месяц"
+                select
+                size="small"
+                value={parsedMonth.month}
+                onChange={(event) => {
+                  const next = Number(event.target.value);
+                  if (Number.isInteger(next)) {
+                    setPeriod(parsedMonth.year, next);
+                  }
+                }}
+                sx={{
+                  width: 160,
+                  '& .MuiInputBase-root': { height: 40 },
+                }}
+              >
+                {MONTH_OPTIONS.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
+            {!isEfficiencySection && canManagePlanFact && filter === 'Контейнеры' && (
               <TextField
                 label="Режим"
                 select
@@ -991,16 +1080,6 @@ export default function OperationsPreview() {
               </TextField>
             )}
             <Box sx={{ ml: 'auto' }}>
-              {canManagePlanFact && mode === 'plan' && filter === 'Контейнеры' && (
-                <button
-                  type="button"
-                  className="ops-btn ops-btn--copy"
-                  style={{ marginRight: 10 }}
-                  onClick={handleCopyPlanToFact}
-                >
-                  Скопировать
-                </button>
-              )}
               <button
                 type="button"
                 className="ops-btn ops-btn--download"
@@ -1012,27 +1091,42 @@ export default function OperationsPreview() {
               >
                 {downloading ? 'Скачивание...' : 'Скачать Excel'}
               </button>
-              <button
-                type="button"
-                className="ops-btn ops-btn--add"
-                style={{ marginRight: 10 }}
-                onClick={() => {
-                  setAddError(null);
-                  setAddOpen(true);
-                }}
-              >
-                Добавить
-              </button>
-              <button
-                type="button"
-                className="ops-btn ops-btn--save"
-                disabled={!hasUnsavedChanges}
-                onClick={() => {
-                  void saveDraft();
-                }}
-              >
-                СОХРАНИТЬ
-              </button>
+              {!isEfficiencySection && canManagePlanFact && mode === 'plan' && filter === 'Контейнеры' && (
+                <button
+                  type="button"
+                  className="ops-btn ops-btn--copy"
+                  style={{ marginRight: 10 }}
+                  onClick={handleCopyPlanToFact}
+                  disabled={hasUnsavedChanges}
+                >
+                  Скопировать
+                </button>
+              )}
+              {!isEfficiencySection && (
+                <>
+                  <button
+                    type="button"
+                    className="ops-btn ops-btn--add"
+                    style={{ marginRight: 10 }}
+                    onClick={() => {
+                      setAddError(null);
+                      setAddOpen(true);
+                    }}
+                  >
+                    Добавить
+                  </button>
+                  <button
+                    type="button"
+                    className="ops-btn ops-btn--save"
+                    disabled={!hasUnsavedChanges}
+                    onClick={() => {
+                      void saveDraft();
+                    }}
+                  >
+                    СОХРАНИТЬ
+                  </button>
+                </>
+              )}
             </Box>
           </Box>
         </Paper>
@@ -1041,6 +1135,7 @@ export default function OperationsPreview() {
         <div className={`ops-preview__save-status ${copyStatus.type === 'error' ? 'dirty' : ''}`}>{copyStatus.text}</div>
       )}
 
+      {!isEfficiencySection && (
       <section className="ops-preview__matrix">
           <div
             className={`ops-matrix${isPersonnelSection ? ' ops-matrix--personnel' : ''}`}
@@ -1273,32 +1368,6 @@ export default function OperationsPreview() {
                                     department: person.department,
                                   })
                                 }
-                                onDoubleClick={() =>
-                                  setActiveCell({
-                                    key: `${person.id}-${lane}-${day}`,
-                                    personName: name ?? '',
-                                    day,
-                                    value: cell,
-                                    personId: person.id,
-                                    lane,
-                                    rowIndex,
-                                    department: person.department,
-                                  })
-                                }
-                                onKeyDown={(event) => {
-                                  if (event.key === 'Enter') {
-                                    setActiveCell({
-                                      key: `${person.id}-${lane}-${day}`,
-                                      personName: name ?? '',
-                                      day,
-                                      value: cell,
-                                      personId: person.id,
-                                      lane,
-                                      rowIndex,
-                                      department: person.department,
-                                    });
-                                  }
-                                }}
                               >
                                 {meta.code}
                               </div>
@@ -1488,32 +1557,6 @@ export default function OperationsPreview() {
                                         department: person.department,
                                       })
                                     }
-                                    onDoubleClick={() =>
-                                      setActiveCell({
-                                        key: `${person.id}-1-${day}`,
-                                        personName: person.name,
-                                        day,
-                                        value: cell1,
-                                        personId: person.id,
-                                        lane: '1',
-                                        rowIndex: person.rowIndex,
-                                        department: person.department,
-                                      })
-                                    }
-                                    onKeyDown={(event) => {
-                                      if (event.key === 'Enter') {
-                                        setActiveCell({
-                                          key: `${person.id}-1-${day}`,
-                                          personName: person.name,
-                                          day,
-                                          value: cell1,
-                                          personId: person.id,
-                                          lane: '1',
-                                          rowIndex: person.rowIndex,
-                                          department: person.department,
-                                        });
-                                      }
-                                    }}
                                   >
                                     {meta1.code}
                                   </div>
@@ -1578,32 +1621,6 @@ export default function OperationsPreview() {
                                         department: person.department,
                                       })
                                     }
-                                    onDoubleClick={() =>
-                                      setActiveCell({
-                                        key: `${person.id}-2-${day}`,
-                                        personName: person.secondName ?? '',
-                                        day,
-                                        value: cell2,
-                                        personId: person.id,
-                                        lane: '2',
-                                        rowIndex: person.rowIndex + 50,
-                                        department: person.department,
-                                      })
-                                    }
-                                    onKeyDown={(event) => {
-                                      if (event.key === 'Enter') {
-                                        setActiveCell({
-                                          key: `${person.id}-2-${day}`,
-                                          personName: person.secondName ?? '',
-                                          day,
-                                          value: cell2,
-                                          personId: person.id,
-                                          lane: '2',
-                                          rowIndex: person.rowIndex + 50,
-                                          department: person.department,
-                                        });
-                                      }
-                                    }}
                                   >
                                     {meta2.code}
                                   </div>
@@ -1642,7 +1659,7 @@ export default function OperationsPreview() {
                     {monthDays.map((day, dayIndex) => {
                       const total = sectionPeople.reduce((acc, person) => {
                         const code = getCellCode(person.rowIndex, day, person.id, person.department, '1');
-                        if (section === 'Контейнеры') {
+                        if (section === 'Контейнеры' || section === 'Авто') {
                           const primaryWorked = code === 'W' || code === 'H';
                           const secondaryWorked = person.secondName
                             ? (() => {
@@ -1681,6 +1698,145 @@ export default function OperationsPreview() {
             })}
           </div>
       </section>
+      )}
+      {isEfficiencySection && (
+        <section className="ops-preview__efficiency">
+          <Paper className="ops-efficiency-card">
+            <div className="ops-efficiency-block">
+              <div className="ops-efficiency-block__title">
+                Расчет показателей использования контейнеровозов {parsedMonth.year} г.
+              </div>
+              <table className="ops-efficiency-table">
+                <thead>
+                  <tr>
+                    <th>Показатели</th>
+                    {MONTH_LABELS_SHORT.map((label) => (
+                      <th key={`containers-h-${label}`}>{label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Количество контейнеровозов</td>
+                    {efficiencyBySection.containers.map((item) => <td key={`containers-cnt-${item.month}`}>{item.uniquePlatesCount}</td>)}
+                  </tr>
+                  <tr>
+                    <td>Дней в месяце</td>
+                    {efficiencyBySection.containers.map((item) => <td key={`containers-days-${item.month}`}>{item.daysInMonth}</td>)}
+                  </tr>
+                  <tr>
+                    <td>Всего автодней в месяц</td>
+                    {efficiencyBySection.containers.map((item) => <td key={`containers-total-${item.month}`}>{item.totalAutoDays}</td>)}
+                  </tr>
+                  <tr>
+                    <td>Рабочие автодни, автодни</td>
+                    {efficiencyBySection.containers.map((item) => <td key={`containers-work-${item.month}`}>{item.workAutoDays}</td>)}
+                  </tr>
+                  <tr className="eff-row--coef-load">
+                    <td>Коэффициент загрузки</td>
+                    {efficiencyBySection.containers.map((item) => <td key={`containers-load-${item.month}`}>{item.loadFactor == null ? '—' : item.loadFactor.toFixed(2).replace('.', ',')}</td>)}
+                  </tr>
+                  <tr className="eff-row--peach">
+                    <td>Выходные, отпуск, автодни</td>
+                    {efficiencyBySection.containers.map((item) => <td key={`containers-off-${item.month}`}>{item.offOrVacationDays}</td>)}
+                  </tr>
+                  <tr className="eff-row--peach">
+                    <td>Ремонт, автодни</td>
+                    {efficiencyBySection.containers.map((item) => <td key={`containers-repair-${item.month}`}>{item.repairDays}</td>)}
+                  </tr>
+                  <tr className="eff-row--peach">
+                    <td>Нет водителя, автодни</td>
+                    {efficiencyBySection.containers.map((item) => <td key={`containers-no-driver-${item.month}`}>{item.noDriverDays}</td>)}
+                  </tr>
+                  <tr>
+                    <td>Неофициальный больничный, автодни</td>
+                    {efficiencyBySection.containers.map((item) => <td key={`containers-sick-${item.month}`}>{item.sickDays}</td>)}
+                  </tr>
+                  <tr className="eff-row--idle-total">
+                    <td>Итого дни простоя</td>
+                    {efficiencyBySection.containers.map((item) => <td key={`containers-idle-${item.month}`}>{item.totalIdleDays}</td>)}
+                  </tr>
+                  <tr>
+                    <td>Технически готовы, автодни</td>
+                    {efficiencyBySection.containers.map((item) => <td key={`containers-ready-${item.month}`}>{item.technicalReadyDays}</td>)}
+                  </tr>
+                  <tr className="eff-row--coef-ready">
+                    <td>Коэффициент технической готовности</td>
+                    {efficiencyBySection.containers.map((item) => <td key={`containers-ready-k-${item.month}`}>{item.technicalReadyFactor == null ? '—' : item.technicalReadyFactor.toFixed(2).replace('.', ',')}</td>)}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="ops-efficiency-block">
+              <div className="ops-efficiency-block__title">
+                Расчет показателей использования автовозов {parsedMonth.year} г.
+              </div>
+              <table className="ops-efficiency-table">
+                <thead>
+                  <tr>
+                    <th>Показатели</th>
+                    {MONTH_LABELS_SHORT.map((label) => (
+                      <th key={`auto-h-${label}`}>{label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Количество автовозов</td>
+                    {efficiencyBySection.auto.map((item) => <td key={`auto-cnt-${item.month}`}>{item.uniquePlatesCount}</td>)}
+                  </tr>
+                  <tr>
+                    <td>Дней в месяце</td>
+                    {efficiencyBySection.auto.map((item) => <td key={`auto-days-${item.month}`}>{item.daysInMonth}</td>)}
+                  </tr>
+                  <tr>
+                    <td>Всего автодней в месяц</td>
+                    {efficiencyBySection.auto.map((item) => <td key={`auto-total-${item.month}`}>{item.totalAutoDays}</td>)}
+                  </tr>
+                  <tr>
+                    <td>Рабочие автодни, автодни</td>
+                    {efficiencyBySection.auto.map((item) => <td key={`auto-work-${item.month}`}>{item.workAutoDays}</td>)}
+                  </tr>
+                  <tr className="eff-row--coef-load">
+                    <td>Коэффициент загрузки</td>
+                    {efficiencyBySection.auto.map((item) => <td key={`auto-load-${item.month}`}>{item.loadFactor == null ? '—' : item.loadFactor.toFixed(2).replace('.', ',')}</td>)}
+                  </tr>
+                  <tr className="eff-row--peach">
+                    <td>Выходные, отпуск, автодни</td>
+                    {efficiencyBySection.auto.map((item) => <td key={`auto-off-${item.month}`}>{item.offOrVacationDays}</td>)}
+                  </tr>
+                  <tr className="eff-row--peach">
+                    <td>Ремонт, автодни</td>
+                    {efficiencyBySection.auto.map((item) => <td key={`auto-repair-${item.month}`}>{item.repairDays}</td>)}
+                  </tr>
+                  <tr className="eff-row--peach">
+                    <td>Нет водителя, автодни</td>
+                    {efficiencyBySection.auto.map((item) => <td key={`auto-no-driver-${item.month}`}>{item.noDriverDays}</td>)}
+                  </tr>
+                  <tr>
+                    <td>Неофициальный больничный, автодни</td>
+                    {efficiencyBySection.auto.map((item) => <td key={`auto-sick-${item.month}`}>{item.sickDays}</td>)}
+                  </tr>
+                  <tr className="eff-row--idle-total">
+                    <td>Итого дни простоя</td>
+                    {efficiencyBySection.auto.map((item) => <td key={`auto-idle-${item.month}`}>{item.totalIdleDays}</td>)}
+                  </tr>
+                  <tr>
+                    <td>Технически готовы, автодни</td>
+                    {efficiencyBySection.auto.map((item) => <td key={`auto-ready-${item.month}`}>{item.technicalReadyDays}</td>)}
+                  </tr>
+                  <tr className="eff-row--coef-ready">
+                    <td>Коэффициент технической готовности</td>
+                    {efficiencyBySection.auto.map((item) => <td key={`auto-ready-k-${item.month}`}>{item.technicalReadyFactor == null ? '—' : item.technicalReadyFactor.toFixed(2).replace('.', ',')}</td>)}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </Paper>
+        </section>
+      )}
+      {!isEfficiencySection && (
       <section className="ops-preview__legend">
         <div className="ops-matrix__legend">
           {visibleCellCodes.map((code) => (
@@ -1698,59 +1854,11 @@ export default function OperationsPreview() {
           ))}
         </div>
       </section>
-      {activeCell && (
-        <div className="ops-modal">
-          <div className="ops-modal__content">
-            <div className="ops-modal__title">Заполнение ячейки</div>
-            <div className="ops-modal__subtitle">
-              {activeCell.personName} · День {activeCell.day}
-            </div>
-            <label className="ops-control">
-              <span>Статус</span>
-              <select
-                value={activeCell.value}
-                onChange={(event) =>
-                  setActiveCell((current) =>
-                    current ? { ...current, value: event.target.value as CellCode } : current
-                  )
-                }
-              >
-                {visibleCellCodes.map((code) => (
-                  <option key={code} value={code}>
-                    {CELL_META[code].code} — {CELL_META[code].label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="ops-modal__actions">
-              <button type="button" className="ops-btn ghost" onClick={() => setActiveCell(null)}>
-                Отмена
-              </button>
-              <button
-                type="button"
-                className="ops-btn"
-                onClick={() => {
-                  setCellCode({
-                    key: activeCell.key,
-                    rowIndex: activeCell.rowIndex,
-                    day: activeCell.day,
-                    code: activeCell.value,
-                    department: activeCell.department,
-                  });
-                  setActiveCell(null);
-                }}
-              >
-                Сохранить
-              </button>
-            </div>
-          </div>
-        </div>
       )}
       {addOpen && (
         <div className="ops-modal">
           <div className="ops-modal__content">
             <div className="ops-modal__title">Добавить</div>
-            <div className="ops-modal__subtitle">Превью добавления строки в таблицу.</div>
             <label className="ops-control">
               <span>ФИО</span>
               <input
@@ -1789,13 +1897,10 @@ export default function OperationsPreview() {
               </label>
             )}
             {addError && <div className="ops-modal__error">{addError}</div>}
-            <div className="ops-modal__actions">
-              <button type="button" className="ops-btn ghost" onClick={() => setAddOpen(false)}>
-                Отмена
-              </button>
+            <div className="ops-modal__actions ops-modal__actions--split">
               <button
                 type="button"
-                className="ops-btn"
+                className="ops-btn ops-modal__btn-left"
                 onClick={() => {
                   const name = newPerson.name.trim();
                   const plate = newPerson.plate.trim();
@@ -1804,17 +1909,13 @@ export default function OperationsPreview() {
                     setAddError('Заполните ФИО.');
                     return;
                   }
-                  if (!isPersonnelSection && !plate) {
-                    setAddError('Заполните Г/Н ТС.');
-                    return;
-                  }
                   setPeopleStateForCurrentMonth((prev) => [
                     ...prev,
                     {
                       id: `p-${Date.now()}`,
                       name,
                       secondName: isPersonnelSection ? undefined : secondName || undefined,
-                      plate: isPersonnelSection ? '' : plate,
+                      plate: isPersonnelSection ? '' : plate || '',
                       department: addDepartment,
                     },
                   ]);
@@ -1825,6 +1926,40 @@ export default function OperationsPreview() {
               >
                 Добавить
               </button>
+              <button type="button" className="ops-btn ghost ops-modal__btn-right" onClick={() => setAddOpen(false)}>
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {copyConfirmOpen && (
+        <div className="ops-modal">
+          <div className="ops-modal__content">
+            <div className="ops-modal__title">Подтверждение</div>
+            <div className="ops-modal__subtitle">В Факте есть ручные правки за этот месяц.</div>
+            <div className="ops-modal__subtitle">Заменить Факт значениями из Плана?</div>
+            <div className="ops-modal__actions ops-modal__actions--split">
+              <button
+                type="button"
+                className="ops-btn ops-modal__btn-left"
+                onClick={() => {
+                  applyCopyPlanToFact({ switchToFactAfterCopy: false });
+                  setCopyConfirmOpen(false);
+                }}
+              >
+                Заменить
+              </button>
+              <button
+                type="button"
+                className="ops-btn ghost ops-modal__btn-right"
+                onClick={() => {
+                  setCopyConfirmOpen(false);
+                  setCopyStatus(null);
+                }}
+              >
+                Отменить
+              </button>
             </div>
           </div>
         </div>
@@ -1833,9 +1968,14 @@ export default function OperationsPreview() {
         <div className="ops-modal">
           <div className="ops-modal__content">
             <div className="ops-modal__title">Редактировать строку</div>
-            <div className="ops-modal__subtitle">Изменения только в превью.</div>
             <label className="ops-control">
-              <span>Первый водитель</span>
+              <span>
+                {editPerson.department === 'Диспетчера'
+                  ? 'Диспетчер'
+                  : editPerson.department === 'Курьеры'
+                    ? 'Оперативник'
+                    : 'Первый водитель'}
+              </span>
               <input
                 type="text"
                 value={editPerson.name}
@@ -1862,29 +2002,12 @@ export default function OperationsPreview() {
                     onChange={(event) => setEditPerson((prev) => (prev ? { ...prev, plate: event.target.value } : prev))}
                   />
                 </label>
-                <label className="ops-control">
-                  <span>Отдел</span>
-                  <select
-                    value={editPerson.department}
-                    onChange={(event) =>
-                      setEditPerson((prev) =>
-                        prev ? { ...prev, department: event.target.value as Department } : prev
-                      )
-                    }
-                  >
-                    <option value="Контейнеры">Контейнеровозы</option>
-                    <option value="Авто">Автовозы</option>
-                  </select>
-                </label>
               </>
             )}
-            <div className="ops-modal__actions">
-              <button type="button" className="ops-btn ghost" onClick={() => setEditPerson(null)}>
-                Отмена
-              </button>
+            <div className="ops-modal__actions ops-modal__actions--split">
               <button
                 type="button"
-                className="ops-btn"
+                className="ops-btn ops-modal__btn-left"
                 onClick={() => {
                   setPeopleStateForCurrentMonth((prev) =>
                     prev.map((item) => (item.id === editPerson.id ? editPerson : item))
@@ -1893,6 +2016,9 @@ export default function OperationsPreview() {
                 }}
               >
                 Сохранить
+              </button>
+              <button type="button" className="ops-btn ghost ops-modal__btn-right" onClick={() => setEditPerson(null)}>
+                Отмена
               </button>
             </div>
           </div>

@@ -29,7 +29,16 @@ export interface FinancialPlanUpdateEvent {
   userId?: string;
 }
 
-type OutgoingWebSocketEvent = PlanUpdateEvent | PlanningV2SegmentUpdateEvent | FinancialPlanUpdateEvent;
+export interface NotesUnreadRefreshEvent {
+  type: 'notes:unread-refresh';
+  timestamp: string;
+}
+
+type OutgoingWebSocketEvent =
+  | PlanUpdateEvent
+  | PlanningV2SegmentUpdateEvent
+  | FinancialPlanUpdateEvent
+  | NotesUnreadRefreshEvent;
 
 function isPlanningV2Event(event: OutgoingWebSocketEvent): event is PlanningV2SegmentUpdateEvent {
   return event.type === 'planning-v2:segment-updated';
@@ -41,6 +50,10 @@ function isPlanUpdateEvent(event: OutgoingWebSocketEvent): event is PlanUpdateEv
 
 function isFinancialPlanEvent(event: OutgoingWebSocketEvent): event is FinancialPlanUpdateEvent {
   return event.type === 'financial-plan:updated';
+}
+
+function isNotesUnreadRefreshEvent(event: OutgoingWebSocketEvent): event is NotesUnreadRefreshEvent {
+  return event.type === 'notes:unread-refresh';
 }
 
 export class PlanWebSocketService {
@@ -149,6 +162,11 @@ export class PlanWebSocketService {
       return;
     }
 
+    if (isNotesUnreadRefreshEvent(event)) {
+      logger.debug('Broadcasted notes unread refresh event');
+      return;
+    }
+
     logger.debug('Broadcasted plan update');
   }
 
@@ -173,6 +191,13 @@ export class PlanWebSocketService {
       type: 'financial-plan:updated',
       year: params.year,
       userId: params.userId,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  notifyNotesUnreadRefresh() {
+    this.broadcastPlanUpdate({
+      type: 'notes:unread-refresh',
       timestamp: new Date().toISOString(),
     });
   }
