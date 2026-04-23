@@ -49,20 +49,7 @@ type PersonRow = {
   department: Department;
 };
 
-const PREVIEW_PEOPLE: PersonRow[] = [
-  { id: 'p1', name: 'Гилев', plate: 'Н1098СВ', department: 'Контейнеры' },
-  { id: 'p2', name: 'Иваненко', plate: 'А590ХР', department: 'Контейнеры' },
-  { id: 'p3', name: 'Ким', plate: 'М1604ХР', department: 'Контейнеры' },
-  { id: 'p4', name: 'Адамюк Р.', plate: 'М1560ХР', department: 'Контейнеры' },
-  { id: 'p5', name: 'Анисимов', plate: 'Т216РА', department: 'Контейнеры' },
-  { id: 'p6', name: 'Туркин Михаил', plate: 'Т216РА', department: 'Авто' },
-  { id: 'p7', name: 'Подгайко Константин', plate: 'Е617ХР', department: 'Авто' },
-  { id: 'p8', name: 'Бояров Петр', plate: 'С357ХТ', department: 'Авто' },
-  { id: 'p9', name: 'Кузьменко Александр', plate: 'Н103СВ', department: 'Авто' },
-  { id: 'p10', name: 'Марутов Евгений', plate: 'Н106СВ', department: 'Авто' },
-  { id: 'p11', name: 'Петровский Юрий', plate: 'Х795РА', department: 'Авто' },
-  { id: 'p12', name: 'Ахматшин Сергей', plate: 'Н105СВ', department: 'Авто' },
-];
+const PREVIEW_PEOPLE: PersonRow[] = [];
 
 type CellCode = 'W' | 'O' | 'B' | 'H' | 'R' | 'N' | 'V';
 type OverrideScopeKey = `${PreviewMode}|${string}`;
@@ -183,9 +170,7 @@ export default function OperationsPreview() {
     value: string;
   } | null>(null);
 
-  const [peopleByMonth, setPeopleByMonth] = useState<PeopleByMonth>({
-    '2026-04': clonePeople(PREVIEW_PEOPLE),
-  });
+  const [peopleByMonth, setPeopleByMonth] = useState<PeopleByMonth>({});
   const [addOpen, setAddOpen] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [sortBySection, setSortBySection] = useState<SortBySection>(DEFAULT_SORT_BY_SECTION);
@@ -434,9 +419,7 @@ export default function OperationsPreview() {
       monthValue: '2026-04',
       mode: 'fact',
       overrides: {} as ScopedOverrides,
-      peopleByMonth: {
-        '2026-04': clonePeople(PREVIEW_PEOPLE),
-      },
+      peopleByMonth: {},
     };
 
     const restoreFromPayload = (payload: Partial<PreviewPersistedState> | null | undefined) => {
@@ -1015,7 +998,7 @@ export default function OperationsPreview() {
                   style={{ marginRight: 10 }}
                   onClick={handleCopyPlanToFact}
                 >
-                  Скопировать План Факт
+                  Скопировать
                 </button>
               )}
               <button

@@ -54,20 +54,7 @@ const SECTION_LABEL: Record<PreviewSection, string> = {
 };
 
 const WEEKDAY_LABELS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
-const DEFAULT_PREVIEW_PEOPLE: PersonRow[] = [
-  { id: 'p1', name: 'Гилев', plate: 'Н1098СВ', department: 'Контейнеры' },
-  { id: 'p2', name: 'Иваненко', plate: 'А590ХР', department: 'Контейнеры' },
-  { id: 'p3', name: 'Ким', plate: 'М1604ХР', department: 'Контейнеры' },
-  { id: 'p4', name: 'Адамюк Р.', plate: 'М1560ХР', department: 'Контейнеры' },
-  { id: 'p5', name: 'Анисимов', plate: 'Т216РА', department: 'Контейнеры' },
-  { id: 'p6', name: 'Туркин Михаил', plate: 'Т216РА', department: 'Авто' },
-  { id: 'p7', name: 'Подгайко Константин', plate: 'Е617ХР', department: 'Авто' },
-  { id: 'p8', name: 'Бояров Петр', plate: 'С357ХТ', department: 'Авто' },
-  { id: 'p9', name: 'Кузьменко Александр', plate: 'Н103СВ', department: 'Авто' },
-  { id: 'p10', name: 'Марутов Евгений', plate: 'Н106СВ', department: 'Авто' },
-  { id: 'p11', name: 'Петровский Юрий', plate: 'Х795РА', department: 'Авто' },
-  { id: 'p12', name: 'Ахматшин Сергей', plate: 'Н105СВ', department: 'Авто' },
-];
+const DEFAULT_PREVIEW_PEOPLE: PersonRow[] = [];
 
 const sanitizePayload = (payload: unknown): Record<string, unknown> => {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
@@ -168,7 +155,7 @@ const extractPeopleByMonth = (payload: PreviewPersistedState): Record<string, Pe
     const baseMonth = typeof payload.monthValue === 'string' ? payload.monthValue : '2026-04';
     return { [baseMonth]: payload.peopleState };
   }
-  return { '2026-04': DEFAULT_PREVIEW_PEOPLE };
+  return {};
 };
 
 const resolvePeopleForMonth = (targetMonth: string, source: Record<string, PersonRow[]>): PersonRow[] => {
