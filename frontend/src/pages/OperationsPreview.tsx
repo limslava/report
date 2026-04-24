@@ -80,6 +80,14 @@ const getMonthlyCell = (_rowIndex: number, _day: number, _department: Department
   return 'E';
 };
 
+const getShiftValueForCount = (department: Department, code: CellCode): number => {
+  if (code === 'W') return 1;
+  if (code !== 'H') return 0;
+  if (department === 'Контейнеры') return 0.5;
+  if (department === 'Авто') return 1;
+  return 0;
+};
+
 const clonePeople = (rows: PersonRow[]): PersonRow[] => rows.map((row) => ({ ...row }));
 
 const getPrevMonthValue = (value: string): string | null => {
@@ -1209,12 +1217,12 @@ export default function OperationsPreview() {
                   {sectionPeople.map((person) => {
                     const workCount = monthDays.reduce((acc, day) => {
                       const code = getCellCode(person.rowIndex, day, person.id, person.department, '1');
-                      return code === 'W' ? acc + 1 : acc;
+                      return acc + getShiftValueForCount(person.department, code);
                     }, 0);
                     const workCountSecond = person.secondName
                       ? monthDays.reduce((acc, day) => {
                         const code = getCellCode(person.rowIndex + 50, day, person.id, person.department, '2');
-                        return code === 'W' ? acc + 1 : acc;
+                        return acc + getShiftValueForCount(person.department, code);
                       }, 0)
                       : 0;
 
