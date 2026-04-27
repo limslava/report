@@ -409,7 +409,7 @@ export default function CalendarPage() {
       const mapped = notes.map(mapApiNote);
       setNotesByDate(groupNotesByDate(mapped));
     } catch {
-      setNotesByDate({});
+      // Keep last successful notes snapshot to avoid false "data loss" UX on transient API/network failures.
     }
   }, [getRangeForView, groupNotesByDate, mapApiNote]);
 
