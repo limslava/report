@@ -24,6 +24,7 @@ import { PlanningGridRow, PlanningSegmentReport } from '../../types/planning-v2.
 import { useAuthStore } from '../../store/auth-store';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../../store/unsavedChanges';
 import { downloadBlob } from '../../utils/download';
+import { subscribePlansRealtime } from '../../services/plans-realtime';
 
 interface ExcelLikePlanTableProps {
   segmentCode: 'KTK_VVO' | 'KTK_MOW' | 'AUTO' | 'RAIL' | 'EXTRA' | 'TO';
@@ -60,14 +61,6 @@ function keyFor(metricCode: string, dayIndex: number): string {
   return `${metricCode}:${dayIndex}`;
 }
 
-
-function getPlanningWebSocketUrl(): string {
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return `${protocol}://localhost:3000/ws/plans`;
-  }
-  return `${protocol}://${window.location.host}/ws/plans`;
-}
 
 function isSameContext(a: ReportContext, b: Pick<ReportContext, 'segmentCode' | 'year' | 'month'>): boolean {
   return a.segmentCode === b.segmentCode && a.year === b.year && a.month === b.month;
@@ -230,6 +223,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   onMonthChange,
 }) => {
   const { user } = useAuthStore();
+  const isKtkVvoManager = user?.role === 'manager_ktk_vvo' || user?.role === 'head_ktk_vvo';
   const isAdmin = user?.role === 'admin';
   const desiredContext = useMemo<ReportContext>(
     () => ({ segmentCode, year, month, asOfDate }),
@@ -249,8 +243,6 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   const [remoteUpdatePending, setRemoteUpdatePending] = useState<boolean>(false);
   const [pendingContext, setPendingContext] = useState<ReportContext | null>(null);
   const [confirmSwitchOpen, setConfirmSwitchOpen] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimerRef = useRef<number | null>(null);
   const contextRef = useRef<ReportContext>(desiredContext);
   const dirtyCountRef = useRef<number>(0);
   const isEditableRef = useRef<boolean>(isEditable);
@@ -353,70 +345,35 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   }, [desiredContext, loadData]);
 
   useEffect(() => {
-    let stopped = false;
+    const unsubscribe = subscribePlansRealtime((payload) => {
+      if (!isPlanningRealtimeEvent(payload)) {
+        return;
+      }
+      const data = payload;
 
-    const connect = () => {
-      if (stopped) {
+      if (!isSameContext(contextRef.current, data)) {
         return;
       }
 
-      const ws = new WebSocket(getPlanningWebSocketUrl());
-      wsRef.current = ws;
+      if (data.userId && userIdRef.current && data.userId === userIdRef.current) {
+        return;
+      }
 
-      ws.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data) as unknown;
-          if (!isPlanningRealtimeEvent(payload)) {
-            return;
-          }
-          const data = payload;
+      if (!isEditableRef.current) {
+        void loadData(contextRef.current);
+        return;
+      }
 
-          if (!isSameContext(contextRef.current, data)) {
-            return;
-          }
+      if (dirtyCountRef.current === 0 && !savingRef.current) {
+        void loadData(contextRef.current);
+        return;
+      }
 
-          if (data.userId && userIdRef.current && data.userId === userIdRef.current) {
-            return;
-          }
-
-          if (!isEditableRef.current) {
-            void loadData(contextRef.current);
-            return;
-          }
-
-          if (dirtyCountRef.current === 0 && !savingRef.current) {
-            void loadData(contextRef.current);
-            return;
-          }
-
-          setRemoteUpdatePending(true);
-        } catch {
-          // ignore malformed websocket payload
-        }
-      };
-
-      ws.onclose = () => {
-        wsRef.current = null;
-        if (!stopped) {
-          reconnectTimerRef.current = window.setTimeout(connect, 2500);
-        }
-      };
-
-      ws.onerror = () => {
-        ws.close();
-      };
-    };
-
-    connect();
+      setRemoteUpdatePending(true);
+    });
 
     return () => {
-      stopped = true;
-      if (reconnectTimerRef.current) {
-        window.clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
-      }
-      wsRef.current?.close();
-      wsRef.current = null;
+      unsubscribe();
     };
   }, [loadData]);
 
@@ -756,9 +713,9 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
         </Alert>
       )}
 
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Box display="flex" flexDirection="column" gap={1.5}>
-          <Typography variant="h6">{report?.segment.name}</Typography>
+      <Paper sx={{ p: 1.5, mb: 1.5 }}>
+        <Box display="flex" flexDirection="column" gap={1}>
+          {!isKtkVvoManager && <Typography variant="h6">{report?.segment.name}</Typography>}
           <Typography variant="body2" color="text.secondary">
             Период: {currentContext.month}.{currentContext.year} • Отчетная дата: {report?.asOfDate}
             {lastSavedServer
@@ -778,7 +735,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
                     const next = Number(e.target.value);
                     if (Number.isInteger(next) && next >= 2020 && next <= 2100) onYearChange(next);
                   }}
-                  sx={{ width: 120 }}
+                  sx={{ width: 110 }}
                 />
               )}
               {onMonthChange && (
@@ -788,7 +745,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
                   size="small"
                   value={currentContext.month}
                   onChange={(e) => onMonthChange(Number(e.target.value))}
-                  sx={{ width: 170 }}
+                  sx={{ width: 160 }}
                 >
                   {monthOptions.map((option) => (
                     <MenuItem key={option.value} value={option.value}>
@@ -823,7 +780,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
         </Box>
       </Paper>
 
-      <TableContainer ref={tableContainerRef} component={Paper} variant="outlined" sx={{ mb: 2, maxHeight: 560 }}>
+      <TableContainer ref={tableContainerRef} component={Paper} variant="outlined" sx={{ mb: 2, minHeight: 420, maxHeight: 'clamp(420px, calc(100dvh - 240px), 82dvh)' }}>
         <Table
           size="small"
           stickyHeader

@@ -1,1 +1,10 @@
 .git
+/.git
+**/.git
+**/.git/**
+.github
+**/node_modules
+**/coverage
+**/.DS_Store
+.env
+.env.*

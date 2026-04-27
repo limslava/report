@@ -10,11 +10,17 @@ import AdminPage from './pages/AdminPage';
 import SettingsPage from './pages/SettingsPage';
 import PlansPage from './pages/PlansPage';
 import RouteAccessGuard from './components/auth/RouteAccessGuard';
-import { canAccessAdmin, canViewCalendar, canViewFinancialPlan, canViewSummary } from './utils/rolePermissions';
+import {
+  canAccessAdmin,
+  canAccessOperationsPreview,
+  canViewOperationsEfficiency,
+  canViewCalendar,
+  canViewFinancialPlan,
+  canViewSummary,
+} from './utils/rolePermissions';
 
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
-// TODO: Вернуть после завершения разработки ежемесячного обзора.
-// const OperationsPreview = lazy(() => import('./pages/OperationsPreview'));
+const OperationsPreview = lazy(() => import('./pages/OperationsPreview'));
 
 function App() {
   const { token, user } = useAuthStore();
@@ -66,14 +72,16 @@ function App() {
               </RouteAccessGuard>
             )}
           />
-          {/*
-            TODO: Вернуть после завершения разработки ежемесячного обзора.
-          <Route path="operations-preview" element={(
-              <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
-                <OperationsPreview />
-              </Suspense>
-            )} />
-          */}
+          <Route
+            path="operations-preview"
+            element={(
+              <RouteAccessGuard allow={canAccessOperationsPreview(user?.role) || canViewOperationsEfficiency(user?.role)}>
+                <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
+                  <OperationsPreview />
+                </Suspense>
+              </RouteAccessGuard>
+            )}
+          />
         </Route>
       ) : (
         <Route path="*" element={<Navigate to="/login" replace />} />

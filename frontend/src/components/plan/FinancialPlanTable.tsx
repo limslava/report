@@ -26,6 +26,7 @@ import { FinancialPlanRow } from '../../types/financial-plan.types';
 import { downloadBlob } from '../../utils/download';
 import { useAuthStore } from '../../store/auth-store';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../../store/unsavedChanges';
+import { subscribePlansRealtime } from '../../services/plans-realtime';
 
 interface FinancialPlanTableProps {
   year: number;
@@ -44,14 +45,6 @@ type FinancialPlanRealtimeEvent = {
 };
 
 const monthNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
-
-function getPlanningWebSocketUrl(): string {
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return `${protocol}://localhost:3000/ws/plans`;
-  }
-  return `${protocol}://${window.location.host}/ws/plans`;
-}
 
 function isFinancialPlanRealtimeEvent(payload: unknown): payload is FinancialPlanRealtimeEvent {
   if (!payload || typeof payload !== 'object') {
@@ -105,7 +98,6 @@ export default function FinancialPlanTable({ year, onYearChange, canEdit }: Fina
   const userIdRef = useRef(userId);
   const yearRef = useRef(year);
   const savingRef = useRef(saving);
-  const wsRef = useRef<WebSocket | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -171,54 +163,28 @@ export default function FinancialPlanTable({ year, onYearChange, canEdit }: Fina
 
   useEffect(() => {
     let stopped = false;
-    let reconnectTimer: number | null = null;
     let refreshTimer: number | null = null;
-
-    const connect = () => {
+    const unsubscribe = subscribePlansRealtime((payload) => {
       if (stopped) return;
-      const ws = new WebSocket(getPlanningWebSocketUrl());
-      wsRef.current = ws;
+      if (!isFinancialPlanRealtimeEvent(payload)) return;
+      if (payload.year !== yearRef.current) return;
+      if (payload.userId && userIdRef.current && payload.userId === userIdRef.current) return;
 
-      ws.onmessage = (event) => {
-        if (stopped) return;
-        try {
-          const payload = JSON.parse(event.data) as unknown;
-          if (!isFinancialPlanRealtimeEvent(payload)) return;
-          if (payload.year !== yearRef.current) return;
-          if (payload.userId && userIdRef.current && payload.userId === userIdRef.current) return;
+      if (draftCountRef.current === 0 && !savingRef.current) {
+        if (refreshTimer) window.clearTimeout(refreshTimer);
+        refreshTimer = window.setTimeout(() => {
+          void loadData();
+        }, 250);
+        return;
+      }
 
-          if (draftCountRef.current === 0 && !savingRef.current) {
-            if (refreshTimer) window.clearTimeout(refreshTimer);
-            refreshTimer = window.setTimeout(() => {
-              void loadData();
-            }, 250);
-            return;
-          }
-
-          setRemoteUpdatePending(true);
-        } catch {
-          // ignore malformed events
-        }
-      };
-
-      ws.onclose = () => {
-        wsRef.current = null;
-        if (!stopped) {
-          reconnectTimer = window.setTimeout(connect, 1500);
-        }
-      };
-
-      ws.onerror = () => ws.close();
-    };
-
-    connect();
+      setRemoteUpdatePending(true);
+    });
 
     return () => {
       stopped = true;
       if (refreshTimer) window.clearTimeout(refreshTimer);
-      if (reconnectTimer) window.clearTimeout(reconnectTimer);
-      wsRef.current?.close();
-      wsRef.current = null;
+      unsubscribe();
     };
   }, [loadData]);
 

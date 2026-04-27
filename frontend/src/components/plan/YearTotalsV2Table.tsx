@@ -21,6 +21,7 @@ import { registerUnsavedHandlers, setHasUnsavedChanges } from '../../store/unsav
 import { PlanningYearTotalsRow } from '../../types/planning-v2.types';
 import { downloadBlob } from '../../utils/download';
 import { formatInt, formatPct } from '../../utils/format';
+import { subscribePlansRealtime } from '../../services/plans-realtime';
 
 interface YearTotalsV2TableProps {
   year: number;
@@ -39,14 +40,6 @@ type PlanningRealtimeEvent = {
   timestamp: string;
   userId?: string;
 };
-
-function getPlanningWebSocketUrl(): string {
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return `${protocol}://localhost:3000/ws/plans`;
-  }
-  return `${protocol}://${window.location.host}/ws/plans`;
-}
 
 function isPlanningRealtimeEvent(payload: unknown): payload is PlanningRealtimeEvent {
   if (!payload || typeof payload !== 'object') {
@@ -128,6 +121,8 @@ function rowSegmentLabel(row: PlanningYearTotalsRow): string {
 const monthNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 
 export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearTotalsV2TableProps) {
+  const userRole = useAuthStore((state) => state.user?.role);
+  const isKtkVvoManager = userRole === 'manager_ktk_vvo' || userRole === 'head_ktk_vvo';
   const [rows, setRows] = useState<PlanningYearTotalsRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
@@ -244,47 +239,27 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
 
   useEffect(() => {
     let stopped = false;
-    let reconnectTimer: number | null = null;
     let refreshTimer: number | null = null;
-    const ws = new WebSocket(getPlanningWebSocketUrl());
-
-    ws.onmessage = (event) => {
+    const unsubscribe = subscribePlansRealtime((payload) => {
       if (stopped) return;
-      try {
-        const payload = JSON.parse(event.data) as unknown;
-        if (!isPlanningRealtimeEvent(payload)) return;
-        if (payload.year !== yearRef.current) return;
+      if (!isPlanningRealtimeEvent(payload)) return;
+      if (payload.year !== yearRef.current) return;
 
-        if (draftCountRef.current === 0 && !savingRef.current) {
-          if (refreshTimer) window.clearTimeout(refreshTimer);
-          refreshTimer = window.setTimeout(() => {
-            void loadData();
-          }, 250);
-          return;
-        }
-
-        setRemoteUpdatePending(true);
-      } catch {
-        // ignore malformed events
-      }
-    };
-
-    ws.onclose = () => {
-      if (stopped) return;
-      reconnectTimer = window.setTimeout(() => {
-        if (!stopped) {
+      if (draftCountRef.current === 0 && !savingRef.current) {
+        if (refreshTimer) window.clearTimeout(refreshTimer);
+        refreshTimer = window.setTimeout(() => {
           void loadData();
-        }
-      }, 1500);
-    };
+        }, 250);
+        return;
+      }
 
-    ws.onerror = () => ws.close();
+      setRemoteUpdatePending(true);
+    });
 
     return () => {
       stopped = true;
       if (refreshTimer) window.clearTimeout(refreshTimer);
-      if (reconnectTimer) window.clearTimeout(reconnectTimer);
-      ws.close();
+      unsubscribe();
     };
   }, []);
 
@@ -494,46 +469,90 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
 
       <Paper sx={{ p: 2, mb: 2 }}>
         <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1.5}>
-          <Box>
-            <Typography variant="h6">Операционный отчет • {year}</Typography>
-          </Box>
-          <Box display="flex" gap={1} alignItems="center" flexWrap="wrap" justifyContent="flex-end">
-            <TextField
-              label="Год"
-              type="number"
-              size="small"
-              inputProps={{ min: 2020, max: 2100 }}
-              value={year}
-              onChange={(e) => {
-                const next = Number(e.target.value);
-                if (Number.isInteger(next) && next >= 2020 && next <= 2100) {
-                  onYearChange(next);
-                }
-              }}
-              sx={{ width: 120 }}
-            />
-            <Autocomplete
-              freeSolo
-              options={zoomOptions}
-              inputValue={zoomInput}
-              onInputChange={(_event, value) => setZoomInput(value)}
-              onChange={(_event, value) => {
-                if (typeof value === 'string') {
-                  setZoomInput(value);
-                  applyZoomFromInput(value);
-                }
-              }}
-              renderInput={(params) => (
+          <Box display="flex" gap={1} alignItems="center" flexWrap="wrap">
+            {!isKtkVvoManager && <Typography variant="h6">Операционный отчет • {year}</Typography>}
+            {isKtkVvoManager && (
+              <>
                 <TextField
-                  {...params}
-                  label="Масштаб"
+                  label="Год"
+                  type="number"
                   size="small"
-                  onBlur={() => applyZoomFromInput(zoomInput)}
-                  placeholder="например 80%"
+                  inputProps={{ min: 2020, max: 2100 }}
+                  value={year}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    if (Number.isInteger(next) && next >= 2020 && next <= 2100) {
+                      onYearChange(next);
+                    }
+                  }}
+                  sx={{ width: 120 }}
                 />
-              )}
-              sx={{ width: 140 }}
-            />
+                <Autocomplete
+                  freeSolo
+                  options={zoomOptions}
+                  inputValue={zoomInput}
+                  onInputChange={(_event, value) => setZoomInput(value)}
+                  onChange={(_event, value) => {
+                    if (typeof value === 'string') {
+                      setZoomInput(value);
+                      applyZoomFromInput(value);
+                    }
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Масштаб"
+                      size="small"
+                      onBlur={() => applyZoomFromInput(zoomInput)}
+                      placeholder="например 80%"
+                    />
+                  )}
+                  sx={{ width: 140 }}
+                />
+              </>
+            )}
+          </Box>
+          <Box display="flex" gap={1} alignItems="center" flexWrap="wrap" justifyContent="flex-end" sx={{ ml: 'auto' }}>
+            {!isKtkVvoManager && (
+              <>
+                <TextField
+                  label="Год"
+                  type="number"
+                  size="small"
+                  inputProps={{ min: 2020, max: 2100 }}
+                  value={year}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    if (Number.isInteger(next) && next >= 2020 && next <= 2100) {
+                      onYearChange(next);
+                    }
+                  }}
+                  sx={{ width: 120 }}
+                />
+                <Autocomplete
+                  freeSolo
+                  options={zoomOptions}
+                  inputValue={zoomInput}
+                  onInputChange={(_event, value) => setZoomInput(value)}
+                  onChange={(_event, value) => {
+                    if (typeof value === 'string') {
+                      setZoomInput(value);
+                      applyZoomFromInput(value);
+                    }
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Масштаб"
+                      size="small"
+                      onBlur={() => applyZoomFromInput(zoomInput)}
+                      placeholder="например 80%"
+                    />
+                  )}
+                  sx={{ width: 140 }}
+                />
+              </>
+            )}
             <Button variant="outlined" onClick={handleDownloadExcel} disabled={loading || downloading}>
               {downloading ? 'Скачивание...' : 'Скачать Excel'}
             </Button>

@@ -30,6 +30,10 @@ export interface BatchUpsertPayload {
 
 const FULL_ACCESS_ROLES = new Set<string>(PLANNING_FULL_ACCESS_ROLES);
 
+function isKtkVvoScopedRole(role: string): boolean {
+  return role === PlanningRole.MANAGER_KTK_VVO || role === 'head_ktk_vvo';
+}
+
 function toIsoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -44,8 +48,16 @@ function hasSegmentAccess(role: string, segmentCode: PlanningSegmentCode): boole
     return true;
   }
 
+  if (segmentCode === PlanningSegmentCode.KTK_VVO && isKtkVvoScopedRole(role)) {
+    return true;
+  }
+
   const managerRole = SEGMENT_MANAGER_ROLE[segmentCode];
   return role === managerRole;
+}
+
+function isKtkVvoTrucksOnLineAutoFromPreviewPeriod(year: number, month: number): boolean {
+  return year > 2026 || (year === 2026 && month >= 5);
 }
 
 export class PlanningV2Service {
@@ -299,7 +311,15 @@ export class PlanningV2Service {
 
     const filteredUpdates = payload.updates.filter((update) => {
       const metric = metricByCode.get(update.metricCode);
-      return Boolean(metric?.isEditable);
+      if (!metric?.isEditable) return false;
+      if (
+        payload.segmentCode === PlanningSegmentCode.KTK_VVO
+        && update.metricCode === 'ktk_vvo_fact_trucks_on_line'
+        && isKtkVvoTrucksOnLineAutoFromPreviewPeriod(payload.year, payload.month)
+      ) {
+        return false;
+      }
+      return true;
     });
 
     if (filteredUpdates.length === 0) {
@@ -350,6 +370,10 @@ export class PlanningV2Service {
   canEditSegment(role: string, segmentCode: PlanningSegmentCode): boolean {
     if (FULL_ACCESS_ROLES.has(role)) {
       return role === PlanningRole.ADMIN;
+    }
+
+    if (segmentCode === PlanningSegmentCode.KTK_VVO && isKtkVvoScopedRole(role)) {
+      return true;
     }
 
     return role === SEGMENT_MANAGER_ROLE[segmentCode];

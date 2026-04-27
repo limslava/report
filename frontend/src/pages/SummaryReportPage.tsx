@@ -22,6 +22,7 @@ import { PlanningSummaryItem } from '../types/planning-v2.types';
 import { useAuthStore } from '../store/auth-store';
 import { canViewSummary } from '../utils/rolePermissions';
 import { formatInt, formatPct } from '../utils/format';
+import { subscribePlansRealtime } from '../services/plans-realtime';
 
 type PlanningRealtimeEvent = {
   type: 'planning-v2:segment-updated';
@@ -31,14 +32,6 @@ type PlanningRealtimeEvent = {
   timestamp: string;
   userId?: string;
 };
-
-function getPlanningWebSocketUrl(): string {
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return `${protocol}://localhost:3000/ws/plans`;
-  }
-  return `${protocol}://${window.location.host}/ws/plans`;
-}
 
 function isPlanningRealtimeEvent(payload: unknown): payload is PlanningRealtimeEvent {
   if (!payload || typeof payload !== 'object') {
@@ -102,45 +95,25 @@ const SummaryReportPage = () => {
 
   useEffect(() => {
     let stopped = false;
-    let reconnectTimer: number | null = null;
     let refreshTimer: number | null = null;
-    const ws = new WebSocket(getPlanningWebSocketUrl());
-
-    ws.onmessage = (event) => {
+    const unsubscribe = subscribePlansRealtime((payload) => {
       if (stopped) return;
-      try {
-        const payload = JSON.parse(event.data) as unknown;
-        if (!isPlanningRealtimeEvent(payload)) return;
-        if (payload.year !== year || payload.month !== month) return;
+      if (!isPlanningRealtimeEvent(payload)) return;
+      if (payload.year !== year || payload.month !== month) return;
 
-        if (refreshTimer) {
-          window.clearTimeout(refreshTimer);
-        }
-        // Coalesce bursty updates from multiple saves into one refresh.
-        refreshTimer = window.setTimeout(() => {
-          void loadData();
-        }, 350);
-      } catch {
-        // ignore malformed events
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer);
       }
-    };
-
-    ws.onclose = () => {
-      if (stopped) return;
-      reconnectTimer = window.setTimeout(() => {
-        if (!stopped) {
-          void loadData();
-        }
-      }, 1500);
-    };
-
-    ws.onerror = () => ws.close();
+      // Coalesce bursty updates from multiple saves into one refresh.
+      refreshTimer = window.setTimeout(() => {
+        void loadData();
+      }, 350);
+    });
 
     return () => {
       stopped = true;
       if (refreshTimer) window.clearTimeout(refreshTimer);
-      if (reconnectTimer) window.clearTimeout(reconnectTimer);
-      ws.close();
+      unsubscribe();
     };
   }, [year, month, loadData]);
 

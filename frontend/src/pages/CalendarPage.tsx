@@ -26,6 +26,7 @@ import {
   updateNote as updateNoteApi,
   updateNoteRecipients as updateNoteRecipientsApi,
 } from '../services/notes.api';
+import useNotesUnreadStore from '../store/notes-unread-store';
 import '../styles/calendar.css';
 
 function monthLabel(date: Date): string {
@@ -176,6 +177,7 @@ const ROLE_LABELS: Record<string, string> = {
   financer: 'Финансовая дирекция',
   manager_sales: 'Отдел продаж',
   manager_ktk_vvo: 'Диспетчерский отдел Влд',
+  head_ktk_vvo: 'Руководитель КТК Влд',
   manager_ktk_mow: 'Диспетчерский отдел Мск',
   manager_auto: 'Отдел перевозок автомобилей',
   manager_rail: 'Отдел Железнодорожных перевозок',
@@ -184,6 +186,8 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default function CalendarPage() {
+  const refreshUnread = useNotesUnreadStore((state) => state.refresh);
+  const setUnreadCount = useNotesUnreadStore((state) => state.setCount);
   const [cursor, setCursor] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [notesByDate, setNotesByDate] = useState<NotesByDate>({});
@@ -405,7 +409,7 @@ export default function CalendarPage() {
       const mapped = notes.map(mapApiNote);
       setNotesByDate(groupNotesByDate(mapped));
     } catch {
-      setNotesByDate({});
+      // Keep last successful notes snapshot to avoid false "data loss" UX on transient API/network failures.
     }
   }, [getRangeForView, groupNotesByDate, mapApiNote]);
 
@@ -469,7 +473,7 @@ export default function CalendarPage() {
         next[key] = [...(next[key] ?? []), created];
         return next;
       });
-      window.dispatchEvent(new CustomEvent('notes:unread-refresh'));
+      void refreshUnread();
     } catch {
       // ignore for now
     }
@@ -547,7 +551,7 @@ export default function CalendarPage() {
         setShowEventPreview(false);
         setSelectedNote(null);
       }
-      window.dispatchEvent(new CustomEvent('notes:unread-refresh'));
+      void refreshUnread();
     } catch {
       // ignore
     }
@@ -566,7 +570,7 @@ export default function CalendarPage() {
         setShowEventPreview(false);
         setSelectedNote(null);
       }
-      window.dispatchEvent(new CustomEvent('notes:unread-refresh'));
+      void refreshUnread();
     } catch {
       // ignore
     }
@@ -625,6 +629,8 @@ export default function CalendarPage() {
     setShowQuickTime(false);
     setShowEventPreview(true);
     if (user && note.authorId && note.authorId !== user.id && !note.isRead) {
+      const prevCount = useNotesUnreadStore.getState().unreadCount;
+      setUnreadCount(Math.max(0, prevCount - 1));
       markNoteReadApi(note.id).then(() => {
         setNotesByDate((prev) => {
           const next: NotesByDate = {};
@@ -635,8 +641,10 @@ export default function CalendarPage() {
           });
           return next;
         });
-        window.dispatchEvent(new CustomEvent('notes:unread-refresh'));
-      }).catch(() => {});
+        void refreshUnread();
+      }).catch(() => {
+        setUnreadCount(prevCount);
+      });
     }
   };
 

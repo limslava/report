@@ -28,6 +28,14 @@ export function canViewCalendar(role?: string | null): boolean {
   return role === 'admin' || role === 'director' || role === 'manager_auto';
 }
 
+export function canAccessOperationsPreview(role?: string | null): boolean {
+  return role === 'admin' || role === 'manager_ktk_vvo' || role === 'head_ktk_vvo';
+}
+
+export function canViewOperationsEfficiency(role?: string | null): boolean {
+  return role === 'director' || role === 'financer';
+}
+
 export function canEditFinancialPlan(role?: string | null): boolean {
   return role === 'admin' || role === 'director' || role === 'financer';
 }

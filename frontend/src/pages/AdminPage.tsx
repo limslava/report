@@ -39,8 +39,10 @@ import {
   resetUserPasswordByAdmin,
   reassignAndDeleteUserByAdmin,
 } from '../services/api';
+import useNotesUnreadStore from '../store/notes-unread-store';
 
 const AdminPage = () => {
+  const wsConnected = useNotesUnreadStore((state) => state.wsConnected);
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [tabValue, setTabValue] = useState(0);
@@ -168,6 +170,7 @@ const AdminPage = () => {
 
   const roleLabels: Record<string, string> = {
     manager_ktk_vvo: 'Менеджер КТК Владивосток',
+    head_ktk_vvo: 'Руководитель КТК Владивосток',
     manager_ktk_mow: 'Менеджер КТК Москва',
     manager_auto: 'Менеджер отправки авто',
     manager_rail: 'Менеджер ЖД',
@@ -194,6 +197,7 @@ const AdminPage = () => {
 
   const roles = [
     { value: 'manager_ktk_vvo', label: 'Менеджер КТК Владивосток' },
+    { value: 'head_ktk_vvo', label: 'Руководитель КТК Владивосток' },
     { value: 'manager_ktk_mow', label: 'Менеджер КТК Москва' },
     { value: 'manager_auto', label: 'Менеджер отправки авто' },
     { value: 'manager_rail', label: 'Менеджер ЖД' },
@@ -265,6 +269,7 @@ const AdminPage = () => {
   const statsRows = [
     { label: 'Всего пользователей', value: stats?.users ?? '—' },
     { label: 'Активные сессии', value: stats?.activeSessions ?? '—' },
+    { label: 'WebSocket (уведомления)', value: wsConnected ? 'CONNECTED' : 'DISCONNECTED', chip: true },
     { label: 'Отчетов сегодня', value: stats?.dailyReports ?? '—' },
     { label: 'Отчетов за месяц', value: stats?.monthlyReports ?? '—' },
     { label: 'DB latency (avg)', value: dbMetrics?.avgLatencyMs != null ? `${dbMetrics.avgLatencyMs} ms` : '—' },
@@ -520,7 +525,13 @@ const AdminPage = () => {
                       <Chip
                         label={row.value ?? '—'}
                         size="small"
-                        color={row.value === 'OK' ? 'success' : row.value === 'DOWN' ? 'error' : 'default'}
+                        color={
+                          row.value === 'OK' || row.value === 'CONNECTED'
+                            ? 'success'
+                            : row.value === 'DOWN' || row.value === 'DISCONNECTED'
+                              ? 'error'
+                              : 'default'
+                        }
                         sx={{ fontSize: '0.75rem', height: 22 }}
                       />
                     ) : (

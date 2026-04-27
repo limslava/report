@@ -5,19 +5,21 @@ on:
     workflows: ["CI"]
     types: [completed]
     branches: [develop]
+  workflow_dispatch:
 
 jobs:
   deploy:
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'develop'
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'develop')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout tested branch with full history
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_branch }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.workflow_run.head_branch }}
           fetch-depth: 0
 
-      - name: Pin exact tested commit
+      - name: Pin exact tested commit (for workflow_run)
+        if: github.event_name == 'workflow_run'
         run: git checkout --detach ${{ github.event.workflow_run.head_sha }}
 
       - name: Push to Amvera stage repository
@@ -25,12 +27,15 @@ jobs:
           AMVERA_GIT_URL: ${{ secrets.AMVERA_STAGE_GIT_URL }}
           AMVERA_USER: ${{ secrets.AMVERA_STAGE_USERNAME }}
           AMVERA_PASS: ${{ secrets.AMVERA_STAGE_PASSWORD }}
-          AMVERA_TARGET_BRANCH: develop
+          AMVERA_TARGET_BRANCH: master
         run: |
           if [ -z "$AMVERA_GIT_URL" ] || [ -z "$AMVERA_USER" ] || [ -z "$AMVERA_PASS" ]; then
             echo "Missing required secrets: AMVERA_STAGE_GIT_URL / AMVERA_STAGE_USERNAME / AMVERA_STAGE_PASSWORD"
             exit 1
           fi
+
+          echo "Local HEAD: $(git rev-parse --short HEAD)"
+          echo "Pushing to: $AMVERA_GIT_URL"
 
           cat > /tmp/amvera-askpass.sh <<'EOF'
           #!/bin/sh
@@ -44,5 +49,11 @@ jobs:
           git remote remove amvera 2>/dev/null || true
           git remote add amvera "$AMVERA_GIT_URL"
 
+          echo "Remote heads before push:"
+          GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/tmp/amvera-askpass.sh git ls-remote --heads amvera || true
+
           GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/tmp/amvera-askpass.sh \
             git push --force --no-thin amvera "HEAD:refs/heads/${AMVERA_TARGET_BRANCH}"
+
+          echo "Remote heads after push:"
+          GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/tmp/amvera-askpass.sh git ls-remote --heads amvera || true
