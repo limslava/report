@@ -49,6 +49,10 @@ type SocketClient = {
   role: string;
 };
 
+type AliveWebSocket = WebSocket & { isAlive?: boolean };
+
+const WS_HEARTBEAT_INTERVAL_MS = 30000;
+
 function isPlanningV2Event(event: OutgoingWebSocketEvent): event is PlanningV2SegmentUpdateEvent {
   return event.type === 'planning-v2:segment-updated';
 }
@@ -72,6 +76,7 @@ function isNotesUnreadRefreshEvent(event: OutgoingWebSocketEvent): event is Note
 export class PlanWebSocketService {
   private wss: WebSocketServer | null = null;
   private clients: Map<WebSocket, SocketClient> = new Map();
+  private heartbeatTimer: NodeJS.Timeout | null = null;
 
   initialize(server: HttpServer) {
     this.wss = new WebSocketServer({ server, path: '/ws/plans' });
@@ -80,6 +85,7 @@ export class PlanWebSocketService {
       void this.handleConnection(ws, request);
     });
 
+    this.startHeartbeat();
     logger.info('WebSocket server initialized on /ws/plans');
   }
 
@@ -92,6 +98,8 @@ export class PlanWebSocketService {
 
     this.clients.set(ws, client);
     logger.info(`New WebSocket connection. Total clients: ${this.clients.size}`);
+    const aliveSocket = ws as AliveWebSocket;
+    aliveSocket.isAlive = true;
 
     ws.on('message', (message: Buffer) => {
       try {
@@ -107,6 +115,10 @@ export class PlanWebSocketService {
       logger.info(`WebSocket disconnected. Total clients: ${this.clients.size}`);
     });
 
+    ws.on('pong', () => {
+      aliveSocket.isAlive = true;
+    });
+
     ws.on('error', (error) => {
       logger.error('WebSocket error:', error);
     });
@@ -118,6 +130,29 @@ export class PlanWebSocketService {
         timestamp: new Date().toISOString(),
       })
     );
+  }
+
+  private startHeartbeat() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+    }
+
+    this.heartbeatTimer = setInterval(() => {
+      this.clients.forEach((_meta, socket) => {
+        if (socket.readyState !== WebSocket.OPEN) {
+          return;
+        }
+
+        const aliveSocket = socket as AliveWebSocket;
+        if (aliveSocket.isAlive === false) {
+          socket.terminate();
+          return;
+        }
+
+        aliveSocket.isAlive = false;
+        socket.ping();
+      });
+    }, WS_HEARTBEAT_INTERVAL_MS);
   }
 
   private async authenticateSocket(request: IncomingMessage): Promise<SocketClient | null> {
@@ -321,6 +356,11 @@ export class PlanWebSocketService {
   }
 
   close() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+
     this.clients.forEach((_meta, client) => {
       if (client.readyState === WebSocket.OPEN) {
         client.close();
