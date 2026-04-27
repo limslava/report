@@ -44,7 +44,7 @@ async function startServer() {
       })
       .catch((err) => logger.error('Failed to start scheduler:', err));
 
-    const server = app.listen(PORT, () => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
       logger.info(`Server running on port ${PORT}`);
     });
 
