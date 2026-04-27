@@ -35,7 +35,20 @@ export function getAllowedCorsOrigins(): string[] {
 }
 
 export function getAppPort(): number {
-  return Number(process.env.APP_PORT || process.env.PORT || 3000);
+  const rawPort = process.env.APP_PORT || process.env.PORT || '3000';
+  const parsedPort = Number(rawPort);
+
+  if (!Number.isInteger(parsedPort) || parsedPort <= 0 || parsedPort > 65535) {
+    return 3000;
+  }
+
+  const isPrivilegedPort = parsedPort < 1024;
+  const canBindPrivilegedPort = typeof process.getuid === 'function' ? process.getuid() === 0 : false;
+  if (isPrivilegedPort && !canBindPrivilegedPort) {
+    return 3000;
+  }
+
+  return parsedPort;
 }
 
 export function assertProductionEnv(): void {
