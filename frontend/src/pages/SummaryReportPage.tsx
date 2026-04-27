@@ -97,47 +97,66 @@ const SummaryReportPage = () => {
     let stopped = false;
     let reconnectTimer: number | null = null;
     let refreshTimer: number | null = null;
+    let socket: WebSocket | null = null;
+    let reconnectAttempt = 0;
     const wsUrl = getPlansWebSocketUrl();
     if (!wsUrl) {
       return;
     }
-    const ws = new WebSocket(wsUrl);
 
-    ws.onmessage = (event) => {
+    const connect = () => {
       if (stopped) return;
-      try {
-        const payload = JSON.parse(event.data) as unknown;
-        if (!isPlanningRealtimeEvent(payload)) return;
-        if (payload.year !== year || payload.month !== month) return;
+      socket = new WebSocket(wsUrl);
 
+      socket.onopen = () => {
+        reconnectAttempt = 0;
+      };
+
+      socket.onmessage = (event) => {
+        if (stopped) return;
+        try {
+          const payload = JSON.parse(event.data) as unknown;
+          if (!isPlanningRealtimeEvent(payload)) return;
+          if (payload.year !== year || payload.month !== month) return;
+
+          if (refreshTimer) {
+            window.clearTimeout(refreshTimer);
+          }
+          // Coalesce bursty updates from multiple saves into one refresh.
+          refreshTimer = window.setTimeout(() => {
+            void loadData();
+          }, 350);
+        } catch {
+          // ignore malformed events
+        }
+      };
+
+      socket.onclose = () => {
+        if (stopped) return;
         if (refreshTimer) {
           window.clearTimeout(refreshTimer);
+          refreshTimer = null;
         }
-        // Coalesce bursty updates from multiple saves into one refresh.
-        refreshTimer = window.setTimeout(() => {
-          void loadData();
-        }, 350);
-      } catch {
-        // ignore malformed events
-      }
+        const delay = Math.min(30000, 1000 * 2 ** reconnectAttempt);
+        reconnectAttempt += 1;
+        reconnectTimer = window.setTimeout(() => {
+          if (!stopped) {
+            void loadData();
+            connect();
+          }
+        }, delay);
+      };
+
+      socket.onerror = () => socket?.close();
     };
 
-    ws.onclose = () => {
-      if (stopped) return;
-      reconnectTimer = window.setTimeout(() => {
-        if (!stopped) {
-          void loadData();
-        }
-      }, 1500);
-    };
-
-    ws.onerror = () => ws.close();
+    connect();
 
     return () => {
       stopped = true;
       if (refreshTimer) window.clearTimeout(refreshTimer);
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
-      ws.close();
+      socket?.close();
     };
   }, [year, month, loadData]);
 

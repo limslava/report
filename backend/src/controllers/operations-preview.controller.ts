@@ -90,6 +90,8 @@ const sanitizePayload = (payload: unknown): Record<string, unknown> => {
 const isValidSection = (value: unknown): value is PreviewSection =>
   value === 'containers' || value === 'auto' || value === 'dispatchers' || value === 'couriers' || value === 'efficiency';
 
+const isEfficiencyOnlyViewer = (role: unknown): boolean => role === 'director' || role === 'financer';
+
 const isValidSortField = (value: unknown): value is SortField =>
   value === 'manual' || value === 'name' || value === 'plate';
 
@@ -168,7 +170,16 @@ const parseMonth = (value: unknown, fallback: number): number => {
   return month;
 };
 
-export const getOperationsPreviewState = async (_req: Request, res: Response) => {
+export const getOperationsPreviewState = async (req: Request, res: Response) => {
+  if (isEfficiencyOnlyViewer(req.user?.role)) {
+    const sectionRaw = req.query.section;
+    if (!isValidSection(sectionRaw) || sectionRaw !== 'efficiency') {
+      const error: any = new Error('Access denied for requested section');
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
   const row = await operationsPreviewRepo.findOne({
     where: { scopeKey: OPERATIONS_PREVIEW_SCOPE_KEY },
   });
@@ -230,6 +241,13 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
     throw error;
   }
   const section = sectionRaw;
+
+  if (isEfficiencyOnlyViewer(req.user?.role) && section !== 'efficiency') {
+    const error: any = new Error('Access denied for requested section');
+    error.statusCode = 403;
+    throw error;
+  }
+
   const department = DEPARTMENT_BY_SECTION[section];
 
   const now = new Date();

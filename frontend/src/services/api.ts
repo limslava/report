@@ -105,7 +105,8 @@ export const getSmtpConfig = () => api.get('/smtp-config');
 export const saveSmtpConfig = (data: any) => api.post('/smtp-config', data);
 export const testSmtpConfig = () => api.post('/smtp-config/test');
 
-export const getOperationsPreviewState = () => api.get('/operations-preview/state');
+export const getOperationsPreviewState = (params?: { section?: 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'efficiency' }) =>
+  api.get('/operations-preview/state', { params });
 export const saveOperationsPreviewState = (state: Record<string, unknown>, updatedAt?: string | null) =>
   api.put('/operations-preview/state', updatedAt ? { ...state, updatedAt } : state);
 export const downloadOperationsPreviewExcel = async (params: {

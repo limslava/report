@@ -121,10 +121,11 @@ const extractFilename = (disposition?: string): string | null => {
 };
 
 export default function OperationsPreview() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const userId = useAuthStore((state) => state.user?.id);
   const userRole = useAuthStore((state) => state.user?.role);
   const canManagePlanFact = userRole === 'admin' || userRole === 'head_ktk_vvo';
+  const efficiencyOnlyViewer = userRole === 'director' || userRole === 'financer';
   const [filter, setFilter] = useState<'Все' | Department>('Все');
   const [monthValue, setMonthValue] = useState('2026-04');
   const [mode, setMode] = useState<PreviewMode>('fact');
@@ -513,6 +514,14 @@ export default function OperationsPreview() {
   }, [sortBySection, sortHydrated, userId]);
 
   useEffect(() => {
+    if (!efficiencyOnlyViewer) return;
+    if (activeSection === 'efficiency') return;
+    const next = new URLSearchParams(searchParams);
+    next.set('section', 'efficiency');
+    setSearchParams(next, { replace: true });
+  }, [activeSection, efficiencyOnlyViewer, searchParams, setSearchParams]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const fallback: PreviewPersistedState = {
@@ -574,8 +583,11 @@ export default function OperationsPreview() {
     };
 
     const bootstrap = async () => {
+      const requestedSection: PreviewSection = efficiencyOnlyViewer ? 'efficiency' : activeSection ?? 'containers';
       try {
-        const response = await getOperationsPreviewState();
+        const response = await getOperationsPreviewState({
+          section: requestedSection,
+        });
         const payload = (response.data?.state ?? null) as Partial<PreviewPersistedState> | null;
         const updatedAt = typeof response.data?.updatedAt === 'string' ? response.data.updatedAt : null;
         setLastServerUpdatedAt(updatedAt);
@@ -602,7 +614,7 @@ export default function OperationsPreview() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeSection, efficiencyOnlyViewer]);
 
   useEffect(() => {
     const mapped = filterFromSection(activeSection);
