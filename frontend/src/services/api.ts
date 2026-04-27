@@ -106,8 +106,8 @@ export const saveSmtpConfig = (data: any) => api.post('/smtp-config', data);
 export const testSmtpConfig = () => api.post('/smtp-config/test');
 
 export const getOperationsPreviewState = () => api.get('/operations-preview/state');
-export const saveOperationsPreviewState = (state: Record<string, unknown>) =>
-  api.put('/operations-preview/state', state);
+export const saveOperationsPreviewState = (state: Record<string, unknown>, updatedAt?: string | null) =>
+  api.put('/operations-preview/state', updatedAt ? { ...state, updatedAt } : state);
 export const downloadOperationsPreviewExcel = async (params: {
   section: 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'efficiency';
   year: number;

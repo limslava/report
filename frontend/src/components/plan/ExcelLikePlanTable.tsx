@@ -24,6 +24,7 @@ import { PlanningGridRow, PlanningSegmentReport } from '../../types/planning-v2.
 import { useAuthStore } from '../../store/auth-store';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../../store/unsavedChanges';
 import { downloadBlob } from '../../utils/download';
+import { getPlansWebSocketUrl } from '../../services/websocket-url';
 
 interface ExcelLikePlanTableProps {
   segmentCode: 'KTK_VVO' | 'KTK_MOW' | 'AUTO' | 'RAIL' | 'EXTRA' | 'TO';
@@ -60,14 +61,6 @@ function keyFor(metricCode: string, dayIndex: number): string {
   return `${metricCode}:${dayIndex}`;
 }
 
-
-function getPlanningWebSocketUrl(): string {
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return `${protocol}://localhost:3000/ws/plans`;
-  }
-  return `${protocol}://${window.location.host}/ws/plans`;
-}
 
 function isSameContext(a: ReportContext, b: Pick<ReportContext, 'segmentCode' | 'year' | 'month'>): boolean {
   return a.segmentCode === b.segmentCode && a.year === b.year && a.month === b.month;
@@ -361,7 +354,11 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
         return;
       }
 
-      const ws = new WebSocket(getPlanningWebSocketUrl());
+      const wsUrl = getPlansWebSocketUrl();
+      if (!wsUrl) {
+        return;
+      }
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onmessage = (event) => {

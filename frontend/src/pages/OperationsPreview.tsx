@@ -10,6 +10,7 @@ import '../styles/operations-preview.css';
 type PreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'efficiency';
 type PreviewMode = 'plan' | 'fact';
 type Department = 'Контейнеры' | 'Авто' | 'Диспетчера' | 'Курьеры';
+type EfficiencyLocation = 'ktk_vvo';
 type SortField = 'manual' | 'name' | 'plate';
 type SortDirection = 'asc' | 'desc';
 type SectionSortState = { field: SortField; direction: SortDirection };
@@ -39,6 +40,9 @@ const MONTH_OPTIONS = [
   { value: 12, label: 'Декабрь' },
 ];
 const MONTH_LABELS_SHORT = ['ЯНВ', 'ФЕВ', 'МАР', 'АПР', 'МАЙ', 'ИЮН', 'ИЮЛ', 'АВГ', 'СЕН', 'ОКТ', 'НОЯ', 'ДЕК'];
+const EFFICIENCY_LOCATION_OPTIONS: Array<{ value: EfficiencyLocation; label: string }> = [
+  { value: 'ktk_vvo', label: 'КТК Влк' },
+];
 
 type PersonRow = {
   id: string;
@@ -124,10 +128,12 @@ export default function OperationsPreview() {
   const [filter, setFilter] = useState<'Все' | Department>('Все');
   const [monthValue, setMonthValue] = useState('2026-04');
   const [mode, setMode] = useState<PreviewMode>('fact');
+  const [efficiencyLocation, setEfficiencyLocation] = useState<EfficiencyLocation>('ktk_vvo');
   const [allOverrides, setAllOverrides] = useState<ScopedOverrides>({} as ScopedOverrides);
   const [copyStatus, setCopyStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [lastSavedSignature, setLastSavedSignature] = useState<string>('');
   const [lastSavedSnapshot, setLastSavedSnapshot] = useState<PreviewPersistedState | null>(null);
+  const [lastServerUpdatedAt, setLastServerUpdatedAt] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [, setActiveCell] = useState<{
     key: string;
@@ -571,6 +577,8 @@ export default function OperationsPreview() {
       try {
         const response = await getOperationsPreviewState();
         const payload = (response.data?.state ?? null) as Partial<PreviewPersistedState> | null;
+        const updatedAt = typeof response.data?.updatedAt === 'string' ? response.data.updatedAt : null;
+        setLastServerUpdatedAt(updatedAt);
         restoreFromPayload(payload);
         return;
       } catch {
@@ -930,7 +938,12 @@ export default function OperationsPreview() {
 
   const saveDraft = async (): Promise<boolean> => {
     try {
-      await saveOperationsPreviewState(currentSnapshot as unknown as Record<string, unknown>);
+      const response = await saveOperationsPreviewState(
+        currentSnapshot as unknown as Record<string, unknown>,
+        lastServerUpdatedAt
+      );
+      const updatedAt = typeof response.data?.updatedAt === 'string' ? response.data.updatedAt : null;
+      setLastServerUpdatedAt(updatedAt);
       try {
         localStorage.setItem(
           PREVIEW_STORAGE_KEY,
@@ -946,7 +959,14 @@ export default function OperationsPreview() {
       setLastSavedSignature(currentDataSignature);
       setCopyStatus((prev) => (prev?.type === 'error' ? prev : null));
       return true;
-    } catch {
+    } catch (error: any) {
+      if (error?.response?.status === 409) {
+        setCopyStatus({
+          type: 'error',
+          text: 'Данные были изменены другим пользователем. Обновите страницу и повторите сохранение.',
+        });
+        return false;
+      }
       setCopyStatus({ type: 'error', text: 'Не удалось сохранить изменения. Повторите попытку.' });
       return false;
     }
@@ -1047,6 +1067,25 @@ export default function OperationsPreview() {
                 '& .MuiInputBase-root': { height: 40 },
               }}
             />
+            {isEfficiencySection && (
+              <TextField
+                label="Направление"
+                select
+                size="small"
+                value={efficiencyLocation}
+                onChange={(event) => setEfficiencyLocation(event.target.value as EfficiencyLocation)}
+                sx={{
+                  width: 180,
+                  '& .MuiInputBase-root': { height: 40 },
+                }}
+              >
+                {EFFICIENCY_LOCATION_OPTIONS.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
             {!isEfficiencySection && (
               <TextField
                 label="Месяц"
@@ -1856,7 +1895,7 @@ export default function OperationsPreview() {
                     ? 'отпуск'
                     : 'выходной'
                 : code === 'H' && filter === 'Авто'
-                  ? 'огрузка'
+                  ? 'Погрузка'
                   : CELL_META[code].label}
             </span>
           ))}

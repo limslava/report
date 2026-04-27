@@ -22,6 +22,7 @@ import {
   Divider,
   Tooltip,
   Badge,
+  SvgIcon,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -46,6 +47,7 @@ import {
   canAccessAdmin,
   canAccessOperationsPreview,
   canViewCalendar,
+  canViewOperationsEfficiency,
   canViewFinancialPlan,
   canViewSummary,
   canViewTotalsInPlans,
@@ -89,6 +91,8 @@ const DashboardLayout = () => {
   const drawerWidth = isPinnedOpen ? expandedDrawerWidth : collapsedDrawerWidth;
   const canViewTotals = canViewTotalsInPlans(user?.role);
   const canViewFinancial = canViewFinancialPlan(user?.role);
+  const canViewEfficiency = canViewOperationsEfficiency(user?.role);
+  const isHeadKtkVvo = user?.role === 'head_ktk_vvo';
   const isKtkVvoManager = user?.role === 'manager_ktk_vvo' || user?.role === 'head_ktk_vvo';
   const isAdmin = canAccessAdmin(user?.role);
   const serviceHealth = useServiceHealth();
@@ -149,6 +153,25 @@ const DashboardLayout = () => {
     <CalendarMonth />
   );
 
+  const dispatchMenuIcon = isHeadKtkVvo ? (
+    <SvgIcon viewBox="0 0 24 24" sx={{ fontSize: 24 }}>
+      <defs>
+        <linearGradient id="csMarkGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#FFB347" />
+          <stop offset="100%" stopColor="#FF6A00" />
+        </linearGradient>
+      </defs>
+      <circle cx="12" cy="12" r="9.5" fill="#111827" />
+      <circle cx="12" cy="12" r="7.25" fill="none" stroke="url(#csMarkGradient)" strokeWidth="1.8" />
+      <circle cx="12" cy="12" r="2.6" fill="none" stroke="#22D3EE" strokeWidth="1.6" />
+      <path d="M12 3.6v3.1M12 17.3v3.1M3.6 12h3.1M17.3 12h3.1" stroke="#22D3EE" strokeWidth="1.6" strokeLinecap="round" />
+    </SvgIcon>
+  ) : isKtkVvoManager ? (
+    <LocalShipping />
+  ) : (
+    <TableChart />
+  );
+
   const menuItems = [
     canViewSummary(user?.role)
       ? { key: 'summary', label: 'Сводный отчет', icon: <Assignment />, onClick: () => handleNavigate('/summary-report'), active: location.pathname.includes('/summary') }
@@ -182,7 +205,7 @@ const DashboardLayout = () => {
   }, []);
 
   useEffect(() => {
-    if (!user?.id) {
+    if (!user?.id || !canViewCalendar(user.role)) {
       stopUnreadSync();
       return;
     }
@@ -190,7 +213,7 @@ const DashboardLayout = () => {
     return () => {
       stopUnreadSync();
     };
-  }, [user?.id, startUnreadSync, stopUnreadSync]);
+  }, [user?.id, user?.role, startUnreadSync, stopUnreadSync]);
 
   useEffect(() => {
     if (!user) {
@@ -317,9 +340,19 @@ const DashboardLayout = () => {
       <List>
         <ListItem disablePadding key="plans">
           <Tooltip title={!isPinnedOpen ? (isKtkVvoManager ? 'Диспетчерский отдел' : 'Показатели') : ''} placement="right">
-            <ListItemButton selected={location.pathname.includes('/plans') || location.pathname === '/' || (isKtkVvoManager && location.pathname.includes('/operations-preview'))} onClick={() => handleNavigate('/plans')}>
+            <ListItemButton
+              selected={
+                location.pathname.includes('/plans') ||
+                location.pathname === '/' ||
+                (isKtkVvoManager && location.pathname.includes('/operations-preview')) ||
+                (canViewEfficiency &&
+                  location.pathname === '/operations-preview' &&
+                  location.search.includes('section=efficiency'))
+              }
+              onClick={() => handleNavigate('/plans')}
+            >
               <ListItemIcon sx={{ minWidth: isPinnedOpen ? 40 : 0, justifyContent: 'center' }}>
-                {isKtkVvoManager ? <LocalShipping /> : <TableChart />}
+                {dispatchMenuIcon}
               </ListItemIcon>
               {isPinnedOpen && <ListItemText primary={isKtkVvoManager ? 'Диспетчерский отдел' : 'Показатели'} />}
             </ListItemButton>
@@ -421,6 +454,17 @@ const DashboardLayout = () => {
                   sx={{ py: 0.5, minHeight: 34 }}
                 >
                   <ListItemText primary="Валовая прибыль, план" primaryTypographyProps={{ fontSize: 14 }} />
+                </ListItemButton>
+              </ListItem>
+            )}
+            {canViewEfficiency && (
+              <ListItem disablePadding sx={{ pl: 4 }}>
+                <ListItemButton
+                  selected={location.pathname === '/operations-preview' && location.search.includes('section=efficiency')}
+                  onClick={() => handleNavigate('/operations-preview?section=efficiency')}
+                  sx={{ py: 0.5, minHeight: 34 }}
+                >
+                  <ListItemText primary="Эффективность" primaryTypographyProps={{ fontSize: 14 }} />
                 </ListItemButton>
               </ListItem>
             )}

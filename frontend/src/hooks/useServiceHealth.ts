@@ -8,7 +8,7 @@ type HealthResult = {
 
 const DEFAULT_MESSAGE = 'Сервис временно недоступен. Повторите попытку позже.';
 
-export function useServiceHealth(pollIntervalMs: number = 30000) {
+export function useServiceHealth(pollIntervalMs: number = 60000) {
   const [isUnavailable, setIsUnavailable] = useState(false);
   const [message, setMessage] = useState(DEFAULT_MESSAGE);
   const [statusText, setStatusText] = useState<string | null>(null);
@@ -68,17 +68,40 @@ export function useServiceHealth(pollIntervalMs: number = 30000) {
 
   useEffect(() => {
     let stopped = false;
+    let timer: number | null = null;
 
-    const poll = async () => {
+    const schedule = (delayMs: number) => {
       if (stopped) return;
-      await checkNow();
+      if (timer) {
+        window.clearTimeout(timer);
+      }
+      timer = window.setTimeout(async () => {
+        if (stopped) return;
+        const hidden = document.visibilityState === 'hidden';
+        if (!hidden) {
+          await checkNow();
+        }
+        schedule(hidden ? Math.max(pollIntervalMs * 5, 300000) : pollIntervalMs);
+      }, delayMs);
     };
 
-    void poll();
-    const timer = window.setInterval(poll, pollIntervalMs);
+    void checkNow();
+    schedule(pollIntervalMs);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void checkNow();
+        schedule(pollIntervalMs);
+      }
+    };
+    window.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
       stopped = true;
-      window.clearInterval(timer);
+      if (timer) {
+        window.clearTimeout(timer);
+      }
+      window.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [checkNow, pollIntervalMs]);
 
@@ -90,4 +113,3 @@ export function useServiceHealth(pollIntervalMs: number = 30000) {
     setIsUnavailable,
   };
 }
-

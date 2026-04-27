@@ -26,6 +26,7 @@ import { FinancialPlanRow } from '../../types/financial-plan.types';
 import { downloadBlob } from '../../utils/download';
 import { useAuthStore } from '../../store/auth-store';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../../store/unsavedChanges';
+import { getPlansWebSocketUrl } from '../../services/websocket-url';
 
 interface FinancialPlanTableProps {
   year: number;
@@ -44,14 +45,6 @@ type FinancialPlanRealtimeEvent = {
 };
 
 const monthNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
-
-function getPlanningWebSocketUrl(): string {
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return `${protocol}://localhost:3000/ws/plans`;
-  }
-  return `${protocol}://${window.location.host}/ws/plans`;
-}
 
 function isFinancialPlanRealtimeEvent(payload: unknown): payload is FinancialPlanRealtimeEvent {
   if (!payload || typeof payload !== 'object') {
@@ -176,7 +169,11 @@ export default function FinancialPlanTable({ year, onYearChange, canEdit }: Fina
 
     const connect = () => {
       if (stopped) return;
-      const ws = new WebSocket(getPlanningWebSocketUrl());
+      const wsUrl = getPlansWebSocketUrl();
+      if (!wsUrl) {
+        return;
+      }
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onmessage = (event) => {

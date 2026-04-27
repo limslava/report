@@ -1,13 +1,6 @@
 import { create } from 'zustand';
 import { getNotesUnreadCount } from '../services/notes.api';
-
-function getPlansWebSocketUrl(): string {
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  if (import.meta.env.DEV) {
-    return `${protocol}://localhost:3000/ws/plans`;
-  }
-  return `${protocol}://${window.location.host}/ws/plans`;
-}
+import { getPlansWebSocketUrl } from '../services/websocket-url';
 
 type NotesUnreadState = {
   unreadCount: number;
@@ -71,9 +64,11 @@ const useNotesUnreadStore = create<NotesUnreadState>((set, get) => {
   const connectWs = () => {
     if (!running) return;
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+    const wsUrl = getPlansWebSocketUrl();
+    if (!wsUrl) return;
 
     try {
-      ws = new WebSocket(getPlansWebSocketUrl());
+      ws = new WebSocket(wsUrl);
     } catch {
       ws = null;
       return;

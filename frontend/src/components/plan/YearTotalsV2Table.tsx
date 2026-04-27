@@ -21,6 +21,7 @@ import { registerUnsavedHandlers, setHasUnsavedChanges } from '../../store/unsav
 import { PlanningYearTotalsRow } from '../../types/planning-v2.types';
 import { downloadBlob } from '../../utils/download';
 import { formatInt, formatPct } from '../../utils/format';
+import { getPlansWebSocketUrl } from '../../services/websocket-url';
 
 interface YearTotalsV2TableProps {
   year: number;
@@ -39,14 +40,6 @@ type PlanningRealtimeEvent = {
   timestamp: string;
   userId?: string;
 };
-
-function getPlanningWebSocketUrl(): string {
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return `${protocol}://localhost:3000/ws/plans`;
-  }
-  return `${protocol}://${window.location.host}/ws/plans`;
-}
 
 function isPlanningRealtimeEvent(payload: unknown): payload is PlanningRealtimeEvent {
   if (!payload || typeof payload !== 'object') {
@@ -248,7 +241,11 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
     let stopped = false;
     let reconnectTimer: number | null = null;
     let refreshTimer: number | null = null;
-    const ws = new WebSocket(getPlanningWebSocketUrl());
+    const wsUrl = getPlansWebSocketUrl();
+    if (!wsUrl) {
+      return;
+    }
+    const ws = new WebSocket(wsUrl);
 
     ws.onmessage = (event) => {
       if (stopped) return;

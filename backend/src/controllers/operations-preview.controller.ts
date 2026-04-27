@@ -181,6 +181,10 @@ export const getOperationsPreviewState = async (_req: Request, res: Response) =>
 
 export const saveOperationsPreviewState = async (req: Request, res: Response) => {
   const sanitized = sanitizePayload(req.body);
+  const clientUpdatedAtRaw =
+    typeof req.body?.updatedAt === 'string' ? req.body.updatedAt : null;
+  const clientUpdatedAtMs = clientUpdatedAtRaw ? Date.parse(clientUpdatedAtRaw) : NaN;
+
   if (!sanitized.overrides || (!sanitized.peopleByMonth && !sanitized.peopleState)) {
     const error: any = new Error('Invalid operations preview payload');
     error.statusCode = 400;
@@ -198,6 +202,15 @@ export const saveOperationsPreviewState = async (req: Request, res: Response) =>
       updatedByUserId: req.user?.id ?? null,
     });
   } else {
+    if (Number.isFinite(clientUpdatedAtMs) && row.updatedAt) {
+      const serverUpdatedAtMs = row.updatedAt.getTime();
+      if (serverUpdatedAtMs !== clientUpdatedAtMs) {
+        const error: any = new Error('State was changed by another user. Please refresh and try again.');
+        error.statusCode = 409;
+        throw error;
+      }
+    }
+
     row.payload = sanitized;
     row.updatedByUserId = req.user?.id ?? null;
   }

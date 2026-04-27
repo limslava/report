@@ -13,6 +13,7 @@ import RouteAccessGuard from './components/auth/RouteAccessGuard';
 import {
   canAccessAdmin,
   canAccessOperationsPreview,
+  canViewOperationsEfficiency,
   canViewCalendar,
   canViewFinancialPlan,
   canViewSummary,
@@ -74,7 +75,7 @@ function App() {
           <Route
             path="operations-preview"
             element={(
-              <RouteAccessGuard allow={canAccessOperationsPreview(user?.role)}>
+              <RouteAccessGuard allow={canAccessOperationsPreview(user?.role) || canViewOperationsEfficiency(user?.role)}>
                 <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
                   <OperationsPreview />
                 </Suspense>

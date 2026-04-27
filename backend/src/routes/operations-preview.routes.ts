@@ -11,10 +11,21 @@ import {
 const router = Router();
 
 router.use(authenticate);
-router.use(authorizeRole('admin', 'manager_ktk_vvo', 'head_ktk_vvo'));
 
-router.get('/state', asyncHandler(getOperationsPreviewState));
-router.put('/state', asyncHandler(saveOperationsPreviewState));
-router.get('/export', asyncHandler(downloadOperationsPreviewExcel));
+router.get(
+  '/state',
+  authorizeRole('admin', 'manager_ktk_vvo', 'head_ktk_vvo', 'director', 'financer'),
+  asyncHandler(getOperationsPreviewState)
+);
+router.put(
+  '/state',
+  authorizeRole('admin', 'manager_ktk_vvo', 'head_ktk_vvo'),
+  asyncHandler(saveOperationsPreviewState)
+);
+router.get(
+  '/export',
+  authorizeRole('admin', 'manager_ktk_vvo', 'head_ktk_vvo', 'director', 'financer'),
+  asyncHandler(downloadOperationsPreviewExcel)
+);
 
 export { router as operationsPreviewRouter };
