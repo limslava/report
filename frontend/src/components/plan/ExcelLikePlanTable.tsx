@@ -24,7 +24,7 @@ import { PlanningGridRow, PlanningSegmentReport } from '../../types/planning-v2.
 import { useAuthStore } from '../../store/auth-store';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../../store/unsavedChanges';
 import { downloadBlob } from '../../utils/download';
-import { getPlansWebSocketUrl } from '../../services/websocket-url';
+import { subscribePlansRealtime } from '../../services/plans-realtime';
 
 interface ExcelLikePlanTableProps {
   segmentCode: 'KTK_VVO' | 'KTK_MOW' | 'AUTO' | 'RAIL' | 'EXTRA' | 'TO';
@@ -243,8 +243,6 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   const [remoteUpdatePending, setRemoteUpdatePending] = useState<boolean>(false);
   const [pendingContext, setPendingContext] = useState<ReportContext | null>(null);
   const [confirmSwitchOpen, setConfirmSwitchOpen] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimerRef = useRef<number | null>(null);
   const contextRef = useRef<ReportContext>(desiredContext);
   const dirtyCountRef = useRef<number>(0);
   const isEditableRef = useRef<boolean>(isEditable);
@@ -347,74 +345,35 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   }, [desiredContext, loadData]);
 
   useEffect(() => {
-    let stopped = false;
+    const unsubscribe = subscribePlansRealtime((payload) => {
+      if (!isPlanningRealtimeEvent(payload)) {
+        return;
+      }
+      const data = payload;
 
-    const connect = () => {
-      if (stopped) {
+      if (!isSameContext(contextRef.current, data)) {
         return;
       }
 
-      const wsUrl = getPlansWebSocketUrl();
-      if (!wsUrl) {
+      if (data.userId && userIdRef.current && data.userId === userIdRef.current) {
         return;
       }
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
 
-      ws.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data) as unknown;
-          if (!isPlanningRealtimeEvent(payload)) {
-            return;
-          }
-          const data = payload;
+      if (!isEditableRef.current) {
+        void loadData(contextRef.current);
+        return;
+      }
 
-          if (!isSameContext(contextRef.current, data)) {
-            return;
-          }
+      if (dirtyCountRef.current === 0 && !savingRef.current) {
+        void loadData(contextRef.current);
+        return;
+      }
 
-          if (data.userId && userIdRef.current && data.userId === userIdRef.current) {
-            return;
-          }
-
-          if (!isEditableRef.current) {
-            void loadData(contextRef.current);
-            return;
-          }
-
-          if (dirtyCountRef.current === 0 && !savingRef.current) {
-            void loadData(contextRef.current);
-            return;
-          }
-
-          setRemoteUpdatePending(true);
-        } catch {
-          // ignore malformed websocket payload
-        }
-      };
-
-      ws.onclose = () => {
-        wsRef.current = null;
-        if (!stopped) {
-          reconnectTimerRef.current = window.setTimeout(connect, 2500);
-        }
-      };
-
-      ws.onerror = () => {
-        ws.close();
-      };
-    };
-
-    connect();
+      setRemoteUpdatePending(true);
+    });
 
     return () => {
-      stopped = true;
-      if (reconnectTimerRef.current) {
-        window.clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
-      }
-      wsRef.current?.close();
-      wsRef.current = null;
+      unsubscribe();
     };
   }, [loadData]);
 

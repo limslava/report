@@ -21,7 +21,7 @@ import { registerUnsavedHandlers, setHasUnsavedChanges } from '../../store/unsav
 import { PlanningYearTotalsRow } from '../../types/planning-v2.types';
 import { downloadBlob } from '../../utils/download';
 import { formatInt, formatPct } from '../../utils/format';
-import { getPlansWebSocketUrl } from '../../services/websocket-url';
+import { subscribePlansRealtime } from '../../services/plans-realtime';
 
 interface YearTotalsV2TableProps {
   year: number;
@@ -239,51 +239,27 @@ export default function YearTotalsV2Table({ year, isAdmin, onYearChange }: YearT
 
   useEffect(() => {
     let stopped = false;
-    let reconnectTimer: number | null = null;
     let refreshTimer: number | null = null;
-    const wsUrl = getPlansWebSocketUrl();
-    if (!wsUrl) {
-      return;
-    }
-    const ws = new WebSocket(wsUrl);
-
-    ws.onmessage = (event) => {
+    const unsubscribe = subscribePlansRealtime((payload) => {
       if (stopped) return;
-      try {
-        const payload = JSON.parse(event.data) as unknown;
-        if (!isPlanningRealtimeEvent(payload)) return;
-        if (payload.year !== yearRef.current) return;
+      if (!isPlanningRealtimeEvent(payload)) return;
+      if (payload.year !== yearRef.current) return;
 
-        if (draftCountRef.current === 0 && !savingRef.current) {
-          if (refreshTimer) window.clearTimeout(refreshTimer);
-          refreshTimer = window.setTimeout(() => {
-            void loadData();
-          }, 250);
-          return;
-        }
-
-        setRemoteUpdatePending(true);
-      } catch {
-        // ignore malformed events
-      }
-    };
-
-    ws.onclose = () => {
-      if (stopped) return;
-      reconnectTimer = window.setTimeout(() => {
-        if (!stopped) {
+      if (draftCountRef.current === 0 && !savingRef.current) {
+        if (refreshTimer) window.clearTimeout(refreshTimer);
+        refreshTimer = window.setTimeout(() => {
           void loadData();
-        }
-      }, 1500);
-    };
+        }, 250);
+        return;
+      }
 
-    ws.onerror = () => ws.close();
+      setRemoteUpdatePending(true);
+    });
 
     return () => {
       stopped = true;
       if (refreshTimer) window.clearTimeout(refreshTimer);
-      if (reconnectTimer) window.clearTimeout(reconnectTimer);
-      ws.close();
+      unsubscribe();
     };
   }, []);
 

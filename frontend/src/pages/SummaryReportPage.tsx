@@ -22,7 +22,7 @@ import { PlanningSummaryItem } from '../types/planning-v2.types';
 import { useAuthStore } from '../store/auth-store';
 import { canViewSummary } from '../utils/rolePermissions';
 import { formatInt, formatPct } from '../utils/format';
-import { getPlansWebSocketUrl } from '../services/websocket-url';
+import { subscribePlansRealtime } from '../services/plans-realtime';
 
 type PlanningRealtimeEvent = {
   type: 'planning-v2:segment-updated';
@@ -95,68 +95,25 @@ const SummaryReportPage = () => {
 
   useEffect(() => {
     let stopped = false;
-    let reconnectTimer: number | null = null;
     let refreshTimer: number | null = null;
-    let socket: WebSocket | null = null;
-    let reconnectAttempt = 0;
-    const wsUrl = getPlansWebSocketUrl();
-    if (!wsUrl) {
-      return;
-    }
-
-    const connect = () => {
+    const unsubscribe = subscribePlansRealtime((payload) => {
       if (stopped) return;
-      socket = new WebSocket(wsUrl);
+      if (!isPlanningRealtimeEvent(payload)) return;
+      if (payload.year !== year || payload.month !== month) return;
 
-      socket.onopen = () => {
-        reconnectAttempt = 0;
-      };
-
-      socket.onmessage = (event) => {
-        if (stopped) return;
-        try {
-          const payload = JSON.parse(event.data) as unknown;
-          if (!isPlanningRealtimeEvent(payload)) return;
-          if (payload.year !== year || payload.month !== month) return;
-
-          if (refreshTimer) {
-            window.clearTimeout(refreshTimer);
-          }
-          // Coalesce bursty updates from multiple saves into one refresh.
-          refreshTimer = window.setTimeout(() => {
-            void loadData();
-          }, 350);
-        } catch {
-          // ignore malformed events
-        }
-      };
-
-      socket.onclose = () => {
-        if (stopped) return;
-        if (refreshTimer) {
-          window.clearTimeout(refreshTimer);
-          refreshTimer = null;
-        }
-        const delay = Math.min(30000, 1000 * 2 ** reconnectAttempt);
-        reconnectAttempt += 1;
-        reconnectTimer = window.setTimeout(() => {
-          if (!stopped) {
-            void loadData();
-            connect();
-          }
-        }, delay);
-      };
-
-      socket.onerror = () => socket?.close();
-    };
-
-    connect();
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer);
+      }
+      // Coalesce bursty updates from multiple saves into one refresh.
+      refreshTimer = window.setTimeout(() => {
+        void loadData();
+      }, 350);
+    });
 
     return () => {
       stopped = true;
       if (refreshTimer) window.clearTimeout(refreshTimer);
-      if (reconnectTimer) window.clearTimeout(reconnectTimer);
-      socket?.close();
+      unsubscribe();
     };
   }, [year, month, loadData]);
 
