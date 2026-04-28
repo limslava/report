@@ -9,6 +9,7 @@ import SummaryReportPage from './pages/SummaryReportPage';
 import AdminPage from './pages/AdminPage';
 import SettingsPage from './pages/SettingsPage';
 import PlansPage from './pages/PlansPage';
+import SWTechDashboardPage from './pages/SWTechDashboardPage';
 import RouteAccessGuard from './components/auth/RouteAccessGuard';
 import {
   canAccessAdmin,
@@ -17,6 +18,7 @@ import {
   canViewCalendar,
   canViewFinancialPlan,
   canViewSummary,
+  canViewTechDashboard,
 } from './utils/rolePermissions';
 
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
@@ -79,6 +81,14 @@ function App() {
                 <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
                   <OperationsPreview />
                 </Suspense>
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="sw-tech-dashboard"
+            element={(
+              <RouteAccessGuard allow={canViewTechDashboard(user?.role)}>
+                <SWTechDashboardPage />
               </RouteAccessGuard>
             )}
           />

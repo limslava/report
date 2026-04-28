@@ -50,6 +50,7 @@ import {
   canViewOperationsEfficiency,
   canViewFinancialPlan,
   canViewSummary,
+  canViewTechDashboard,
   canViewTotalsInPlans,
 } from '../utils/rolePermissions';
 import { getHasUnsavedChanges, getUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
@@ -92,6 +93,7 @@ const DashboardLayout = () => {
   const canViewTotals = canViewTotalsInPlans(user?.role);
   const canViewFinancial = canViewFinancialPlan(user?.role);
   const canViewEfficiency = canViewOperationsEfficiency(user?.role);
+  const canOpenTechDashboard = canViewTechDashboard(user?.role);
   const isHeadKtkVvo = user?.role === 'head_ktk_vvo';
   const isKtkVvoManager = user?.role === 'manager_ktk_vvo' || user?.role === 'head_ktk_vvo';
   const isAdmin = canAccessAdmin(user?.role);
@@ -468,6 +470,17 @@ const DashboardLayout = () => {
                 </ListItemButton>
               </ListItem>
             )}
+            {canOpenTechDashboard && (
+              <ListItem disablePadding sx={{ pl: 4 }}>
+                <ListItemButton
+                  selected={location.pathname === '/sw-tech-dashboard'}
+                  onClick={() => handleNavigate('/sw-tech-dashboard')}
+                  sx={{ py: 0.5, minHeight: 34 }}
+                >
+                  <ListItemText primary="SW Tech Dashboard" primaryTypographyProps={{ fontSize: 14 }} />
+                </ListItemButton>
+              </ListItem>
+            )}
           </>
         )}
         {isAdmin && canAccessOperationsPreview(user?.role) && (
@@ -610,6 +623,7 @@ const DashboardLayout = () => {
                         : 'Показатели'))
                 : 'Показатели')}
             {location.pathname.includes('/summary-report') && 'Сводный отчет'}
+            {location.pathname.includes('/sw-tech-dashboard') && 'SW Tech Dashboard'}
             {location.pathname.includes('/admin') && 'Администрирование'}
             {location.pathname.includes('/settings') && 'Настройки'}
           </Typography>
