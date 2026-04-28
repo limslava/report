@@ -33,10 +33,27 @@ type PersonRow = {
 
 type PreviewPersistedState = {
   mode?: PreviewMode;
+  filter?: 'Все' | Department;
   overrides?: Record<OverrideScopeKey, Record<string, CellCode>>;
   peopleByMonth?: Record<string, PersonRow[]>;
   peopleState?: PersonRow[];
   monthValue?: string;
+  meta?: {
+    overrideScopeVersions?: Record<string, string>;
+    peopleMonthVersions?: Record<string, string>;
+  };
+};
+
+type SaveClientVersions = {
+  overrideScopeVersions?: Record<string, string | null>;
+  peopleMonthVersions?: Record<string, string | null>;
+};
+
+type OverridesPatchPayload = {
+  [scopeKey: string]: {
+    set?: Record<string, CellCode>;
+    unset?: string[];
+  };
 };
 
 const DEPARTMENT_BY_SECTION: Record<PreviewSection, Department> = {
@@ -85,6 +102,47 @@ const sanitizePayload = (payload: unknown): Record<string, unknown> => {
   }
 
   return result;
+};
+
+const mergePreviewPayload = (
+  current: PreviewPersistedState,
+  incoming: PreviewPersistedState
+): PreviewPersistedState => {
+  const currentOverrides = (current.overrides ?? {}) as Record<OverrideScopeKey, Record<string, CellCode>>;
+  const incomingOverrides = (incoming.overrides ?? {}) as Record<OverrideScopeKey, Record<string, CellCode>>;
+  const mergedOverrides: Record<OverrideScopeKey, Record<string, CellCode>> = { ...currentOverrides };
+
+  for (const [scopeKey, scopeValues] of Object.entries(incomingOverrides)) {
+    const castScopeKey = scopeKey as OverrideScopeKey;
+    mergedOverrides[castScopeKey] = {
+      ...(currentOverrides[castScopeKey] ?? {}),
+      ...(scopeValues ?? {}),
+    };
+  }
+
+  const currentPeopleByMonth = (current.peopleByMonth ?? {}) as Record<string, PersonRow[]>;
+  const incomingPeopleByMonth = (incoming.peopleByMonth ?? {}) as Record<string, PersonRow[]>;
+  const mergedPeopleByMonth: Record<string, PersonRow[]> = {
+    ...currentPeopleByMonth,
+    ...incomingPeopleByMonth,
+  };
+
+  return {
+    ...current,
+    ...incoming,
+    overrides: mergedOverrides,
+    peopleByMonth: mergedPeopleByMonth,
+    meta: {
+      overrideScopeVersions: {
+        ...(current.meta?.overrideScopeVersions ?? {}),
+        ...(incoming.meta?.overrideScopeVersions ?? {}),
+      },
+      peopleMonthVersions: {
+        ...(current.meta?.peopleMonthVersions ?? {}),
+        ...(incoming.meta?.peopleMonthVersions ?? {}),
+      },
+    },
+  };
 };
 
 const isValidSection = (value: unknown): value is PreviewSection =>
@@ -192,11 +250,14 @@ export const getOperationsPreviewState = async (req: Request, res: Response) => 
 
 export const saveOperationsPreviewState = async (req: Request, res: Response) => {
   const sanitized = sanitizePayload(req.body);
-  const clientUpdatedAtRaw =
-    typeof req.body?.updatedAt === 'string' ? req.body.updatedAt : null;
-  const clientUpdatedAtMs = clientUpdatedAtRaw ? Date.parse(clientUpdatedAtRaw) : NaN;
+  const clientVersions = (req.body?.clientVersions ?? {}) as SaveClientVersions;
+  const overridesPatch = (req.body?.overridesPatch ?? null) as OverridesPatchPayload | null;
 
-  if (!sanitized.overrides || (!sanitized.peopleByMonth && !sanitized.peopleState)) {
+  const hasOverridesSnapshot = !!sanitized.overrides;
+  const hasOverridesPatch = !!overridesPatch && typeof overridesPatch === 'object' && Object.keys(overridesPatch).length > 0;
+  const hasPeoplePayload = !!sanitized.peopleByMonth || !!sanitized.peopleState;
+
+  if ((!hasOverridesSnapshot && !hasOverridesPatch) && !hasPeoplePayload) {
     const error: any = new Error('Invalid operations preview payload');
     error.statusCode = 400;
     throw error;
@@ -207,22 +268,98 @@ export const saveOperationsPreviewState = async (req: Request, res: Response) =>
   });
 
   if (!row) {
+    const incomingPayload = sanitized as PreviewPersistedState;
+    const incomingOverrideScopes = hasOverridesPatch
+      ? Object.keys(overridesPatch ?? {})
+      : Object.keys(incomingPayload.overrides ?? {});
+    const incomingPeopleMonths = Object.keys(incomingPayload.peopleByMonth ?? {});
+    const nowIso = new Date().toISOString();
+    const overrideScopeVersions = Object.fromEntries(incomingOverrideScopes.map((scope) => [scope, nowIso]));
+    const peopleMonthVersions = Object.fromEntries(incomingPeopleMonths.map((monthKey) => [monthKey, nowIso]));
+    const payloadWithMeta: PreviewPersistedState = {
+      ...incomingPayload,
+      meta: {
+        overrideScopeVersions,
+        peopleMonthVersions,
+      },
+    };
     row = operationsPreviewRepo.create({
       scopeKey: OPERATIONS_PREVIEW_SCOPE_KEY,
-      payload: sanitized,
+      payload: payloadWithMeta,
       updatedByUserId: req.user?.id ?? null,
     });
   } else {
-    if (Number.isFinite(clientUpdatedAtMs) && row.updatedAt) {
-      const serverUpdatedAtMs = row.updatedAt.getTime();
-      if (serverUpdatedAtMs !== clientUpdatedAtMs) {
-        const error: any = new Error('State was changed by another user. Please refresh and try again.');
+    const currentPayload = sanitizePayload(row.payload) as PreviewPersistedState;
+    const incomingPayload = sanitized as PreviewPersistedState;
+    const currentOverrideVersions = currentPayload.meta?.overrideScopeVersions ?? {};
+    const currentPeopleVersions = currentPayload.meta?.peopleMonthVersions ?? {};
+
+    const incomingOverrideScopes = hasOverridesPatch
+      ? Object.keys(overridesPatch ?? {})
+      : Object.keys(incomingPayload.overrides ?? {});
+    const incomingPeopleMonths = Object.keys(incomingPayload.peopleByMonth ?? {});
+
+    for (const scope of incomingOverrideScopes) {
+      const serverVersion = currentOverrideVersions[scope] ?? null;
+      const clientVersion = clientVersions.overrideScopeVersions?.[scope] ?? null;
+      if (serverVersion && clientVersion !== serverVersion) {
+        const error: any = new Error(`Scope conflict for ${scope}. Please refresh and retry.`);
+        error.statusCode = 409;
+        throw error;
+      }
+    }
+    for (const monthKey of incomingPeopleMonths) {
+      const serverVersion = currentPeopleVersions[monthKey] ?? null;
+      const clientVersion = clientVersions.peopleMonthVersions?.[monthKey] ?? null;
+      if (serverVersion && clientVersion !== serverVersion) {
+        const error: any = new Error(`People month conflict for ${monthKey}. Please refresh and retry.`);
         error.statusCode = 409;
         throw error;
       }
     }
 
-    row.payload = sanitized;
+    const nowIso = new Date().toISOString();
+    let merged: PreviewPersistedState;
+    if (hasOverridesPatch) {
+      const nextOverrides: Record<OverrideScopeKey, Record<string, CellCode>> = {
+        ...((currentPayload.overrides ?? {}) as Record<OverrideScopeKey, Record<string, CellCode>>),
+      };
+      for (const [scopeKeyRaw, patch] of Object.entries(overridesPatch ?? {})) {
+        const scopeKey = scopeKeyRaw as OverrideScopeKey;
+        const currentScope = { ...(nextOverrides[scopeKey] ?? {}) };
+        const toSet = patch?.set ?? {};
+        const toUnset = patch?.unset ?? [];
+        Object.entries(toSet).forEach(([cellKey, cellCode]) => {
+          currentScope[cellKey] = cellCode;
+        });
+        toUnset.forEach((cellKey) => {
+          delete currentScope[cellKey];
+        });
+        nextOverrides[scopeKey] = currentScope;
+      }
+      merged = mergePreviewPayload(currentPayload, {
+        ...incomingPayload,
+        overrides: nextOverrides,
+      });
+    } else {
+      merged = mergePreviewPayload(currentPayload, incomingPayload);
+    }
+    const nextOverrideVersions = { ...(merged.meta?.overrideScopeVersions ?? {}) };
+    const nextPeopleVersions = { ...(merged.meta?.peopleMonthVersions ?? {}) };
+    incomingOverrideScopes.forEach((scope) => {
+      nextOverrideVersions[scope] = nowIso;
+    });
+    incomingPeopleMonths.forEach((monthKey) => {
+      nextPeopleVersions[monthKey] = nowIso;
+    });
+
+    row.payload = {
+      ...merged,
+      meta: {
+        overrideScopeVersions: nextOverrideVersions,
+        peopleMonthVersions: nextPeopleVersions,
+      },
+    };
     row.updatedByUserId = req.user?.id ?? null;
   }
 

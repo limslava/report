@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Box, MenuItem, Paper, TextField } from '@mui/material';
 import { useAuthStore } from '../store/auth-store';
@@ -66,6 +66,10 @@ type PreviewPersistedState = {
   mode: PreviewMode;
   overrides: ScopedOverrides;
   peopleByMonth: PeopleByMonth;
+  meta?: {
+    overrideScopeVersions?: Record<string, string>;
+    peopleMonthVersions?: Record<string, string>;
+  };
   peopleState?: PersonRow[]; // legacy fallback
 };
 
@@ -93,6 +97,16 @@ const getShiftValueForCount = (department: Department, code: CellCode): number =
 };
 
 const clonePeople = (rows: PersonRow[]): PersonRow[] => rows.map((row) => ({ ...row }));
+const isTestPersonRow = (row: PersonRow): boolean =>
+  row.id.startsWith('test-') || row.name.startsWith('Тест Водитель') || (row.secondName?.startsWith('Тест Водитель') ?? false);
+
+const sanitizePeopleByMonth = (input: PeopleByMonth): PeopleByMonth => {
+  const next: PeopleByMonth = {};
+  Object.entries(input).forEach(([monthKey, rows]) => {
+    next[monthKey] = Array.isArray(rows) ? rows.filter((row) => !isTestPersonRow(row)) : [];
+  });
+  return next;
+};
 
 const getPrevMonthValue = (value: string): string | null => {
   const [yearRaw, monthRaw] = value.split('-');
@@ -126,6 +140,7 @@ export default function OperationsPreview() {
   const userRole = useAuthStore((state) => state.user?.role);
   const canManagePlanFact = userRole === 'admin' || userRole === 'head_ktk_vvo';
   const efficiencyOnlyViewer = userRole === 'director' || userRole === 'financer';
+  const canChooseEfficiencyDirection = userRole === 'director' || userRole === 'financer';
   const [filter, setFilter] = useState<'Все' | Department>('Все');
   const [monthValue, setMonthValue] = useState('2026-04');
   const [mode, setMode] = useState<PreviewMode>('fact');
@@ -134,7 +149,6 @@ export default function OperationsPreview() {
   const [copyStatus, setCopyStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [lastSavedSignature, setLastSavedSignature] = useState<string>('');
   const [lastSavedSnapshot, setLastSavedSnapshot] = useState<PreviewPersistedState | null>(null);
-  const [lastServerUpdatedAt, setLastServerUpdatedAt] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [, setActiveCell] = useState<{
     key: string;
@@ -162,12 +176,26 @@ export default function OperationsPreview() {
   const [paintRow, setPaintRow] = useState<{ personId: string; lane: '1' | '2' } | null>(null);
   const [clipboardCell, setClipboardCell] = useState<CellCode | null>(null);
   const [editPerson, setEditPerson] = useState<PersonRow | null>(null);
+  const matrixSectionRef = useRef<HTMLElement | null>(null);
+  const matrixBodyRef = useRef<HTMLDivElement | null>(null);
+  const dragGhostRef = useRef<HTMLDivElement | null>(null);
+  const scopeVersionsRef = useRef<{
+    overrideScopeVersions: Record<string, string>;
+    peopleMonthVersions: Record<string, string>;
+  }>({
+    overrideScopeVersions: {},
+    peopleMonthVersions: {},
+  });
+  const [matrixScale, setMatrixScale] = useState(1);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
     person: PersonRow;
+    target: 'name' | 'plate';
+    lane?: '1' | '2';
   } | null>(null);
+  const [dragOverMarker, setDragOverMarker] = useState<{ personId: string; pos: 'before' | 'after' } | null>(null);
   const [clipboardPerson, setClipboardPerson] = useState<PersonRow | null>(null);
   const [noteEdit, setNoteEdit] = useState<{
     personId: string;
@@ -458,6 +486,100 @@ export default function OperationsPreview() {
     return currentSort.direction;
   };
 
+  const reorderPersonByDrop = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+    setPeopleStateForCurrentMonth((prev) => {
+      const fromIndex = prev.findIndex((item) => item.id === sourceId);
+      const toIndex = prev.findIndex((item) => item.id === targetId);
+      if (fromIndex < 0 || toIndex < 0) return prev;
+      const source = prev[fromIndex];
+      const target = prev[toIndex];
+      if (source.department !== target.department) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      const insertIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
+      next.splice(insertIndex, 0, moved);
+      return next;
+    });
+    const sourcePerson = peopleState.find((item) => item.id === sourceId);
+    if (sourcePerson) {
+      setSortBySection((prev) => ({
+        ...prev,
+        [sourcePerson.department]: { field: 'manual', direction: 'asc' },
+      }));
+    }
+  };
+
+  const startRowDrag = (event: DragEvent<HTMLButtonElement>, personId: string, label: string) => {
+    event.stopPropagation();
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', personId);
+    setDraggingId(personId);
+
+    const ghost = document.createElement('div');
+    ghost.className = 'ops-drag-ghost';
+    ghost.textContent = label;
+    ghost.style.position = 'fixed';
+    ghost.style.top = '-9999px';
+    ghost.style.left = '-9999px';
+    ghost.style.maxWidth = '420px';
+    ghost.style.pointerEvents = 'none';
+    ghost.style.opacity = '0.98';
+    ghost.style.background = '#ffffff';
+    ghost.style.boxShadow = '0 12px 28px rgba(15, 23, 42, 0.25)';
+    ghost.style.border = '1px solid #7aa2ff';
+    ghost.style.borderRadius = '8px';
+    ghost.style.padding = '8px 12px';
+    ghost.style.fontSize = '13px';
+    ghost.style.fontWeight = '600';
+    ghost.style.color = '#1f2937';
+    ghost.style.whiteSpace = 'nowrap';
+    ghost.style.overflow = 'hidden';
+    ghost.style.textOverflow = 'ellipsis';
+    ghost.style.zIndex = '9999';
+    document.body.appendChild(ghost);
+    dragGhostRef.current = ghost;
+    event.dataTransfer.setDragImage(ghost, 16, 16);
+  };
+
+  const endRowDrag = () => {
+    setDraggingId(null);
+    setDragOverMarker(null);
+    if (dragGhostRef.current) {
+      dragGhostRef.current.remove();
+      dragGhostRef.current = null;
+    }
+  };
+
+  const handleDeleteFromContext = () => {
+    if (!contextMenu) return;
+    const { person, target, lane } = contextMenu;
+    if (target === 'plate') {
+      if (!window.confirm(`Удалить запись ТС "${person.plate}" целиком?`)) return;
+      handleDeletePerson(person.id);
+      return;
+    }
+    if (!window.confirm(`Удалить ${lane === '2' ? 'второго' : 'первого'} водителя?`)) return;
+    setPeopleStateForCurrentMonth((prev) =>
+      prev
+        .map((item) => {
+          if (item.id !== person.id) return item;
+          if (!item.secondName) return null;
+          if (lane === '2') {
+            return { ...item, secondName: undefined, secondNote: undefined };
+          }
+          return {
+            ...item,
+            name: item.secondName,
+            note: item.secondNote,
+            secondName: undefined,
+            secondNote: undefined,
+          };
+        })
+        .filter(Boolean) as PersonRow[]
+    );
+  };
+
   const resolveSectionForExport = (): PreviewSection => {
     if (activeSection === 'efficiency') return 'efficiency';
     if (filter === 'Контейнеры') return 'containers';
@@ -535,7 +657,7 @@ export default function OperationsPreview() {
     const restoreFromPayload = (payload: Partial<PreviewPersistedState> | null | undefined) => {
       const liveSection = (new URLSearchParams(window.location.search).get('section') as PreviewSection | null) ?? activeSection;
       const sectionFilter = filterFromSection(liveSection);
-      const restoredPeopleByMonth: PeopleByMonth = (() => {
+      const restoredPeopleByMonthRaw: PeopleByMonth = (() => {
         if (payload?.peopleByMonth && typeof payload.peopleByMonth === 'object') {
           return payload.peopleByMonth as PeopleByMonth;
         }
@@ -547,6 +669,7 @@ export default function OperationsPreview() {
         }
         return fallback.peopleByMonth;
       })();
+      const restoredPeopleByMonth = sanitizePeopleByMonth(restoredPeopleByMonthRaw);
       const restored: PreviewPersistedState = {
         filter: sectionFilter ?? (
           payload?.filter === 'Контейнеры' ||
@@ -567,6 +690,16 @@ export default function OperationsPreview() {
       };
 
       if (cancelled) return;
+      scopeVersionsRef.current = {
+        overrideScopeVersions:
+          payload?.meta?.overrideScopeVersions && typeof payload.meta.overrideScopeVersions === 'object'
+            ? payload.meta.overrideScopeVersions
+            : {},
+        peopleMonthVersions:
+          payload?.meta?.peopleMonthVersions && typeof payload.meta.peopleMonthVersions === 'object'
+            ? payload.meta.peopleMonthVersions
+            : {},
+      };
       setFilter(restored.filter);
       setMonthValue(restored.monthValue);
       setMode(restored.mode);
@@ -589,8 +722,6 @@ export default function OperationsPreview() {
           section: requestedSection,
         });
         const payload = (response.data?.state ?? null) as Partial<PreviewPersistedState> | null;
-        const updatedAt = typeof response.data?.updatedAt === 'string' ? response.data.updatedAt : null;
-        setLastServerUpdatedAt(updatedAt);
         restoreFromPayload(payload);
         return;
       } catch {
@@ -883,6 +1014,20 @@ export default function OperationsPreview() {
         setLastPaintKeyAt(Date.now());
         return;
       }
+      if (event.key === 'Backspace' || event.key === 'Delete') {
+        event.preventDefault();
+        setCellCode({
+          key: selectedCell.key,
+          rowIndex: selectedCell.rowIndex,
+          day: selectedCell.day,
+          code: 'E',
+          department: selectedCell.department,
+        });
+        setSelectedCell((prev) => (prev ? { ...prev, value: 'E' } : prev));
+        setPaintCode('E');
+        setLastPaintKeyAt(Date.now());
+        return;
+      }
       const raw = event.key;
       const key = raw.length === 1 ? raw.toLowerCase() : raw;
       const keyMap: Record<string, CellCode> = {
@@ -950,12 +1095,67 @@ export default function OperationsPreview() {
 
   const saveDraft = async (): Promise<boolean> => {
     try {
+      const currentScopeOverrides = allOverrides[currentScopeKey] ?? {};
+      const prevScopeOverrides = lastSavedSnapshot?.overrides?.[currentScopeKey] ?? {};
+      const setPatch: Record<string, CellCode> = {};
+      const unsetPatch: string[] = [];
+
+      Object.entries(currentScopeOverrides).forEach(([key, value]) => {
+        if (prevScopeOverrides[key] !== value) {
+          setPatch[key] = value;
+        }
+      });
+      Object.keys(prevScopeOverrides).forEach((key) => {
+        if (!(key in currentScopeOverrides)) {
+          unsetPatch.push(key);
+        }
+      });
+
+      const currentMonthPeople = resolvePeopleForMonth(monthValue, peopleByMonth);
+      const previousMonthPeople = (() => {
+        if (!lastSavedSnapshot) return [];
+        const byMonth = lastSavedSnapshot.peopleByMonth ?? {};
+        return resolvePeopleForMonth(monthValue, byMonth);
+      })();
+      const peopleMonthChanged = JSON.stringify(currentMonthPeople) !== JSON.stringify(previousMonthPeople);
+
+      if (Object.keys(setPatch).length === 0 && unsetPatch.length === 0 && !peopleMonthChanged) {
+        return true;
+      }
+
+      const scopedPayload: PreviewPersistedState = {
+        filter,
+        monthValue,
+        mode,
+        overrides: {} as ScopedOverrides,
+        peopleByMonth: peopleMonthChanged
+          ? {
+              [monthValue]: currentMonthPeople,
+            }
+          : {},
+      };
       const response = await saveOperationsPreviewState(
-        currentSnapshot as unknown as Record<string, unknown>,
-        lastServerUpdatedAt
+        {
+          ...scopedPayload,
+          overridesPatch: {
+            [currentScopeKey]: {
+              set: setPatch,
+              unset: unsetPatch,
+            },
+          },
+          clientVersions: {
+            overrideScopeVersions: {
+              [currentScopeKey]: scopeVersionsRef.current.overrideScopeVersions[currentScopeKey] ?? null,
+            },
+            peopleMonthVersions: {
+              [monthValue]: scopeVersionsRef.current.peopleMonthVersions[monthValue] ?? null,
+            },
+          },
+        } as unknown as Record<string, unknown>
       );
-      const updatedAt = typeof response.data?.updatedAt === 'string' ? response.data.updatedAt : null;
-      setLastServerUpdatedAt(updatedAt);
+      const nextUpdatedAt = typeof response.data?.updatedAt === 'string' ? response.data.updatedAt : new Date().toISOString();
+      scopeVersionsRef.current.overrideScopeVersions[currentScopeKey] = nextUpdatedAt;
+      scopeVersionsRef.current.peopleMonthVersions[monthValue] = nextUpdatedAt;
       try {
         localStorage.setItem(
           PREVIEW_STORAGE_KEY,
@@ -1026,6 +1226,28 @@ export default function OperationsPreview() {
     return () => window.removeEventListener('keydown', onKeyDown);
   });
 
+  useEffect(() => {
+    if (isEfficiencySection) return;
+    const updateScale = () => {
+      const sectionEl = matrixSectionRef.current;
+      const matrixEl = matrixBodyRef.current;
+      if (!sectionEl || !matrixEl) return;
+
+      const rect = sectionEl.getBoundingClientRect();
+      const availableHeight = Math.max(360, window.innerHeight - rect.top - 90);
+      const naturalHeight = Math.max(1, matrixEl.scrollHeight);
+      const nextScale = Math.max(0.7, Math.min(1, availableHeight / naturalHeight));
+      setMatrixScale((prev) => (Math.abs(prev - nextScale) > 0.01 ? nextScale : prev));
+    };
+
+    const raf = requestAnimationFrame(updateScale);
+    window.addEventListener('resize', updateScale);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', updateScale);
+    };
+  }, [isEfficiencySection, filter, monthValue, mode, peopleState, monthDays.length, isPersonnelSection]);
+
   const handleDownloadExcel = async () => {
     try {
       setDownloading(true);
@@ -1079,7 +1301,7 @@ export default function OperationsPreview() {
                 '& .MuiInputBase-root': { height: 40 },
               }}
             />
-            {isEfficiencySection && (
+            {isEfficiencySection && canChooseEfficiencyDirection && (
               <TextField
                 label="Направление"
                 select
@@ -1195,10 +1417,12 @@ export default function OperationsPreview() {
       )}
 
       {!isEfficiencySection && (
-      <section className="ops-preview__matrix">
+      <section className="ops-preview__matrix" ref={matrixSectionRef}>
           <div
-            className={`ops-matrix${isPersonnelSection ? ' ops-matrix--personnel' : ''}`}
+            ref={matrixBodyRef}
+            className={`ops-matrix ops-matrix--fit${isPersonnelSection ? ' ops-matrix--personnel' : ''}`}
             style={{
+              ['--ops-fit-scale' as string]: String(matrixScale),
               ['--col-b' as string]: isPersonnelSection ? '0px' : '80px',
               ['--col-c' as string]: isPersonnelSection ? '0px' : '100px',
               ['--col-count' as string]: isPersonnelSection ? '130px' : '70px',
@@ -1285,28 +1509,36 @@ export default function OperationsPreview() {
                       return (
                         <div
                           className={`ops-matrix__row ops-matrix__row--draggable${person.secondName ? ' ops-matrix__row--split' : ''}`}
-                          draggable={!isSecond}
-                          onDragStart={(event) => {
-                            if (isPainting) {
-                              event.preventDefault();
-                              return;
-                            }
-                            if (!isSecond) setDraggingId(person.id);
-                          }}
-                          onDragEnd={() => !isSecond && setDraggingId(null)}
-                          onContextMenu={(event) => {
+                          onDragOver={(event) => {
+                            if (!draggingId || draggingId === person.id) return;
                             event.preventDefault();
-                            setContextMenu({
-                              x: event.clientX,
-                              y: event.clientY,
-                              person,
-                            });
+                            const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+                            const pos: 'before' | 'after' = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                            setDragOverMarker({ personId: person.id, pos });
                           }}
+                          onDrop={(event) => {
+                            if (!draggingId || draggingId === person.id) return;
+                            event.preventDefault();
+                            reorderPersonByDrop(draggingId, person.id);
+                            setDraggingId(null);
+                            setDragOverMarker(null);
+                          }}
+                          onDragLeave={() => setDragOverMarker(null)}
                         >
-                          <div className="ops-matrix__cell ops-matrix__cell--sticky ops-matrix__cell--name">
+                          <div className={`ops-matrix__cell ops-matrix__cell--sticky ops-matrix__cell--name${dragOverMarker?.personId === person.id ? ` is-drop-${dragOverMarker.pos}` : ''}`}>
                             <div className="ops-matrix__name">
                               <span
                                 onDoubleClick={() => setEditPerson(person)}
+                                onContextMenu={(event) => {
+                                  event.preventDefault();
+                                  setContextMenu({
+                                    x: event.clientX,
+                                    y: event.clientY,
+                                    person,
+                                    target: 'name',
+                                    lane,
+                                  });
+                                }}
                                 title="Двойной щелчок для редактирования"
                               >
                                 {name ?? ''}
@@ -1321,11 +1553,30 @@ export default function OperationsPreview() {
                                 <div className="ops-matrix__plate">
                                   <span
                                     onDoubleClick={() => setEditPerson(person)}
+                                    onContextMenu={(event) => {
+                                      event.preventDefault();
+                                      setContextMenu({
+                                        x: event.clientX,
+                                        y: event.clientY,
+                                        person,
+                                        target: 'plate',
+                                      });
+                                    }}
                                     title="Двойной щелчок для редактирования"
                                   >
                                     {person.plate}
                                   </span>
-                                  <span className="ops-matrix__drag-hint" title="Перетащите строку в другую вкладку">↕</span>
+                                  <button
+                                    type="button"
+                                    className="ops-matrix__drag-hint-btn"
+                                    draggable
+                                    onDragStart={(event) => startRowDrag(event, person.id, `${name ?? ''} • ${person.plate}`)}
+                                    onDragEnd={endRowDrag}
+                                    title="Перетащите вверх или вниз"
+                                    aria-label="Переместить строку"
+                                  >
+                                    ↕
+                                  </button>
                                 </div>
                               )}
                             </div>
@@ -1445,24 +1696,30 @@ export default function OperationsPreview() {
                         {person.secondName && (
                           <div
                             className="ops-matrix__person-grid"
-                            draggable
-                            onDragStart={(event) => {
-                              if (isPainting) {
-                                event.preventDefault();
-                                return;
-                              }
-                              setDraggingId(person.id);
-                            }}
-                            onDragEnd={() => setDraggingId(null)}
-                            onContextMenu={(event) => {
+                            onDragOver={(event) => {
+                              if (!draggingId || draggingId === person.id) return;
                               event.preventDefault();
-                              setContextMenu({ x: event.clientX, y: event.clientY, person });
+                              const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+                              const pos: 'before' | 'after' = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                              setDragOverMarker({ personId: person.id, pos });
                             }}
+                            onDrop={(event) => {
+                              if (!draggingId || draggingId === person.id) return;
+                              event.preventDefault();
+                              reorderPersonByDrop(draggingId, person.id);
+                              setDraggingId(null);
+                              setDragOverMarker(null);
+                            }}
+                            onDragLeave={() => setDragOverMarker(null)}
                           >
-                            <div className="ops-matrix__cell ops-matrix__cell--name ops-matrix__cell--sticky" style={{ gridColumn: 1, gridRow: 1 }}>
+                            <div className={`ops-matrix__cell ops-matrix__cell--name ops-matrix__cell--sticky${dragOverMarker?.personId === person.id ? ` is-drop-${dragOverMarker.pos}` : ''}`} style={{ gridColumn: 1, gridRow: 1 }}>
                               <div className="ops-matrix__name">
                                 <span
                                   onDoubleClick={() => setEditPerson(person)}
+                                  onContextMenu={(event) => {
+                                    event.preventDefault();
+                                    setContextMenu({ x: event.clientX, y: event.clientY, person, target: 'name', lane: '1' });
+                                  }}
                                   title="Двойной щелчок для редактирования"
                                 >
                                   {person.name}
@@ -1473,6 +1730,10 @@ export default function OperationsPreview() {
                               <div className="ops-matrix__name">
                                 <span
                                   onDoubleClick={() => setEditPerson(person)}
+                                  onContextMenu={(event) => {
+                                    event.preventDefault();
+                                    setContextMenu({ x: event.clientX, y: event.clientY, person, target: 'name', lane: '2' });
+                                  }}
                                   title="Двойной щелчок для редактирования"
                                 >
                                   {person.secondName}
@@ -1486,11 +1747,25 @@ export default function OperationsPreview() {
                               <div className="ops-matrix__plate">
                                 <span
                                   onDoubleClick={() => setEditPerson(person)}
+                                  onContextMenu={(event) => {
+                                    event.preventDefault();
+                                    setContextMenu({ x: event.clientX, y: event.clientY, person, target: 'plate' });
+                                  }}
                                   title="Двойной щелчок для редактирования"
                                 >
                                   {person.plate}
                                 </span>
-                                <span className="ops-matrix__drag-hint" title="Перетащите строку в другую вкладку">↕</span>
+                                <button
+                                  type="button"
+                                  className="ops-matrix__drag-hint-btn"
+                                  draggable
+                                  onDragStart={(event) => startRowDrag(event, person.id, `${person.name} / ${person.secondName ?? ''} • ${person.plate}`)}
+                                  onDragEnd={endRowDrag}
+                                  title="Перетащите вверх или вниз"
+                                  aria-label="Переместить строку"
+                                >
+                                  ↕
+                                </button>
                               </div>
                             </div>
                             <div
@@ -2133,7 +2408,7 @@ export default function OperationsPreview() {
               type="button"
               className="ops-context-item danger"
               onClick={() => {
-                handleDeletePerson(contextMenu.person.id);
+                handleDeleteFromContext();
                 setContextMenu(null);
               }}
             >

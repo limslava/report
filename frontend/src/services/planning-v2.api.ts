@@ -1,5 +1,11 @@
 import api from './api';
-import { PlanningSegment, PlanningSegmentReport, PlanningSummaryItem, PlanningYearTotalsRow } from '../types/planning-v2.types';
+import {
+  PlanningSegment,
+  PlanningSegmentReport,
+  PlanningSummaryItem,
+  PlanningTechDashboardResponse,
+  PlanningYearTotalsRow,
+} from '../types/planning-v2.types';
 
 type ExcelDownload = {
   blob: Blob;
@@ -47,6 +53,17 @@ export const planningV2Api = {
   getSummaryReport: async (params: { year: number; month: number; asOfDate?: string; detailed?: boolean }): Promise<PlanningSummaryItem[]> => {
     const response = await api.get('/v2/planning/reports/summary', { params });
     return response.data;
+  },
+
+  getTechDashboard: async (params: { year: number; month: number; asOfDate?: string }): Promise<PlanningTechDashboardResponse> => {
+    const response = await api.get('/v2/planning/reports/tech-dashboard', { params });
+    const normalized = response.data as PlanningTechDashboardResponse;
+    const segments = normalized.month_segments ?? normalized.april_segments ?? [];
+    return {
+      ...normalized,
+      month_segments: segments,
+      april_segments: normalized.april_segments ?? segments,
+    };
   },
 
   getYearTotals: async (year: number): Promise<{ year: number; rows: PlanningYearTotalsRow[] }> => {

@@ -1012,8 +1012,10 @@ export class PlanningV2ReportService {
         ?? getPlanValue(planMetricMap, PlanningPlanMetricCode.RAIL_PLAN_KTK);
       const planToDate = calcPlanToDate(planMonth, daysInMonth, completedDays);
       const railTotal = valuesByMetric.get('rail_total') ?? [];
+      const railWaiting = valuesByMetric.get('rail_total_waiting') ?? [];
       const factToDate = sumUntil(railTotal, dataDays);
       const monthFact = sum(railTotal);
+      const waitingTotal = lastUntil(railWaiting, dataDays);
 
       return {
         ...base,
@@ -1021,6 +1023,7 @@ export class PlanningV2ReportService {
         planToDate,
         factToDate,
         monthFact,
+        waitingTotal,
         completionMonthPct: pct(monthFact, planMonth),
         completionToDatePct: pct(factToDate, planToDate),
         avgPerDay: dataDays > 0 ? factToDate / dataDays : 0,

@@ -17,6 +17,8 @@ import { canBootstrapPlanning, canEditSegment } from '../../utils/rolePermission
 
 interface PlanDashboardProps {
   year?: number;
+  initialMonth?: number;
+  initialSegment?: PlanningSegment['code'];
 }
 
 function pad2(value: number): string {
@@ -44,11 +46,15 @@ function deriveAsOfDate(year: number, month: number): string {
   return formatIsoDate(year, month, lastDay);
 }
 
-const PlanDashboard: React.FC<PlanDashboardProps> = ({ year = new Date().getFullYear() }) => {
+const PlanDashboard: React.FC<PlanDashboardProps> = ({
+  year = new Date().getFullYear(),
+  initialMonth = new Date().getMonth() + 1,
+  initialSegment,
+}) => {
   const { user } = useAuthStore();
   const [yearValue, setYearValue] = useState<number>(year);
-  const [month, setMonth] = useState<number>(new Date().getMonth() + 1);
-  const [asOfDate, setAsOfDate] = useState<string>(() => deriveAsOfDate(year, new Date().getMonth() + 1));
+  const [month, setMonth] = useState<number>(initialMonth);
+  const [asOfDate, setAsOfDate] = useState<string>(() => deriveAsOfDate(year, initialMonth));
   const [segments, setSegments] = useState<PlanningSegment[]>([]);
   const [activeSegment, setActiveSegment] = useState<PlanningSegment['code'] | ''>('');
   const [loading, setLoading] = useState<boolean>(true);
@@ -69,8 +75,13 @@ const PlanDashboard: React.FC<PlanDashboardProps> = ({ year = new Date().getFull
       setError(null);
       const data = await planningV2Api.getSegments();
       setSegments(data);
-      if (!activeSegment && data.length > 0) {
-        setActiveSegment(data[0].code);
+      if (data.length > 0) {
+        const preferred = initialSegment && data.some((segment) => segment.code === initialSegment)
+          ? initialSegment
+          : data[0].code;
+        if (!activeSegment || activeSegment !== preferred) {
+          setActiveSegment(preferred);
+        }
       }
     } catch (err: any) {
       setError(err?.message || 'Ошибка загрузки сегментов');
@@ -86,6 +97,24 @@ const PlanDashboard: React.FC<PlanDashboardProps> = ({ year = new Date().getFull
   useEffect(() => {
     setAsOfDate(deriveAsOfDate(yearValue, month));
   }, [yearValue, month]);
+
+  useEffect(() => {
+    setYearValue(year);
+  }, [year]);
+
+  useEffect(() => {
+    setMonth(initialMonth);
+  }, [initialMonth]);
+
+  useEffect(() => {
+    if (!initialSegment) return;
+    if (segments.length === 0) return;
+    const exists = segments.some((segment) => segment.code === initialSegment);
+    if (!exists) return;
+    if (activeSegment !== initialSegment) {
+      setActiveSegment(initialSegment);
+    }
+  }, [initialSegment, segments, activeSegment]);
 
   const handleBootstrap = async () => {
     try {

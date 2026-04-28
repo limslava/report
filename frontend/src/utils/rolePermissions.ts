@@ -36,6 +36,10 @@ export function canViewOperationsEfficiency(role?: string | null): boolean {
   return role === 'director' || role === 'financer';
 }
 
+export function canViewTechDashboard(role?: string | null): boolean {
+  return role === 'admin';
+}
+
 export function canEditFinancialPlan(role?: string | null): boolean {
   return role === 'admin' || role === 'director' || role === 'financer';
 }

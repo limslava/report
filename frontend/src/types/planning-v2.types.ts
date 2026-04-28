@@ -63,3 +63,81 @@ export interface PlanningYearTotalsRow {
   yearlyFactCurtain: number;
   yearlyCompletionPct: number;
 }
+
+export interface TechMonthlyPoint {
+  month: string;
+  plan: number;
+  carry_plan?: number;
+  fact: number;
+  pct: number;
+}
+
+export interface TechAprilSegment {
+  name: string;
+  plan: number;
+  fact: number;
+  pct: number;
+}
+
+export interface TechKpiPayload {
+  vvo: {
+    plan_month: number;
+    fact_month: number;
+    completion_month: number;
+    gross: number;
+    gross_avg: number;
+    avg_ticket: number;
+  };
+  msk: {
+    plan_month: number;
+    fact_month: number;
+    completion_month: number;
+    gross: number;
+    gross_avg: number;
+    avg_ticket: number;
+  };
+  rail: {
+    plan_month: number;
+    fact_month: number;
+    completion_month: number;
+    waiting_total: number;
+  };
+  auto: {
+    waiting_total: number;
+    waiting_truck: number;
+    waiting_ktk: number;
+    waiting_curtain: number;
+    debt_delta: number;
+  };
+  to: {
+    plan_month: number;
+    fact_month: number;
+  };
+  extra: {
+    total: number;
+    groupage: number;
+    curtains: number;
+    forwarding: number;
+    repack: number;
+  };
+}
+
+export interface PlanningTechDashboardResponse {
+  source: string;
+  reportDate: string;
+  reportDateLabel: string;
+  year: number;
+  month: number;
+  monthly: TechMonthlyPoint[];
+  month_segments?: TechAprilSegment[];
+  april_segments: TechAprilSegment[];
+  kpi: TechKpiPayload;
+  checks: Record<string, boolean>;
+  computed: {
+    total_plan: number;
+    total_fact: number;
+    total_pct: number;
+    auto_pct: number;
+    auto_ktk_pct: number;
+  };
+}

@@ -9,6 +9,7 @@ import {
   getPlanningMetricsBySegment,
   getPlanningSegments,
   getPlanningSummaryReport,
+  getPlanningTechDashboard,
   updatePlanningBasePlan,
   getPlanningValuesByMonth,
   exportPlanningDailyExcel,
@@ -25,6 +26,7 @@ router.get('/values', getPlanningValuesByMonth);
 router.put('/values/batch', batchUpsertPlanningValues);
 router.get('/reports/segment', getPlanningSegmentReport);
 router.get('/reports/summary', getPlanningSummaryReport);
+router.get('/reports/tech-dashboard', authorizeRole('admin', 'director', 'financer', 'manager_sales', 'head_ktk_vvo'), getPlanningTechDashboard);
 router.get('/exports/daily', exportPlanningDailyExcel);
 router.get('/exports/totals', exportPlanningTotalsExcel);
 router.get('/totals/year', getPlanningYearTotals);
