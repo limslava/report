@@ -57,7 +57,13 @@ export const planningV2Api = {
 
   getTechDashboard: async (params: { year: number; month: number; asOfDate?: string }): Promise<PlanningTechDashboardResponse> => {
     const response = await api.get('/v2/planning/reports/tech-dashboard', { params });
-    return response.data;
+    const normalized = response.data as PlanningTechDashboardResponse;
+    const segments = normalized.month_segments ?? normalized.april_segments ?? [];
+    return {
+      ...normalized,
+      month_segments: segments,
+      april_segments: normalized.april_segments ?? segments,
+    };
   },
 
   getYearTotals: async (year: number): Promise<{ year: number; rows: PlanningYearTotalsRow[] }> => {

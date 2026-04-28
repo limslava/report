@@ -23,6 +23,9 @@ import {
   Tooltip,
   Badge,
   SvgIcon,
+  FormControl,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -40,7 +43,7 @@ import {
   ExpandLess,
   ExpandMore,
 } from '@mui/icons-material';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/auth-store';
 import {
@@ -50,7 +53,6 @@ import {
   canViewOperationsEfficiency,
   canViewFinancialPlan,
   canViewSummary,
-  canViewTechDashboard,
   canViewTotalsInPlans,
 } from '../utils/rolePermissions';
 import { getHasUnsavedChanges, getUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
@@ -69,6 +71,7 @@ const IDLE_TIMEOUT_MIN = (() => {
 })();
 const IDLE_TIMEOUT_MS = IDLE_TIMEOUT_MIN * 60 * 1000;
 const LAST_ACTIVITY_KEY = 'last-activity-at';
+const SIDEBAR_SUBMENUS_KEY = 'sidebar-submenus-open';
 
 const DashboardLayout = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -83,6 +86,7 @@ const DashboardLayout = () => {
   const startUnreadSync = useNotesUnreadStore((state) => state.start);
   const stopUnreadSync = useNotesUnreadStore((state) => state.stop);
   const [isWorkSubmenuOpen, setIsWorkSubmenuOpen] = useState(false);
+  const [isPlansSubmenuOpen, setIsPlansSubmenuOpen] = useState(true);
   const [isAdminWorkSubmenuOpen, setIsAdminWorkSubmenuOpen] = useState(false);
   const [isAdminWorkDeptSubmenuOpen, setIsAdminWorkDeptSubmenuOpen] = useState(false);
   const navigate = useNavigate();
@@ -93,7 +97,41 @@ const DashboardLayout = () => {
   const canViewTotals = canViewTotalsInPlans(user?.role);
   const canViewFinancial = canViewFinancialPlan(user?.role);
   const canViewEfficiency = canViewOperationsEfficiency(user?.role);
-  const canOpenTechDashboard = canViewTechDashboard(user?.role);
+  const homeRoute = user?.role === 'admin' ? '/sw-tech-dashboard' : '/plans';
+  const isTechDashboardRoute = location.pathname.includes('/sw-tech-dashboard');
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const swQuery = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const parseIntInRange = (raw: string | null, min: number, max: number): number | null => {
+    if (!raw || !/^\d+$/.test(raw)) return null;
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value < min || value > max) return null;
+    return value;
+  };
+  const selectedYear = parseIntInRange(swQuery.get('year'), currentYear - 3, currentYear + 1) ?? currentYear;
+  const selectedMonth = parseIntInRange(swQuery.get('month'), 1, 12) ?? currentDate.getMonth() + 1;
+  const yearOptions = useMemo(() => {
+    const years: number[] = [];
+    for (let y = currentYear - 3; y <= currentYear + 1; y += 1) years.push(y);
+    return years;
+  }, [currentYear]);
+  const monthOptions = useMemo(
+    () => [
+      { value: 1, label: 'Янв' },
+      { value: 2, label: 'Фев' },
+      { value: 3, label: 'Мар' },
+      { value: 4, label: 'Апр' },
+      { value: 5, label: 'Май' },
+      { value: 6, label: 'Июн' },
+      { value: 7, label: 'Июл' },
+      { value: 8, label: 'Авг' },
+      { value: 9, label: 'Сен' },
+      { value: 10, label: 'Окт' },
+      { value: 11, label: 'Ноя' },
+      { value: 12, label: 'Дек' },
+    ],
+    [],
+  );
   const isHeadKtkVvo = user?.role === 'head_ktk_vvo';
   const isKtkVvoManager = user?.role === 'manager_ktk_vvo' || user?.role === 'head_ktk_vvo';
   const isAdmin = canAccessAdmin(user?.role);
@@ -114,6 +152,10 @@ const DashboardLayout = () => {
   };
 
   const handleNavigate = (to: string) => runOrConfirmUnsaved(() => navigate(to));
+  const handleTechPeriodChange = (nextYear: number, nextMonth: number) => {
+    if (!isTechDashboardRoute) return;
+    handleNavigate(`/sw-tech-dashboard?year=${nextYear}&month=${nextMonth}`);
+  };
 
   const handleLogout = () => {
     runOrConfirmUnsaved(() => {
@@ -122,20 +164,32 @@ const DashboardLayout = () => {
     });
   };
 
-  const openWorkSubmenuAtContainers = () => {
-    setIsWorkSubmenuOpen(true);
+  const toggleWorkSubmenuAtContainers = () => {
     const currentSection = new URLSearchParams(location.search).get('section');
-    if (location.pathname !== '/operations-preview' || currentSection !== 'containers') {
+    const shouldOpen = !isWorkSubmenuOpen;
+    setIsWorkSubmenuOpen(shouldOpen);
+    if (shouldOpen && (location.pathname !== '/operations-preview' || currentSection !== 'containers')) {
       handleNavigate('/operations-preview?section=containers');
     }
   };
 
-  const openAdminWorkSubmenuAtContainers = () => {
-    setIsAdminWorkSubmenuOpen(true);
-    setIsAdminWorkDeptSubmenuOpen(true);
+  const togglePlansSubmenu = () => {
+    const shouldOpen = !isPlansSubmenuOpen;
+    setIsPlansSubmenuOpen(shouldOpen);
+    if (shouldOpen && !location.pathname.includes('/plans')) {
+      handleNavigate('/plans');
+    }
+  };
+
+  const toggleAdminWorkSubmenu = () => {
     const currentSection = new URLSearchParams(location.search).get('section');
-    if (location.pathname !== '/operations-preview' || currentSection !== 'containers') {
-      handleNavigate('/operations-preview?section=containers');
+    const shouldOpen = !isAdminWorkSubmenuOpen;
+    setIsAdminWorkSubmenuOpen(shouldOpen);
+    if (shouldOpen) {
+      setIsAdminWorkDeptSubmenuOpen(true);
+      if (location.pathname !== '/operations-preview' || currentSection !== 'containers') {
+        handleNavigate('/operations-preview?section=containers');
+      }
     }
   };
 
@@ -266,19 +320,39 @@ const DashboardLayout = () => {
   }, [user, logout, navigate]);
 
   useEffect(() => {
-    if (!location.pathname.includes('/operations-preview')) {
-      setIsWorkSubmenuOpen(false);
-      setIsAdminWorkSubmenuOpen(false);
-      setIsAdminWorkDeptSubmenuOpen(false);
+    try {
+      const raw = localStorage.getItem(SIDEBAR_SUBMENUS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<{
+        plans: boolean;
+        work: boolean;
+        adminWork: boolean;
+        adminWorkDept: boolean;
+      }>;
+      if (typeof parsed.plans === 'boolean') setIsPlansSubmenuOpen(parsed.plans);
+      if (typeof parsed.work === 'boolean') setIsWorkSubmenuOpen(parsed.work);
+      if (typeof parsed.adminWork === 'boolean') setIsAdminWorkSubmenuOpen(parsed.adminWork);
+      if (typeof parsed.adminWorkDept === 'boolean') setIsAdminWorkDeptSubmenuOpen(parsed.adminWorkDept);
+    } catch {
+      // ignore invalid persisted submenu state
     }
-  }, [location.pathname]);
+  }, []);
 
   useEffect(() => {
-    if (isAdmin && location.pathname.includes('/operations-preview')) {
-      setIsAdminWorkSubmenuOpen(true);
-      setIsAdminWorkDeptSubmenuOpen(true);
+    try {
+      localStorage.setItem(
+        SIDEBAR_SUBMENUS_KEY,
+        JSON.stringify({
+          plans: isPlansSubmenuOpen,
+          work: isWorkSubmenuOpen,
+          adminWork: isAdminWorkSubmenuOpen,
+          adminWorkDept: isAdminWorkDeptSubmenuOpen,
+        }),
+      );
+    } catch {
+      // ignore localStorage write issues
     }
-  }, [isAdmin, location.pathname]);
+  }, [isPlansSubmenuOpen, isWorkSubmenuOpen, isAdminWorkSubmenuOpen, isAdminWorkDeptSubmenuOpen]);
 
 
   const closeUnsavedDialog = () => {
@@ -325,15 +399,26 @@ const DashboardLayout = () => {
   const drawer = (
     <Box>
       <Toolbar sx={{ justifyContent: isPinnedOpen ? 'space-between' : 'center', py: 2, px: 1.5 }}>
-        {isPinnedOpen ? (
-          <Typography variant="h6" noWrap>
-            {appTitle}
-          </Typography>
-        ) : (
-          <Typography variant="h6" noWrap>
-            ЛО
-          </Typography>
-        )}
+        <Box
+          onClick={() => handleNavigate(homeRoute)}
+          sx={{
+            minWidth: 0,
+            flexGrow: 1,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+        >
+          {isPinnedOpen ? (
+            <Typography variant="h6" noWrap>
+              {appTitle}
+            </Typography>
+          ) : (
+            <Typography variant="h6" noWrap>
+              ЛО
+            </Typography>
+          )}
+        </Box>
         <IconButton onClick={togglePinnedSidebar} size="small" sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
           {isPinnedOpen ? <ChevronLeft /> : <ChevronRight />}
         </IconButton>
@@ -351,16 +436,17 @@ const DashboardLayout = () => {
                   location.pathname === '/operations-preview' &&
                   location.search.includes('section=efficiency'))
               }
-              onClick={() => handleNavigate('/plans')}
+              onClick={togglePlansSubmenu}
             >
               <ListItemIcon sx={{ minWidth: isPinnedOpen ? 40 : 0, justifyContent: 'center' }}>
                 {dispatchMenuIcon}
               </ListItemIcon>
               {isPinnedOpen && <ListItemText primary={isKtkVvoManager ? 'Диспетчерский отдел' : 'Показатели'} />}
+              {isPinnedOpen ? (isPlansSubmenuOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />) : null}
             </ListItemButton>
           </Tooltip>
         </ListItem>
-        {isPinnedOpen && (
+        {isPinnedOpen && isPlansSubmenuOpen && (
           <>
             <ListItem disablePadding sx={{ pl: 4 }}>
                 <ListItemButton
@@ -387,7 +473,7 @@ const DashboardLayout = () => {
                 <ListItem disablePadding sx={{ pl: 4 }}>
                 <ListItemButton
                   selected={location.pathname === '/operations-preview'}
-                  onClick={() => (isKtkVvoManager ? openWorkSubmenuAtContainers() : handleNavigate('/operations-preview'))}
+                  onClick={() => (isKtkVvoManager ? toggleWorkSubmenuAtContainers() : handleNavigate('/operations-preview'))}
                   sx={{ py: 0.5, minHeight: 34 }}
                 >
                   <ListItemText
@@ -470,17 +556,6 @@ const DashboardLayout = () => {
                 </ListItemButton>
               </ListItem>
             )}
-            {canOpenTechDashboard && (
-              <ListItem disablePadding sx={{ pl: 4 }}>
-                <ListItemButton
-                  selected={location.pathname === '/sw-tech-dashboard'}
-                  onClick={() => handleNavigate('/sw-tech-dashboard')}
-                  sx={{ py: 0.5, minHeight: 34 }}
-                >
-                  <ListItemText primary="SW Tech Dashboard" primaryTypographyProps={{ fontSize: 14 }} />
-                </ListItemButton>
-              </ListItem>
-            )}
           </>
         )}
         {isAdmin && canAccessOperationsPreview(user?.role) && (
@@ -489,7 +564,7 @@ const DashboardLayout = () => {
               <Tooltip title={!isPinnedOpen ? 'График работы' : ''} placement="right">
                 <ListItemButton
                   selected={location.pathname === '/operations-preview'}
-                  onClick={openAdminWorkSubmenuAtContainers}
+                  onClick={toggleAdminWorkSubmenu}
                 >
                   <ListItemIcon sx={{ minWidth: isPinnedOpen ? 40 : 0, justifyContent: 'center' }}>
                     <FactCheck />
@@ -603,30 +678,108 @@ const DashboardLayout = () => {
           >
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" noWrap sx={{ flexGrow: 1 }}>
-            {(location.pathname === '/' || location.pathname.includes('/plans') || location.pathname.includes('/operations-preview')) &&
-              ((isKtkVvoManager || isAdmin)
-                ? (location.pathname === '/operations-preview' && location.search.includes('section=containers')
-                    ? 'График работы - Контейнеровозы'
-                    : location.pathname === '/operations-preview' && location.search.includes('section=auto')
-                    ? 'График работы - Автовозы'
-                    : location.pathname === '/operations-preview' && location.search.includes('section=dispatchers')
-                    ? 'График работы - Диспетчера'
-                    : location.pathname === '/operations-preview' && location.search.includes('section=couriers')
-                    ? 'График работы - Оперативники'
-                    : location.pathname === '/operations-preview' && location.search.includes('section=efficiency')
-                    ? 'График работы - Эффективность'
-                    : location.pathname === '/plans/totals'
-                    ? 'Операционный отчет'
-                    : (location.pathname === '/' || location.pathname === '/plans'
-                        ? 'Ежедневный отчет'
-                        : 'Показатели'))
-                : 'Показатели')}
-            {location.pathname.includes('/summary-report') && 'Сводный отчет'}
-            {location.pathname.includes('/sw-tech-dashboard') && 'SW Tech Dashboard'}
-            {location.pathname.includes('/admin') && 'Администрирование'}
-            {location.pathname.includes('/settings') && 'Настройки'}
-          </Typography>
+          {!isTechDashboardRoute && (
+            <Typography variant="h6" noWrap sx={{ flexGrow: 1 }}>
+              {(location.pathname === '/' || location.pathname.includes('/plans') || location.pathname.includes('/operations-preview')) &&
+                ((isKtkVvoManager || isAdmin)
+                  ? (location.pathname === '/operations-preview' && location.search.includes('section=containers')
+                      ? 'График работы - Контейнеровозы'
+                      : location.pathname === '/operations-preview' && location.search.includes('section=auto')
+                      ? 'График работы - Автовозы'
+                      : location.pathname === '/operations-preview' && location.search.includes('section=dispatchers')
+                      ? 'График работы - Диспетчера'
+                      : location.pathname === '/operations-preview' && location.search.includes('section=couriers')
+                      ? 'График работы - Оперативники'
+                      : location.pathname === '/operations-preview' && location.search.includes('section=efficiency')
+                      ? 'График работы - Эффективность'
+                      : location.pathname === '/plans/totals'
+                      ? 'Операционный отчет'
+                      : (location.pathname === '/' || location.pathname === '/plans'
+                          ? 'Ежедневный отчет'
+                          : 'Показатели'))
+                  : 'Показатели')}
+              {location.pathname.includes('/summary-report') && 'Сводный отчет'}
+              {location.pathname.includes('/admin') && 'Администрирование'}
+              {location.pathname.includes('/settings') && 'Настройки'}
+            </Typography>
+          )}
+          {isTechDashboardRoute && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 0, mr: 'auto' }}>
+              <FormControl size="small" variant="outlined" sx={{ minWidth: 100 }}>
+                <Select
+                  value={selectedYear}
+                  onChange={(event) => handleTechPeriodChange(Number(event.target.value), selectedMonth)}
+                  displayEmpty
+                  sx={{
+                    color: '#fff',
+                    height: 36,
+                    fontSize: 16,
+                    borderRadius: '8px',
+                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.45)' },
+                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.75)' },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#fff' },
+                    '& .MuiSelect-icon': { color: '#fff' },
+                  }}
+                >
+                  {yearOptions.map((yearOption) => (
+                    <MenuItem key={yearOption} value={yearOption}>{yearOption}</MenuItem>
+                  ))}
+                </Select>
+                <Typography
+                  component="span"
+                  sx={{
+                    position: 'absolute',
+                    top: -10,
+                    left: 12,
+                    px: 0.5,
+                    fontSize: 10,
+                    lineHeight: 1,
+                    color: 'rgba(255,255,255,0.9)',
+                    backgroundColor: 'primary.main',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  Год
+                </Typography>
+              </FormControl>
+              <FormControl size="small" variant="outlined" sx={{ minWidth: 136 }}>
+                <Select
+                  value={selectedMonth}
+                  onChange={(event) => handleTechPeriodChange(selectedYear, Number(event.target.value))}
+                  sx={{
+                    color: '#fff',
+                    height: 36,
+                    fontSize: 16,
+                    borderRadius: '8px',
+                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.45)' },
+                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.75)' },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#fff' },
+                    '& .MuiSelect-icon': { color: '#fff' },
+                  }}
+                >
+                  {monthOptions.map((item) => (
+                    <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
+                  ))}
+                </Select>
+                <Typography
+                  component="span"
+                  sx={{
+                    position: 'absolute',
+                    top: -10,
+                    left: 12,
+                    px: 0.5,
+                    fontSize: 10,
+                    lineHeight: 1,
+                    color: 'rgba(255,255,255,0.9)',
+                    backgroundColor: 'primary.main',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  Месяц
+                </Typography>
+              </FormControl>
+            </Box>
+          )}
           <Typography variant="body2">{user?.fullName}</Typography>
         </Toolbar>
       </AppBar>

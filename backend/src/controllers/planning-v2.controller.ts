@@ -360,6 +360,27 @@ export const getPlanningTechDashboard = async (req: Request, res: Response, next
     const mskDashboard = (reportMap.get(PlanningSegmentCode.KTK_MOW)?.dashboard ?? {}) as Record<string, unknown>;
     const railDashboard = (reportMap.get(PlanningSegmentCode.RAIL)?.dashboard ?? {}) as Record<string, unknown>;
 
+    const totalsRows = await planningV2TotalsService.getYearTotals(year, { ensureMetrics: false });
+    const basePlanRows = totalsRows.filter((row) =>
+      row.kind === 'PLAN_FLOW' && (
+        (row.segmentCode === PlanningSegmentCode.KTK_VVO && row.planMetricCode === PlanningPlanMetricCode.KTK_PLAN_REQUESTS) ||
+        (row.segmentCode === PlanningSegmentCode.KTK_MOW && row.planMetricCode === PlanningPlanMetricCode.KTK_PLAN_REQUESTS) ||
+        (row.segmentCode === PlanningSegmentCode.AUTO && row.planMetricCode === PlanningPlanMetricCode.AUTO_PLAN_TRUCK) ||
+        (row.segmentCode === PlanningSegmentCode.AUTO && row.planMetricCode === PlanningPlanMetricCode.AUTO_PLAN_KTK) ||
+        (row.segmentCode === PlanningSegmentCode.RAIL && row.planMetricCode === PlanningPlanMetricCode.RAIL_PLAN_KTK) ||
+        (row.segmentCode === PlanningSegmentCode.TO && row.planMetricCode === PlanningPlanMetricCode.TO_PLAN)
+      )
+    );
+
+    const carryPlanByMonth = new Map<number, number>();
+    const basePlanByMonth = new Map<number, number>();
+    for (let m = 1; m <= 12; m += 1) {
+      const monthBase = basePlanRows.reduce((sum, row) => sum + Number(row.months[m - 1]?.basePlan ?? 0), 0);
+      const monthCarry = basePlanRows.reduce((sum, row) => sum + Number(row.months[m - 1]?.carryPlan ?? 0), 0);
+      basePlanByMonth.set(m, Number(monthBase.toFixed(0)));
+      carryPlanByMonth.set(m, Number(monthCarry.toFixed(0)));
+    }
+
     const monthly = await Promise.all(
       Array.from({ length: 12 }, async (_, idx) => {
         const m = idx + 1;
@@ -372,19 +393,21 @@ export const getPlanningTechDashboard = async (req: Request, res: Response, next
           row.segmentCode === PlanningSegmentCode.RAIL ||
           row.segmentCode === PlanningSegmentCode.TO
         ));
-        const plan = topRows.reduce((sum, row) => sum + Number(row.planMonth ?? 0), 0);
+        const planBase = Number(basePlanByMonth.get(m) ?? 0);
+        const planCarry = Number(carryPlanByMonth.get(m) ?? 0);
         const fact = topRows.reduce((sum, row) => sum + Number(row.monthFact ?? 0), 0);
         const monthLabel = new Date(year, m - 1, 1).toLocaleString('ru-RU', { month: 'short' }).replace('.', '');
         return {
           month: monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1),
-          plan: Number(plan.toFixed(0)),
+          plan: Number(planBase.toFixed(0)),
+          carry_plan: Number(planCarry.toFixed(0)),
           fact: Number(fact.toFixed(0)),
-          pct: pct(fact, plan),
+          pct: pct(fact, planBase),
         };
       })
     );
 
-    const aprilSegments = [
+    const monthSegments = [
       { name: 'Владивосток', plan: Number(vvo?.planMonth ?? 0), fact: Number(vvo?.monthFact ?? 0) },
       { name: 'Москва', plan: Number(msk?.planMonth ?? 0), fact: Number(msk?.monthFact ?? 0) },
       { name: 'Автовозы', plan: Number(autoTruck?.planMonth ?? 0), fact: Number(autoTruck?.monthFact ?? 0) },
@@ -393,21 +416,34 @@ export const getPlanningTechDashboard = async (req: Request, res: Response, next
       { name: 'ТО авто', plan: Number(to?.planMonth ?? 0), fact: Number(to?.monthFact ?? 0) },
     ].map((row) => ({ ...row, pct: pct(row.fact, row.plan) }));
 
+    const getMetricAtCompletedDay = (segmentCode: PlanningSegmentCode, metricCode: string): number => {
+      const report = reportMap.get(segmentCode);
+      if (!report) return 0;
+      const row = report.gridRows.find((item) => item.metricCode === metricCode);
+      if (!row) return 0;
+      const completedDays = Number((report.dashboard as Record<string, unknown>)?.completedDays ?? 0);
+      const dayIndex = Number.isInteger(completedDays) && completedDays >= 0
+        ? Math.min(completedDays, Math.max(0, row.dayValues.length - 1))
+        : Math.max(0, row.dayValues.length - 1);
+      return Number(row.dayValues[dayIndex] ?? 0);
+    };
+
+    const vvoOwn = getMetricAtCompletedDay(PlanningSegmentCode.KTK_VVO, 'ktk_vvo_fact_move_own');
+    const vvoHired = getMetricAtCompletedDay(PlanningSegmentCode.KTK_VVO, 'ktk_vvo_fact_move_hired');
+    const vvoTotal = getMetricAtCompletedDay(PlanningSegmentCode.KTK_VVO, 'ktk_vvo_fact_total_per_day');
+
+    const mskOwn = getMetricAtCompletedDay(PlanningSegmentCode.KTK_MOW, 'ktk_mow_fact_move_own');
+    const mskHired = getMetricAtCompletedDay(PlanningSegmentCode.KTK_MOW, 'ktk_mow_fact_move_hired');
+    const mskTotal = getMetricAtCompletedDay(PlanningSegmentCode.KTK_MOW, 'ktk_mow_fact_total_per_day');
+
+    const autoOwn = getMetricAtCompletedDay(PlanningSegmentCode.AUTO, 'auto_truck_sent_own');
+    const autoHired = getMetricAtCompletedDay(PlanningSegmentCode.AUTO, 'auto_truck_sent_hired');
+    const autoSent = getMetricAtCompletedDay(PlanningSegmentCode.AUTO, 'auto_truck_sent');
+
     const checks = {
-      'AUTO: Итого в ожидании = Truck + KTK + Curtain': Number(autoDashboard.waitingTotal ?? 0) === (
-        Number(autoDashboard.waitingTruck ?? 0) +
-        Number(autoDashboard.waitingKtk ?? 0) +
-        Number(autoDashboard.waitingCurtain ?? 0)
-      ),
-      'EXTRA: Итого = Сборный + Шторы + Экспедирование + Перетарка': Number(extraDashboard.monthFact ?? extra?.monthFact ?? 0) === (
-        Number(extraDashboard.groupage ?? 0) +
-        Number(extraDashboard.curtains ?? 0) +
-        Number(extraDashboard.forwarding ?? 0) +
-        Number(extraDashboard.repack ?? 0)
-      ),
-      'PLAN: Общий план месяца > 0': aprilSegments.reduce((sum, item) => sum + item.plan, 0) > 0,
-      'RAIL: В ожидании >= 0': Number(railDashboard.waitingTotal ?? 0) >= 0,
-      'KPI: Владивосток план и факт не отрицательные': Number(vvo?.planMonth ?? 0) >= 0 && Number(vvo?.monthFact ?? 0) >= 0,
+      'Ктк Владивосток: Собственные + Наемные = Итого (факт дня)': vvoOwn + vvoHired === vvoTotal,
+      'Ктк Москва: Собственные + Наемные = Итого (факт дня)': mskOwn + mskHired === mskTotal,
+      'Автовоз: Собственные + Наемные = Отправлено (факт дня)': autoOwn + autoHired === autoSent,
     };
 
     res.json({
@@ -417,7 +453,9 @@ export const getPlanningTechDashboard = async (req: Request, res: Response, next
       year,
       month,
       monthly,
-      april_segments: aprilSegments,
+      month_segments: monthSegments,
+      // Legacy alias for backward compatibility with older clients.
+      april_segments: monthSegments,
       kpi: {
         vvo: {
           plan_month: Number(vvo?.planMonth ?? 0),
@@ -462,11 +500,11 @@ export const getPlanningTechDashboard = async (req: Request, res: Response, next
       },
       checks,
       computed: {
-        total_plan: aprilSegments.reduce((sum, row) => sum + row.plan, 0),
-        total_fact: aprilSegments.reduce((sum, row) => sum + row.fact, 0),
+        total_plan: monthSegments.reduce((sum, row) => sum + row.plan, 0),
+        total_fact: monthSegments.reduce((sum, row) => sum + row.fact, 0),
         total_pct: pct(
-          aprilSegments.reduce((sum, row) => sum + row.fact, 0),
-          aprilSegments.reduce((sum, row) => sum + row.plan, 0)
+          monthSegments.reduce((sum, row) => sum + row.fact, 0),
+          monthSegments.reduce((sum, row) => sum + row.plan, 0)
         ),
         auto_pct: pct(Number(autoTruck?.monthFact ?? 0), Number(autoTruck?.planMonth ?? 0)),
         auto_ktk_pct: pct(Number(autoKtk?.monthFact ?? 0), Number(autoKtk?.planMonth ?? 0)),

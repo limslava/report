@@ -36,7 +36,10 @@ function App() {
       
       {isAuthenticated ? (
           <Route path="/" element={<DashboardLayout />}>
-            <Route index element={<Navigate to="/plans" replace />} />
+          <Route
+            index
+            element={<Navigate to={user?.role === 'admin' ? '/sw-tech-dashboard' : '/plans'} replace />}
+          />
           <Route
             path="summary-report"
             element={(

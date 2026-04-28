@@ -66,6 +66,10 @@ type PreviewPersistedState = {
   mode: PreviewMode;
   overrides: ScopedOverrides;
   peopleByMonth: PeopleByMonth;
+  meta?: {
+    overrideScopeVersions?: Record<string, string>;
+    peopleMonthVersions?: Record<string, string>;
+  };
   peopleState?: PersonRow[]; // legacy fallback
 };
 
@@ -93,6 +97,16 @@ const getShiftValueForCount = (department: Department, code: CellCode): number =
 };
 
 const clonePeople = (rows: PersonRow[]): PersonRow[] => rows.map((row) => ({ ...row }));
+const isTestPersonRow = (row: PersonRow): boolean =>
+  row.id.startsWith('test-') || row.name.startsWith('Тест Водитель') || (row.secondName?.startsWith('Тест Водитель') ?? false);
+
+const sanitizePeopleByMonth = (input: PeopleByMonth): PeopleByMonth => {
+  const next: PeopleByMonth = {};
+  Object.entries(input).forEach(([monthKey, rows]) => {
+    next[monthKey] = Array.isArray(rows) ? rows.filter((row) => !isTestPersonRow(row)) : [];
+  });
+  return next;
+};
 
 const getPrevMonthValue = (value: string): string | null => {
   const [yearRaw, monthRaw] = value.split('-');
@@ -126,6 +140,7 @@ export default function OperationsPreview() {
   const userRole = useAuthStore((state) => state.user?.role);
   const canManagePlanFact = userRole === 'admin' || userRole === 'head_ktk_vvo';
   const efficiencyOnlyViewer = userRole === 'director' || userRole === 'financer';
+  const canChooseEfficiencyDirection = userRole === 'director' || userRole === 'financer';
   const [filter, setFilter] = useState<'Все' | Department>('Все');
   const [monthValue, setMonthValue] = useState('2026-04');
   const [mode, setMode] = useState<PreviewMode>('fact');
@@ -134,7 +149,6 @@ export default function OperationsPreview() {
   const [copyStatus, setCopyStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [lastSavedSignature, setLastSavedSignature] = useState<string>('');
   const [lastSavedSnapshot, setLastSavedSnapshot] = useState<PreviewPersistedState | null>(null);
-  const [lastServerUpdatedAt, setLastServerUpdatedAt] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [, setActiveCell] = useState<{
     key: string;
@@ -165,6 +179,13 @@ export default function OperationsPreview() {
   const matrixSectionRef = useRef<HTMLElement | null>(null);
   const matrixBodyRef = useRef<HTMLDivElement | null>(null);
   const dragGhostRef = useRef<HTMLDivElement | null>(null);
+  const scopeVersionsRef = useRef<{
+    overrideScopeVersions: Record<string, string>;
+    peopleMonthVersions: Record<string, string>;
+  }>({
+    overrideScopeVersions: {},
+    peopleMonthVersions: {},
+  });
   const [matrixScale, setMatrixScale] = useState(1);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
@@ -636,7 +657,7 @@ export default function OperationsPreview() {
     const restoreFromPayload = (payload: Partial<PreviewPersistedState> | null | undefined) => {
       const liveSection = (new URLSearchParams(window.location.search).get('section') as PreviewSection | null) ?? activeSection;
       const sectionFilter = filterFromSection(liveSection);
-      const restoredPeopleByMonth: PeopleByMonth = (() => {
+      const restoredPeopleByMonthRaw: PeopleByMonth = (() => {
         if (payload?.peopleByMonth && typeof payload.peopleByMonth === 'object') {
           return payload.peopleByMonth as PeopleByMonth;
         }
@@ -648,6 +669,7 @@ export default function OperationsPreview() {
         }
         return fallback.peopleByMonth;
       })();
+      const restoredPeopleByMonth = sanitizePeopleByMonth(restoredPeopleByMonthRaw);
       const restored: PreviewPersistedState = {
         filter: sectionFilter ?? (
           payload?.filter === 'Контейнеры' ||
@@ -668,6 +690,16 @@ export default function OperationsPreview() {
       };
 
       if (cancelled) return;
+      scopeVersionsRef.current = {
+        overrideScopeVersions:
+          payload?.meta?.overrideScopeVersions && typeof payload.meta.overrideScopeVersions === 'object'
+            ? payload.meta.overrideScopeVersions
+            : {},
+        peopleMonthVersions:
+          payload?.meta?.peopleMonthVersions && typeof payload.meta.peopleMonthVersions === 'object'
+            ? payload.meta.peopleMonthVersions
+            : {},
+      };
       setFilter(restored.filter);
       setMonthValue(restored.monthValue);
       setMode(restored.mode);
@@ -690,8 +722,6 @@ export default function OperationsPreview() {
           section: requestedSection,
         });
         const payload = (response.data?.state ?? null) as Partial<PreviewPersistedState> | null;
-        const updatedAt = typeof response.data?.updatedAt === 'string' ? response.data.updatedAt : null;
-        setLastServerUpdatedAt(updatedAt);
         restoreFromPayload(payload);
         return;
       } catch {
@@ -890,35 +920,6 @@ export default function OperationsPreview() {
     });
   };
 
-  const fillTestFleet = () => {
-    if (!window.confirm('Заполнить тестовыми данными: 17 машин (10 с двумя водителями, 7 с одним)?')) return;
-    const now = Date.now();
-    const makePlate = (n: number) => `T${String(100 + n)}AA`;
-    const section: Department = filter === 'Авто' ? 'Авто' : 'Контейнеры';
-    const testRows: PersonRow[] = [];
-    for (let i = 1; i <= 17; i += 1) {
-      const hasSecond = i <= 10;
-      testRows.push({
-        id: `test-${now}-${i}`,
-        department: section,
-        name: `Тест Водитель ${i}`,
-        secondName: hasSecond ? `Тест Водитель ${i}Б` : undefined,
-        plate: makePlate(i),
-        note: undefined,
-        secondNote: undefined,
-      });
-    }
-    setPeopleStateForCurrentMonth((prev) => {
-      const withoutOldTest = prev.filter((item) => !item.id.startsWith('test-'));
-      const withoutCurrentSection = withoutOldTest.filter((item) => item.department !== section);
-      return [...withoutCurrentSection, ...testRows];
-    });
-    setSortBySection((prev) => ({
-      ...prev,
-      [section]: { field: 'manual', direction: 'asc' },
-    }));
-  };
-
   const handlePastePerson = (targetDepartment: Department) => {
     if (!clipboardPerson) return;
     setPeopleStateForCurrentMonth((prev) => [
@@ -1094,12 +1095,67 @@ export default function OperationsPreview() {
 
   const saveDraft = async (): Promise<boolean> => {
     try {
+      const currentScopeOverrides = allOverrides[currentScopeKey] ?? {};
+      const prevScopeOverrides = lastSavedSnapshot?.overrides?.[currentScopeKey] ?? {};
+      const setPatch: Record<string, CellCode> = {};
+      const unsetPatch: string[] = [];
+
+      Object.entries(currentScopeOverrides).forEach(([key, value]) => {
+        if (prevScopeOverrides[key] !== value) {
+          setPatch[key] = value;
+        }
+      });
+      Object.keys(prevScopeOverrides).forEach((key) => {
+        if (!(key in currentScopeOverrides)) {
+          unsetPatch.push(key);
+        }
+      });
+
+      const currentMonthPeople = resolvePeopleForMonth(monthValue, peopleByMonth);
+      const previousMonthPeople = (() => {
+        if (!lastSavedSnapshot) return [];
+        const byMonth = lastSavedSnapshot.peopleByMonth ?? {};
+        return resolvePeopleForMonth(monthValue, byMonth);
+      })();
+      const peopleMonthChanged = JSON.stringify(currentMonthPeople) !== JSON.stringify(previousMonthPeople);
+
+      if (Object.keys(setPatch).length === 0 && unsetPatch.length === 0 && !peopleMonthChanged) {
+        return true;
+      }
+
+      const scopedPayload: PreviewPersistedState = {
+        filter,
+        monthValue,
+        mode,
+        overrides: {} as ScopedOverrides,
+        peopleByMonth: peopleMonthChanged
+          ? {
+              [monthValue]: currentMonthPeople,
+            }
+          : {},
+      };
       const response = await saveOperationsPreviewState(
-        currentSnapshot as unknown as Record<string, unknown>,
-        lastServerUpdatedAt
+        {
+          ...scopedPayload,
+          overridesPatch: {
+            [currentScopeKey]: {
+              set: setPatch,
+              unset: unsetPatch,
+            },
+          },
+          clientVersions: {
+            overrideScopeVersions: {
+              [currentScopeKey]: scopeVersionsRef.current.overrideScopeVersions[currentScopeKey] ?? null,
+            },
+            peopleMonthVersions: {
+              [monthValue]: scopeVersionsRef.current.peopleMonthVersions[monthValue] ?? null,
+            },
+          },
+        } as unknown as Record<string, unknown>
       );
-      const updatedAt = typeof response.data?.updatedAt === 'string' ? response.data.updatedAt : null;
-      setLastServerUpdatedAt(updatedAt);
+      const nextUpdatedAt = typeof response.data?.updatedAt === 'string' ? response.data.updatedAt : new Date().toISOString();
+      scopeVersionsRef.current.overrideScopeVersions[currentScopeKey] = nextUpdatedAt;
+      scopeVersionsRef.current.peopleMonthVersions[monthValue] = nextUpdatedAt;
       try {
         localStorage.setItem(
           PREVIEW_STORAGE_KEY,
@@ -1245,7 +1301,7 @@ export default function OperationsPreview() {
                 '& .MuiInputBase-root': { height: 40 },
               }}
             />
-            {isEfficiencySection && (
+            {isEfficiencySection && canChooseEfficiencyDirection && (
               <TextField
                 label="Направление"
                 select
@@ -1329,16 +1385,6 @@ export default function OperationsPreview() {
               )}
               {!isEfficiencySection && (
                 <>
-                  {(filter === 'Контейнеры' || filter === 'Авто') && (
-                    <button
-                      type="button"
-                      className="ops-btn ops-btn--copy"
-                      style={{ marginRight: 10 }}
-                      onClick={fillTestFleet}
-                    >
-                      ТЕСТ 17
-                    </button>
-                  )}
                   <button
                     type="button"
                     className="ops-btn ops-btn--add"

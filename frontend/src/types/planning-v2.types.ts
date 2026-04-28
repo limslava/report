@@ -67,6 +67,7 @@ export interface PlanningYearTotalsRow {
 export interface TechMonthlyPoint {
   month: string;
   plan: number;
+  carry_plan?: number;
   fact: number;
   pct: number;
 }
@@ -128,6 +129,7 @@ export interface PlanningTechDashboardResponse {
   year: number;
   month: number;
   monthly: TechMonthlyPoint[];
+  month_segments?: TechAprilSegment[];
   april_segments: TechAprilSegment[];
   kpi: TechKpiPayload;
   checks: Record<string, boolean>;
