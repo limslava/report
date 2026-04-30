@@ -88,6 +88,7 @@ export const getMasterContracts = () => api.get('/contracts/masters');
 export const getContractReferences = () => api.get('/contracts/reference');
 export const getContractDuplicates = (params: { inn: string; contractType: 'expense' | 'income' }) =>
   api.get('/contracts/duplicates', { params });
+export const resolveCounterpartyByInn = (inn: string) => api.get('/counterparties/resolve', { params: { inn } });
 export const createContract = (data: {
   contractNumber: string;
   contractType: 'expense' | 'income';

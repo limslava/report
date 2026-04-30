@@ -28,6 +28,7 @@ import {
   getContractDuplicates,
   getContractReferences,
   getContracts,
+  resolveCounterpartyByInn,
   startContractApproval,
 } from '../services/api';
 import '../styles/contract-approval.css';
@@ -128,6 +129,7 @@ export default function ContractApprovalPage() {
   const [selectedContractId, setSelectedContractId] = useState<string>('');
   const [sheet, setSheet] = useState<ApprovalSheet | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resolvingInn, setResolvingInn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -215,6 +217,27 @@ export default function ContractApprovalPage() {
       setDuplicates(Array.isArray(response.data) ? response.data : []);
     } catch {
       setDuplicates([]);
+    }
+  };
+
+  const resolveInnAndPrefill = async () => {
+    const inn = form.counterpartyInn.trim();
+    if (!/^\d{10}$|^\d{12}$/.test(inn)) return;
+    try {
+      setResolvingInn(true);
+      const response = await resolveCounterpartyByInn(inn);
+      const data = response.data?.data;
+      if (!data) return;
+      setForm((prev) => ({
+        ...prev,
+        counterpartyName: data.nameFull || prev.counterpartyName,
+        counterpartyShortName: data.nameShort || prev.counterpartyShortName,
+        counterpartyForm: (data.counterpartyForm as any) || prev.counterpartyForm,
+      }));
+    } catch {
+      // fallback to manual input when not found in directory/FNS
+    } finally {
+      setResolvingInn(false);
     }
   };
 
@@ -367,12 +390,13 @@ export default function ContractApprovalPage() {
                   ))}
                 </Select>
               </FormControl>
-                <TextField
-                  label="ИНН"
-                  fullWidth
-                  value={form.counterpartyInn}
-                  onChange={(e) => setForm({ ...form, counterpartyInn: e.target.value.replace(/\D/g, '').slice(0, 12) })}
-                />
+              <TextField
+                label="ИНН"
+                fullWidth
+                value={form.counterpartyInn}
+                onChange={(e) => setForm({ ...form, counterpartyInn: e.target.value.replace(/\D/g, '').slice(0, 12) })}
+                onBlur={resolveInnAndPrefill}
+              />
               <TextField label="Предмет/номер договора" fullWidth value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} />
             </Stack>
 
@@ -423,6 +447,7 @@ export default function ContractApprovalPage() {
             <Stack direction="row" spacing={1}>
               <Button variant="contained" onClick={onCreate} disabled={!canSubmit || loading}>Создать</Button>
               <Button variant="outlined" onClick={loadRegistry} disabled={loading}>Обновить</Button>
+              {resolvingInn && <Typography sx={{ alignSelf: 'center' }}>Поиск контрагента по ИНН...</Typography>}
             </Stack>
           </Paper>
 
