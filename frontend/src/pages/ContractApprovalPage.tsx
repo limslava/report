@@ -25,12 +25,20 @@ import {
   createContract,
   decideContractApprovalStep,
   getContractApprovalSheet,
+  getContractDuplicates,
+  getContractReferences,
   getContracts,
   getMasterContracts,
-  getUsersDirectory,
   startContractApproval,
 } from '../services/api';
 import '../styles/contract-approval.css';
+
+type CounterpartyFormRef = {
+  code: 'ooo' | 'ao' | 'pao' | 'gup' | 'mup' | 'ano' | 'fond' | 'uchrezhdenie' | 'assotsiaciya' | 'ip' | 'fizlico';
+  label: string;
+  innLength: 10 | 12;
+  isIndividual: boolean;
+};
 
 type ContractRecord = {
   id: string;
@@ -40,6 +48,7 @@ type ContractRecord = {
   counterpartyName: string;
   counterpartyShortName: string | null;
   ownershipForm: string | null;
+  counterpartyForm: CounterpartyFormRef['code'] | null;
   counterpartyInn: string;
   templateKind: 'typical' | 'non_typical';
   subject: string | null;
@@ -63,10 +72,14 @@ type MasterContract = {
   subject: string | null;
 };
 
-type UserDirectory = {
+type DuplicateContract = {
   id: string;
-  fullName: string;
-  role: string;
+  contractNumber: string;
+  contractDate: string | null;
+  subject: string | null;
+  status: string;
+  counterpartyName?: string;
+  initiatorName?: string | null;
 };
 
 type SheetStep = {
@@ -130,7 +143,8 @@ export default function ContractApprovalPage() {
   const [tab, setTab] = useState(0);
   const [contracts, setContracts] = useState<ContractRecord[]>([]);
   const [masters, setMasters] = useState<MasterContract[]>([]);
-  const [directors, setDirectors] = useState<UserDirectory[]>([]);
+  const [counterpartyForms, setCounterpartyForms] = useState<CounterpartyFormRef[]>([]);
+  const [duplicates, setDuplicates] = useState<DuplicateContract[]>([]);
   const [selectedContractId, setSelectedContractId] = useState<string>('');
   const [sheet, setSheet] = useState<ApprovalSheet | null>(null);
   const [loading, setLoading] = useState(false);
@@ -152,42 +166,50 @@ export default function ContractApprovalPage() {
     counterpartyName: '',
     counterpartyShortName: '',
     ownershipForm: '',
+    counterpartyForm: '' as '' | CounterpartyFormRef['code'],
     counterpartyInn: '',
     templateKind: 'typical' as 'typical' | 'non_typical',
     subject: '',
     contractDate: '',
     psrFlag: false,
     signingMethod: 'post' as 'edo' | 'post',
-    assignedGeneralDirectorId: '',
     documentKind: 'master' as 'master' | 'addendum',
     parentContractId: '',
   });
+
+  const selectedFormRef = useMemo(
+    () => counterpartyForms.find((item) => item.code === form.counterpartyForm) ?? null,
+    [counterpartyForms, form.counterpartyForm]
+  );
+
+  const innRequiredLength = selectedFormRef?.innLength ?? 12;
 
   const canSubmit = useMemo(() => {
     if (!form.contractNumber.trim()) return false;
     if (!form.counterpartyName.trim()) return false;
     if (!form.subject.trim()) return false;
     if (!form.contractDate) return false;
-    if (!/^(\d{10}|\d{12})$/.test(form.counterpartyInn.trim())) return false;
-    if (!form.assignedGeneralDirectorId) return false;
+    if (!form.counterpartyForm) return false;
+    if (!/^\d+$/.test(form.counterpartyInn.trim())) return false;
+    if (form.counterpartyInn.trim().length !== innRequiredLength) return false;
     if (form.documentKind === 'addendum' && !form.parentContractId) return false;
     if (form.contractType === 'income' && !form.incomeSubtype) return false;
+    if (duplicates.length > 0) return false;
     return true;
-  }, [form]);
+  }, [form, innRequiredLength, duplicates.length]);
 
   const loadRegistry = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [contractsRes, mastersRes, usersRes] = await Promise.all([
+      const [contractsRes, mastersRes, refsRes] = await Promise.all([
         getContracts(),
         getMasterContracts(),
-        getUsersDirectory(),
+        getContractReferences(),
       ]);
       setContracts(Array.isArray(contractsRes.data) ? contractsRes.data : []);
       setMasters(Array.isArray(mastersRes.data) ? mastersRes.data : []);
-      const allUsers = Array.isArray(usersRes.data) ? usersRes.data : [];
-      setDirectors(allUsers.filter((u: UserDirectory) => u.role === 'general_director' || u.role === 'director'));
+      setCounterpartyForms(Array.isArray(refsRes.data?.counterpartyForms) ? refsRes.data.counterpartyForms : []);
       if (!selectedContractId && Array.isArray(contractsRes.data) && contractsRes.data.length > 0) {
         setSelectedContractId(contractsRes.data[0].id);
       }
@@ -213,6 +235,19 @@ export default function ContractApprovalPage() {
     }
   };
 
+  const loadDuplicates = async (inn: string, contractType: 'expense' | 'income') => {
+    if (!inn || !/^\d+$/.test(inn)) {
+      setDuplicates([]);
+      return;
+    }
+    try {
+      const response = await getContractDuplicates({ inn, contractType });
+      setDuplicates(Array.isArray(response.data) ? response.data : []);
+    } catch {
+      setDuplicates([]);
+    }
+  };
+
   useEffect(() => {
     loadRegistry();
   }, []);
@@ -220,6 +255,19 @@ export default function ContractApprovalPage() {
   useEffect(() => {
     loadSheet(selectedContractId);
   }, [selectedContractId]);
+
+  useEffect(() => {
+    const inn = form.counterpartyInn.trim();
+    if (!form.counterpartyForm) {
+      setDuplicates([]);
+      return;
+    }
+    if (inn.length < innRequiredLength) {
+      setDuplicates([]);
+      return;
+    }
+    loadDuplicates(inn, form.contractType);
+  }, [form.counterpartyInn, form.contractType, form.counterpartyForm, innRequiredLength]);
 
   const onCreate = async () => {
     if (!canSubmit) return;
@@ -233,25 +281,27 @@ export default function ContractApprovalPage() {
         counterpartyName: form.counterpartyName.trim(),
         counterpartyShortName: form.counterpartyShortName.trim() || null,
         ownershipForm: form.ownershipForm.trim() || null,
+        counterpartyForm: form.counterpartyForm || null,
         counterpartyInn: form.counterpartyInn.trim(),
         templateKind: form.templateKind,
         subject: form.subject.trim(),
         contractDate: form.contractDate,
         psrFlag: form.contractType === 'income' && form.incomeSubtype === 'with_psr' ? true : form.psrFlag,
         signingMethod: form.signingMethod,
-        assignedGeneralDirectorId: form.assignedGeneralDirectorId,
         documentKind: form.documentKind,
         parentContractId: form.documentKind === 'addendum' ? form.parentContractId : null,
       });
 
       setSuccess('Договор создан');
       await loadRegistry();
+      setDuplicates([]);
       setForm((prev) => ({
         ...prev,
         contractNumber: '',
         counterpartyName: '',
         counterpartyShortName: '',
         ownershipForm: '',
+        counterpartyForm: '',
         counterpartyInn: '',
         subject: '',
         contractDate: '',
@@ -259,7 +309,12 @@ export default function ContractApprovalPage() {
         parentContractId: '',
       }));
     } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || 'Не удалось создать договор');
+      const message = e?.response?.data?.message || e?.message || 'Не удалось создать договор';
+      setError(message);
+      const duplicatesData = e?.response?.data?.duplicates;
+      if (Array.isArray(duplicatesData)) {
+        setDuplicates(duplicatesData);
+      }
     }
   };
 
@@ -336,10 +391,54 @@ export default function ContractApprovalPage() {
             </Stack>
 
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
-              <TextField label="Форма собственности" fullWidth value={form.ownershipForm} onChange={(e) => setForm({ ...form, ownershipForm: e.target.value })} />
-              <TextField label="ИНН" fullWidth value={form.counterpartyInn} onChange={(e) => setForm({ ...form, counterpartyInn: e.target.value.replace(/\D/g, '').slice(0, 12) })} helperText="10 или 12 цифр" />
+              <FormControl fullWidth>
+                <InputLabel>Форма собственности</InputLabel>
+                <Select
+                  label="Форма собственности"
+                  value={form.counterpartyForm}
+                  onChange={(e) => setForm({ ...form, counterpartyForm: e.target.value as any, counterpartyInn: '' })}
+                >
+                  {counterpartyForms.map((item) => (
+                    <MenuItem key={item.code} value={item.code}>{item.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField label="Уточнение формы (опц.)" fullWidth value={form.ownershipForm} onChange={(e) => setForm({ ...form, ownershipForm: e.target.value })} />
+              <TextField
+                label="ИНН"
+                fullWidth
+                value={form.counterpartyInn}
+                onChange={(e) => setForm({ ...form, counterpartyInn: e.target.value.replace(/\D/g, '').slice(0, 12) })}
+                helperText={form.counterpartyForm ? `Для выбранной формы требуется ${innRequiredLength} цифр` : 'Сначала выберите форму собственности'}
+              />
               <TextField label="Предмет/номер договора" fullWidth value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} />
             </Stack>
+
+            {duplicates.length > 0 && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                Найдены договоры с таким ИНН и типом. Создание нового договора заблокировано до проверки.
+                <Table size="small" sx={{ mt: 1 }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>№</TableCell>
+                      <TableCell>Дата</TableCell>
+                      <TableCell>Предмет</TableCell>
+                      <TableCell>Статус</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {duplicates.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell>{item.contractNumber}</TableCell>
+                        <TableCell>{item.contractDate ?? '—'}</TableCell>
+                        <TableCell>{item.subject ?? '—'}</TableCell>
+                        <TableCell>{item.status}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Alert>
+            )}
 
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
               <TextField label="Дата договора" type="date" fullWidth value={form.contractDate} onChange={(e) => setForm({ ...form, contractDate: e.target.value })} InputLabelProps={{ shrink: true }} />
@@ -377,14 +476,6 @@ export default function ContractApprovalPage() {
                   </Select>
                 </FormControl>
               )}
-              <FormControl fullWidth>
-                <InputLabel>Назначенный ГД</InputLabel>
-                <Select label="Назначенный ГД" value={form.assignedGeneralDirectorId} onChange={(e) => setForm({ ...form, assignedGeneralDirectorId: e.target.value })}>
-                  {directors.map((director) => (
-                    <MenuItem key={director.id} value={director.id}>{director.fullName}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
             </Stack>
 
             <Stack direction="row" spacing={1}>
@@ -404,7 +495,6 @@ export default function ContractApprovalPage() {
                     <TableCell>Подтип</TableCell>
                     <TableCell>Контрагент</TableCell>
                     <TableCell>Статус</TableCell>
-                    <TableCell>ГД</TableCell>
                     <TableCell>Лист</TableCell>
                   </TableRow>
                 </TableHead>
@@ -416,7 +506,6 @@ export default function ContractApprovalPage() {
                       <TableCell>{row.incomeSubtype === 'with_psr' ? 'С ПСР' : row.incomeSubtype === 'standard' ? 'Стандартный' : '—'}</TableCell>
                       <TableCell>{row.counterpartyName}</TableCell>
                       <TableCell><Chip size="small" label={STATUS_LABELS[row.status]} /></TableCell>
-                      <TableCell>{row.assignedGeneralDirector?.fullName ?? '—'}</TableCell>
                       <TableCell>
                         <Button size="small" onClick={() => { setSelectedContractId(row.id); setTab(1); }}>Открыть</Button>
                       </TableCell>

@@ -6,6 +6,8 @@ import { handleValidationErrors } from '../middleware/express-validator.middlewa
 import {
   createContract,
   decideContractApprovalStep,
+  findContractDuplicates,
+  getContractReferences,
   getContractApprovalSheet,
   listContracts,
   listMasterContracts,
@@ -19,6 +21,8 @@ router.use(authorizeRole('admin'));
 
 router.get('/', listContracts);
 router.get('/masters', listMasterContracts);
+router.get('/reference', getContractReferences);
+router.get('/duplicates', findContractDuplicates);
 router.get('/:id/approval-sheet', [param('id').isUUID()], handleValidationErrors, getContractApprovalSheet);
 
 router.post(
@@ -30,13 +34,13 @@ router.post(
     body('counterpartyName').isString().trim().notEmpty().isLength({ max: 255 }),
     body('counterpartyShortName').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('ownershipForm').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
+    body('counterpartyForm').optional({ nullable: true }).isIn(['ooo', 'ao', 'pao', 'gup', 'mup', 'ano', 'fond', 'uchrezhdenie', 'assotsiaciya', 'ip', 'fizlico']),
     body('counterpartyInn').isString().trim().matches(/^(\d{10}|\d{12})$/),
     body('templateKind').optional().isIn(['typical', 'non_typical']),
     body('subject').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
     body('contractDate').optional({ nullable: true }).isISO8601(),
     body('psrFlag').optional().isBoolean(),
     body('signingMethod').optional().isIn(['edo', 'post']),
-    body('assignedGeneralDirectorId').optional({ nullable: true }).isUUID(),
     body('documentKind').optional().isIn(['master', 'addendum']),
     body('parentContractId').optional({ nullable: true }).isUUID(),
   ],

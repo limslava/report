@@ -12,6 +12,7 @@ import {
 } from '../models/contract.model';
 import { ContractApprovalDecision, ContractApprovalStep } from '../models/contract-approval-step.model';
 import { User } from '../models/user.model';
+import { COUNTERPARTY_FORMS, COUNTERPARTY_FORM_MAP } from '../constants/counterparty-forms';
 
 const contractRepository = AppDataSource.getRepository(Contract);
 const stepRepository = AppDataSource.getRepository(ContractApprovalStep);
@@ -36,12 +37,13 @@ async function resolveApproverUserId(roleCode: string, contract: Contract): Prom
   }
 
   if (roleCode === 'general_director') {
-    if (!contract.assignedGeneralDirectorId) {
-      const error: any = new Error('Не выбран назначенный генеральный директор');
+    const gd = await userRepository.findOne({ where: { role: 'general_director' as any, isActive: true }, order: { createdAt: 'ASC' } });
+    if (!gd) {
+      const error: any = new Error('Не найден активный пользователь с ролью Генеральный директор');
       error.statusCode = 400;
       throw error;
     }
-    return contract.assignedGeneralDirectorId;
+    return gd.id;
   }
 
   const approver = await userRepository.findOne({
@@ -95,12 +97,6 @@ function requireStartFields(contract: Contract): void {
     throw error;
   }
 
-  if (!contract.assignedGeneralDirectorId) {
-    const error: any = new Error('Не выбран назначенный генеральный директор');
-    error.statusCode = 400;
-    throw error;
-  }
-
   if (contract.contractType === ContractType.INCOME && !contract.incomeSubtype) {
     const error: any = new Error('Для доходного договора обязателен подтип');
     error.statusCode = 400;
@@ -113,6 +109,68 @@ function requireStartFields(contract: Contract): void {
     throw error;
   }
 }
+
+function validateInnByCounterpartyForm(inn: string, counterpartyForm: string | null): void {
+  if (!counterpartyForm) {
+    return;
+  }
+  const form = COUNTERPARTY_FORM_MAP.get(counterpartyForm as any);
+  if (!form) {
+    const error: any = new Error('Неизвестная форма собственности контрагента');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (inn.length !== form.innLength) {
+    const error: any = new Error(`Для формы ${form.label} ИНН должен содержать ${form.innLength} цифр`);
+    error.statusCode = 400;
+    throw error;
+  }
+}
+
+export const getContractReferences = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json({
+      counterpartyForms: COUNTERPARTY_FORMS,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const findContractDuplicates = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const inn = String(req.query.inn ?? '').trim();
+    const contractType = String(req.query.contractType ?? '').trim() as ContractType;
+    if (!inn || (contractType !== ContractType.EXPENSE && contractType !== ContractType.INCOME)) {
+      const error: any = new Error('Не переданы параметры поиска дублей');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const duplicates = await contractRepository.find({
+      where: {
+        counterpartyInn: inn,
+        contractType,
+      },
+      relations: ['initiator'],
+      order: { createdAt: 'DESC' },
+      take: 20,
+    });
+
+    res.json(duplicates.map((contract) => ({
+      id: contract.id,
+      contractNumber: contract.contractNumber,
+      contractDate: contract.contractDate ? contract.contractDate.toISOString().slice(0, 10) : null,
+      subject: contract.subject,
+      counterpartyName: contract.counterpartyName,
+      status: contract.status,
+      initiatorName: contract.initiator?.fullName ?? null,
+      createdAt: contract.createdAt,
+    })));
+  } catch (error) {
+    next(error);
+  }
+};
 
 export const listContracts = async (_req: Request, res: Response, next: NextFunction) => {
   try {
@@ -130,6 +188,7 @@ export const listContracts = async (_req: Request, res: Response, next: NextFunc
       counterpartyName: contract.counterpartyName,
       counterpartyShortName: contract.counterpartyShortName,
       ownershipForm: contract.ownershipForm,
+      counterpartyForm: contract.counterpartyForm,
       counterpartyInn: contract.counterpartyInn,
       templateKind: contract.templateKind,
       subject: contract.subject,
@@ -141,9 +200,7 @@ export const listContracts = async (_req: Request, res: Response, next: NextFunc
       parentContractId: contract.parentContractId,
       parentContractNumber: contract.parentContract?.contractNumber ?? null,
       assignedGeneralDirectorId: contract.assignedGeneralDirectorId,
-      assignedGeneralDirector: contract.assignedGeneralDirector
-        ? { id: contract.assignedGeneralDirector.id, fullName: contract.assignedGeneralDirector.fullName }
-        : null,
+      assignedGeneralDirector: null,
       initiator: contract.initiator
         ? { id: contract.initiator.id, fullName: contract.initiator.fullName, role: contract.initiator.role }
         : null,
@@ -187,13 +244,13 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       counterpartyName,
       counterpartyShortName,
       ownershipForm,
+      counterpartyForm,
       counterpartyInn,
       templateKind,
       subject,
       contractDate,
       psrFlag,
       signingMethod,
-      assignedGeneralDirectorId,
       documentKind,
       parentContractId,
     } = req.body as {
@@ -203,13 +260,13 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       counterpartyName: string;
       counterpartyShortName?: string | null;
       ownershipForm?: string | null;
+      counterpartyForm?: string | null;
       counterpartyInn: string;
       templateKind?: ContractTemplateKind;
       subject?: string | null;
       contractDate?: string | null;
       psrFlag?: boolean;
       signingMethod?: ContractSigningMethod;
-      assignedGeneralDirectorId?: string | null;
       documentKind?: ContractDocumentKind;
       parentContractId?: string | null;
     };
@@ -237,15 +294,6 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       throw error;
     }
 
-    if (assignedGeneralDirectorId) {
-      const gd = await userRepository.findOne({ where: { id: assignedGeneralDirectorId, isActive: true } });
-      if (!gd || (gd.role !== 'general_director' && gd.role !== 'director')) {
-        const error: any = new Error('Назначенный ГД должен иметь роль general_director или director');
-        error.statusCode = 400;
-        throw error;
-      }
-    }
-
     const parsedContractDate = contractDate ? new Date(contractDate) : null;
     if (parsedContractDate && Number.isNaN(parsedContractDate.getTime())) {
       const error: any = new Error('Некорректная дата договора');
@@ -258,6 +306,31 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       ? true
       : Boolean(psrFlag);
 
+    validateInnByCounterpartyForm(counterpartyInn.trim(), counterpartyForm ?? null);
+
+    const duplicates = await contractRepository.find({
+      where: {
+        counterpartyInn: counterpartyInn.trim(),
+        contractType,
+      },
+      order: { createdAt: 'DESC' },
+      take: 20,
+    });
+    if (duplicates.length > 0) {
+      res.status(409).json({
+        error: 'DUPLICATE_CONTRACTS_FOUND',
+        message: 'Найден(ы) договор(ы) с таким ИНН и типом договора',
+        duplicates: duplicates.map((item) => ({
+          id: item.id,
+          contractNumber: item.contractNumber,
+          contractDate: item.contractDate ? item.contractDate.toISOString().slice(0, 10) : null,
+          subject: item.subject,
+          status: item.status,
+        })),
+      });
+      return;
+    }
+
     const contract = contractRepository.create({
       contractNumber: contractNumber.trim(),
       contractType,
@@ -265,6 +338,7 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       counterpartyName: counterpartyName.trim(),
       counterpartyShortName: counterpartyShortName?.trim() || null,
       ownershipForm: ownershipForm?.trim() || null,
+      counterpartyForm: counterpartyForm || null,
       counterpartyInn: counterpartyInn.trim(),
       templateKind: templateKind ?? ContractTemplateKind.TYPICAL,
       subject: subject?.trim() || null,
@@ -272,7 +346,7 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       psrFlag: normalizedPsrFlag,
       signingMethod: signingMethod ?? ContractSigningMethod.POST,
       status: ContractStatus.DRAFT,
-      assignedGeneralDirectorId: assignedGeneralDirectorId || null,
+      assignedGeneralDirectorId: null,
       documentKind: normalizedDocumentKind,
       parentContractId: parentContractId || null,
       initiatorId: req.user.id,

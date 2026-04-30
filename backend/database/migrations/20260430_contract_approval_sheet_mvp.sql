@@ -8,6 +8,7 @@ ALTER TABLE contracts
   ADD COLUMN IF NOT EXISTS income_subtype contract_income_subtype_enum NULL,
   ADD COLUMN IF NOT EXISTS template_kind contract_template_kind_enum NOT NULL DEFAULT 'typical',
   ADD COLUMN IF NOT EXISTS subject VARCHAR(500) NULL,
+  ADD COLUMN IF NOT EXISTS counterparty_form VARCHAR(32) NULL,
   ADD COLUMN IF NOT EXISTS contract_date DATE NULL,
   ADD COLUMN IF NOT EXISTS psr_flag BOOLEAN NOT NULL DEFAULT FALSE,
   ADD COLUMN IF NOT EXISTS signing_method contract_signing_method_enum NOT NULL DEFAULT 'post',

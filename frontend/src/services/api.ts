@@ -85,6 +85,9 @@ export const getUsers = (params?: any) => api.get('/admin/users', { params });
 export const getUsersDirectory = () => api.get('/users/directory');
 export const getContracts = () => api.get('/contracts');
 export const getMasterContracts = () => api.get('/contracts/masters');
+export const getContractReferences = () => api.get('/contracts/reference');
+export const getContractDuplicates = (params: { inn: string; contractType: 'expense' | 'income' }) =>
+  api.get('/contracts/duplicates', { params });
 export const createContract = (data: {
   contractNumber: string;
   contractType: 'expense' | 'income';
@@ -92,13 +95,13 @@ export const createContract = (data: {
   counterpartyName: string;
   counterpartyShortName?: string | null;
   ownershipForm?: string | null;
+  counterpartyForm?: 'ooo' | 'ao' | 'pao' | 'gup' | 'mup' | 'ano' | 'fond' | 'uchrezhdenie' | 'assotsiaciya' | 'ip' | 'fizlico' | null;
   counterpartyInn: string;
   templateKind?: 'typical' | 'non_typical';
   subject?: string | null;
   contractDate?: string | null;
   psrFlag?: boolean;
   signingMethod?: 'edo' | 'post';
-  assignedGeneralDirectorId?: string | null;
   documentKind?: 'master' | 'addendum';
   parentContractId?: string | null;
 }) => api.post('/contracts', data);

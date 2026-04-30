@@ -72,6 +72,9 @@ export class Contract {
   @Column({ name: 'ownership_form', type: 'varchar', length: 100, nullable: true })
   ownershipForm!: string | null;
 
+  @Column({ name: 'counterparty_form', type: 'varchar', length: 32, nullable: true })
+  counterpartyForm!: string | null;
+
   @Column({ name: 'counterparty_inn', type: 'varchar', length: 12 })
   counterpartyInn!: string;
 
