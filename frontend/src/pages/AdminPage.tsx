@@ -181,6 +181,9 @@ const AdminPage = () => {
     director: 'Директор',
     admin: 'Администратор',
     financer: 'Финансист',
+    chief_accountant: 'Главный бухгалтер',
+    lawyer: 'Юрист',
+    security: 'СБ',
   };
 
   const auditActions = [
@@ -209,6 +212,9 @@ const AdminPage = () => {
     { value: 'director', label: 'Директор' },
     { value: 'admin', label: 'Администратор' },
     { value: 'financer', label: 'Финансист' },
+    { value: 'chief_accountant', label: 'Главный бухгалтер' },
+    { value: 'lawyer', label: 'Юрист' },
+    { value: 'security', label: 'СБ' },
   ];
 
   const userNameById = users.reduce<Record<string, string>>((acc, user) => {

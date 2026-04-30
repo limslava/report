@@ -29,6 +29,9 @@ export class User {
     | 'manager_extra'
     | 'manager_to'
     | 'financer'
+    | 'chief_accountant'
+    | 'lawyer'
+    | 'security'
     | 'director'
     | 'admin';
 
