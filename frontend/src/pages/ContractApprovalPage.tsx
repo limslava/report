@@ -4,6 +4,10 @@ import {
   Box,
   Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   InputLabel,
   MenuItem,
@@ -126,12 +130,28 @@ export default function ContractApprovalPage() {
   const [contracts, setContracts] = useState<ContractRecord[]>([]);
   const [counterpartyForms, setCounterpartyForms] = useState<CounterpartyFormRef[]>([]);
   const [duplicates, setDuplicates] = useState<DuplicateContract[]>([]);
-  const [selectedContractId, setSelectedContractId] = useState<string>('');
+  const [selectedContractId, setSelectedContractId] = useState('');
   const [sheet, setSheet] = useState<ApprovalSheet | null>(null);
   const [loading, setLoading] = useState(false);
   const [resolvingInn, setResolvingInn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState(0);
+  const [wizardChecking, setWizardChecking] = useState(false);
+  const [wizardDuplicates, setWizardDuplicates] = useState<DuplicateContract[]>([]);
+  const [wizardPrefill, setWizardPrefill] = useState<{
+    counterpartyName?: string;
+    counterpartyShortName?: string;
+    counterpartyForm?: CounterpartyFormRef['code'];
+  } | null>(null);
+  const [wizard, setWizard] = useState({
+    counterpartyInn: '',
+    contractType: 'expense' as 'expense' | 'income',
+    incomeSubtype: 'standard' as 'standard' | 'with_psr',
+    templateKind: 'typical' as 'typical' | 'non_typical',
+  });
 
   const [decisionForm, setDecisionForm] = useState({
     stepId: '',
@@ -222,7 +242,7 @@ export default function ContractApprovalPage() {
 
   const resolveInnAndPrefill = async () => {
     const inn = form.counterpartyInn.trim();
-    if (!/^\d{10}$|^\d{12}$/.test(inn)) return;
+    if (!/^(\d{10}|\d{12})$/.test(inn)) return;
     try {
       setResolvingInn(true);
       const response = await resolveCounterpartyByInn(inn);
@@ -235,10 +255,75 @@ export default function ContractApprovalPage() {
         counterpartyForm: (data.counterpartyForm as any) || prev.counterpartyForm,
       }));
     } catch {
-      // fallback to manual input when not found in directory/FNS
+      // manual fallback
     } finally {
       setResolvingInn(false);
     }
+  };
+
+  const resetWizard = () => {
+    setWizardStep(0);
+    setWizardDuplicates([]);
+    setWizardPrefill(null);
+    setWizardChecking(false);
+    setWizard({
+      counterpartyInn: '',
+      contractType: 'expense',
+      incomeSubtype: 'standard',
+      templateKind: 'typical',
+    });
+  };
+
+  const openWizard = () => {
+    resetWizard();
+    setWizardOpen(true);
+  };
+
+  const closeWizard = () => {
+    setWizardOpen(false);
+    resetWizard();
+  };
+
+  const runWizardChecks = async () => {
+    try {
+      setWizardChecking(true);
+      const [dupRes, resolveRes] = await Promise.allSettled([
+        getContractDuplicates({ inn: wizard.counterpartyInn.trim(), contractType: wizard.contractType }),
+        resolveCounterpartyByInn(wizard.counterpartyInn.trim()),
+      ]);
+
+      const foundDuplicates = dupRes.status === 'fulfilled' && Array.isArray(dupRes.value.data) ? dupRes.value.data : [];
+      setWizardDuplicates(foundDuplicates);
+
+      if (resolveRes.status === 'fulfilled') {
+        const data = resolveRes.value.data?.data;
+        if (data) {
+          setWizardPrefill({
+            counterpartyName: data.nameFull,
+            counterpartyShortName: data.nameShort,
+            counterpartyForm: data.counterpartyForm,
+          });
+        }
+      }
+    } finally {
+      setWizardChecking(false);
+    }
+  };
+
+  const proceedFromWizard = () => {
+    setForm((prev) => ({
+      ...prev,
+      counterpartyInn: wizard.counterpartyInn,
+      contractType: wizard.contractType,
+      incomeSubtype: wizard.contractType === 'income' ? wizard.incomeSubtype : prev.incomeSubtype,
+      templateKind: wizard.templateKind,
+      psrFlag: wizard.contractType === 'income' && wizard.incomeSubtype === 'with_psr',
+      counterpartyName: wizardPrefill?.counterpartyName || prev.counterpartyName,
+      counterpartyShortName: wizardPrefill?.counterpartyShortName || prev.counterpartyShortName,
+      counterpartyForm: (wizardPrefill?.counterpartyForm as any) || prev.counterpartyForm,
+    }));
+    setDuplicates(wizardDuplicates);
+    setWizardOpen(false);
   };
 
   useEffect(() => {
@@ -299,9 +384,7 @@ export default function ContractApprovalPage() {
       const message = e?.response?.data?.message || e?.message || 'Не удалось создать договор';
       setError(message);
       const duplicatesData = e?.response?.data?.duplicates;
-      if (Array.isArray(duplicatesData)) {
-        setDuplicates(duplicatesData);
-      }
+      if (Array.isArray(duplicatesData)) setDuplicates(duplicatesData);
     }
   };
 
@@ -351,7 +434,11 @@ export default function ContractApprovalPage() {
       {tab === 0 && (
         <>
           <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>Новый договор</Typography>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+              <Typography variant="h6">Новый договор</Typography>
+              <Button variant="contained" onClick={openWizard}>Добавить</Button>
+            </Stack>
+
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
               <TextField label="№ Договора" fullWidth value={form.contractNumber} onChange={(e) => setForm({ ...form, contractNumber: e.target.value })} />
               <FormControl fullWidth>
@@ -598,6 +685,137 @@ export default function ContractApprovalPage() {
 
       {error && <Alert severity="error">{error}</Alert>}
       {success && <Alert severity="success">{success}</Alert>}
+
+      <Dialog open={wizardOpen} onClose={closeWizard} fullWidth maxWidth="sm">
+        <DialogTitle>Добавление на согласование</DialogTitle>
+        <DialogContent>
+          {wizardStep === 0 && (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField
+                label="ИНН контрагента"
+                value={wizard.counterpartyInn}
+                onChange={(e) => setWizard({ ...wizard, counterpartyInn: e.target.value.replace(/\D/g, '').slice(0, 12) })}
+              />
+              <Typography variant="body2" color="text.secondary">Шаг 1 из 4</Typography>
+            </Stack>
+          )}
+
+          {wizardStep === 1 && (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <FormControl fullWidth>
+                <InputLabel>Тип договора</InputLabel>
+                <Select
+                  label="Тип договора"
+                  value={wizard.contractType}
+                  onChange={(e) => setWizard({ ...wizard, contractType: e.target.value as 'expense' | 'income' })}
+                >
+                  <MenuItem value="expense">Расходный</MenuItem>
+                  <MenuItem value="income">Доходный</MenuItem>
+                </Select>
+              </FormControl>
+              <Typography variant="body2" color="text.secondary">Шаг 2 из 4</Typography>
+            </Stack>
+          )}
+
+          {wizardStep === 2 && (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              {wizard.contractType === 'income' ? (
+                <FormControl fullWidth>
+                  <InputLabel>Доходный: с ПСР или без ПСР</InputLabel>
+                  <Select
+                    label="Доходный: с ПСР или без ПСР"
+                    value={wizard.incomeSubtype}
+                    onChange={(e) => setWizard({ ...wizard, incomeSubtype: e.target.value as 'standard' | 'with_psr' })}
+                  >
+                    <MenuItem value="with_psr">С ПСР</MenuItem>
+                    <MenuItem value="standard">Без ПСР</MenuItem>
+                  </Select>
+                </FormControl>
+              ) : (
+                <Typography>Для расходного договора шаг ПСР не требуется.</Typography>
+              )}
+              <Typography variant="body2" color="text.secondary">Шаг 3 из 4</Typography>
+            </Stack>
+          )}
+
+          {wizardStep === 3 && (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <FormControl fullWidth>
+                <InputLabel>Типовой/нетиповой</InputLabel>
+                <Select
+                  label="Типовой/нетиповой"
+                  value={wizard.templateKind}
+                  onChange={(e) => setWizard({ ...wizard, templateKind: e.target.value as 'typical' | 'non_typical' })}
+                >
+                  <MenuItem value="typical">Типовой</MenuItem>
+                  <MenuItem value="non_typical">Нетиповой</MenuItem>
+                </Select>
+              </FormControl>
+              <Typography variant="body2" color="text.secondary">Шаг 4 из 4</Typography>
+            </Stack>
+          )}
+
+          {wizardStep === 4 && (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              {wizardChecking && <Typography>Проверка дублей и данных контрагента...</Typography>}
+              {!wizardChecking && wizardDuplicates.length > 0 && (
+                <Alert severity="warning">
+                  Найдены похожие договоры по ИНН и типу. Выберите: отменить или продолжить.
+                </Alert>
+              )}
+              {!wizardChecking && wizardDuplicates.length > 0 && (
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>№</TableCell>
+                      <TableCell>Дата</TableCell>
+                      <TableCell>Предмет</TableCell>
+                      <TableCell>Статус</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {wizardDuplicates.map((d) => (
+                      <TableRow key={d.id}>
+                        <TableCell>{d.contractNumber}</TableCell>
+                        <TableCell>{d.contractDate ?? '—'}</TableCell>
+                        <TableCell>{d.subject ?? '—'}</TableCell>
+                        <TableCell>{d.status}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+              {!wizardChecking && wizardDuplicates.length === 0 && (
+                <Alert severity="success">Похожих договоров не найдено. Можно продолжать.</Alert>
+              )}
+            </Stack>
+          )}
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={closeWizard}>Отменить</Button>
+          {wizardStep > 0 && wizardStep < 4 && (
+            <Button onClick={() => setWizardStep((prev) => prev - 1)}>Назад</Button>
+          )}
+          {wizardStep < 3 && (
+            <Button
+              variant="contained"
+              onClick={() => setWizardStep((prev) => prev + 1)}
+              disabled={wizardStep === 0 && !/^(\d{10}|\d{12})$/.test(wizard.counterpartyInn)}
+            >
+              Далее
+            </Button>
+          )}
+          {wizardStep === 3 && (
+            <Button variant="contained" onClick={async () => { setWizardStep(4); await runWizardChecks(); }}>
+              Проверить
+            </Button>
+          )}
+          {wizardStep === 4 && !wizardChecking && (
+            <Button variant="contained" onClick={proceedFromWizard}>Продолжить</Button>
+          )}
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
