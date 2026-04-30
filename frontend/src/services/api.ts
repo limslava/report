@@ -95,7 +95,7 @@ export const createContract = (data: {
   counterpartyName: string;
   counterpartyShortName?: string | null;
   ownershipForm?: string | null;
-  counterpartyForm?: 'ooo' | 'ao' | 'pao' | null;
+  counterpartyForm?: 'ooo' | 'ao' | 'pao' | 'zao' | 'ip' | null;
   counterpartyInn: string;
   templateKind?: 'typical' | 'non_typical';
   subject?: string | null;

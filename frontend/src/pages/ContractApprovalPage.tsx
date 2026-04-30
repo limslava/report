@@ -33,9 +33,9 @@ import {
 import '../styles/contract-approval.css';
 
 type CounterpartyFormRef = {
-  code: 'ooo' | 'ao' | 'pao';
+  code: 'ooo' | 'ao' | 'pao' | 'zao' | 'ip';
   label: string;
-  innLength: 10;
+  innLength: 10 | 12;
   isIndividual: boolean;
 };
 
@@ -158,7 +158,7 @@ export default function ContractApprovalPage() {
     () => counterpartyForms.find((item) => item.code === form.counterpartyForm) ?? null,
     [counterpartyForms, form.counterpartyForm]
   );
-  const innRequiredLength = selectedFormRef?.innLength ?? 10;
+  const innRequiredLength = selectedFormRef?.innLength ?? 12;
 
   const canSubmit = useMemo(() => {
     if (!form.contractNumber.trim()) return false;
@@ -367,12 +367,12 @@ export default function ContractApprovalPage() {
                   ))}
                 </Select>
               </FormControl>
-              <TextField
-                label="ИНН"
-                fullWidth
-                value={form.counterpartyInn}
-                onChange={(e) => setForm({ ...form, counterpartyInn: e.target.value.replace(/\D/g, '').slice(0, 10) })}
-              />
+                <TextField
+                  label="ИНН"
+                  fullWidth
+                  value={form.counterpartyInn}
+                  onChange={(e) => setForm({ ...form, counterpartyInn: e.target.value.replace(/\D/g, '').slice(0, 12) })}
+                />
               <TextField label="Предмет/номер договора" fullWidth value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} />
             </Stack>
 
