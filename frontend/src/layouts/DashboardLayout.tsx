@@ -42,6 +42,7 @@ import {
   LocalShipping,
   ExpandLess,
   ExpandMore,
+  AccountTree,
 } from '@mui/icons-material';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -90,6 +91,7 @@ const DashboardLayout = () => {
   const [isPlansSubmenuOpen, setIsPlansSubmenuOpen] = useState(true);
   const [isAdminWorkSubmenuOpen, setIsAdminWorkSubmenuOpen] = useState(false);
   const [isAdminWorkDeptSubmenuOpen, setIsAdminWorkDeptSubmenuOpen] = useState(false);
+  const [isBusinessProcessSubmenuOpen, setIsBusinessProcessSubmenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
@@ -343,11 +345,13 @@ const DashboardLayout = () => {
         work: boolean;
         adminWork: boolean;
         adminWorkDept: boolean;
+        businessProcess: boolean;
       }>;
       if (typeof parsed.plans === 'boolean') setIsPlansSubmenuOpen(parsed.plans);
       if (typeof parsed.work === 'boolean') setIsWorkSubmenuOpen(parsed.work);
       if (typeof parsed.adminWork === 'boolean') setIsAdminWorkSubmenuOpen(parsed.adminWork);
       if (typeof parsed.adminWorkDept === 'boolean') setIsAdminWorkDeptSubmenuOpen(parsed.adminWorkDept);
+      if (typeof parsed.businessProcess === 'boolean') setIsBusinessProcessSubmenuOpen(parsed.businessProcess);
     } catch {
       // ignore invalid persisted submenu state
     }
@@ -360,14 +364,15 @@ const DashboardLayout = () => {
         JSON.stringify({
           plans: isPlansSubmenuOpen,
           work: isWorkSubmenuOpen,
-          adminWork: isAdminWorkSubmenuOpen,
-          adminWorkDept: isAdminWorkDeptSubmenuOpen,
-        }),
-      );
+              adminWork: isAdminWorkSubmenuOpen,
+              adminWorkDept: isAdminWorkDeptSubmenuOpen,
+              businessProcess: isBusinessProcessSubmenuOpen,
+            }),
+          );
     } catch {
       // ignore localStorage write issues
     }
-  }, [isPlansSubmenuOpen, isWorkSubmenuOpen, isAdminWorkSubmenuOpen, isAdminWorkDeptSubmenuOpen]);
+  }, [isPlansSubmenuOpen, isWorkSubmenuOpen, isAdminWorkSubmenuOpen, isAdminWorkDeptSubmenuOpen, isBusinessProcessSubmenuOpen]);
 
 
   const closeUnsavedDialog = () => {
@@ -660,6 +665,41 @@ const DashboardLayout = () => {
             )}
           </>
         )}
+        {isAdmin && (
+          <>
+            <ListItem disablePadding>
+              <Tooltip title={!isPinnedOpen ? 'Бизнес процесс' : ''} placement="right">
+                <ListItemButton
+                  selected={location.pathname.startsWith('/business-processes')}
+                  onClick={() => {
+                    const nextOpen = !isBusinessProcessSubmenuOpen;
+                    setIsBusinessProcessSubmenuOpen(nextOpen);
+                    if (nextOpen && !location.pathname.startsWith('/business-processes')) {
+                      handleNavigate('/business-processes/contract-approval');
+                    }
+                  }}
+                >
+                  <ListItemIcon sx={{ minWidth: isPinnedOpen ? 40 : 0, justifyContent: 'center' }}>
+                    <AccountTree />
+                  </ListItemIcon>
+                  {isPinnedOpen && <ListItemText primary="Бизнес процесс" />}
+                  {isPinnedOpen ? (isBusinessProcessSubmenuOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />) : null}
+                </ListItemButton>
+              </Tooltip>
+            </ListItem>
+            {isPinnedOpen && isBusinessProcessSubmenuOpen && (
+              <ListItem disablePadding sx={{ pl: 4 }}>
+                <ListItemButton
+                  selected={location.pathname === '/business-processes/contract-approval'}
+                  onClick={() => handleNavigate('/business-processes/contract-approval')}
+                  sx={{ py: 0.5, minHeight: 34 }}
+                >
+                  <ListItemText primary="Согласование договоров" primaryTypographyProps={{ fontSize: 14 }} />
+                </ListItemButton>
+              </ListItem>
+            )}
+          </>
+        )}
         {menuItems.map((item) => (
           <ListItem disablePadding key={item.key}>
             <Tooltip title={!isPinnedOpen ? item.label : ''} placement="right">
@@ -715,6 +755,7 @@ const DashboardLayout = () => {
                   : 'Показатели')}
               {location.pathname.includes('/summary-report') && 'Сводный отчет'}
               {location.pathname.includes('/admin') && 'Администрирование'}
+              {location.pathname.includes('/business-processes/contract-approval') && 'Согласование договоров'}
               {location.pathname.includes('/settings') && 'Настройки'}
             </Typography>
           )}

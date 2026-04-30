@@ -10,6 +10,7 @@ import AdminPage from './pages/AdminPage';
 import SettingsPage from './pages/SettingsPage';
 import PlansPage from './pages/PlansPage';
 import SWTechDashboardPage from './pages/SWTechDashboardPage';
+import ContractApprovalPage from './pages/ContractApprovalPage';
 import RouteAccessGuard from './components/auth/RouteAccessGuard';
 import {
   canAccessAdmin,
@@ -92,6 +93,14 @@ function App() {
             element={(
               <RouteAccessGuard allow={canViewTechDashboard(user?.role)}>
                 <SWTechDashboardPage />
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="business-processes/contract-approval"
+            element={(
+              <RouteAccessGuard allow={canAccessAdmin(user?.role)}>
+                <ContractApprovalPage />
               </RouteAccessGuard>
             )}
           />
