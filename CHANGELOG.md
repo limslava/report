@@ -58,6 +58,9 @@
     - `Shift + Arrow` range expansion.
 
 - Roles & auth
+  - Added role `head_sales` (Руководитель отдела продаж).
+  - `head_sales` now has the same planning/report permissions profile as `manager_sales`.
+  - SW Tech Dashboard access expanded to `director`, `financer`, and `head_sales` (in addition to `admin`).
   - Closed open registration with `INVITE_ONLY=true` gate.
   - Added admin-only email schedule access.
   - Validated role on admin user update.

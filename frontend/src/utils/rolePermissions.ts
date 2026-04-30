@@ -37,7 +37,7 @@ export function canViewOperationsEfficiency(role?: string | null): boolean {
 }
 
 export function canViewTechDashboard(role?: string | null): boolean {
-  return role === 'admin';
+  return role === 'admin' || role === 'director' || role === 'financer' || role === 'head_sales';
 }
 
 export function canEditFinancialPlan(role?: string | null): boolean {
@@ -61,7 +61,7 @@ export function canEditSegment(role: string | undefined, segmentCode: PlanningSe
     return true;
   }
 
-  if (role === 'director' || role === 'manager_sales') {
+  if (role === 'director' || role === 'manager_sales' || role === 'head_sales') {
     return false;
   }
 

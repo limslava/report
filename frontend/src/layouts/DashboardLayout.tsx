@@ -53,6 +53,7 @@ import {
   canViewOperationsEfficiency,
   canViewFinancialPlan,
   canViewSummary,
+  canViewTechDashboard,
   canViewTotalsInPlans,
 } from '../utils/rolePermissions';
 import { getHasUnsavedChanges, getUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
@@ -97,7 +98,7 @@ const DashboardLayout = () => {
   const canViewTotals = canViewTotalsInPlans(user?.role);
   const canViewFinancial = canViewFinancialPlan(user?.role);
   const canViewEfficiency = canViewOperationsEfficiency(user?.role);
-  const homeRoute = user?.role === 'admin' ? '/sw-tech-dashboard' : '/plans';
+  const homeRoute = canViewTechDashboard(user?.role) ? '/sw-tech-dashboard' : '/plans';
   const isTechDashboardRoute = location.pathname.includes('/sw-tech-dashboard');
   const currentDate = new Date();
   const currentYear = currentDate.getFullYear();

@@ -248,7 +248,7 @@ export const getPlanningSegmentReport = async (req: Request, res: Response, next
       asOfDate,
     });
 
-    if (user.role === 'manager_sales' && segmentCode === PlanningSegmentCode.AUTO) {
+    if ((user.role === 'manager_sales' || user.role === 'head_sales') && segmentCode === PlanningSegmentCode.AUTO) {
       const hiddenMetrics = new Set([
         'auto_manual_debt_overload',
         'auto_manual_debt_cashback',
@@ -666,7 +666,7 @@ export const exportPlanningDailyExcel = async (req: Request, res: Response, next
       }
     }
 
-    const hideSalesDebts = user.role === 'manager_sales';
+    const hideSalesDebts = user.role === 'manager_sales' || user.role === 'head_sales';
     const buffer = await buildPlanningDailyExcel({
       year,
       month,

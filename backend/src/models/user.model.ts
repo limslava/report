@@ -20,6 +20,7 @@ export class User {
   })
   role!:
     | 'manager_sales'
+    | 'head_sales'
     | 'manager_ktk_vvo'
     | 'head_ktk_vvo'
     | 'manager_ktk_mow'
