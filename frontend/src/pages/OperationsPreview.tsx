@@ -2258,7 +2258,38 @@ export default function OperationsPreview() {
                     );
                   })}
 
-                  <div className="ops-matrix__row ops-matrix__footer">
+                  <div
+                    className="ops-matrix__row ops-matrix__footer"
+                    onDragOver={(event) => {
+                      const sourceId = getDraggedPersonId(event);
+                      if (!sourceId) return;
+                      event.preventDefault();
+                      const lastInSection = sectionPeople[sectionPeople.length - 1];
+                      if (lastInSection) {
+                        setDragOverMarker({ personId: lastInSection.id, pos: 'after' });
+                      }
+                    }}
+                    onDrop={(event) => {
+                      const sourceId = getDraggedPersonId(event);
+                      if (!sourceId) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const lastInSection = sectionPeople[sectionPeople.length - 1];
+                      if (!lastInSection) {
+                        setPeopleStateForCurrentMonth((prev) =>
+                          prev.map((person) =>
+                            person.id === sourceId ? { ...person, department: section } : person
+                          )
+                        );
+                        endRowDrag();
+                        return;
+                      }
+                      reorderPersonByDrop(sourceId, lastInSection.id, 'after');
+                      setDragOverMarker({ personId: lastInSection.id, pos: 'after' });
+                      window.setTimeout(() => setDragOverMarker(null), 120);
+                      endRowDrag();
+                    }}
+                  >
                     {/** Количество уникальных госномеров в текущем блоке */ }
                     {(() => {
                       const platesCount = isPersonnelSection
