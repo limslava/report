@@ -7,14 +7,12 @@ export type CounterpartyFormCode =
   | 'ano'
   | 'fond'
   | 'uchrezhdenie'
-  | 'assotsiaciya'
-  | 'ip'
-  | 'fizlico';
+  | 'assotsiaciya';
 
 export type CounterpartyFormItem = {
   code: CounterpartyFormCode;
   label: string;
-  innLength: 10 | 12;
+  innLength: 10;
   isIndividual: boolean;
 };
 
@@ -28,8 +26,6 @@ export const COUNTERPARTY_FORMS: CounterpartyFormItem[] = [
   { code: 'fond', label: 'Фонд', innLength: 10, isIndividual: false },
   { code: 'uchrezhdenie', label: 'Учреждение', innLength: 10, isIndividual: false },
   { code: 'assotsiaciya', label: 'Ассоциация/союз', innLength: 10, isIndividual: false },
-  { code: 'ip', label: 'ИП', innLength: 12, isIndividual: true },
-  { code: 'fizlico', label: 'Физическое лицо', innLength: 12, isIndividual: true },
 ];
 
 export const COUNTERPARTY_FORM_MAP = new Map(COUNTERPARTY_FORMS.map((item) => [item.code, item]));

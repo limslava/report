@@ -34,9 +34,9 @@ import {
 import '../styles/contract-approval.css';
 
 type CounterpartyFormRef = {
-  code: 'ooo' | 'ao' | 'pao' | 'gup' | 'mup' | 'ano' | 'fond' | 'uchrezhdenie' | 'assotsiaciya' | 'ip' | 'fizlico';
+  code: 'ooo' | 'ao' | 'pao' | 'gup' | 'mup' | 'ano' | 'fond' | 'uchrezhdenie' | 'assotsiaciya';
   label: string;
-  innLength: 10 | 12;
+  innLength: 10;
   isIndividual: boolean;
 };
 
@@ -165,7 +165,6 @@ export default function ContractApprovalPage() {
     incomeSubtype: 'standard' as 'standard' | 'with_psr',
     counterpartyName: '',
     counterpartyShortName: '',
-    ownershipForm: '',
     counterpartyForm: '' as '' | CounterpartyFormRef['code'],
     counterpartyInn: '',
     templateKind: 'typical' as 'typical' | 'non_typical',
@@ -182,7 +181,7 @@ export default function ContractApprovalPage() {
     [counterpartyForms, form.counterpartyForm]
   );
 
-  const innRequiredLength = selectedFormRef?.innLength ?? 12;
+  const innRequiredLength = selectedFormRef?.innLength ?? 10;
 
   const canSubmit = useMemo(() => {
     if (!form.contractNumber.trim()) return false;
@@ -280,7 +279,6 @@ export default function ContractApprovalPage() {
         incomeSubtype: form.contractType === 'income' ? form.incomeSubtype : null,
         counterpartyName: form.counterpartyName.trim(),
         counterpartyShortName: form.counterpartyShortName.trim() || null,
-        ownershipForm: form.ownershipForm.trim() || null,
         counterpartyForm: form.counterpartyForm || null,
         counterpartyInn: form.counterpartyInn.trim(),
         templateKind: form.templateKind,
@@ -300,7 +298,6 @@ export default function ContractApprovalPage() {
         contractNumber: '',
         counterpartyName: '',
         counterpartyShortName: '',
-        ownershipForm: '',
         counterpartyForm: '',
         counterpartyInn: '',
         subject: '',
@@ -403,13 +400,11 @@ export default function ContractApprovalPage() {
                   ))}
                 </Select>
               </FormControl>
-              <TextField label="Уточнение формы (опц.)" fullWidth value={form.ownershipForm} onChange={(e) => setForm({ ...form, ownershipForm: e.target.value })} />
               <TextField
                 label="ИНН"
                 fullWidth
                 value={form.counterpartyInn}
-                onChange={(e) => setForm({ ...form, counterpartyInn: e.target.value.replace(/\D/g, '').slice(0, 12) })}
-                helperText={form.counterpartyForm ? `Для выбранной формы требуется ${innRequiredLength} цифр` : 'Сначала выберите форму собственности'}
+                onChange={(e) => setForm({ ...form, counterpartyInn: e.target.value.replace(/\D/g, '').slice(0, 10) })}
               />
               <TextField label="Предмет/номер договора" fullWidth value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} />
             </Stack>
