@@ -199,7 +199,7 @@ export class PlanWebSocketService {
   }
 
   private canReceiveNotesEvents(role: string): boolean {
-    return role === 'admin' || role === 'director' || role === 'manager_auto';
+    return role === 'admin' || role === 'director' || role === 'general_director' || role === 'manager_auto';
   }
 
   private handleClientMessage(ws: WebSocket, data: any) {

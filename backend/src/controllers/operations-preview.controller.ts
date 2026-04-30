@@ -148,7 +148,7 @@ const mergePreviewPayload = (
 const isValidSection = (value: unknown): value is PreviewSection =>
   value === 'containers' || value === 'auto' || value === 'dispatchers' || value === 'couriers' || value === 'efficiency';
 
-const isEfficiencyOnlyViewer = (role: unknown): boolean => role === 'director' || role === 'financer';
+const isEfficiencyOnlyViewer = (role: unknown): boolean => role === 'director' || role === 'general_director' || role === 'financer';
 
 const isValidSortField = (value: unknown): value is SortField =>
   value === 'manual' || value === 'name' || value === 'plate';

@@ -179,6 +179,7 @@ const AdminPage = () => {
     manager_sales: 'Менеджер по продажам',
     head_sales: 'Руководитель отдела продаж',
     director: 'Директор',
+    general_director: 'Генеральный директор',
     admin: 'Администратор',
     financer: 'Финансист',
     chief_accountant: 'Главный бухгалтер',
@@ -210,6 +211,7 @@ const AdminPage = () => {
     { value: 'manager_sales', label: 'Менеджер по продажам' },
     { value: 'head_sales', label: 'Руководитель отдела продаж' },
     { value: 'director', label: 'Директор' },
+    { value: 'general_director', label: 'Генеральный директор' },
     { value: 'admin', label: 'Администратор' },
     { value: 'financer', label: 'Финансист' },
     { value: 'chief_accountant', label: 'Главный бухгалтер' },
@@ -466,7 +468,7 @@ const AdminPage = () => {
                         <Chip
                           label={roleLabels[user.role] || user.role}
                           size="small"
-                          color={user.role === 'admin' ? 'error' : user.role === 'director' ? 'warning' : 'default'}
+                          color={user.role === 'admin' ? 'error' : (user.role === 'director' || user.role === 'general_director') ? 'warning' : 'default'}
                         />
                       </TableCell>
                       <TableCell>

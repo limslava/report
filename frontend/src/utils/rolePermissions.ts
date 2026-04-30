@@ -17,15 +17,15 @@ export function canViewTotalsInPlans(role?: string | null): boolean {
 }
 
 export function canEditTotalsPlan(role?: string | null): boolean {
-  return role === 'admin' || role === 'director';
+  return role === 'admin' || role === 'director' || role === 'general_director';
 }
 
 export function canViewFinancialPlan(role?: string | null): boolean {
-  return role === 'admin' || role === 'director' || role === 'financer';
+  return role === 'admin' || role === 'director' || role === 'general_director' || role === 'financer';
 }
 
 export function canViewCalendar(role?: string | null): boolean {
-  return role === 'admin' || role === 'director' || role === 'manager_auto';
+  return role === 'admin' || role === 'director' || role === 'general_director' || role === 'manager_auto';
 }
 
 export function canAccessOperationsPreview(role?: string | null): boolean {
@@ -33,15 +33,15 @@ export function canAccessOperationsPreview(role?: string | null): boolean {
 }
 
 export function canViewOperationsEfficiency(role?: string | null): boolean {
-  return role === 'director' || role === 'financer';
+  return role === 'director' || role === 'general_director' || role === 'financer';
 }
 
 export function canViewTechDashboard(role?: string | null): boolean {
-  return role === 'admin' || role === 'director' || role === 'financer' || role === 'head_sales';
+  return role === 'admin' || role === 'director' || role === 'general_director' || role === 'financer' || role === 'head_sales';
 }
 
 export function canEditFinancialPlan(role?: string | null): boolean {
-  return role === 'admin' || role === 'director' || role === 'financer';
+  return role === 'admin' || role === 'director' || role === 'general_director' || role === 'financer';
 }
 
 export function canManageFinancialVat(role?: string | null): boolean {
@@ -61,7 +61,7 @@ export function canEditSegment(role: string | undefined, segmentCode: PlanningSe
     return true;
   }
 
-  if (role === 'director' || role === 'manager_sales' || role === 'head_sales') {
+  if (role === 'director' || role === 'general_director' || role === 'manager_sales' || role === 'head_sales') {
     return false;
   }
 

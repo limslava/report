@@ -33,6 +33,7 @@ export class User {
     | 'lawyer'
     | 'security'
     | 'director'
+    | 'general_director'
     | 'admin';
 
   @Column({ name: 'is_active', type: 'boolean', default: true })

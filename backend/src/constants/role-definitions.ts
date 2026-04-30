@@ -1,6 +1,7 @@
 export const ROLE_VALUES = [
   'admin',
   'director',
+  'general_director',
   'financer',
   'chief_accountant',
   'lawyer',

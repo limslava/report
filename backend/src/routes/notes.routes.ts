@@ -17,7 +17,7 @@ import {
 const router = Router();
 
 router.use(authenticate);
-router.use(roleOrAdmin('director', 'manager_auto'));
+router.use(roleOrAdmin('director', 'general_director', 'manager_auto'));
 
 router.get(
   '/unread-count',

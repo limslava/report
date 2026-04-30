@@ -174,6 +174,7 @@ function formatTimeValue(date: Date): string {
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Администратор',
   director: 'Директор',
+  general_director: 'Генеральный директор',
   financer: 'Финансовая дирекция',
   chief_accountant: 'Главный бухгалтер',
   lawyer: 'Юрист',

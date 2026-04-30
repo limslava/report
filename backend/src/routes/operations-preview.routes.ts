@@ -14,7 +14,7 @@ router.use(authenticate);
 
 router.get(
   '/state',
-  authorizeRole('admin', 'manager_ktk_vvo', 'head_ktk_vvo', 'director', 'financer'),
+  authorizeRole('admin', 'manager_ktk_vvo', 'head_ktk_vvo', 'director', 'general_director', 'financer'),
   asyncHandler(getOperationsPreviewState)
 );
 router.put(
@@ -24,7 +24,7 @@ router.put(
 );
 router.get(
   '/export',
-  authorizeRole('admin', 'manager_ktk_vvo', 'head_ktk_vvo', 'director', 'financer'),
+  authorizeRole('admin', 'manager_ktk_vvo', 'head_ktk_vvo', 'director', 'general_director', 'financer'),
   asyncHandler(downloadOperationsPreviewExcel)
 );
 

@@ -141,8 +141,8 @@ export default function OperationsPreview() {
   const userId = useAuthStore((state) => state.user?.id);
   const userRole = useAuthStore((state) => state.user?.role);
   const canManagePlanFact = userRole === 'admin' || userRole === 'head_ktk_vvo';
-  const efficiencyOnlyViewer = userRole === 'director' || userRole === 'financer';
-  const canChooseEfficiencyDirection = userRole === 'director' || userRole === 'financer';
+  const efficiencyOnlyViewer = userRole === 'director' || userRole === 'general_director' || userRole === 'financer';
+  const canChooseEfficiencyDirection = userRole === 'director' || userRole === 'general_director' || userRole === 'financer';
   const [filter, setFilter] = useState<'Все' | Department>('Все');
   const [monthValue, setMonthValue] = useState('2026-04');
   const [mode, setMode] = useState<PreviewMode>('fact');

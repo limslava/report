@@ -13,9 +13,9 @@ const router = Router();
 
 router.use(authenticate);
 
-router.get('/', authorizeRole('admin', 'director', 'financer'), getFinancialPlanReport);
-router.put('/values/batch', authorizeRole('admin', 'director', 'financer'), batchUpsertFinancialPlanValues);
-router.get('/export', authorizeRole('admin', 'director', 'financer'), exportFinancialPlanExcel);
+router.get('/', authorizeRole('admin', 'director', 'general_director', 'financer'), getFinancialPlanReport);
+router.put('/values/batch', authorizeRole('admin', 'director', 'general_director', 'financer'), batchUpsertFinancialPlanValues);
+router.get('/export', authorizeRole('admin', 'director', 'general_director', 'financer'), exportFinancialPlanExcel);
 router.get('/vat-rates', authorizeRole('admin'), getFinancialVatRates);
 router.post('/vat-rates', authorizeRole('admin'), addFinancialVatRate);
 

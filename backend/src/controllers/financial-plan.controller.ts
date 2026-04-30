@@ -4,8 +4,8 @@ import { planWebSocketService } from '../services/websocket.service';
 import { sendError } from '../utils/http';
 import { recordAuditLog } from '../services/audit-log.service';
 
-const VIEW_ROLES = new Set(['admin', 'director', 'financer']);
-const EDIT_ROLES = new Set(['admin', 'director', 'financer']);
+const VIEW_ROLES = new Set(['admin', 'director', 'general_director', 'financer']);
+const EDIT_ROLES = new Set(['admin', 'director', 'general_director', 'financer']);
 
 function buildContentDisposition(filename: string): string {
   const encoded = encodeURIComponent(filename).replace(/%20/g, '+');
