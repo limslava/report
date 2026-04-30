@@ -28,13 +28,12 @@ import {
   getContractDuplicates,
   getContractReferences,
   getContracts,
-  getMasterContracts,
   startContractApproval,
 } from '../services/api';
 import '../styles/contract-approval.css';
 
 type CounterpartyFormRef = {
-  code: 'ooo' | 'ao' | 'pao' | 'gup' | 'mup' | 'ano' | 'fond' | 'uchrezhdenie' | 'assotsiaciya';
+  code: 'ooo' | 'ao' | 'pao';
   label: string;
   innLength: 10;
   isIndividual: boolean;
@@ -47,7 +46,6 @@ type ContractRecord = {
   incomeSubtype: 'standard' | 'with_psr' | null;
   counterpartyName: string;
   counterpartyShortName: string | null;
-  ownershipForm: string | null;
   counterpartyForm: CounterpartyFormRef['code'] | null;
   counterpartyInn: string;
   templateKind: 'typical' | 'non_typical';
@@ -56,20 +54,6 @@ type ContractRecord = {
   psrFlag: boolean;
   signingMethod: 'edo' | 'post';
   status: 'draft' | 'in_approval' | 'rework' | 'approved' | 'rejected';
-  documentKind: 'master' | 'addendum';
-  parentContractId: string | null;
-  parentContractNumber: string | null;
-  assignedGeneralDirectorId: string | null;
-  assignedGeneralDirector: { id: string; fullName: string } | null;
-  initiator: { id: string; fullName: string; role: string } | null;
-};
-
-type MasterContract = {
-  id: string;
-  contractNumber: string;
-  counterpartyName: string;
-  contractType: 'expense' | 'income';
-  subject: string | null;
 };
 
 type DuplicateContract = {
@@ -78,8 +62,6 @@ type DuplicateContract = {
   contractDate: string | null;
   subject: string | null;
   status: string;
-  counterpartyName?: string;
-  initiatorName?: string | null;
 };
 
 type SheetStep = {
@@ -104,7 +86,6 @@ type ApprovalSheet = {
     templateKind: 'typical' | 'non_typical';
     counterpartyName: string;
     counterpartyShortName: string | null;
-    ownershipForm: string | null;
     counterpartyInn: string;
     subject: string | null;
     contractDate: string | null;
@@ -142,7 +123,6 @@ function formatDateTime(value: string | null): string {
 export default function ContractApprovalPage() {
   const [tab, setTab] = useState(0);
   const [contracts, setContracts] = useState<ContractRecord[]>([]);
-  const [masters, setMasters] = useState<MasterContract[]>([]);
   const [counterpartyForms, setCounterpartyForms] = useState<CounterpartyFormRef[]>([]);
   const [duplicates, setDuplicates] = useState<DuplicateContract[]>([]);
   const [selectedContractId, setSelectedContractId] = useState<string>('');
@@ -172,15 +152,12 @@ export default function ContractApprovalPage() {
     contractDate: '',
     psrFlag: false,
     signingMethod: 'post' as 'edo' | 'post',
-    documentKind: 'master' as 'master' | 'addendum',
-    parentContractId: '',
   });
 
   const selectedFormRef = useMemo(
     () => counterpartyForms.find((item) => item.code === form.counterpartyForm) ?? null,
     [counterpartyForms, form.counterpartyForm]
   );
-
   const innRequiredLength = selectedFormRef?.innLength ?? 10;
 
   const canSubmit = useMemo(() => {
@@ -191,7 +168,6 @@ export default function ContractApprovalPage() {
     if (!form.counterpartyForm) return false;
     if (!/^\d+$/.test(form.counterpartyInn.trim())) return false;
     if (form.counterpartyInn.trim().length !== innRequiredLength) return false;
-    if (form.documentKind === 'addendum' && !form.parentContractId) return false;
     if (form.contractType === 'income' && !form.incomeSubtype) return false;
     if (duplicates.length > 0) return false;
     return true;
@@ -201,13 +177,8 @@ export default function ContractApprovalPage() {
     setLoading(true);
     setError(null);
     try {
-      const [contractsRes, mastersRes, refsRes] = await Promise.all([
-        getContracts(),
-        getMasterContracts(),
-        getContractReferences(),
-      ]);
+      const [contractsRes, refsRes] = await Promise.all([getContracts(), getContractReferences()]);
       setContracts(Array.isArray(contractsRes.data) ? contractsRes.data : []);
-      setMasters(Array.isArray(mastersRes.data) ? mastersRes.data : []);
       setCounterpartyForms(Array.isArray(refsRes.data?.counterpartyForms) ? refsRes.data.counterpartyForms : []);
       if (!selectedContractId && Array.isArray(contractsRes.data) && contractsRes.data.length > 0) {
         setSelectedContractId(contractsRes.data[0].id);
@@ -286,8 +257,6 @@ export default function ContractApprovalPage() {
         contractDate: form.contractDate,
         psrFlag: form.contractType === 'income' && form.incomeSubtype === 'with_psr' ? true : form.psrFlag,
         signingMethod: form.signingMethod,
-        documentKind: form.documentKind,
-        parentContractId: form.documentKind === 'addendum' ? form.parentContractId : null,
       });
 
       setSuccess('Договор создан');
@@ -302,8 +271,6 @@ export default function ContractApprovalPage() {
         counterpartyInn: '',
         subject: '',
         contractDate: '',
-        documentKind: 'master',
-        parentContractId: '',
       }));
     } catch (e: any) {
       const message = e?.response?.data?.message || e?.message || 'Не удалось создать договор';
@@ -451,26 +418,6 @@ export default function ContractApprovalPage() {
                   <MenuItem value="post">Почта</MenuItem>
                 </Select>
               </FormControl>
-            </Stack>
-
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
-              <FormControl fullWidth>
-                <InputLabel>Вид документа</InputLabel>
-                <Select label="Вид документа" value={form.documentKind} onChange={(e) => setForm({ ...form, documentKind: e.target.value as 'master' | 'addendum', parentContractId: '' })}>
-                  <MenuItem value="master">Договор</MenuItem>
-                  <MenuItem value="addendum">Доп. соглашение</MenuItem>
-                </Select>
-              </FormControl>
-              {form.documentKind === 'addendum' && (
-                <FormControl fullWidth>
-                  <InputLabel>Базовый договор</InputLabel>
-                  <Select label="Базовый договор" value={form.parentContractId} onChange={(e) => setForm({ ...form, parentContractId: e.target.value })}>
-                    {masters.map((master) => (
-                      <MenuItem key={master.id} value={master.id}>{master.contractNumber} - {master.counterpartyName}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              )}
             </Stack>
 
             <Stack direction="row" spacing={1}>

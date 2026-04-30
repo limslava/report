@@ -34,7 +34,7 @@ router.post(
     body('counterpartyName').isString().trim().notEmpty().isLength({ max: 255 }),
     body('counterpartyShortName').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('ownershipForm').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
-    body('counterpartyForm').optional({ nullable: true }).isIn(['ooo', 'ao', 'pao', 'gup', 'mup', 'ano', 'fond', 'uchrezhdenie', 'assotsiaciya']),
+    body('counterpartyForm').optional({ nullable: true }).isIn(['ooo', 'ao', 'pao']),
     body('counterpartyInn').isString().trim().matches(/^\d{10}$/),
     body('templateKind').optional().isIn(['typical', 'non_typical']),
     body('subject').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),

@@ -95,15 +95,13 @@ export const createContract = (data: {
   counterpartyName: string;
   counterpartyShortName?: string | null;
   ownershipForm?: string | null;
-  counterpartyForm?: 'ooo' | 'ao' | 'pao' | 'gup' | 'mup' | 'ano' | 'fond' | 'uchrezhdenie' | 'assotsiaciya' | null;
+  counterpartyForm?: 'ooo' | 'ao' | 'pao' | null;
   counterpartyInn: string;
   templateKind?: 'typical' | 'non_typical';
   subject?: string | null;
   contractDate?: string | null;
   psrFlag?: boolean;
   signingMethod?: 'edo' | 'post';
-  documentKind?: 'master' | 'addendum';
-  parentContractId?: string | null;
 }) => api.post('/contracts', data);
 export const getContractApprovalSheet = (id: string) => api.get(`/contracts/${id}/approval-sheet`);
 export const startContractApproval = (id: string) => api.post(`/contracts/${id}/start-approval`);
