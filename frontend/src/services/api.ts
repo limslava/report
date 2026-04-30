@@ -83,6 +83,18 @@ export const getRuntimeAppSettings = () => api.get('/auth/app-settings');
 
 export const getUsers = (params?: any) => api.get('/admin/users', { params });
 export const getUsersDirectory = () => api.get('/users/directory');
+export const getContracts = () => api.get('/contracts');
+export const getMasterContracts = () => api.get('/contracts/masters');
+export const createContract = (data: {
+  contractNumber: string;
+  contractType: 'expense' | 'income';
+  counterpartyName: string;
+  counterpartyShortName?: string | null;
+  ownershipForm?: string | null;
+  counterpartyInn: string;
+  documentKind?: 'master' | 'addendum';
+  parentContractId?: string | null;
+}) => api.post('/contracts', data);
 export const inviteUser = (data: any) => api.post('/admin/users/invite', data);
 export const updateUser = (id: string, data: any) => api.put(`/admin/users/${id}`, data);
 export const resetUserPasswordByAdmin = (id: string) => api.post(`/admin/users/${id}/reset-password`);
