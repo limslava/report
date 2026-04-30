@@ -631,6 +631,11 @@ export default function OperationsPreview() {
     );
   };
 
+  const resolveDropPos = (
+    clientY: number,
+    rect: DOMRect,
+  ): 'before' | 'after' => (clientY < rect.top + rect.height / 2 ? 'before' : 'after');
+
   const handleDeleteFromContext = () => {
     if (!contextMenu) return;
     const { person, target, lane } = contextMenu;
@@ -1718,7 +1723,7 @@ export default function OperationsPreview() {
                             if (!sourceId || sourceId === person.id) return;
                             event.preventDefault();
                             const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
-                            const pos: 'before' | 'after' = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                            const pos = resolveDropPos(event.clientY, rect);
                             setDragOverMarker({ personId: person.id, pos });
                           }}
                           onDrop={(event) => {
@@ -1727,14 +1732,14 @@ export default function OperationsPreview() {
                             event.stopPropagation();
                             event.preventDefault();
                             const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
-                            const pos: 'before' | 'after' = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                            const pos = resolveDropPos(event.clientY, rect);
                             reorderPersonByDrop(sourceId, person.id, pos);
                             setDragOverMarker(null);
                             endRowDrag();
                           }}
                           onDragLeave={() => setDragOverMarker(null)}
                         >
-                          <div className={`ops-matrix__cell ops-matrix__cell--sticky ops-matrix__cell--name${dragOverMarker?.personId === person.id ? ` is-drop-${dragOverMarker.pos}` : ''}`}>
+                          <div className="ops-matrix__cell ops-matrix__cell--sticky ops-matrix__cell--name">
                             <div className="ops-matrix__name">
                               <span
                                 onDoubleClick={() => setEditPerson(person)}
@@ -1925,7 +1930,12 @@ export default function OperationsPreview() {
                     };
 
                     return (
-                      <div key={person.id} className="ops-matrix__person">
+                      <div
+                        key={person.id}
+                        className={`ops-matrix__person${
+                          dragOverMarker?.personId === person.id ? ` is-drop-${dragOverMarker.pos}` : ''
+                        }`}
+                      >
                         {!person.secondName && <Row lane="1" />}
                         {person.secondName && (
                           <div
@@ -1935,7 +1945,7 @@ export default function OperationsPreview() {
                               if (!sourceId || sourceId === person.id) return;
                               event.preventDefault();
                               const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
-                              const pos: 'before' | 'after' = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                              const pos = resolveDropPos(event.clientY, rect);
                               setDragOverMarker({ personId: person.id, pos });
                             }}
                             onDrop={(event) => {
@@ -1944,14 +1954,17 @@ export default function OperationsPreview() {
                               event.stopPropagation();
                               event.preventDefault();
                               const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
-                              const pos: 'before' | 'after' = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                              const pos = resolveDropPos(event.clientY, rect);
                               reorderPersonByDrop(sourceId, person.id, pos);
                               setDragOverMarker(null);
                               endRowDrag();
                             }}
                             onDragLeave={() => setDragOverMarker(null)}
                           >
-                            <div className={`ops-matrix__cell ops-matrix__cell--name ops-matrix__cell--sticky${dragOverMarker?.personId === person.id ? ` is-drop-${dragOverMarker.pos}` : ''}`} style={{ gridColumn: 1, gridRow: 1 }}>
+                            <div
+                              className="ops-matrix__cell ops-matrix__cell--name ops-matrix__cell--sticky"
+                              style={{ gridColumn: 1, gridRow: 1 }}
+                            >
                               <div className="ops-matrix__name">
                                 <span
                                   onDoubleClick={() => setEditPerson(person)}
@@ -1965,7 +1978,10 @@ export default function OperationsPreview() {
                                 </span>
                               </div>
                             </div>
-                            <div className="ops-matrix__cell ops-matrix__cell--name ops-matrix__cell--row2 ops-matrix__cell--name-left ops-matrix__cell--sticky" style={{ gridColumn: 1, gridRow: 2 }}>
+                            <div
+                              className="ops-matrix__cell ops-matrix__cell--name ops-matrix__cell--row2 ops-matrix__cell--name-left ops-matrix__cell--sticky"
+                              style={{ gridColumn: 1, gridRow: 2 }}
+                            >
                               <div className="ops-matrix__name">
                                 <span
                                   onDoubleClick={() => setEditPerson(person)}
