@@ -88,13 +88,32 @@ export const getMasterContracts = () => api.get('/contracts/masters');
 export const createContract = (data: {
   contractNumber: string;
   contractType: 'expense' | 'income';
+  incomeSubtype?: 'standard' | 'with_psr' | null;
   counterpartyName: string;
   counterpartyShortName?: string | null;
   ownershipForm?: string | null;
   counterpartyInn: string;
+  templateKind?: 'typical' | 'non_typical';
+  subject?: string | null;
+  contractDate?: string | null;
+  psrFlag?: boolean;
+  signingMethod?: 'edo' | 'post';
+  assignedGeneralDirectorId?: string | null;
   documentKind?: 'master' | 'addendum';
   parentContractId?: string | null;
 }) => api.post('/contracts', data);
+export const getContractApprovalSheet = (id: string) => api.get(`/contracts/${id}/approval-sheet`);
+export const startContractApproval = (id: string) => api.post(`/contracts/${id}/start-approval`);
+export const decideContractApprovalStep = (
+  contractId: string,
+  stepId: string,
+  data: {
+    decision: 'approve' | 'rework' | 'reject';
+    comment?: string | null;
+    acceptedAt?: string | null;
+    signedAt?: string | null;
+  }
+) => api.post(`/contracts/${contractId}/steps/${stepId}/decision`, data);
 export const inviteUser = (data: any) => api.post('/admin/users/invite', data);
 export const updateUser = (id: string, data: any) => api.put(`/admin/users/${id}`, data);
 export const resetUserPasswordByAdmin = (id: string) => api.post(`/admin/users/${id}/reset-password`);

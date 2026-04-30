@@ -1,0 +1,59 @@
+.approval-sheet-print .approval-sheet-table {
+  border: 1px solid #444;
+}
+
+.approval-sheet-print .approval-sheet-table td,
+.approval-sheet-print .approval-sheet-table th {
+  border: 1px solid #444;
+  vertical-align: top;
+}
+
+.approval-sheet-print .approval-sheet-table .label {
+  width: 32%;
+  font-weight: 600;
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
+
+  .MuiAppBar-root,
+  .MuiDrawer-root,
+  .no-print,
+  .MuiTabs-root,
+  .MuiAlert-root,
+  button,
+  .MuiButton-root,
+  .MuiFormControl-root,
+  .MuiTextField-root,
+  .MuiChip-root {
+    display: none !important;
+  }
+
+  main,
+  .MuiBox-root,
+  .MuiPaper-root {
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .approval-sheet-print {
+    display: block !important;
+    padding: 12mm 10mm;
+    font-size: 12px;
+  }
+
+  .approval-sheet-print .approval-sheet-table {
+    width: 100%;
+    border-collapse: collapse;
+    page-break-inside: avoid;
+  }
+
+  .approval-sheet-print .approval-sheet-table td,
+  .approval-sheet-print .approval-sheet-table th {
+    padding: 6px;
+  }
+}

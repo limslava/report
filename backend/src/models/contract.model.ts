@@ -10,6 +10,7 @@ import {
   Index,
 } from 'typeorm';
 import { User } from './user.model';
+import { ContractApprovalStep } from './contract-approval-step.model';
 
 export enum ContractType {
   EXPENSE = 'expense',
@@ -19,6 +20,29 @@ export enum ContractType {
 export enum ContractDocumentKind {
   MASTER = 'master',
   ADDENDUM = 'addendum',
+}
+
+export enum ContractTemplateKind {
+  TYPICAL = 'typical',
+  NON_TYPICAL = 'non_typical',
+}
+
+export enum ContractIncomeSubtype {
+  STANDARD = 'standard',
+  WITH_PSR = 'with_psr',
+}
+
+export enum ContractSigningMethod {
+  EDO = 'edo',
+  POST = 'post',
+}
+
+export enum ContractStatus {
+  DRAFT = 'draft',
+  IN_APPROVAL = 'in_approval',
+  REWORK = 'rework',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
 }
 
 @Entity('contracts')
@@ -36,6 +60,9 @@ export class Contract {
   @Column({ name: 'contract_type', type: 'enum', enum: ContractType })
   contractType!: ContractType;
 
+  @Column({ name: 'income_subtype', type: 'enum', enum: ContractIncomeSubtype, nullable: true })
+  incomeSubtype!: ContractIncomeSubtype | null;
+
   @Column({ name: 'counterparty_name', type: 'varchar', length: 255 })
   counterpartyName!: string;
 
@@ -47,6 +74,24 @@ export class Contract {
 
   @Column({ name: 'counterparty_inn', type: 'varchar', length: 12 })
   counterpartyInn!: string;
+
+  @Column({ name: 'template_kind', type: 'enum', enum: ContractTemplateKind, default: ContractTemplateKind.TYPICAL })
+  templateKind!: ContractTemplateKind;
+
+  @Column({ name: 'subject', type: 'varchar', length: 500, nullable: true })
+  subject!: string | null;
+
+  @Column({ name: 'contract_date', type: 'date', nullable: true })
+  contractDate!: Date | null;
+
+  @Column({ name: 'psr_flag', type: 'boolean', default: false })
+  psrFlag!: boolean;
+
+  @Column({ name: 'signing_method', type: 'enum', enum: ContractSigningMethod, default: ContractSigningMethod.POST })
+  signingMethod!: ContractSigningMethod;
+
+  @Column({ name: 'status', type: 'enum', enum: ContractStatus, default: ContractStatus.DRAFT })
+  status!: ContractStatus;
 
   @Column({ name: 'document_kind', type: 'enum', enum: ContractDocumentKind, default: ContractDocumentKind.MASTER })
   documentKind!: ContractDocumentKind;
@@ -67,6 +112,16 @@ export class Contract {
 
   @Column({ name: 'initiator_id', type: 'uuid' })
   initiatorId!: string;
+
+  @Column({ name: 'assigned_general_director_id', type: 'uuid', nullable: true })
+  assignedGeneralDirectorId!: string | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'assigned_general_director_id' })
+  assignedGeneralDirector!: User | null;
+
+  @OneToMany(() => ContractApprovalStep, (step) => step.contract)
+  approvalSteps!: ContractApprovalStep[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
