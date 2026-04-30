@@ -137,6 +137,7 @@ const DashboardLayout = () => {
   const isAdmin = canAccessAdmin(user?.role);
   const serviceHealth = useServiceHealth();
   const idleTimeoutRef = useRef<number | null>(null);
+  const techPeriodDebounceRef = useRef<number | null>(null);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -154,8 +155,21 @@ const DashboardLayout = () => {
   const handleNavigate = (to: string) => runOrConfirmUnsaved(() => navigate(to));
   const handleTechPeriodChange = (nextYear: number, nextMonth: number) => {
     if (!isTechDashboardRoute) return;
-    handleNavigate(`/sw-tech-dashboard?year=${nextYear}&month=${nextMonth}`);
+    if (techPeriodDebounceRef.current) {
+      window.clearTimeout(techPeriodDebounceRef.current);
+    }
+    techPeriodDebounceRef.current = window.setTimeout(() => {
+      handleNavigate(`/sw-tech-dashboard?year=${nextYear}&month=${nextMonth}`);
+      techPeriodDebounceRef.current = null;
+    }, 250);
   };
+
+  useEffect(() => () => {
+    if (techPeriodDebounceRef.current) {
+      window.clearTimeout(techPeriodDebounceRef.current);
+      techPeriodDebounceRef.current = null;
+    }
+  }, []);
 
   const handleLogout = () => {
     runOrConfirmUnsaved(() => {
@@ -814,11 +828,12 @@ const DashboardLayout = () => {
         component="main"
         sx={{
           flexGrow: 1,
-          p: { xs: 0.75, sm: 1 },
+          p: isTechDashboardRoute ? { xs: 0, sm: 0 } : { xs: 0.75, sm: 1 },
           width: { sm: `calc(100% - ${drawerWidth}px)` },
-          mt: 8,
+          overflowY: isTechDashboardRoute ? 'hidden' : 'auto',
         }}
       >
+        <Toolbar />
         <Collapse in={serviceHealth.isUnavailable}>
           <Alert
             severity="warning"
