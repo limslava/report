@@ -323,7 +323,49 @@
 
 .ops-matrix__person {
   width: 100%;
+  position: relative;
 }
+
+.ops-matrix__person.is-drop-before::before,
+.ops-matrix__person.is-drop-after::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: #2563eb;
+  z-index: 12;
+  pointer-events: none;
+}
+
+.ops-matrix__person.is-drop-before::before {
+  top: 0;
+}
+
+.ops-matrix__person.is-drop-after::after {
+  bottom: 0;
+}
+
+.ops-matrix__section {
+  position: relative;
+}
+
+.ops-matrix__section-drop-edge {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 16px;
+  z-index: 20;
+}
+
+.ops-matrix__section-drop-edge--top {
+  top: 0;
+}
+
+.ops-matrix__section-drop-edge--bottom {
+  bottom: 0;
+}
+
 
 .ops-matrix__row {
   display: grid;
@@ -533,15 +575,19 @@
 
 .ops-matrix__drag-hint-btn {
   border: none;
-  background: transparent;
+  background: rgba(148, 163, 184, 0.12);
   color: #94a3b8;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1;
-  padding: 0 2px 0 8px;
+  min-width: 28px;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
   margin-left: auto;
   align-self: center;
   justify-self: end;
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
 }
 
 .ops-matrix__cell--merged .ops-matrix__drag-hint-btn {
@@ -550,7 +596,12 @@
 }
 
 .ops-matrix__drag-hint-btn:hover {
+  background: rgba(37, 99, 235, 0.12);
   color: #2563eb;
+}
+
+.ops-matrix__drag-hint-btn:active {
+  cursor: grabbing;
 }
 
 .ops-matrix__cell.is-drop-before {

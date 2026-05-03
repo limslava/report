@@ -9,6 +9,7 @@ import { planWebSocketService } from '../services/websocket.service';
 import { PLANNING_FULL_ACCESS_ROLES } from '../constants/roles';
 import { sendError } from '../utils/http';
 import { recordAuditLog } from '../services/audit-log.service';
+import { cache } from '../utils/cache';
 
 function parseSegmentCode(raw: string): PlanningSegmentCode {
   if (!Object.values(PlanningSegmentCode).includes(raw as PlanningSegmentCode)) {
@@ -247,7 +248,7 @@ export const getPlanningSegmentReport = async (req: Request, res: Response, next
       asOfDate,
     });
 
-    if (user.role === 'manager_sales' && segmentCode === PlanningSegmentCode.AUTO) {
+    if ((user.role === 'manager_sales' || user.role === 'head_sales') && segmentCode === PlanningSegmentCode.AUTO) {
       const hiddenMetrics = new Set([
         'auto_manual_debt_overload',
         'auto_manual_debt_cashback',
@@ -320,6 +321,12 @@ export const getPlanningTechDashboard = async (req: Request, res: Response, next
     }
 
     const effectiveAsOfDate = asOfDate ?? `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth(year, month)).padStart(2, '0')}`;
+    const cacheKey = `tech-dashboard:${user.role}:${year}:${month}:${effectiveAsOfDate}`;
+    const cached = cache.get<any>(cacheKey);
+    if (cached) {
+      res.json(cached);
+      return;
+    }
 
     const summaryDetailed = await planningV2ReportService.getSummaryReport(year, month, effectiveAsOfDate, true);
 
@@ -352,13 +359,16 @@ export const getPlanningTechDashboard = async (req: Request, res: Response, next
     const to = byCode(PlanningSegmentCode.TO);
     const autoTruck = byDetail(PlanningSegmentCode.AUTO, 'AUTO_TRUCK_CURTAIN') ?? byCode(PlanningSegmentCode.AUTO);
     const autoKtk = byDetail(PlanningSegmentCode.AUTO, 'AUTO_KTK');
-    const extra = byCode(PlanningSegmentCode.EXTRA);
-
     const autoDashboard = (reportMap.get(PlanningSegmentCode.AUTO)?.dashboard ?? {}) as Record<string, unknown>;
     const extraDashboard = (reportMap.get(PlanningSegmentCode.EXTRA)?.dashboard ?? {}) as Record<string, unknown>;
     const vvoDashboard = (reportMap.get(PlanningSegmentCode.KTK_VVO)?.dashboard ?? {}) as Record<string, unknown>;
     const mskDashboard = (reportMap.get(PlanningSegmentCode.KTK_MOW)?.dashboard ?? {}) as Record<string, unknown>;
     const railDashboard = (reportMap.get(PlanningSegmentCode.RAIL)?.dashboard ?? {}) as Record<string, unknown>;
+    const extraGroupage = Number(extraDashboard.groupage ?? 0);
+    const extraCurtains = Number(extraDashboard.curtains ?? 0);
+    const extraForwarding = Number(extraDashboard.forwarding ?? 0);
+    const extraRepack = Number(extraDashboard.repack ?? 0);
+    const extraTotal = extraGroupage + extraCurtains + extraForwarding + extraRepack;
 
     const totalsRows = await planningV2TotalsService.getYearTotals(year, { ensureMetrics: false });
     const basePlanRows = totalsRows.filter((row) =>
@@ -446,7 +456,7 @@ export const getPlanningTechDashboard = async (req: Request, res: Response, next
       'Автовоз: Собственные + Наемные = Отправлено (факт дня)': autoOwn + autoHired === autoSent,
     };
 
-    res.json({
+    const payload = {
       source: 'planning_v2',
       reportDate: effectiveAsOfDate,
       reportDateLabel: formatReportDateLabel(effectiveAsOfDate),
@@ -491,11 +501,11 @@ export const getPlanningTechDashboard = async (req: Request, res: Response, next
           fact_month: Number(to?.monthFact ?? 0),
         },
         extra: {
-          total: Number(extra?.monthFact ?? 0),
-          groupage: Number(extraDashboard.groupage ?? 0),
-          curtains: Number(extraDashboard.curtains ?? 0),
-          forwarding: Number(extraDashboard.forwarding ?? 0),
-          repack: Number(extraDashboard.repack ?? 0),
+          total: extraTotal,
+          groupage: extraGroupage,
+          curtains: extraCurtains,
+          forwarding: extraForwarding,
+          repack: extraRepack,
         },
       },
       checks,
@@ -509,7 +519,10 @@ export const getPlanningTechDashboard = async (req: Request, res: Response, next
         auto_pct: pct(Number(autoTruck?.monthFact ?? 0), Number(autoTruck?.planMonth ?? 0)),
         auto_ktk_pct: pct(Number(autoKtk?.monthFact ?? 0), Number(autoKtk?.planMonth ?? 0)),
       },
-    });
+    };
+
+    cache.set(cacheKey, payload, 90);
+    res.json(payload);
   } catch (error) {
     next(error);
   }
@@ -653,7 +666,7 @@ export const exportPlanningDailyExcel = async (req: Request, res: Response, next
       }
     }
 
-    const hideSalesDebts = user.role === 'manager_sales';
+    const hideSalesDebts = user.role === 'manager_sales' || user.role === 'head_sales';
     const buffer = await buildPlanningDailyExcel({
       year,
       month,

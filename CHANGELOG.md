@@ -1,6 +1,20 @@
 # Changelog
 
 ## Unreleased
+- SW Tech Dashboard
+  - Added year/month period selectors in the top bar and period-aware data loading.
+  - Updated monthly logic for widgets/charts:
+    - current month uses factual date (today - 1),
+    - past months use month totals,
+    - future months keep plan-only behavior where applicable.
+  - Improved chart behavior:
+    - month labels are always visible,
+    - `% completion` line is hidden for future months.
+  - Reworked `Ключевые риски` calculation:
+    - current calendar month: plan-to-date vs fact-to-date,
+    - past months: month plan vs month fact.
+  - Added backend cache for `/v2/planning/reports/tech-dashboard` (short TTL) and frontend debounce/lazy chart init for faster loading.
+
 - Work schedule (Operations Preview)
   - Reworked KTK Vladivostok left menu into "График работы" with nested sections:
     `Контейнеровозы`, `Автовозы`, `Диспетчера`, `Курьеры (Оперативники)`.
@@ -36,8 +50,17 @@
     - WebSocket event `notes:unread-refresh`
     - global unread store (Zustand)
     - fallback polling + focus/visibility refresh for reliability.
+  - Improved row drag-and-drop reliability (including edge cases for top/bottom reorder).
+  - Increased drag handle hit area for easier pointer interaction.
+  - Added spreadsheet-like cell range selection and copy/paste:
+    - mouse/keyboard selection,
+    - `Ctrl/Cmd + C` and `Ctrl/Cmd + V` for selected ranges,
+    - `Shift + Arrow` range expansion.
 
 - Roles & auth
+  - Added role `head_sales` (Руководитель отдела продаж).
+  - `head_sales` now has the same planning/report permissions profile as `manager_sales`.
+  - SW Tech Dashboard access expanded to `director`, `financer`, and `head_sales` (in addition to `admin`).
   - Closed open registration with `INVITE_ONLY=true` gate.
   - Added admin-only email schedule access.
   - Validated role on admin user update.

@@ -1,6 +1,6 @@
 import { PlanningSegment } from '../types/planning-v2.types';
 
-export const SUMMARY_ROLES = new Set(['admin', 'director', 'financer', 'manager_sales']);
+export const SUMMARY_ROLES = new Set(['admin', 'director', 'financer', 'manager_sales', 'head_sales']);
 
 export const SEGMENT_BY_ROLE: Record<string, PlanningSegment['code'] | null> = {
   manager_ktk_vvo: 'KTK_VVO',

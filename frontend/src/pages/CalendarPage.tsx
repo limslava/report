@@ -176,6 +176,7 @@ const ROLE_LABELS: Record<string, string> = {
   director: 'Директор',
   financer: 'Финансовая дирекция',
   manager_sales: 'Отдел продаж',
+  head_sales: 'Руководитель отдела продаж',
   manager_ktk_vvo: 'Диспетчерский отдел Влд',
   head_ktk_vvo: 'Руководитель КТК Влд',
   manager_ktk_mow: 'Диспетчерский отдел Мск',

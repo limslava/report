@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Box, MenuItem, Paper, TextField } from '@mui/material';
 import { useAuthStore } from '../store/auth-store';
@@ -135,6 +135,8 @@ const extractFilename = (disposition?: string): string | null => {
 };
 
 export default function OperationsPreview() {
+  type VisibleRow = { personId: string; lane: '1' | '2'; personName: string; rowIndex: number; department: Department };
+  type RangeRect = { rowStart: number; rowEnd: number; dayStart: number; dayEnd: number };
   const [searchParams, setSearchParams] = useSearchParams();
   const userId = useAuthStore((state) => state.user?.id);
   const userRole = useAuthStore((state) => state.user?.role);
@@ -175,6 +177,9 @@ export default function OperationsPreview() {
   const [lastPaintKeyAt, setLastPaintKeyAt] = useState<number | null>(null);
   const [paintRow, setPaintRow] = useState<{ personId: string; lane: '1' | '2' } | null>(null);
   const [clipboardCell, setClipboardCell] = useState<CellCode | null>(null);
+  const [selectionAnchor, setSelectionAnchor] = useState<{ personId: string; lane: '1' | '2'; day: number } | null>(null);
+  const [selectionRect, setSelectionRect] = useState<RangeRect | null>(null);
+  const [clipboardRange, setClipboardRange] = useState<CellCode[][] | null>(null);
   const [editPerson, setEditPerson] = useState<PersonRow | null>(null);
   const matrixSectionRef = useRef<HTMLElement | null>(null);
   const matrixBodyRef = useRef<HTMLDivElement | null>(null);
@@ -411,6 +416,67 @@ export default function OperationsPreview() {
   const isPersonnelSection = filter === 'Диспетчера' || filter === 'Курьеры';
   const effectiveMode: PreviewMode = filter === 'Контейнеры' ? mode : 'fact';
   const visibleCellCodes: CellCode[] = isPersonnelSection ? ['W', 'V', 'O'] : ['W', 'O', 'V', 'B', 'H', 'R', 'N'];
+  const visibleRows = useMemo<VisibleRow[]>(() => {
+    const rows: VisibleRow[] = [];
+    const visiblePeople =
+      filter === 'Все'
+        ? [
+            ...sortedPeopleBySection.Контейнеры,
+            ...sortedPeopleBySection.Авто,
+            ...sortedPeopleBySection.Диспетчера,
+            ...sortedPeopleBySection.Курьеры,
+          ]
+        : sortedPeopleBySection[filter];
+    visiblePeople.forEach((person) => {
+      rows.push({
+        personId: person.id,
+        lane: '1',
+        personName: person.name,
+        rowIndex: person.rowIndex,
+        department: person.department,
+      });
+      if (person.secondName) {
+        rows.push({
+          personId: person.id,
+          lane: '2',
+          personName: person.secondName ?? '',
+          rowIndex: person.rowIndex + 50,
+          department: person.department,
+        });
+      }
+    });
+    return rows;
+  }, [filter, sortedPeopleBySection]);
+
+  const buildRangeRect = useCallback(
+    (from: { personId: string; lane: '1' | '2'; day: number }, to: { personId: string; lane: '1' | '2'; day: number }): RangeRect | null => {
+      const fromRow = visibleRows.findIndex((row) => row.personId === from.personId && row.lane === from.lane);
+      const toRow = visibleRows.findIndex((row) => row.personId === to.personId && row.lane === to.lane);
+      if (fromRow < 0 || toRow < 0) return null;
+      return {
+        rowStart: Math.min(fromRow, toRow),
+        rowEnd: Math.max(fromRow, toRow),
+        dayStart: Math.max(1, Math.min(from.day, to.day)),
+        dayEnd: Math.min(monthDays.length, Math.max(from.day, to.day)),
+      };
+    },
+    [visibleRows, monthDays.length]
+  );
+
+  const isKeyInSelection = useCallback(
+    (personId: string, lane: '1' | '2', day: number): boolean => {
+      if (!selectionRect) return false;
+      const rowIndex = visibleRows.findIndex((row) => row.personId === personId && row.lane === lane);
+      if (rowIndex < 0) return false;
+      return (
+        rowIndex >= selectionRect.rowStart
+        && rowIndex <= selectionRect.rowEnd
+        && day >= selectionRect.dayStart
+        && day <= selectionRect.dayEnd
+      );
+    },
+    [selectionRect, visibleRows]
+  );
   const dayColumnStart = 4;
   const totalColumnIndex = dayColumnStart + monthDays.length;
   const currentScopeKey = `${effectiveMode}|${monthValue}` as OverrideScopeKey;
@@ -486,7 +552,7 @@ export default function OperationsPreview() {
     return currentSort.direction;
   };
 
-  const reorderPersonByDrop = (sourceId: string, targetId: string) => {
+  const reorderPersonByDrop = (sourceId: string, targetId: string, position: 'before' | 'after' = 'before') => {
     if (sourceId === targetId) return;
     setPeopleStateForCurrentMonth((prev) => {
       const fromIndex = prev.findIndex((item) => item.id === sourceId);
@@ -497,7 +563,9 @@ export default function OperationsPreview() {
       if (source.department !== target.department) return prev;
       const next = [...prev];
       const [moved] = next.splice(fromIndex, 1);
-      const insertIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
+      let insertIndex = position === 'after' ? toIndex + 1 : toIndex;
+      if (fromIndex < insertIndex) insertIndex -= 1;
+      insertIndex = Math.max(0, Math.min(next.length, insertIndex));
       next.splice(insertIndex, 0, moved);
       return next;
     });
@@ -513,6 +581,8 @@ export default function OperationsPreview() {
   const startRowDrag = (event: DragEvent<HTMLButtonElement>, personId: string, label: string) => {
     event.stopPropagation();
     event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.dropEffect = 'move';
+    event.dataTransfer.setData('application/x-ops-person-id', personId);
     event.dataTransfer.setData('text/plain', personId);
     setDraggingId(personId);
 
@@ -550,6 +620,21 @@ export default function OperationsPreview() {
       dragGhostRef.current = null;
     }
   };
+
+  const getDraggedPersonId = (event?: DragEvent<HTMLElement>): string | null => {
+    if (draggingId) return draggingId;
+    if (!event) return null;
+    return (
+      event.dataTransfer.getData('application/x-ops-person-id')
+      || event.dataTransfer.getData('text/plain')
+      || null
+    );
+  };
+
+  const resolveDropPos = (
+    clientY: number,
+    rect: DOMRect,
+  ): 'before' | 'after' => (clientY < rect.top + rect.height / 2 ? 'before' : 'after');
 
   const handleDeleteFromContext = () => {
     if (!contextMenu) return;
@@ -941,35 +1026,7 @@ export default function OperationsPreview() {
       }
       if (event.key.startsWith('Arrow')) {
         event.preventDefault();
-        const rows: { personId: string; lane: '1' | '2'; personName: string; rowIndex: number; department: Department }[] = [];
-        const visiblePeople =
-          filter === 'Все'
-            ? [
-                ...sortedPeopleBySection.Контейнеры,
-                ...sortedPeopleBySection.Авто,
-                ...sortedPeopleBySection.Диспетчера,
-                ...sortedPeopleBySection.Курьеры,
-              ]
-            : sortedPeopleBySection[filter];
-        visiblePeople.forEach((person) => {
-          rows.push({
-            personId: person.id,
-            lane: '1',
-            personName: person.name,
-            rowIndex: person.rowIndex,
-            department: person.department,
-          });
-          if (person.secondName) {
-            rows.push({
-              personId: person.id,
-              lane: '2',
-              personName: person.secondName ?? '',
-              rowIndex: person.rowIndex + 50,
-              department: person.department,
-            });
-          }
-        });
-        const currentIndex = rows.findIndex(
+        const currentIndex = visibleRows.findIndex(
           (row) => row.personId === selectedCell.personId && row.lane === selectedCell.lane
         );
         if (currentIndex === -1) return;
@@ -978,10 +1035,11 @@ export default function OperationsPreview() {
         if (event.key === 'ArrowLeft') nextDay = Math.max(1, selectedCell.day - 1);
         if (event.key === 'ArrowRight') nextDay = Math.min(monthDays.length, selectedCell.day + 1);
         if (event.key === 'ArrowUp') nextRowIndex = Math.max(0, currentIndex - 1);
-        if (event.key === 'ArrowDown') nextRowIndex = Math.min(rows.length - 1, currentIndex + 1);
-        const nextRow = rows[nextRowIndex];
+        if (event.key === 'ArrowDown') nextRowIndex = Math.min(visibleRows.length - 1, currentIndex + 1);
+        const nextRow = visibleRows[nextRowIndex];
         const nextKey = `${nextRow.personId}-${nextRow.lane}-${nextDay}`;
         const nextValue = overrides[nextKey] ?? getMonthlyCell(nextRow.rowIndex, nextDay, nextRow.department);
+        const nextPoint = { personId: nextRow.personId, lane: nextRow.lane, day: nextDay };
         setSelectedCell({
           key: nextKey,
           personName: nextRow.personName,
@@ -992,16 +1050,89 @@ export default function OperationsPreview() {
           rowIndex: nextRow.rowIndex,
           department: nextRow.department,
         });
+        if (event.shiftKey) {
+          const anchor = selectionAnchor ?? {
+            personId: selectedCell.personId,
+            lane: selectedCell.lane,
+            day: selectedCell.day,
+          };
+          setSelectionAnchor(anchor);
+          setSelectionRect(buildRangeRect(anchor, nextPoint));
+        } else {
+          setSelectionRect(null);
+          setSelectionAnchor(nextPoint);
+        }
         return;
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
         event.preventDefault();
+        if (selectionRect) {
+          const rows: CellCode[][] = [];
+          for (let r = selectionRect.rowStart; r <= selectionRect.rowEnd; r += 1) {
+            const row = visibleRows[r];
+            if (!row) continue;
+            const rowCodes: CellCode[] = [];
+            for (let day = selectionRect.dayStart; day <= selectionRect.dayEnd; day += 1) {
+              rowCodes.push(getCellCode(row.rowIndex, day, row.personId, row.department, row.lane));
+            }
+            rows.push(rowCodes);
+          }
+          if (rows.length > 0) {
+            setClipboardRange(rows);
+            setClipboardCell(rows[0]?.[0] ?? null);
+            return;
+          }
+        }
+        setClipboardRange(null);
         setClipboardCell(selectedCell.value);
         return;
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
-        if (!clipboardCell) return;
         event.preventDefault();
+        if (clipboardRange && clipboardRange.length > 0) {
+          const anchorIdx = visibleRows.findIndex((row) => row.personId === selectedCell.personId && row.lane === selectedCell.lane);
+          if (anchorIdx >= 0) {
+            clipboardRange.forEach((rowCodes, rowOffset) => {
+              const targetRow = visibleRows[anchorIdx + rowOffset];
+              if (!targetRow) return;
+              rowCodes.forEach((code, colOffset) => {
+                const day = selectedCell.day + colOffset;
+                if (day > monthDays.length) return;
+                const key = `${targetRow.personId}-${targetRow.lane}-${day}`;
+                setCellCode({
+                  key,
+                  rowIndex: targetRow.rowIndex,
+                  day,
+                  code,
+                  department: targetRow.department,
+                });
+              });
+            });
+            setPaintCode(clipboardRange[0]?.[0] ?? paintCode);
+            setLastPaintKeyAt(Date.now());
+            return;
+          }
+        }
+        if (clipboardCell && selectionRect) {
+          for (let r = selectionRect.rowStart; r <= selectionRect.rowEnd; r += 1) {
+            const row = visibleRows[r];
+            if (!row) continue;
+            for (let day = selectionRect.dayStart; day <= selectionRect.dayEnd; day += 1) {
+              const key = `${row.personId}-${row.lane}-${day}`;
+              setCellCode({
+                key,
+                rowIndex: row.rowIndex,
+                day,
+                code: clipboardCell,
+                department: row.department,
+              });
+            }
+          }
+          setPaintCode(clipboardCell);
+          setLastPaintKeyAt(Date.now());
+          return;
+        }
+        if (!clipboardCell) return;
         setCellCode({
           key: selectedCell.key,
           rowIndex: selectedCell.rowIndex,
@@ -1052,12 +1183,13 @@ export default function OperationsPreview() {
         department: selectedCell.department,
       });
       setSelectedCell((prev) => (prev ? { ...prev, value: code } : prev));
+      setSelectionRect(null);
       setPaintCode(code);
       setLastPaintKeyAt(Date.now());
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [selectedCell, filter, sortedPeopleBySection, overrides, clipboardCell, lastPaintKeyAt, paintCode, isPainting, paintRow, visibleCellCodes, monthDays.length]);
+  }, [selectedCell, visibleRows, overrides, clipboardCell, clipboardRange, lastPaintKeyAt, paintCode, isPainting, paintRow, visibleCellCodes, monthDays.length, selectionRect]);
 
   useEffect(() => {
     const handleMouseUp = () => {
@@ -1478,17 +1610,94 @@ export default function OperationsPreview() {
                 <div
                   key={`section-${section}`}
                   className="ops-matrix__section"
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={() => {
-                    if (!draggingId) return;
+                  onDragOver={(event) => {
+                    const sourceId = getDraggedPersonId(event);
+                    if (!sourceId) return;
+                    event.preventDefault();
+                    const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+                    const edgeThreshold = Math.min(24, Math.max(12, rect.height * 0.08));
+                    const firstInSection = sectionPeople[0];
+                    const lastInSection = sectionPeople[sectionPeople.length - 1];
+                    if (event.clientY <= rect.top + edgeThreshold && firstInSection) {
+                      setDragOverMarker({ personId: firstInSection.id, pos: 'before' });
+                      return;
+                    }
+                    if (event.clientY >= rect.bottom - edgeThreshold && lastInSection) {
+                      setDragOverMarker({ personId: lastInSection.id, pos: 'after' });
+                      return;
+                    }
+                  }}
+                  onDrop={(event) => {
+                    const sourceId = getDraggedPersonId(event);
+                    if (!sourceId) return;
+                    event.stopPropagation();
+                    event.preventDefault();
+                    const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+                    const edgeThreshold = Math.min(24, Math.max(12, rect.height * 0.08));
+                    const firstInSection = sectionPeople[0];
+                    const lastInSection = sectionPeople[sectionPeople.length - 1];
+                    if (event.clientY <= rect.top + edgeThreshold && firstInSection) {
+                      reorderPersonByDrop(sourceId, firstInSection.id, 'before');
+                      setDragOverMarker({ personId: firstInSection.id, pos: 'before' });
+                      window.setTimeout(() => setDragOverMarker(null), 120);
+                      endRowDrag();
+                      return;
+                    }
+                    if (event.clientY >= rect.bottom - edgeThreshold && lastInSection) {
+                      reorderPersonByDrop(sourceId, lastInSection.id, 'after');
+                      setDragOverMarker({ personId: lastInSection.id, pos: 'after' });
+                      window.setTimeout(() => setDragOverMarker(null), 120);
+                      endRowDrag();
+                      return;
+                    }
                     setPeopleStateForCurrentMonth((prev) =>
                       prev.map((person) =>
-                        person.id === draggingId ? { ...person, department: section } : person
+                        person.id === sourceId ? { ...person, department: section } : person
                       )
                     );
-                    setDraggingId(null);
+                    endRowDrag();
+                  }}
+                  onDragLeave={(event) => {
+                    const nextTarget = event.relatedTarget as Node | null;
+                    if (nextTarget && (event.currentTarget as HTMLDivElement).contains(nextTarget)) return;
+                    setDragOverMarker(null);
                   }}
                 >
+                  {draggingId && (
+                    <div
+                      className="ops-matrix__section-drop-edge ops-matrix__section-drop-edge--top"
+                      onDragOver={(event) => {
+                        const sourceId = getDraggedPersonId(event);
+                        if (!sourceId) return;
+                        event.preventDefault();
+                        const firstInSection = sectionPeople[0];
+                        if (firstInSection) {
+                          setDragOverMarker({ personId: firstInSection.id, pos: 'before' });
+                        }
+                      }}
+                      onDrop={(event) => {
+                        const sourceId = getDraggedPersonId(event);
+                        if (!sourceId) return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const firstInSection = sectionPeople[0];
+                        if (!firstInSection) {
+                          setPeopleStateForCurrentMonth((prev) =>
+                            prev.map((person) =>
+                              person.id === sourceId ? { ...person, department: section } : person
+                            )
+                          );
+                          endRowDrag();
+                          return;
+                        }
+                        reorderPersonByDrop(sourceId, firstInSection.id, 'before');
+                        setDragOverMarker({ personId: firstInSection.id, pos: 'before' });
+                        window.setTimeout(() => setDragOverMarker(null), 120);
+                        endRowDrag();
+                      }}
+                    />
+                  )}
+
                   {sectionPeople.map((person) => {
                     const workCount = monthDays.reduce((acc, day) => {
                       const code = getCellCode(person.rowIndex, day, person.id, person.department, '1');
@@ -1510,22 +1719,27 @@ export default function OperationsPreview() {
                         <div
                           className={`ops-matrix__row ops-matrix__row--draggable${person.secondName ? ' ops-matrix__row--split' : ''}`}
                           onDragOver={(event) => {
-                            if (!draggingId || draggingId === person.id) return;
+                            const sourceId = getDraggedPersonId(event);
+                            if (!sourceId || sourceId === person.id) return;
                             event.preventDefault();
                             const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
-                            const pos: 'before' | 'after' = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                            const pos = resolveDropPos(event.clientY, rect);
                             setDragOverMarker({ personId: person.id, pos });
                           }}
                           onDrop={(event) => {
-                            if (!draggingId || draggingId === person.id) return;
+                            const sourceId = getDraggedPersonId(event);
+                            if (!sourceId || sourceId === person.id) return;
+                            event.stopPropagation();
                             event.preventDefault();
-                            reorderPersonByDrop(draggingId, person.id);
-                            setDraggingId(null);
+                            const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+                            const pos = resolveDropPos(event.clientY, rect);
+                            reorderPersonByDrop(sourceId, person.id, pos);
                             setDragOverMarker(null);
+                            endRowDrag();
                           }}
                           onDragLeave={() => setDragOverMarker(null)}
                         >
-                          <div className={`ops-matrix__cell ops-matrix__cell--sticky ops-matrix__cell--name${dragOverMarker?.personId === person.id ? ` is-drop-${dragOverMarker.pos}` : ''}`}>
+                          <div className="ops-matrix__cell ops-matrix__cell--sticky ops-matrix__cell--name">
                             <div className="ops-matrix__name">
                               <span
                                 onDoubleClick={() => setEditPerson(person)}
@@ -1618,7 +1832,7 @@ export default function OperationsPreview() {
                             return (
                               <div
                                 key={`${person.id}-${lane}-${day}`}
-                                className={`ops-matrix__cell ops-matrix__cell--${meta.css} ops-matrix__cell--editable${selectedCell?.key === `${person.id}-${lane}-${day}` ? ' ops-matrix__cell--selected' : ''}`}
+                                className={`ops-matrix__cell ops-matrix__cell--${meta.css} ops-matrix__cell--editable${(selectedCell?.key === `${person.id}-${lane}-${day}` || isKeyInSelection(person.id, lane, day)) ? ' ops-matrix__cell--selected' : ''}`}
                                 style={{ gridColumn: dayColumnStart + dayIndex }}
                                 title={`${name}: ${meta.label}`}
                                 role="button"
@@ -1627,10 +1841,35 @@ export default function OperationsPreview() {
                                   if (event.button !== 0) return;
                                   event.preventDefault();
                                   const key = `${person.id}-${lane}-${day}`;
+                                  const anchor = selectionAnchor ?? {
+                                    personId: selectedCell?.personId ?? person.id,
+                                    lane: selectedCell?.lane ?? lane,
+                                    day: selectedCell?.day ?? day,
+                                  };
+                                  if (event.shiftKey) {
+                                    const rect = buildRangeRect(anchor, { personId: person.id, lane, day });
+                                    setSelectionRect(rect);
+                                    setSelectionAnchor(anchor);
+                                    setSelectedCell({
+                                      key,
+                                      personName: name ?? '',
+                                      day,
+                                      value: cell,
+                                      personId: person.id,
+                                      lane,
+                                      rowIndex,
+                                      department: person.department,
+                                    });
+                                    setIsPainting(false);
+                                    setPaintRow(null);
+                                    return;
+                                  }
                                   const now = Date.now();
                                   if (!lastPaintKeyAt || now - lastPaintKeyAt > 1500) {
                                     setPaintCode(cell);
                                   }
+                                  setSelectionRect(null);
+                                  setSelectionAnchor({ personId: person.id, lane, day });
                                   setSelectedCell({
                                     key,
                                     personName: name ?? '',
@@ -1691,28 +1930,41 @@ export default function OperationsPreview() {
                     };
 
                     return (
-                      <div key={person.id} className="ops-matrix__person">
+                      <div
+                        key={person.id}
+                        className={`ops-matrix__person${
+                          dragOverMarker?.personId === person.id ? ` is-drop-${dragOverMarker.pos}` : ''
+                        }`}
+                      >
                         {!person.secondName && <Row lane="1" />}
                         {person.secondName && (
                           <div
                             className="ops-matrix__person-grid"
                             onDragOver={(event) => {
-                              if (!draggingId || draggingId === person.id) return;
+                              const sourceId = getDraggedPersonId(event);
+                              if (!sourceId || sourceId === person.id) return;
                               event.preventDefault();
                               const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
-                              const pos: 'before' | 'after' = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                              const pos = resolveDropPos(event.clientY, rect);
                               setDragOverMarker({ personId: person.id, pos });
                             }}
                             onDrop={(event) => {
-                              if (!draggingId || draggingId === person.id) return;
+                              const sourceId = getDraggedPersonId(event);
+                              if (!sourceId || sourceId === person.id) return;
+                              event.stopPropagation();
                               event.preventDefault();
-                              reorderPersonByDrop(draggingId, person.id);
-                              setDraggingId(null);
+                              const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+                              const pos = resolveDropPos(event.clientY, rect);
+                              reorderPersonByDrop(sourceId, person.id, pos);
                               setDragOverMarker(null);
+                              endRowDrag();
                             }}
                             onDragLeave={() => setDragOverMarker(null)}
                           >
-                            <div className={`ops-matrix__cell ops-matrix__cell--name ops-matrix__cell--sticky${dragOverMarker?.personId === person.id ? ` is-drop-${dragOverMarker.pos}` : ''}`} style={{ gridColumn: 1, gridRow: 1 }}>
+                            <div
+                              className="ops-matrix__cell ops-matrix__cell--name ops-matrix__cell--sticky"
+                              style={{ gridColumn: 1, gridRow: 1 }}
+                            >
                               <div className="ops-matrix__name">
                                 <span
                                   onDoubleClick={() => setEditPerson(person)}
@@ -1726,7 +1978,10 @@ export default function OperationsPreview() {
                                 </span>
                               </div>
                             </div>
-                            <div className="ops-matrix__cell ops-matrix__cell--name ops-matrix__cell--row2 ops-matrix__cell--name-left ops-matrix__cell--sticky" style={{ gridColumn: 1, gridRow: 2 }}>
+                            <div
+                              className="ops-matrix__cell ops-matrix__cell--name ops-matrix__cell--row2 ops-matrix__cell--name-left ops-matrix__cell--sticky"
+                              style={{ gridColumn: 1, gridRow: 2 }}
+                            >
                               <div className="ops-matrix__name">
                                 <span
                                   onDoubleClick={() => setEditPerson(person)}
@@ -1831,7 +2086,7 @@ export default function OperationsPreview() {
                               return (
                                 <Fragment key={`grid-${person.id}-${day}`}>
                                   <div
-                                    className={`ops-matrix__cell ops-matrix__cell--${meta1.css} ops-matrix__cell--editable${selectedCell?.key === `${person.id}-1-${day}` ? ' ops-matrix__cell--selected' : ''}`}
+                                    className={`ops-matrix__cell ops-matrix__cell--${meta1.css} ops-matrix__cell--editable${(selectedCell?.key === `${person.id}-1-${day}` || isKeyInSelection(person.id, '1', day)) ? ' ops-matrix__cell--selected' : ''}`}
                                     style={{ gridColumn: col, gridRow: 1 }}
                                     title={`${person.name}: ${meta1.label}`}
                                     role="button"
@@ -1839,24 +2094,49 @@ export default function OperationsPreview() {
                                     onMouseDown={(event) => {
                                       if (event.button !== 0) return;
                                       event.preventDefault();
-                                    const key = `${person.id}-1-${day}`;
-                                    const now = Date.now();
-                                    if (!lastPaintKeyAt || now - lastPaintKeyAt > 1500) {
-                                      setPaintCode(cell1);
-                                    }
-                                    setSelectedCell({
-                                      key,
-                                      personName: person.name,
-                                      day,
-                                      value: cell1,
-                                      personId: person.id,
-                                      lane: '1',
-                                      rowIndex: person.rowIndex,
-                                      department: person.department,
-                                    });
-                                    setIsPainting(true);
-                                    setPaintRow({ personId: person.id, lane: '1' });
-                                  }}
+                                      const key = `${person.id}-1-${day}`;
+                                      const anchor = selectionAnchor ?? {
+                                        personId: selectedCell?.personId ?? person.id,
+                                        lane: selectedCell?.lane ?? '1',
+                                        day: selectedCell?.day ?? day,
+                                      };
+                                      if (event.shiftKey) {
+                                        const rect = buildRangeRect(anchor, { personId: person.id, lane: '1', day });
+                                        setSelectionRect(rect);
+                                        setSelectionAnchor(anchor);
+                                        setSelectedCell({
+                                          key,
+                                          personName: person.name,
+                                          day,
+                                          value: cell1,
+                                          personId: person.id,
+                                          lane: '1',
+                                          rowIndex: person.rowIndex,
+                                          department: person.department,
+                                        });
+                                        setIsPainting(false);
+                                        setPaintRow(null);
+                                        return;
+                                      }
+                                      const now = Date.now();
+                                      if (!lastPaintKeyAt || now - lastPaintKeyAt > 1500) {
+                                        setPaintCode(cell1);
+                                      }
+                                      setSelectionRect(null);
+                                      setSelectionAnchor({ personId: person.id, lane: '1', day });
+                                      setSelectedCell({
+                                        key,
+                                        personName: person.name,
+                                        day,
+                                        value: cell1,
+                                        personId: person.id,
+                                        lane: '1',
+                                        rowIndex: person.rowIndex,
+                                        department: person.department,
+                                      });
+                                      setIsPainting(true);
+                                      setPaintRow({ personId: person.id, lane: '1' });
+                                    }}
                                   onMouseEnter={() => {
                                     if (!isPainting) return;
                                     if (!paintRow || paintRow.personId !== person.id || paintRow.lane !== '1') return;
@@ -1895,7 +2175,7 @@ export default function OperationsPreview() {
                                     {meta1.code}
                                   </div>
                                   <div
-                                    className={`ops-matrix__cell ops-matrix__cell--${meta2.css} ops-matrix__cell--editable ops-matrix__cell--row2${selectedCell?.key === `${person.id}-2-${day}` ? ' ops-matrix__cell--selected' : ''}`}
+                                    className={`ops-matrix__cell ops-matrix__cell--${meta2.css} ops-matrix__cell--editable ops-matrix__cell--row2${(selectedCell?.key === `${person.id}-2-${day}` || isKeyInSelection(person.id, '2', day)) ? ' ops-matrix__cell--selected' : ''}`}
                                     style={{ gridColumn: col, gridRow: 2 }}
                                     title={`${person.secondName}: ${meta2.label}`}
                                     role="button"
@@ -1903,24 +2183,49 @@ export default function OperationsPreview() {
                                     onMouseDown={(event) => {
                                       if (event.button !== 0) return;
                                       event.preventDefault();
-                                    const key = `${person.id}-2-${day}`;
-                                    const now = Date.now();
-                                    if (!lastPaintKeyAt || now - lastPaintKeyAt > 1500) {
-                                      setPaintCode(cell2);
-                                    }
-                                    setSelectedCell({
-                                      key,
-                                      personName: person.secondName ?? '',
-                                      day,
-                                      value: cell2,
-                                      personId: person.id,
-                                      lane: '2',
-                                      rowIndex: person.rowIndex + 50,
-                                      department: person.department,
-                                    });
-                                    setIsPainting(true);
-                                    setPaintRow({ personId: person.id, lane: '2' });
-                                  }}
+                                      const key = `${person.id}-2-${day}`;
+                                      const anchor = selectionAnchor ?? {
+                                        personId: selectedCell?.personId ?? person.id,
+                                        lane: selectedCell?.lane ?? '2',
+                                        day: selectedCell?.day ?? day,
+                                      };
+                                      if (event.shiftKey) {
+                                        const rect = buildRangeRect(anchor, { personId: person.id, lane: '2', day });
+                                        setSelectionRect(rect);
+                                        setSelectionAnchor(anchor);
+                                        setSelectedCell({
+                                          key,
+                                          personName: person.secondName ?? '',
+                                          day,
+                                          value: cell2,
+                                          personId: person.id,
+                                          lane: '2',
+                                          rowIndex: person.rowIndex + 50,
+                                          department: person.department,
+                                        });
+                                        setIsPainting(false);
+                                        setPaintRow(null);
+                                        return;
+                                      }
+                                      const now = Date.now();
+                                      if (!lastPaintKeyAt || now - lastPaintKeyAt > 1500) {
+                                        setPaintCode(cell2);
+                                      }
+                                      setSelectionRect(null);
+                                      setSelectionAnchor({ personId: person.id, lane: '2', day });
+                                      setSelectedCell({
+                                        key,
+                                        personName: person.secondName ?? '',
+                                        day,
+                                        value: cell2,
+                                        personId: person.id,
+                                        lane: '2',
+                                        rowIndex: person.rowIndex + 50,
+                                        department: person.department,
+                                      });
+                                      setIsPainting(true);
+                                      setPaintRow({ personId: person.id, lane: '2' });
+                                    }}
                                   onMouseEnter={() => {
                                     if (!isPainting) return;
                                     if (!paintRow || paintRow.personId !== person.id || paintRow.lane !== '2') return;
@@ -1969,7 +2274,38 @@ export default function OperationsPreview() {
                     );
                   })}
 
-                  <div className="ops-matrix__row ops-matrix__footer">
+                  <div
+                    className="ops-matrix__row ops-matrix__footer"
+                    onDragOver={(event) => {
+                      const sourceId = getDraggedPersonId(event);
+                      if (!sourceId) return;
+                      event.preventDefault();
+                      const lastInSection = sectionPeople[sectionPeople.length - 1];
+                      if (lastInSection) {
+                        setDragOverMarker({ personId: lastInSection.id, pos: 'after' });
+                      }
+                    }}
+                    onDrop={(event) => {
+                      const sourceId = getDraggedPersonId(event);
+                      if (!sourceId) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const lastInSection = sectionPeople[sectionPeople.length - 1];
+                      if (!lastInSection) {
+                        setPeopleStateForCurrentMonth((prev) =>
+                          prev.map((person) =>
+                            person.id === sourceId ? { ...person, department: section } : person
+                          )
+                        );
+                        endRowDrag();
+                        return;
+                      }
+                      reorderPersonByDrop(sourceId, lastInSection.id, 'after');
+                      setDragOverMarker({ personId: lastInSection.id, pos: 'after' });
+                      window.setTimeout(() => setDragOverMarker(null), 120);
+                      endRowDrag();
+                    }}
+                  >
                     {/** Количество уникальных госномеров в текущем блоке */ }
                     {(() => {
                       const platesCount = isPersonnelSection
@@ -2027,6 +2363,40 @@ export default function OperationsPreview() {
                       );
                     })()}
                   </div>
+                  {draggingId && (
+                    <div
+                      className="ops-matrix__section-drop-edge ops-matrix__section-drop-edge--bottom"
+                      onDragOver={(event) => {
+                        const sourceId = getDraggedPersonId(event);
+                        if (!sourceId) return;
+                        event.preventDefault();
+                        const lastInSection = sectionPeople[sectionPeople.length - 1];
+                        if (lastInSection) {
+                          setDragOverMarker({ personId: lastInSection.id, pos: 'after' });
+                        }
+                      }}
+                      onDrop={(event) => {
+                        const sourceId = getDraggedPersonId(event);
+                        if (!sourceId) return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const lastInSection = sectionPeople[sectionPeople.length - 1];
+                        if (!lastInSection) {
+                          setPeopleStateForCurrentMonth((prev) =>
+                            prev.map((person) =>
+                              person.id === sourceId ? { ...person, department: section } : person
+                            )
+                          );
+                          endRowDrag();
+                          return;
+                        }
+                        reorderPersonByDrop(sourceId, lastInSection.id, 'after');
+                        setDragOverMarker({ personId: lastInSection.id, pos: 'after' });
+                        window.setTimeout(() => setDragOverMarker(null), 120);
+                        endRowDrag();
+                      }}
+                    />
+                  )}
                 </div>
               );
             })}

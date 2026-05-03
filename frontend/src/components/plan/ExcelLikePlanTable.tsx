@@ -145,7 +145,7 @@ function buildDashboardCards(
   role?: string
 ): DashboardCard[] {
   if (segmentCode === 'AUTO') {
-    const isSalesManager = role === 'manager_sales';
+    const isSalesManager = role === 'manager_sales' || role === 'head_sales';
     const truck = asRecord(dashboard.truck);
     const ktk = asRecord(dashboard.ktk);
     const cards: DashboardCard[] = [
@@ -429,7 +429,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
     });
   }, [report?.daysInMonth, currentContext.year, currentContext.month]);
 
-  const hideSalesDebts = segmentCode === 'AUTO' && user?.role === 'manager_sales';
+  const hideSalesDebts = segmentCode === 'AUTO' && (user?.role === 'manager_sales' || user?.role === 'head_sales');
   const hiddenDebtMetricCodes = new Set([
     'auto_manual_debt_overload',
     'auto_manual_debt_cashback',

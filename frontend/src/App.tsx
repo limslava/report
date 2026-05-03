@@ -38,7 +38,7 @@ function App() {
           <Route path="/" element={<DashboardLayout />}>
           <Route
             index
-            element={<Navigate to={user?.role === 'admin' ? '/sw-tech-dashboard' : '/plans'} replace />}
+            element={<Navigate to={canViewTechDashboard(user?.role) ? '/sw-tech-dashboard' : '/plans'} replace />}
           />
           <Route
             path="summary-report"

@@ -29,7 +29,7 @@ type DashboardCardProps = {
 };
 
 function formatInt(value: number): string {
-  return new Intl.NumberFormat('ru-RU').format(Math.round(value));
+  return new Intl.NumberFormat('ru-RU', { useGrouping: false }).format(Math.round(value));
 }
 
 function formatMoney(value: number): string {
@@ -87,6 +87,8 @@ export default function SWTechDashboardPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<PlanningTechDashboardResponse | null>(null);
+  const [chartsReady, setChartsReady] = useState<boolean>(false);
+  const [layoutMode, setLayoutMode] = useState<'compact' | 'regular' | 'expanded'>('regular');
 
   const monthlyChartRef = useRef<HTMLDivElement | null>(null);
   const aprilChartRef = useRef<HTMLDivElement | null>(null);
@@ -94,10 +96,35 @@ export default function SWTechDashboardPage() {
   const pageRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
+  useEffect(() => {
+    const rootEl = rootRef.current;
+    if (!rootEl) return;
+
+    const recalcLayoutMode = () => {
+      const rect = rootEl.getBoundingClientRect();
+      const availableHeight = Math.max(1, window.innerHeight - rect.top - 14);
+      rootEl.style.setProperty('--sw-tech-available-h', `${availableHeight}px`);
+      if (availableHeight <= 720) {
+        setLayoutMode('compact');
+        return;
+      }
+      if (availableHeight >= 960) {
+        setLayoutMode('expanded');
+        return;
+      }
+      setLayoutMode('regular');
+    };
+
+    recalcLayoutMode();
+    window.addEventListener('resize', recalcLayoutMode);
+    return () => window.removeEventListener('resize', recalcLayoutMode);
+  }, []);
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
+      setChartsReady(false);
       const response = await planningV2Api.getTechDashboard({ year, month: safeMonth, asOfDate });
       setData(response);
     } catch (err: any) {
@@ -112,7 +139,48 @@ export default function SWTechDashboardPage() {
   }, [loadData]);
 
   useEffect(() => {
-    if (!data) return;
+    if (!data) {
+      setChartsReady(false);
+      return;
+    }
+
+    let isCancelled = false;
+    let rafId: number | null = null;
+    let idleId: number | null = null;
+
+    const markReady = () => {
+      if (!isCancelled) {
+        setChartsReady(true);
+      }
+    };
+
+    const win = window as any;
+    if (typeof win.requestIdleCallback === 'function') {
+      idleId = win.requestIdleCallback(
+        () => {
+          rafId = window.requestAnimationFrame(markReady);
+        },
+        { timeout: 300 },
+      );
+    } else {
+      rafId = window.requestAnimationFrame(() => {
+        window.setTimeout(markReady, 0);
+      });
+    }
+
+    return () => {
+      isCancelled = true;
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+      if (idleId !== null && typeof win.cancelIdleCallback === 'function') {
+        win.cancelIdleCallback(idleId);
+      }
+    };
+  }, [data]);
+
+  useEffect(() => {
+    if (!data || !chartsReady) return;
 
     const instances: echarts.ECharts[] = [];
     const observers: ResizeObserver[] = [];
@@ -123,6 +191,11 @@ export default function SWTechDashboardPage() {
     const monthlyPlan = data.monthly.map((item) => item.plan);
     const monthlyFact = data.monthly.map((item) => item.fact);
     const monthlyPct = data.monthly.map((item) => item.pct);
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const pctVisibleUntilMonth = data.year < currentYear ? 12 : (data.year > currentYear ? 0 : currentMonth);
+    const monthlyPctVisible = monthlyPct.map((value, index) => (index + 1 <= pctVisibleUntilMonth ? value : null));
     const monthlyMax = Math.max(1, ...monthlyPlan, ...monthlyFact);
     const monthlyAxisMax = Math.ceil(monthlyMax / 500) * 500;
     const monthlyAxisStep = Math.max(100, Math.round(monthlyAxisMax / 6 / 100) * 100);
@@ -138,8 +211,24 @@ export default function SWTechDashboardPage() {
       backgroundColor: 'transparent',
       tooltip: {
         trigger: 'axis',
+        triggerOn: 'mousemove',
+        enterable: false,
         confine: true,
-        appendToBody: true,
+        showDelay: 0,
+        hideDelay: 80,
+        transitionDuration: 0,
+        formatter: (params: any) => {
+          const rows = Array.isArray(params) ? params : [params];
+          if (!rows.length) return '';
+          const title = rows[0]?.axisValueLabel ?? rows[0]?.name ?? '';
+          const body = rows.map((item: any) => {
+            const isPct = item?.seriesName === 'Выполнение %';
+            const raw = Number(item?.value ?? 0);
+            const value = isPct ? `${Math.round(raw)}%` : formatInt(raw);
+            return `${item?.marker ?? ''}${item?.seriesName ?? ''} ${value}`;
+          }).join('<br/>');
+          return `${title}<br/>${body}`;
+        },
       },
       legend: {
         orient: 'vertical',
@@ -161,7 +250,14 @@ export default function SWTechDashboardPage() {
         data: monthlyLabels,
         axisTick: { show: false },
         axisLine: { lineStyle: { color: '#bfc9d8' } },
-        axisLabel: { color: '#5d6d86', interval: isNarrow ? 1 : 0, hideOverlap: true, fontSize: axisFont },
+        axisLabel: {
+          color: '#5d6d86',
+          interval: 0,
+          hideOverlap: false,
+          rotate: isNarrow ? 28 : 18,
+          margin: Math.max(10, Math.round(12 * scale)),
+          fontSize: axisFont,
+        },
       },
       yAxis: [
         {
@@ -204,7 +300,7 @@ export default function SWTechDashboardPage() {
           name: 'Выполнение %',
           type: 'line',
           yAxisIndex: 1,
-          data: monthlyPct,
+          data: monthlyPctVisible,
           smooth: true,
           symbol: 'circle',
           symbolSize: Math.max(4, Math.round(6 * scale)),
@@ -230,8 +326,22 @@ export default function SWTechDashboardPage() {
       backgroundColor: 'transparent',
       tooltip: {
         trigger: 'axis',
+        triggerOn: 'mousemove',
+        enterable: false,
         confine: true,
-        appendToBody: true,
+        showDelay: 0,
+        hideDelay: 80,
+        transitionDuration: 0,
+        formatter: (params: any) => {
+          const rows = Array.isArray(params) ? params : [params];
+          if (!rows.length) return '';
+          const title = rows[0]?.axisValueLabel ?? rows[0]?.name ?? '';
+          const body = rows.map((item: any) => {
+            const value = formatInt(Number(item?.value ?? 0));
+            return `${item?.marker ?? ''}${item?.seriesName ?? ''} ${value}`;
+          }).join('<br/>');
+          return `${title}<br/>${body}`;
+        },
       },
       legend: {
         orient: 'vertical',
@@ -287,7 +397,16 @@ export default function SWTechDashboardPage() {
       const isNarrow = width < 520;
       return ({
       backgroundColor: 'transparent',
-      tooltip: { trigger: 'item', formatter: (params: any) => `${params.name}: ${formatInt(Number(params.value || 0))}` },
+      tooltip: {
+        trigger: 'item',
+        triggerOn: 'mousemove',
+        enterable: false,
+        confine: true,
+        showDelay: 0,
+        hideDelay: 80,
+        transitionDuration: 0,
+        formatter: (params: any) => `${params.name}: ${formatInt(Number(params.value || 0))}`,
+      },
       legend: { show: false },
       series: [
         {
@@ -379,48 +498,7 @@ export default function SWTechDashboardPage() {
       resizeTimers.forEach((timer) => window.clearTimeout(timer));
       instances.forEach((chart) => chart.dispose());
     };
-  }, [data]);
-
-  useEffect(() => {
-    const rootEl = rootRef.current;
-    const pageEl = pageRef.current;
-    if (!rootEl || !pageEl) return;
-
-    const applyFitScale = () => {
-      rootEl.style.setProperty('--sw-tech-scale', '1');
-      rootEl.style.setProperty('--sw-tech-fallback-scale', '1');
-
-      const contentWidth = pageEl.scrollWidth || 1;
-      const contentHeight = pageEl.scrollHeight || 1;
-      const rootRect = rootEl.getBoundingClientRect();
-
-      const availableWidth = Math.max(1, rootRect.width - 2);
-      const availableHeight = Math.max(1, window.innerHeight - rootRect.top - 4);
-      const scale = Math.min(1, availableWidth / contentWidth, availableHeight / contentHeight);
-      const roundedScale = Math.max(0.6, Number(scale.toFixed(4)));
-
-      rootEl.style.setProperty('--sw-tech-scale', String(roundedScale));
-      rootEl.style.setProperty('--sw-tech-fallback-scale', String(roundedScale));
-    };
-
-    const scheduleFit = () => {
-      [0, 40, 120].forEach((delay) => window.setTimeout(applyFitScale, delay));
-    };
-
-    scheduleFit();
-
-    const rootObserver = new ResizeObserver(() => scheduleFit());
-    rootObserver.observe(rootEl);
-    const pageObserver = new ResizeObserver(() => scheduleFit());
-    pageObserver.observe(pageEl);
-
-    window.addEventListener('resize', scheduleFit);
-    return () => {
-      window.removeEventListener('resize', scheduleFit);
-      rootObserver.disconnect();
-      pageObserver.disconnect();
-    };
-  }, [data]);
+  }, [data, chartsReady]);
 
   const classicKpi = useMemo<ClassicKpiItem[]>(() => {
     if (!data) return [];
@@ -473,13 +551,56 @@ export default function SWTechDashboardPage() {
   const riskRows = useMemo(() => {
     if (!data) return [];
     const monthSegments = data.month_segments ?? data.april_segments;
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const today = now.getDate();
+    const monthDays = new Date(data.year, data.month, 0).getDate();
+    const elapsedDays = data.year < currentYear
+      ? monthDays
+      : data.year > currentYear
+        ? 0
+        : data.month < currentMonth
+          ? monthDays
+          : data.month > currentMonth
+            ? 0
+            : Math.max(0, Math.min(monthDays, today - 1));
+    const isPastMonth = data.year < currentYear || (data.year === currentYear && data.month < currentMonth);
+    const isCurrentMonth = data.year === currentYear && data.month === currentMonth;
+
     return [...monthSegments]
       .map((row) => {
-        if (row.name === 'Владивосток') return { ...row, name: 'КТК Владивосток' };
-        if (row.name === 'Москва') return { ...row, name: 'КТК Москва' };
-        return row;
+        const normalizedName = row.name === 'Владивосток'
+          ? 'КТК Владивосток'
+          : row.name === 'Москва'
+            ? 'КТК Москва'
+            : row.name;
+        const expectedFact = monthDays > 0
+          ? Number(((row.plan / monthDays) * elapsedDays).toFixed(1))
+          : 0;
+        const isRisk = isPastMonth
+          ? row.plan < row.fact
+          : row.fact < expectedFact;
+        const ratioBase = isPastMonth ? row.plan : expectedFact;
+        const ratioPct = ratioBase > 0
+          ? Number(((row.fact / ratioBase) * 100).toFixed(1))
+          : (row.fact > 0 ? 100 : 0);
+        const reportDate = new Date(now);
+        reportDate.setDate(today - 1);
+        const reportDateLabel = reportDate.toLocaleDateString('ru-RU');
+        const ratioLabel = isCurrentMonth ? `выполнение на ${reportDateLabel}` : 'выполнение месяца';
+        const comment = `${ratioPct.toFixed(1)}% ${ratioLabel}`;
+        return {
+          ...row,
+          name: normalizedName,
+          expectedFact,
+          elapsedDays,
+          monthDays,
+          isRisk,
+          comment,
+        };
       })
-      .sort((a, b) => a.pct - b.pct);
+      .sort((a, b) => Number(a.isRisk) - Number(b.isRisk) || b.expectedFact - a.expectedFact);
   }, [data]);
 
   const selectedMonthTitle = useMemo(() => {
@@ -488,8 +609,18 @@ export default function SWTechDashboardPage() {
     return monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
   }, [data]);
 
+  const extraTotal = useMemo(() => {
+    if (!data) return 0;
+    return (
+      Number(data.kpi.extra.groupage ?? 0)
+      + Number(data.kpi.extra.curtains ?? 0)
+      + Number(data.kpi.extra.forwarding ?? 0)
+      + Number(data.kpi.extra.repack ?? 0)
+    );
+  }, [data]);
+
   return (
-    <Box className="sw-tech-root" ref={rootRef}>
+    <Box className={`sw-tech-root sw-tech-layout-${layoutMode}`} ref={rootRef}>
       {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
 
       {loading || !data ? (
@@ -523,7 +654,7 @@ export default function SWTechDashboardPage() {
               />
               <DashboardCard
                 title="Доп.услуги, Итого"
-                value={formatInt(data.kpi.extra.total)}
+                value={formatInt(extraTotal)}
                 hint={`Сборный ${formatInt(data.kpi.extra.groupage)} · Шторы ${formatInt(data.kpi.extra.curtains)} · Экспедирование ${formatInt(data.kpi.extra.forwarding)} · Перетарка ${formatInt(data.kpi.extra.repack)}`}
                 onClick={() => openDaily('EXTRA')}
               />
@@ -658,24 +789,24 @@ export default function SWTechDashboardPage() {
 
             <Paper className="sw-tech-card" variant="outlined">
               <Typography className="sw-tech-chart-title">Ключевые риски</Typography>
-              <Table className="sw-tech-table" size="small">
+              <Table className="sw-tech-table sw-tech-risk-table" size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Зона</TableCell>
-                    <TableCell>Статус</TableCell>
-                    <TableCell>Комментарий</TableCell>
+                    <TableCell align="left">Зона</TableCell>
+                    <TableCell align="center">Статус</TableCell>
+                    <TableCell align="right">Комментарий</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {riskRows.map((row) => (
                     <TableRow key={row.name}>
-                      <TableCell>{row.name}</TableCell>
-                      <TableCell>
-                        <span className={`sw-tech-badge ${row.pct >= 80 ? 'sw-tech-badge-ok' : 'sw-tech-badge-bad'}`}>
-                          {row.pct >= 80 ? 'Норма' : 'Риск'}
+                      <TableCell align="left">{row.name}</TableCell>
+                      <TableCell align="center">
+                        <span className={`sw-tech-badge ${row.isRisk ? 'sw-tech-badge-bad' : 'sw-tech-badge-ok'}`}>
+                          {row.isRisk ? 'Риск' : 'Норма'}
                         </span>
                       </TableCell>
-                      <TableCell>{`${row.pct.toFixed(1)}% выполнения месяца`}</TableCell>
+                      <TableCell align="right">{row.comment}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

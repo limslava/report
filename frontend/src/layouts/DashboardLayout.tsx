@@ -53,6 +53,7 @@ import {
   canViewOperationsEfficiency,
   canViewFinancialPlan,
   canViewSummary,
+  canViewTechDashboard,
   canViewTotalsInPlans,
 } from '../utils/rolePermissions';
 import { getHasUnsavedChanges, getUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
@@ -97,7 +98,7 @@ const DashboardLayout = () => {
   const canViewTotals = canViewTotalsInPlans(user?.role);
   const canViewFinancial = canViewFinancialPlan(user?.role);
   const canViewEfficiency = canViewOperationsEfficiency(user?.role);
-  const homeRoute = user?.role === 'admin' ? '/sw-tech-dashboard' : '/plans';
+  const homeRoute = canViewTechDashboard(user?.role) ? '/sw-tech-dashboard' : '/plans';
   const isTechDashboardRoute = location.pathname.includes('/sw-tech-dashboard');
   const currentDate = new Date();
   const currentYear = currentDate.getFullYear();
@@ -137,6 +138,7 @@ const DashboardLayout = () => {
   const isAdmin = canAccessAdmin(user?.role);
   const serviceHealth = useServiceHealth();
   const idleTimeoutRef = useRef<number | null>(null);
+  const techPeriodDebounceRef = useRef<number | null>(null);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -154,8 +156,21 @@ const DashboardLayout = () => {
   const handleNavigate = (to: string) => runOrConfirmUnsaved(() => navigate(to));
   const handleTechPeriodChange = (nextYear: number, nextMonth: number) => {
     if (!isTechDashboardRoute) return;
-    handleNavigate(`/sw-tech-dashboard?year=${nextYear}&month=${nextMonth}`);
+    if (techPeriodDebounceRef.current) {
+      window.clearTimeout(techPeriodDebounceRef.current);
+    }
+    techPeriodDebounceRef.current = window.setTimeout(() => {
+      handleNavigate(`/sw-tech-dashboard?year=${nextYear}&month=${nextMonth}`);
+      techPeriodDebounceRef.current = null;
+    }, 250);
   };
+
+  useEffect(() => () => {
+    if (techPeriodDebounceRef.current) {
+      window.clearTimeout(techPeriodDebounceRef.current);
+      techPeriodDebounceRef.current = null;
+    }
+  }, []);
 
   const handleLogout = () => {
     runOrConfirmUnsaved(() => {
@@ -814,11 +829,12 @@ const DashboardLayout = () => {
         component="main"
         sx={{
           flexGrow: 1,
-          p: { xs: 0.75, sm: 1 },
+          p: isTechDashboardRoute ? { xs: 0, sm: 0 } : { xs: 0.75, sm: 1 },
           width: { sm: `calc(100% - ${drawerWidth}px)` },
-          mt: 8,
+          overflowY: isTechDashboardRoute ? 'hidden' : 'auto',
         }}
       >
+        <Toolbar />
         <Collapse in={serviceHealth.isUnavailable}>
           <Alert
             severity="warning"
