@@ -210,6 +210,7 @@ export default function OperationsPreview() {
   } | null>(null);
 
   const [peopleByMonth, setPeopleByMonth] = useState<PeopleByMonth>({});
+  const peopleByMonthRef = useRef<PeopleByMonth>({});
   const [addOpen, setAddOpen] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [sortBySection, setSortBySection] = useState<SortBySection>(DEFAULT_SORT_BY_SECTION);
@@ -253,6 +254,10 @@ export default function OperationsPreview() {
   useEffect(() => {
     allOverridesRef.current = allOverrides;
   }, [allOverrides]);
+
+  useEffect(() => {
+    peopleByMonthRef.current = peopleByMonth;
+  }, [peopleByMonth]);
 
   const baseRowIndexById = useMemo(() => {
     const map = new Map<string, number>();
@@ -860,7 +865,7 @@ export default function OperationsPreview() {
     return () => {
       cancelled = true;
     };
-  }, [activeSection, efficiencyOnlyViewer]);
+  }, [efficiencyOnlyViewer]);
 
   useEffect(() => {
     const mapped = filterFromSection(activeSection);
@@ -922,17 +927,17 @@ export default function OperationsPreview() {
       if (currentResolved === code) return prev;
 
       const nextScope = { ...current };
-      if (code === baseline) {
-        if (!(key in nextScope)) return prev;
-        delete nextScope[key];
-      } else {
-        nextScope[key] = code;
-      }
+      // Persist explicit empty code to make deletions resilient across reloads/sessions.
+      // Relying on key deletion (unset) can be lost in edge race/conflict flows.
+      nextScope[key] = code;
 
-      return {
+      const nextAllOverrides = {
         ...prev,
         [scopeKey]: nextScope,
       };
+      // Keep ref in sync immediately to avoid save race when user clicks "Сохранить" right after edit/delete.
+      allOverridesRef.current = nextAllOverrides;
+      return nextAllOverrides;
     });
   };
 
@@ -1281,6 +1286,7 @@ export default function OperationsPreview() {
       // Даем React завершить последний локальный апдейт ячейки перед вычислением патча.
       await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
       const latestAllOverrides = allOverridesRef.current;
+      const latestPeopleByMonth = peopleByMonthRef.current;
       const currentScopeOverrides = latestAllOverrides[currentScopeKey] ?? {};
       const prevScopeOverrides = lastSavedSnapshot?.overrides?.[currentScopeKey] ?? {};
       const setPatch: Record<string, CellCode> = {};
@@ -1297,7 +1303,7 @@ export default function OperationsPreview() {
         }
       });
 
-      const currentMonthPeople = resolvePeopleForMonth(monthValue, peopleByMonth);
+      const currentMonthPeople = resolvePeopleForMonth(monthValue, latestPeopleByMonth);
       const previousMonthPeople = (() => {
         if (!lastSavedSnapshot) return [];
         const byMonth = lastSavedSnapshot.peopleByMonth ?? {};
@@ -1353,8 +1359,20 @@ export default function OperationsPreview() {
       } catch {
         // Ignore local storage write errors.
       }
-      setLastSavedSnapshot(currentSnapshot);
-      setLastSavedSignature(currentDataSignature);
+      const nextSavedSnapshot: PreviewPersistedState = {
+        filter,
+        monthValue,
+        mode,
+        overrides: latestAllOverrides,
+        peopleByMonth: latestPeopleByMonth,
+      };
+      setLastSavedSnapshot(nextSavedSnapshot);
+      setLastSavedSignature(
+        JSON.stringify({
+          overrides: latestAllOverrides,
+          peopleByMonth: latestPeopleByMonth,
+        })
+      );
       setCopyStatus((prev) => (prev?.type === 'error' ? prev : null));
       return true;
     } catch (error: any) {
