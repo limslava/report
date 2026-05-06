@@ -148,6 +148,7 @@ export default function OperationsPreview() {
   const [mode, setMode] = useState<PreviewMode>('fact');
   const [efficiencyLocation, setEfficiencyLocation] = useState<EfficiencyLocation>('ktk_vvo');
   const [allOverrides, setAllOverrides] = useState<ScopedOverrides>({} as ScopedOverrides);
+  const allOverridesRef = useRef<ScopedOverrides>({} as ScopedOverrides);
   const [copyStatus, setCopyStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [lastSavedSignature, setLastSavedSignature] = useState<string>('');
   const [lastSavedSnapshot, setLastSavedSnapshot] = useState<PreviewPersistedState | null>(null);
@@ -214,6 +215,7 @@ export default function OperationsPreview() {
   const [sortBySection, setSortBySection] = useState<SortBySection>(DEFAULT_SORT_BY_SECTION);
   const [sortHydrated, setSortHydrated] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [copyConfirmOpen, setCopyConfirmOpen] = useState(false);
   const [newPerson, setNewPerson] = useState<{
     name: string;
@@ -247,6 +249,10 @@ export default function OperationsPreview() {
       };
     });
   };
+
+  useEffect(() => {
+    allOverridesRef.current = allOverrides;
+  }, [allOverrides]);
 
   const baseRowIndexById = useMemo(() => {
     const map = new Map<string, number>();
@@ -1147,6 +1153,25 @@ export default function OperationsPreview() {
       }
       if (event.key === 'Backspace' || event.key === 'Delete') {
         event.preventDefault();
+        if (selectionRect) {
+          for (let r = selectionRect.rowStart; r <= selectionRect.rowEnd; r += 1) {
+            const row = visibleRows[r];
+            if (!row) continue;
+            for (let day = selectionRect.dayStart; day <= selectionRect.dayEnd; day += 1) {
+              const key = `${row.personId}-${row.lane}-${day}`;
+              setCellCode({
+                key,
+                rowIndex: row.rowIndex,
+                day,
+                code: 'E',
+                department: row.department,
+              });
+            }
+          }
+          setPaintCode('E');
+          setLastPaintKeyAt(Date.now());
+          return;
+        }
         setCellCode({
           key: selectedCell.key,
           rowIndex: selectedCell.rowIndex,
@@ -1226,8 +1251,13 @@ export default function OperationsPreview() {
   };
 
   const saveDraft = async (): Promise<boolean> => {
+    if (saving) return false;
     try {
-      const currentScopeOverrides = allOverrides[currentScopeKey] ?? {};
+      setSaving(true);
+      // Даем React завершить последний локальный апдейт ячейки перед вычислением патча.
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+      const latestAllOverrides = allOverridesRef.current;
+      const currentScopeOverrides = latestAllOverrides[currentScopeKey] ?? {};
       const prevScopeOverrides = lastSavedSnapshot?.overrides?.[currentScopeKey] ?? {};
       const setPatch: Record<string, CellCode> = {};
       const unsetPatch: string[] = [];
@@ -1259,7 +1289,7 @@ export default function OperationsPreview() {
         filter,
         monthValue,
         mode,
-        overrides: {} as ScopedOverrides,
+        overrides: latestAllOverrides,
         peopleByMonth: peopleMonthChanged
           ? {
               [monthValue]: currentMonthPeople,
@@ -1313,6 +1343,8 @@ export default function OperationsPreview() {
       }
       setCopyStatus({ type: 'error', text: 'Не удалось сохранить изменения. Повторите попытку.' });
       return false;
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1531,12 +1563,12 @@ export default function OperationsPreview() {
                   <button
                     type="button"
                     className="ops-btn ops-btn--save"
-                    disabled={!hasUnsavedChanges}
+                    disabled={!hasUnsavedChanges || saving}
                     onClick={() => {
                       void saveDraft();
                     }}
                   >
-                    СОХРАНИТЬ
+                    {saving ? 'СОХРАНЕНИЕ...' : 'СОХРАНИТЬ'}
                   </button>
                 </>
               )}
@@ -2326,39 +2358,43 @@ export default function OperationsPreview() {
                       </div>
                     )}
                     {!isPersonnelSection && <div className="ops-matrix__cell ops-matrix__cell--sticky-third"> </div>}
-                    {monthDays.map((day, dayIndex) => {
-                      const total = sectionPeople.reduce((acc, person) => {
-                        const code = getCellCode(person.rowIndex, day, person.id, person.department, '1');
-                        if (section === 'Контейнеры' || section === 'Авто') {
-                          const primaryWorked = code === 'W' || code === 'H';
-                          const secondaryWorked = person.secondName
-                            ? (() => {
-                                const code2 = getCellCode(person.rowIndex + 50, day, person.id, person.department, '2');
-                                return code2 === 'W' || code2 === 'H';
-                              })()
-                            : false;
-                          return acc + (primaryWorked || secondaryWorked ? 1 : 0);
-                        }
-                        const next = code === 'W' ? acc + 1 : acc;
-                        if (person.secondName) {
-                          const code2 = getCellCode(person.rowIndex + 50, day, person.id, person.department, '2');
-                          return code2 === 'W' ? next + 1 : next;
-                        }
-                        return next;
-                      }, 0);
-                      return (
+                    {(() => {
+                      const dayTotals = monthDays.map((day) =>
+                        sectionPeople.reduce((acc, person) => {
+                          const code = getCellCode(person.rowIndex, day, person.id, person.department, '1');
+                          if (section === 'Контейнеры' || section === 'Авто') {
+                            const primaryWorked = code === 'W' || code === 'H';
+                            const secondaryWorked = person.secondName
+                              ? (() => {
+                                  const code2 = getCellCode(person.rowIndex + 50, day, person.id, person.department, '2');
+                                  return code2 === 'W' || code2 === 'H';
+                                })()
+                              : false;
+                            return acc + (primaryWorked || secondaryWorked ? 1 : 0);
+                          }
+                          const next = code === 'W' ? acc + 1 : acc;
+                          if (person.secondName) {
+                            const code2 = getCellCode(person.rowIndex + 50, day, person.id, person.department, '2');
+                            return code2 === 'W' ? next + 1 : next;
+                          }
+                          return next;
+                        }, 0)
+                      );
+                      const sectionTotal = dayTotals.reduce((acc, value) => acc + value, 0);
+                      return dayTotals.map((total, dayIndex) => (
                         <div
-                          key={`total-${section}-${day}`}
+                          key={`total-${section}-${monthDays[dayIndex]}`}
                           className="ops-matrix__cell ops-matrix__cell--total"
                           style={{ gridColumn: dayColumnStart + dayIndex }}
                         >
                           {total}
                         </div>
+                      )).concat(
+                        <div className="ops-matrix__cell ops-matrix__cell--count" style={{ gridColumn: totalColumnIndex }} key={`total-sum-${section}`}>
+                          {section === 'Контейнеры' || section === 'Авто' ? sectionTotal : ' '}
+                        </div>
                       );
-                    })}
-                    <div className="ops-matrix__cell ops-matrix__cell--count" style={{ gridColumn: totalColumnIndex }}>
-                      {' '}
-                    </div>
+                    })()}
                         </>
                       );
                     })()}

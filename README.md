@@ -221,7 +221,7 @@ docker exec -i logistics_postgres psql -U postgres -d logistics_reporting -f /do
 npm run dev
 ```
 
-Backend будет доступен по адресу: `http://localhost:3000`
+Backend будет доступен по адресу: `http://localhost:3001`
 
 ### 7. Установка зависимостей frontend
 ```bash
@@ -272,8 +272,8 @@ SMTP_PASSWORD=your_app_password
 SMTP_FROM=noreply@logistics.example.com
 
 # Приложение
-APP_PORT=3000
-APP_URL=http://localhost:3000
+APP_PORT=3001
+APP_URL=http://localhost:3001
 FRONTEND_URL=http://localhost:5173
 
 # Загрузка файлов
@@ -290,7 +290,7 @@ INVITE_ONLY=true
 ### Frontend переменные окружения (Vite)
 Создайте файл `.env` в папке `frontend`:
 ```ini
-VITE_API_URL=http://localhost:3000/api
+VITE_API_URL=http://localhost:3001/api
 VITE_IDLE_TIMEOUT_MIN=60
 ```
 `VITE_API_URL` опционален. Если не задан, фронт использует относительный `/api` (через Vite proxy).
@@ -352,7 +352,7 @@ VITE_IDLE_TIMEOUT_MIN=60
 
 ### Базовый URL
 ```
-http://localhost:3000/api
+http://localhost:3001/api
 ```
 
 ### Аутентификация
