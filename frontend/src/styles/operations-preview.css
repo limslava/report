@@ -732,6 +732,12 @@
   border-bottom: 1px solid #dbe2f1;
 }
 
+.ops-matrix__cell--head-selected {
+  background: #f8efcf;
+  color: #3f2d0a;
+  font-weight: 700;
+}
+
 .ops-matrix__cell--head-fixed {
   font-weight: 500;
   color: #1f2937;
@@ -756,6 +762,12 @@
   border-bottom: 1px solid #dbe2f1;
 }
 
+.ops-matrix__cell--weekday-selected {
+  background: #f8efcf;
+  color: #4b3a12;
+  font-weight: 600;
+}
+
 .ops-matrix__cell--weekday.weekend {
   color: #dc2626;
   font-weight: 500;
@@ -763,6 +775,12 @@
 
 .ops-matrix__cell--name {
   font-weight: 500;
+}
+
+.ops-matrix__cell--name-selected {
+  background: #f8efcf;
+  color: #3f2d0a;
+  font-weight: 700;
 }
 
 .ops-matrix__name {
@@ -862,6 +880,18 @@
   outline: 2px solid #2563eb;
   outline-offset: -2px;
   box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.25);
+}
+
+.ops-matrix__cell--crosshair-row {
+  box-shadow: inset 0 0 0 9999px rgba(244, 224, 170, 0.45);
+}
+
+.ops-matrix__cell--crosshair-col {
+  box-shadow: inset 0 0 0 9999px rgba(244, 224, 170, 0.55);
+}
+
+.ops-matrix__cell--crosshair-intersection {
+  box-shadow: inset 0 0 0 9999px rgba(244, 224, 170, 0.7);
 }
 
 .ops-matrix__footer {
