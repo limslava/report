@@ -483,6 +483,30 @@ export default function OperationsPreview() {
     },
     [selectionRect, visibleRows]
   );
+
+  const getCrosshairClass = useCallback((personId: string, lane: '1' | '2', day: number) => {
+    if (!selectedCell) return '';
+    const inSameRow = selectedCell.personId === personId && selectedCell.lane === lane;
+    const inSameColumn = selectedCell.day === day;
+    if (inSameRow && inSameColumn) return ' ops-matrix__cell--crosshair-intersection';
+    if (inSameRow) return ' ops-matrix__cell--crosshair-row';
+    if (inSameColumn) return ' ops-matrix__cell--crosshair-col';
+    return '';
+  }, [selectedCell]);
+
+  const selectedCellInCurrentView = useMemo(() => {
+    if (!selectedCell) return false;
+    return visibleRows.some((row) => row.personId === selectedCell.personId && row.lane === selectedCell.lane);
+  }, [selectedCell, visibleRows]);
+
+  useEffect(() => {
+    if (!selectedCell) return;
+    if (!selectedCellInCurrentView) {
+      setSelectedCell(null);
+      setSelectionRect(null);
+      setSelectionAnchor(null);
+    }
+  }, [selectedCell, selectedCellInCurrentView]);
   const dayColumnStart = 4;
   const totalColumnIndex = dayColumnStart + monthDays.length;
   const currentScopeKey = `${effectiveMode}|${monthValue}` as OverrideScopeKey;
@@ -1614,7 +1638,11 @@ export default function OperationsPreview() {
                 </div>
               )}
               {monthDays.map((day, index) => (
-                <div key={`head-${day}`} className="ops-matrix__cell ops-matrix__cell--head" style={{ gridColumn: dayColumnStart + index, gridRow: 1 }}>
+                <div
+                  key={`head-${day}`}
+                  className={`ops-matrix__cell ops-matrix__cell--head${selectedCellInCurrentView && selectedCell?.day === day ? ' ops-matrix__cell--head-selected' : ''}`}
+                  style={{ gridColumn: dayColumnStart + index, gridRow: 1 }}
+                >
                   {day}
                 </div>
               ))}
@@ -1622,7 +1650,7 @@ export default function OperationsPreview() {
                 <div
                   key={`weekday-${index}`}
                   style={{ gridColumn: dayColumnStart + index, gridRow: 2 }}
-                  className={`ops-matrix__cell ops-matrix__cell--weekday ${day === 'сб' || day === 'вс' ? 'weekend' : ''}`}
+                  className={`ops-matrix__cell ops-matrix__cell--weekday ${day === 'сб' || day === 'вс' ? 'weekend' : ''}${selectedCellInCurrentView && selectedCell?.day === monthDays[index] ? ' ops-matrix__cell--weekday-selected' : ''}`}
                 >
                   {day}
                 </div>
@@ -1771,7 +1799,7 @@ export default function OperationsPreview() {
                           }}
                           onDragLeave={() => setDragOverMarker(null)}
                         >
-                          <div className="ops-matrix__cell ops-matrix__cell--sticky ops-matrix__cell--name">
+                          <div className={`ops-matrix__cell ops-matrix__cell--sticky ops-matrix__cell--name${selectedCellInCurrentView && selectedCell?.personId === person.id && selectedCell?.lane === lane ? ' ops-matrix__cell--name-selected' : ''}`}>
                             <div className="ops-matrix__name">
                               <span
                                 onDoubleClick={() => setEditPerson(person)}
@@ -1864,7 +1892,7 @@ export default function OperationsPreview() {
                             return (
                               <div
                                 key={`${person.id}-${lane}-${day}`}
-                                className={`ops-matrix__cell ops-matrix__cell--${meta.css} ops-matrix__cell--editable${(selectedCell?.key === `${person.id}-${lane}-${day}` || isKeyInSelection(person.id, lane, day)) ? ' ops-matrix__cell--selected' : ''}`}
+                                className={`ops-matrix__cell ops-matrix__cell--${meta.css} ops-matrix__cell--editable${getCrosshairClass(person.id, lane, day)}${(selectedCell?.key === `${person.id}-${lane}-${day}` || isKeyInSelection(person.id, lane, day)) ? ' ops-matrix__cell--selected' : ''}`}
                                 style={{ gridColumn: dayColumnStart + dayIndex }}
                                 title={`${name}: ${meta.label}`}
                                 role="button"
@@ -1994,7 +2022,7 @@ export default function OperationsPreview() {
                             onDragLeave={() => setDragOverMarker(null)}
                           >
                             <div
-                              className="ops-matrix__cell ops-matrix__cell--name ops-matrix__cell--sticky"
+                              className={`ops-matrix__cell ops-matrix__cell--name ops-matrix__cell--sticky${selectedCellInCurrentView && selectedCell?.personId === person.id && selectedCell?.lane === '1' ? ' ops-matrix__cell--name-selected' : ''}`}
                               style={{ gridColumn: 1, gridRow: 1 }}
                             >
                               <div className="ops-matrix__name">
@@ -2011,7 +2039,7 @@ export default function OperationsPreview() {
                               </div>
                             </div>
                             <div
-                              className="ops-matrix__cell ops-matrix__cell--name ops-matrix__cell--row2 ops-matrix__cell--name-left ops-matrix__cell--sticky"
+                              className={`ops-matrix__cell ops-matrix__cell--name ops-matrix__cell--row2 ops-matrix__cell--name-left ops-matrix__cell--sticky${selectedCellInCurrentView && selectedCell?.personId === person.id && selectedCell?.lane === '2' ? ' ops-matrix__cell--name-selected' : ''}`}
                               style={{ gridColumn: 1, gridRow: 2 }}
                             >
                               <div className="ops-matrix__name">
@@ -2118,7 +2146,7 @@ export default function OperationsPreview() {
                               return (
                                 <Fragment key={`grid-${person.id}-${day}`}>
                                   <div
-                                    className={`ops-matrix__cell ops-matrix__cell--${meta1.css} ops-matrix__cell--editable${(selectedCell?.key === `${person.id}-1-${day}` || isKeyInSelection(person.id, '1', day)) ? ' ops-matrix__cell--selected' : ''}`}
+                                    className={`ops-matrix__cell ops-matrix__cell--${meta1.css} ops-matrix__cell--editable${getCrosshairClass(person.id, '1', day)}${(selectedCell?.key === `${person.id}-1-${day}` || isKeyInSelection(person.id, '1', day)) ? ' ops-matrix__cell--selected' : ''}`}
                                     style={{ gridColumn: col, gridRow: 1 }}
                                     title={`${person.name}: ${meta1.label}`}
                                     role="button"
@@ -2207,7 +2235,7 @@ export default function OperationsPreview() {
                                     {meta1.code}
                                   </div>
                                   <div
-                                    className={`ops-matrix__cell ops-matrix__cell--${meta2.css} ops-matrix__cell--editable ops-matrix__cell--row2${(selectedCell?.key === `${person.id}-2-${day}` || isKeyInSelection(person.id, '2', day)) ? ' ops-matrix__cell--selected' : ''}`}
+                                    className={`ops-matrix__cell ops-matrix__cell--${meta2.css} ops-matrix__cell--editable ops-matrix__cell--row2${getCrosshairClass(person.id, '2', day)}${(selectedCell?.key === `${person.id}-2-${day}` || isKeyInSelection(person.id, '2', day)) ? ' ops-matrix__cell--selected' : ''}`}
                                     style={{ gridColumn: col, gridRow: 2 }}
                                     title={`${person.secondName}: ${meta2.label}`}
                                     role="button"
