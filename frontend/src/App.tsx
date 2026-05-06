@@ -11,15 +11,19 @@ import SettingsPage from './pages/SettingsPage';
 import PlansPage from './pages/PlansPage';
 import SWTechDashboardPage from './pages/SWTechDashboardPage';
 import ContractApprovalPage from './pages/ContractApprovalPage';
+import BPApprovalDashboardPage from './pages/BPApprovalDashboardPage';
 import RouteAccessGuard from './components/auth/RouteAccessGuard';
 import {
   canAccessAdmin,
+  canAccessContractApproval,
   canAccessOperationsPreview,
   canViewOperationsEfficiency,
   canViewCalendar,
   canViewFinancialPlan,
+  canViewPlans,
   canViewSummary,
   canViewTechDashboard,
+  canViewBPDashboard,
 } from './utils/rolePermissions';
 
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
@@ -39,7 +43,28 @@ function App() {
           <Route path="/" element={<DashboardLayout />}>
           <Route
             index
-            element={<Navigate to={canViewTechDashboard(user?.role) ? '/sw-tech-dashboard' : '/plans'} replace />}
+            element={(
+              <Navigate
+                to={
+                  canViewTechDashboard(user?.role)
+                    ? '/sw-tech-dashboard'
+                    : (canViewPlans(user?.role)
+                      ? '/plans'
+                      : (canViewBPDashboard(user?.role)
+                        ? '/business-processes/dashboard'
+                        : '/business-processes/contract-approval'))
+                }
+                replace
+              />
+            )}
+          />
+          <Route
+            path="business-processes/dashboard"
+            element={(
+              <RouteAccessGuard allow={canViewBPDashboard(user?.role)}>
+                <BPApprovalDashboardPage />
+              </RouteAccessGuard>
+            )}
           />
           <Route
             path="summary-report"
@@ -58,8 +83,22 @@ function App() {
             )}
           />
           <Route path="settings" element={<SettingsPage />} />
-          <Route path="plans" element={<PlansPage mode="daily" />} />
-          <Route path="plans/totals" element={<PlansPage mode="totals" />} />
+          <Route
+            path="plans"
+            element={(
+              <RouteAccessGuard allow={canViewPlans(user?.role)}>
+                <PlansPage mode="daily" />
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="plans/totals"
+            element={(
+              <RouteAccessGuard allow={canViewPlans(user?.role)}>
+                <PlansPage mode="totals" />
+              </RouteAccessGuard>
+            )}
+          />
           <Route
             path="plans/financial"
             element={(
@@ -99,7 +138,7 @@ function App() {
           <Route
             path="business-processes/contract-approval"
             element={(
-              <RouteAccessGuard allow={canAccessAdmin(user?.role)}>
+              <RouteAccessGuard allow={canAccessContractApproval(user?.role)}>
                 <ContractApprovalPage />
               </RouteAccessGuard>
             )}

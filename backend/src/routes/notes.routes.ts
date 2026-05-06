@@ -17,7 +17,7 @@ import {
 const router = Router();
 
 router.use(authenticate);
-router.use(roleOrAdmin('director', 'general_director', 'manager_auto'));
+router.use(roleOrAdmin('director', 'general_director', 'manager_auto', 'security'));
 
 router.get(
   '/unread-count',
@@ -29,6 +29,7 @@ router.get(
   [
     query('from').optional().isISO8601({ strict: false }),
     query('to').optional().isISO8601({ strict: false }),
+    query('includeClosed').optional().isBoolean(),
   ],
   handleValidationErrors,
   listNotes

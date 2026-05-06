@@ -2,6 +2,7 @@ import Queue from 'bull';
 import Redis from 'ioredis';
 import { logger } from '../utils/logger';
 import { processScheduledEmails } from './email-scheduler.service';
+import { processContractApprovalDeadlines } from './contract-approval-deadline.service';
 
 type RedisOptions = {
   host: string;
@@ -42,6 +43,7 @@ const runScheduledEmails = async () => {
   logger.info('Processing scheduled emails (scheduler tick)');
   try {
     await processScheduledEmails();
+    await processContractApprovalDeadlines();
     lastRunAt = new Date().toISOString();
   } catch (error) {
     lastError = (error as Error)?.message || 'Scheduler error';
@@ -153,6 +155,7 @@ const createQueue = (): Queue.Queue | null => {
       logger.info('Processing scheduled emails (cron job)');
       try {
         await processScheduledEmails();
+        await processContractApprovalDeadlines();
       } catch (error) {
         logger.error('Failed to process scheduled emails:', error);
         throw error;

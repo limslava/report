@@ -8,6 +8,10 @@ export type ApiNote = {
   authorId: string;
   authorName: string;
   visibility: 'private' | 'targeted' | 'broadcast';
+  source?: 'manual' | 'system';
+  status?: 'active' | 'closed';
+  linkedContractId?: string | null;
+  linkedStepId?: string | null;
   createdAt: string;
   updatedAt: string;
   recipientUserIds: string[];
@@ -15,7 +19,7 @@ export type ApiNote = {
   isRead?: boolean;
 };
 
-export const listNotes = (params: { from: string; to: string }) =>
+export const listNotes = (params: { from: string; to: string; includeClosed?: boolean }) =>
   api.get<ApiNote[]>('/notes', { params });
 
 export const createNote = (data: {

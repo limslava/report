@@ -48,14 +48,17 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/auth-store';
 import {
+  canAccessContractApproval,
   canAccessAdmin,
   canAccessOperationsPreview,
   canViewCalendar,
   canViewOperationsEfficiency,
   canViewFinancialPlan,
+  canViewPlans,
   canViewSummary,
   canViewTechDashboard,
   canViewTotalsInPlans,
+  canViewBPDashboard,
 } from '../utils/rolePermissions';
 import { getHasUnsavedChanges, getUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import { getRuntimeAppSettings } from '../services/api';
@@ -100,7 +103,11 @@ const DashboardLayout = () => {
   const canViewTotals = canViewTotalsInPlans(user?.role);
   const canViewFinancial = canViewFinancialPlan(user?.role);
   const canViewEfficiency = canViewOperationsEfficiency(user?.role);
-  const homeRoute = canViewTechDashboard(user?.role) ? '/sw-tech-dashboard' : '/plans';
+  const homeRoute = canViewTechDashboard(user?.role)
+    ? '/sw-tech-dashboard'
+    : (canViewPlans(user?.role)
+      ? '/plans'
+      : (canViewBPDashboard(user?.role) ? '/business-processes/dashboard' : '/business-processes/contract-approval'));
   const isTechDashboardRoute = location.pathname.includes('/sw-tech-dashboard');
   const currentDate = new Date();
   const currentYear = currentDate.getFullYear();
@@ -138,6 +145,7 @@ const DashboardLayout = () => {
   const isHeadKtkVvo = user?.role === 'head_ktk_vvo';
   const isKtkVvoManager = user?.role === 'manager_ktk_vvo' || user?.role === 'head_ktk_vvo';
   const isAdmin = canAccessAdmin(user?.role);
+  const canOpenContractApproval = canAccessContractApproval(user?.role);
   const serviceHealth = useServiceHealth();
   const idleTimeoutRef = useRef<number | null>(null);
   const techPeriodDebounceRef = useRef<number | null>(null);
@@ -445,6 +453,7 @@ const DashboardLayout = () => {
       </Toolbar>
       <Divider />
       <List>
+        {canViewPlans(user?.role) && (
         <ListItem disablePadding key="plans">
           <Tooltip title={!isPinnedOpen ? (isKtkVvoManager ? 'Диспетчерский отдел' : 'Показатели') : ''} placement="right">
             <ListItemButton
@@ -466,7 +475,8 @@ const DashboardLayout = () => {
             </ListItemButton>
           </Tooltip>
         </ListItem>
-        {isPinnedOpen && isPlansSubmenuOpen && (
+        )}
+        {canViewPlans(user?.role) && isPinnedOpen && isPlansSubmenuOpen && (
           <>
             <ListItem disablePadding sx={{ pl: 4 }}>
                 <ListItemButton
@@ -665,7 +675,7 @@ const DashboardLayout = () => {
             )}
           </>
         )}
-        {isAdmin && (
+        {canOpenContractApproval && (
           <>
             <ListItem disablePadding>
               <Tooltip title={!isPinnedOpen ? 'Бизнес процесс' : ''} placement="right">
@@ -734,7 +744,12 @@ const DashboardLayout = () => {
             <MenuIcon />
           </IconButton>
           {!isTechDashboardRoute && (
-            <Typography variant="h6" noWrap sx={{ flexGrow: 1 }}>
+            <Typography
+              variant="h6"
+              noWrap
+              onClick={() => handleNavigate(homeRoute)}
+              sx={{ flexGrow: 1, cursor: 'pointer' }}
+            >
               {(location.pathname === '/' || location.pathname.includes('/plans') || location.pathname.includes('/operations-preview')) &&
                 ((isKtkVvoManager || isAdmin)
                   ? (location.pathname === '/operations-preview' && location.search.includes('section=containers')
@@ -756,6 +771,7 @@ const DashboardLayout = () => {
               {location.pathname.includes('/summary-report') && 'Сводный отчет'}
               {location.pathname.includes('/admin') && 'Администрирование'}
               {location.pathname.includes('/business-processes/contract-approval') && 'Согласование договоров'}
+              {location.pathname.includes('/business-processes/dashboard') && 'Дашборд БП'}
               {location.pathname.includes('/settings') && 'Настройки'}
             </Typography>
           )}
@@ -872,6 +888,8 @@ const DashboardLayout = () => {
           flexGrow: 1,
           p: isTechDashboardRoute ? { xs: 0, sm: 0 } : { xs: 0.75, sm: 1 },
           width: { sm: `calc(100% - ${drawerWidth}px)` },
+          boxSizing: 'border-box',
+          overflowX: isTechDashboardRoute ? 'hidden' : 'auto',
           overflowY: isTechDashboardRoute ? 'hidden' : 'auto',
         }}
       >

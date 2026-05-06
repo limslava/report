@@ -299,6 +299,7 @@
 
 .calendar .notes-card {
   height: 100%;
+  max-height: calc(100vh - 170px);
   min-height: 0;
   overflow: hidden;
   display: grid;
@@ -309,6 +310,7 @@
 
 .calendar .notes-card .note-list {
   overflow: auto;
+  max-height: calc(100vh - 260px);
   padding-right: 4px;
   min-height: 0;
 }
@@ -520,6 +522,9 @@
 .calendar .event-more {
   color: var(--cal-muted);
   font-size: 12px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
   padding-left: 10px;
   position: absolute;
   left: 1px;

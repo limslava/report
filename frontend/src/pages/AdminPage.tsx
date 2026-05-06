@@ -75,7 +75,21 @@ const AdminPage = () => {
     email: '',
     fullName: '',
     role: '',
+    timezone: 'Asia/Vladivostok',
+    workdayStart: '10:00',
+    workdayEnd: '19:00',
+    workdays: [1, 2, 3, 4, 5] as number[],
   });
+
+  const weekdayLabels: Record<number, string> = {
+    1: 'Пн',
+    2: 'Вт',
+    3: 'Ср',
+    4: 'Чт',
+    5: 'Пт',
+    6: 'Сб',
+    0: 'Вс',
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -295,16 +309,28 @@ const AdminPage = () => {
   const handleOpenDialog = (user: any = null) => {
     setSelectedUser(user);
     if (user) {
+      const userWorkdays = String(user.workdays || '1,2,3,4,5')
+        .split(',')
+        .map((d: string) => Number(d))
+        .filter((d: number) => Number.isInteger(d) && d >= 0 && d <= 6);
       setFormData({
         email: user.email,
         fullName: user.fullName,
         role: user.role,
+        timezone: user.timezone || 'Asia/Vladivostok',
+        workdayStart: user.workdayStart || '10:00',
+        workdayEnd: user.workdayEnd || '19:00',
+        workdays: userWorkdays.length > 0 ? userWorkdays : [1, 2, 3, 4, 5],
       });
     } else {
       setFormData({
         email: '',
         fullName: '',
         role: '',
+        timezone: 'Asia/Vladivostok',
+        workdayStart: '10:00',
+        workdayEnd: '19:00',
+        workdays: [1, 2, 3, 4, 5],
       });
     }
     setOpenDialog(true);
@@ -317,6 +343,10 @@ const AdminPage = () => {
       email: '',
       fullName: '',
       role: '',
+      timezone: 'Asia/Vladivostok',
+      workdayStart: '10:00',
+      workdayEnd: '19:00',
+      workdays: [1, 2, 3, 4, 5],
     });
   };
 
@@ -325,7 +355,7 @@ const AdminPage = () => {
       return;
     }
 
-    const { email, fullName, role } = formData;
+    const { email, fullName, role, timezone, workdayStart, workdayEnd, workdays } = formData;
     if (!email || !fullName || !role) {
       alert('Заполните все поля');
       return;
@@ -334,7 +364,15 @@ const AdminPage = () => {
     try {
       setIsSavingUser(true);
       if (selectedUser) {
-        await updateUser(selectedUser.id, { email, fullName, role });
+        await updateUser(selectedUser.id, {
+          email,
+          fullName,
+          role,
+          timezone,
+          workdayStart,
+          workdayEnd,
+          workdays: workdays.join(','),
+        });
         alert('Пользователь обновлен');
       } else {
         await inviteUser({ email, fullName, role });
@@ -702,6 +740,53 @@ const AdminPage = () => {
                   <MenuItem key={role.value} value={role.value}>{role.label}</MenuItem>
                 ))}
               </Select>
+            </FormControl>
+            <TextField
+              label="Часовой пояс"
+              value={formData.timezone}
+              onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
+              fullWidth
+              helperText="По умолчанию: Asia/Vladivostok"
+            />
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+              <TextField
+                label="Начало рабочего дня"
+                type="time"
+                value={formData.workdayStart}
+                onChange={(e) => setFormData({ ...formData, workdayStart: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+              />
+              <TextField
+                label="Конец рабочего дня"
+                type="time"
+                value={formData.workdayEnd}
+                onChange={(e) => setFormData({ ...formData, workdayEnd: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Box>
+            <FormControl fullWidth>
+              <InputLabel>Рабочие дни</InputLabel>
+              <Select
+                multiple
+                label="Рабочие дни"
+                value={formData.workdays as any}
+                onChange={(e) => {
+                  const next = (e.target.value as unknown as Array<number | string>).map((v) => Number(v));
+                  setFormData({ ...formData, workdays: next });
+                }}
+                renderValue={(selected) =>
+                  (selected as number[])
+                    .map((d) => weekdayLabels[d] ?? String(d))
+                    .join(', ')
+                }
+              >
+                {Object.entries(weekdayLabels).map(([key, label]) => (
+                  <MenuItem key={key} value={Number(key)}>
+                    {label}
+                  </MenuItem>
+                ))}
+              </Select>
+              <FormHelperText>По умолчанию: Пн-Пт</FormHelperText>
             </FormControl>
           </Box>
         </DialogContent>

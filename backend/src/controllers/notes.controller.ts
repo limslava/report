@@ -55,6 +55,7 @@ export const listNotes = async (req: Request, res: Response, next: NextFunction)
     const user = req.user!;
     const from = req.query.from ? new Date(String(req.query.from)) : new Date('1970-01-01T00:00:00.000Z');
     const to = req.query.to ? new Date(String(req.query.to)) : new Date('2100-01-01T00:00:00.000Z');
+    const includeClosed = String(req.query.includeClosed || 'false').toLowerCase() === 'true';
 
     const qb = noteRepository
       .createQueryBuilder('note')
@@ -62,6 +63,10 @@ export const listNotes = async (req: Request, res: Response, next: NextFunction)
       .where('note.startAt < :to AND note.endAt > :from', { from, to })
       .orderBy('note.startAt', 'ASC')
       .addOrderBy('note.createdAt', 'ASC');
+
+    if (!includeClosed) {
+      qb.andWhere("note.status != 'closed'");
+    }
 
     if (user.role !== 'admin') {
       qb.andWhere(
@@ -94,6 +99,10 @@ export const listNotes = async (req: Request, res: Response, next: NextFunction)
         authorId: note.authorId,
         authorName: note.authorName,
         visibility: note.visibility,
+        source: note.source,
+        status: note.status,
+        linkedContractId: note.linkedContractId,
+        linkedStepId: note.linkedStepId,
         createdAt: note.createdAt,
         updatedAt: note.updatedAt,
         recipientUserIds,
@@ -162,6 +171,10 @@ export const createNote = async (req: Request, res: Response, next: NextFunction
         authorId: user.id,
         authorName: user.fullName,
         visibility: resolvedVisibility,
+        source: 'manual',
+        status: 'active',
+        linkedContractId: null,
+        linkedStepId: null,
       });
       const persisted = await txNoteRepository.save(note);
 
@@ -186,6 +199,10 @@ export const createNote = async (req: Request, res: Response, next: NextFunction
       authorId: saved.authorId,
       authorName: saved.authorName,
       visibility: saved.visibility,
+      source: saved.source,
+      status: saved.status,
+      linkedContractId: saved.linkedContractId,
+      linkedStepId: saved.linkedStepId,
       createdAt: saved.createdAt,
       updatedAt: saved.updatedAt,
       recipientUserIds: userRecipients,
@@ -217,6 +234,11 @@ export const updateNote = async (req: Request, res: Response, next: NextFunction
       error.statusCode = 403;
       throw error;
     }
+    if (note.source === 'system') {
+      const error: any = new Error('Системные события БП нельзя редактировать вручную');
+      error.statusCode = 400;
+      throw error;
+    }
 
     if (typeof title === 'string') note.title = title;
     if (startAt) note.startAt = new Date(startAt);
@@ -238,6 +260,10 @@ export const updateNote = async (req: Request, res: Response, next: NextFunction
       authorId: saved.authorId,
       authorName: saved.authorName,
       visibility: saved.visibility,
+      source: saved.source,
+      status: saved.status,
+      linkedContractId: saved.linkedContractId,
+      linkedStepId: saved.linkedStepId,
       createdAt: saved.createdAt,
       updatedAt: saved.updatedAt,
       recipientUserIds,
@@ -267,6 +293,11 @@ export const updateNoteRecipients = async (req: Request, res: Response, next: Ne
     if (note.authorId !== user.id && user.role !== 'admin') {
       const error: any = new Error('Only the author can update this note');
       error.statusCode = 403;
+      throw error;
+    }
+    if (note.source === 'system') {
+      const error: any = new Error('Системные события БП нельзя изменять вручную');
+      error.statusCode = 400;
       throw error;
     }
 
@@ -314,6 +345,10 @@ export const updateNoteRecipients = async (req: Request, res: Response, next: Ne
       authorId: saved.authorId,
       authorName: saved.authorName,
       visibility: saved.visibility,
+      source: saved.source,
+      status: saved.status,
+      linkedContractId: saved.linkedContractId,
+      linkedStepId: saved.linkedStepId,
       createdAt: saved.createdAt,
       updatedAt: saved.updatedAt,
       recipientUserIds: userRecipients,
@@ -340,6 +375,11 @@ export const deleteNote = async (req: Request, res: Response, next: NextFunction
     if (note.authorId !== user.id && user.role !== 'admin') {
       const error: any = new Error('Only the author can delete this note');
       error.statusCode = 403;
+      throw error;
+    }
+    if (note.source === 'system') {
+      const error: any = new Error('Системные события БП нельзя удалять вручную');
+      error.statusCode = 400;
       throw error;
     }
 
@@ -412,6 +452,10 @@ export const getNoteById = async (req: Request, res: Response, next: NextFunctio
       authorId: note.authorId,
       authorName: note.authorName,
       visibility: note.visibility,
+      source: note.source,
+      status: note.status,
+      linkedContractId: note.linkedContractId,
+      linkedStepId: note.linkedStepId,
       createdAt: note.createdAt,
       updatedAt: note.updatedAt,
       recipientUserIds,

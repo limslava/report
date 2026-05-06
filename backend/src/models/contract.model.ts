@@ -50,6 +50,7 @@ export enum ContractStatus {
 @Index('idx_contracts_inn', ['counterpartyInn'])
 @Index('idx_contracts_type', ['contractType'])
 @Index('idx_contracts_parent', ['parentContractId'])
+@Index('uq_contracts_initiator_client_req', ['initiatorId', 'clientRequestId'], { unique: true })
 export class Contract {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -115,6 +116,9 @@ export class Contract {
 
   @Column({ name: 'initiator_id', type: 'uuid' })
   initiatorId!: string;
+
+  @Column({ name: 'client_request_id', type: 'varchar', length: 64, nullable: true })
+  clientRequestId!: string | null;
 
   @Column({ name: 'assigned_general_director_id', type: 'uuid', nullable: true })
   assignedGeneralDirectorId!: string | null;

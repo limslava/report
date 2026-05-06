@@ -56,6 +56,27 @@ export class ContractApprovalStep {
   @Column({ name: 'comment', type: 'text', nullable: true })
   comment!: string | null;
 
+  @Column({ name: 'sla_workdays', type: 'int', default: 1 })
+  slaWorkdays!: number;
+
+  @Column({ name: 'assigned_at', type: 'timestamp', nullable: true })
+  assignedAt!: Date | null;
+
+  @Column({ name: 'deadline_at', type: 'timestamp', nullable: true })
+  deadlineAt!: Date | null;
+
+  @Column({ name: 'reminder_before_sent_at', type: 'timestamp', nullable: true })
+  reminderBeforeSentAt!: Date | null;
+
+  @Column({ name: 'reminder_deadline_sent_at', type: 'timestamp', nullable: true })
+  reminderDeadlineSentAt!: Date | null;
+
+  @Column({ name: 'reminder_overdue_sent_at', type: 'timestamp', nullable: true })
+  reminderOverdueSentAt!: Date | null;
+
+  @Column({ name: 'escalation_sent_at', type: 'timestamp', nullable: true })
+  escalationSentAt!: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

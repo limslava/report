@@ -4,18 +4,20 @@ import { User } from '../models/user.model';
 import { AppSetting } from '../models/app-setting.model';
 import { AuditLog } from '../models/audit-log.model';
 import { Report } from '../models/reports.model';
+import { ContractWorkSchedule } from '../models/contract-work-schedule.model';
 import { logger } from '../utils/logger';
 import { sendInvitationEmail } from '../services/email.service';
 import { planWebSocketService } from '../services/websocket.service';
 import { recordAuditLog } from '../services/audit-log.service';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { Between, LessThanOrEqual, MoreThanOrEqual, QueryFailedError } from 'typeorm';
+import { Between, IsNull, LessThanOrEqual, MoreThanOrEqual, QueryFailedError } from 'typeorm';
 
 const userRepository = AppDataSource.getRepository(User);
 const appSettingRepository = AppDataSource.getRepository(AppSetting);
 const auditLogRepository = AppDataSource.getRepository(AuditLog);
 const reportRepository = AppDataSource.getRepository(Report);
+const workScheduleRepository = AppDataSource.getRepository(ContractWorkSchedule);
 
 export const getUsers = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -36,6 +38,10 @@ export const getUsers = async (req: Request, res: Response, next: NextFunction) 
       department: user.role, // for backward compatibility
       role: user.role,
       isActive: user.isActive,
+      timezone: user.timezone,
+      workdayStart: user.workdayStart,
+      workdayEnd: user.workdayEnd,
+      workdays: user.workdays,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     }));
@@ -103,7 +109,7 @@ export const inviteUser = async (req: Request, res: Response, next: NextFunction
 export const updateUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { email, fullName, role, isActive } = req.body;
+    const { email, fullName, role, isActive, timezone, workdayStart, workdayEnd, workdays } = req.body;
 
     const user = await userRepository.findOne({ where: { id } });
     if (!user) {
@@ -118,6 +124,10 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
     if (fullName) user.fullName = fullName;
     if (role) user.role = role;
     if (typeof isActive === 'boolean') user.isActive = isActive;
+    if (typeof timezone === 'string') user.timezone = timezone.trim() || null;
+    if (typeof workdayStart === 'string') user.workdayStart = workdayStart.trim() || null;
+    if (typeof workdayEnd === 'string') user.workdayEnd = workdayEnd.trim() || null;
+    if (typeof workdays === 'string') user.workdays = workdays.trim() || null;
 
     await userRepository.save(user);
 
@@ -141,6 +151,10 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
         department: user.role, // for backward compatibility
         role: user.role,
         isActive: user.isActive,
+        timezone: user.timezone,
+        workdayStart: user.workdayStart,
+        workdayEnd: user.workdayEnd,
+        workdays: user.workdays,
       },
     });
   } catch (error) {
@@ -149,6 +163,71 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
       duplicateError.statusCode = 409;
       return next(duplicateError);
     }
+    next(error);
+  }
+};
+
+export const getContractWorkSchedules = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const rows = await workScheduleRepository.find({
+      order: { scope: 'ASC', roleCode: 'ASC', userId: 'ASC', createdAt: 'ASC' },
+    });
+    res.json(rows);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const upsertContractWorkSchedules = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const rows = Array.isArray(req.body?.items) ? req.body.items : [];
+    for (const item of rows) {
+      const scope = String(item?.scope || '').trim() as 'global' | 'role' | 'user';
+      if (!['global', 'role', 'user'].includes(scope)) continue;
+      const roleCode = scope === 'role' ? String(item?.roleCode || '').trim() || null : null;
+      const userId = scope === 'user' ? String(item?.userId || '').trim() || null : null;
+      const timezone = String(item?.timezone || '').trim() || 'Asia/Vladivostok';
+      const workdayStart = String(item?.workdayStart || '').trim() || '09:00';
+      const workdayEnd = String(item?.workdayEnd || '').trim() || '18:00';
+      const workdays = Array.isArray(item?.workdays)
+        ? item.workdays.map((d: any) => Number(d)).filter((d: number) => Number.isInteger(d) && d >= 0 && d <= 6)
+        : [1, 2, 3, 4, 5];
+      const isActive = typeof item?.isActive === 'boolean' ? item.isActive : true;
+
+      const existing = await workScheduleRepository.findOne({
+        where: {
+          scope,
+          roleCode: roleCode === null ? IsNull() : roleCode,
+          userId: userId === null ? IsNull() : userId,
+        },
+      });
+      if (existing) {
+        existing.timezone = timezone;
+        existing.workdayStart = workdayStart;
+        existing.workdayEnd = workdayEnd;
+        existing.workdays = workdays.join(',');
+        existing.isActive = isActive;
+        // eslint-disable-next-line no-await-in-loop
+        await workScheduleRepository.save(existing);
+      } else {
+        // eslint-disable-next-line no-await-in-loop
+        await workScheduleRepository.save(workScheduleRepository.create({
+          scope,
+          roleCode,
+          userId,
+          timezone,
+          workdayStart,
+          workdayEnd,
+          workdays: workdays.join(','),
+          isActive,
+        }));
+      }
+    }
+    const result = await workScheduleRepository.find({
+      order: { scope: 'ASC', roleCode: 'ASC', userId: 'ASC', createdAt: 'ASC' },
+    });
+    res.json(result);
+  } catch (error) {
     next(error);
   }
 };

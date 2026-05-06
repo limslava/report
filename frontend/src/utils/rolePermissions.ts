@@ -13,7 +13,11 @@ export function canAccessAdmin(role?: string | null): boolean {
 }
 
 export function canViewTotalsInPlans(role?: string | null): boolean {
-  return Boolean(role);
+  return Boolean(role) && role !== 'security';
+}
+
+export function canViewPlans(role?: string | null): boolean {
+  return Boolean(role) && role !== 'security';
 }
 
 export function canEditTotalsPlan(role?: string | null): boolean {
@@ -25,7 +29,19 @@ export function canViewFinancialPlan(role?: string | null): boolean {
 }
 
 export function canViewCalendar(role?: string | null): boolean {
-  return role === 'admin' || role === 'director' || role === 'general_director' || role === 'manager_auto';
+  return role === 'admin'
+    || role === 'director'
+    || role === 'general_director'
+    || role === 'manager_auto'
+    || role === 'security';
+}
+
+export function canAccessContractApproval(role?: string | null): boolean {
+  return role === 'admin' || role === 'security' || role === 'lawyer' || role === 'chief_accountant';
+}
+
+export function canViewBPDashboard(role?: string | null): boolean {
+  return role === 'security' || role === 'lawyer' || role === 'chief_accountant';
 }
 
 export function canAccessOperationsPreview(role?: string | null): boolean {

@@ -18,7 +18,7 @@ export class Counterparty {
   @Column({ name: 'counterparty_form', type: 'varchar', length: 32, nullable: true })
   counterpartyForm!: string | null;
 
-  @Column({ type: 'varchar', length: 13, nullable: true })
+  @Column({ type: 'varchar', length: 15, nullable: true })
   ogrn!: string | null;
 
   @Column({ type: 'varchar', length: 9, nullable: true })

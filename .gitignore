@@ -33,3 +33,6 @@ logs/
 *.xlsx
 *.xls
 
+
+# Local user communication notes
+USER_RELEASE_NOTES_LOCAL.md
