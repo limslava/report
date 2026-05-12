@@ -789,6 +789,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
   let cursorRow = startRow + 2;
   sectionPeople.forEach((person) => {
     const lanes: Array<'1' | '2'> = person.secondName ? ['1', '2'] : ['1'];
+    const personStartRow = cursorRow;
     lanes.forEach((lane) => {
       const rowIndex = lane === '1' ? person.rowIndex : person.rowIndex + 50;
       const name = lane === '1' ? person.name : person.secondName ?? '';
@@ -828,6 +829,18 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
       }
       cursorRow += 1;
     });
+
+    if (!isPersonnel && person.secondName) {
+      sheet.mergeCells(personStartRow, plateCol, personStartRow + 1, plateCol);
+      const plateCell = sheet.getCell(personStartRow, plateCol);
+      plateCell.value = person.plate;
+      plateCell.alignment = { horizontal: 'left', vertical: 'middle' };
+      plateCell.font = { size: 11, name: 'Arial', color: { argb: COLORS.textDark } };
+      plateCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.white } };
+      for (let row = personStartRow; row <= personStartRow + 1; row += 1) {
+        sheet.getCell(row, plateCol).border = fullBorder;
+      }
+    }
   });
 
   sheet.getCell(cursorRow, nameCol).value = isPersonnel ? 'На смене:' : 'Итого';
