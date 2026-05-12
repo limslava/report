@@ -574,12 +574,14 @@ export default function SWTechDashboardPage() {
           ? 'КТК Владивосток'
           : row.name === 'Москва'
             ? 'КТК Москва'
-            : row.name;
+            : row.name === 'Автовозы'
+              ? 'Автовозы и шторы'
+              : row.name;
         const expectedFact = monthDays > 0
           ? Number(((row.plan / monthDays) * elapsedDays).toFixed(1))
           : 0;
         const isRisk = isPastMonth
-          ? row.plan < row.fact
+          ? row.fact < row.plan
           : row.fact < expectedFact;
         const ratioBase = isPastMonth ? row.plan : expectedFact;
         const ratioPct = ratioBase > 0

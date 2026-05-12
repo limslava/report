@@ -13,6 +13,8 @@
   - Reworked `Ключевые риски` calculation:
     - current calendar month: plan-to-date vs fact-to-date,
     - past months: month plan vs month fact.
+  - Fixed past-month risk status: under-plan fact is now shown as risk.
+  - Renamed risk row `Автовозы` to `Автовозы и шторы` for consistency with KPI cards.
   - Added backend cache for `/v2/planning/reports/tech-dashboard` (short TTL) and frontend debounce/lazy chart init for faster loading.
 
 - Work schedule (Operations Preview)
@@ -36,6 +38,7 @@
   - Keyboard status input in schedule now accepts Russian layout mappings only.
   - Added Excel export endpoint for work schedule sections and improved exported visual style
     (headers, borders, colors, legend, totals, frozen panes).
+  - Work schedule Excel export now merges `Г/Н ТС` cells for two-driver vehicles.
   - Added `Эффективность` section in work schedule with yearly calculations for:
     - `Контейнеровозы`
     - `Автовозы`
