@@ -1,6 +1,14 @@
 # Changelog
 
 ## Unreleased
+- Business process / Bill of lading
+  - Added `Коносамент` submenu under `Бизнес процесс`.
+  - Added Sinokor B/L lookup prototype:
+    - backend endpoint `GET /api/carriers/sinokor/bl/:blNo`,
+    - frontend test page `/business-processes/bill-of-lading`,
+    - parses B/K status, issue status, receipt status, vessel/voyage,
+      POL/POD, ETD/ETA, terminals, and container numbers.
+
 - SW Tech Dashboard
   - Added year/month period selectors in the top bar and period-aware data loading.
   - Updated monthly logic for widgets/charts:

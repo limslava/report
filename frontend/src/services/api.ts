@@ -103,6 +103,8 @@ export const getContractDuplicates = (params: { inn: string; contractType: 'expe
   api.get('/contracts/duplicates', { params });
 export const resolveCounterpartyByInn = (inn: string) => api.get('/counterparties/resolve', { params: { inn } });
 export const resolveCounterpartyByName = (name: string) => api.get('/counterparties/resolve-by-name', { params: { name } });
+export const lookupSinokorBl = (blNo: string, debug = false) =>
+  api.get(`/carriers/sinokor/bl/${encodeURIComponent(blNo)}`, { params: debug ? { debug: '1' } : undefined });
 export const createContract = (data: {
   contractNumber: string;
   contractType: 'expense' | 'income';

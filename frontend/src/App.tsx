@@ -12,6 +12,7 @@ import PlansPage from './pages/PlansPage';
 import SWTechDashboardPage from './pages/SWTechDashboardPage';
 import ContractApprovalPage from './pages/ContractApprovalPage';
 import BPApprovalDashboardPage from './pages/BPApprovalDashboardPage';
+import SinokorTestPage from './pages/SinokorTestPage';
 import RouteAccessGuard from './components/auth/RouteAccessGuard';
 import {
   canAccessAdmin,
@@ -143,6 +144,15 @@ function App() {
               </RouteAccessGuard>
             )}
           />
+          <Route
+            path="business-processes/bill-of-lading"
+            element={(
+              <RouteAccessGuard allow={canAccessContractApproval(user?.role)}>
+                <SinokorTestPage />
+              </RouteAccessGuard>
+            )}
+          />
+          <Route path="sinokor-test" element={<SinokorTestPage />} />
         </Route>
       ) : (
         <Route path="*" element={<Navigate to="/login" replace />} />

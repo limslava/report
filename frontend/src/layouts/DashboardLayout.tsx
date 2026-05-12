@@ -698,15 +698,26 @@ const DashboardLayout = () => {
               </Tooltip>
             </ListItem>
             {isPinnedOpen && isBusinessProcessSubmenuOpen && (
-              <ListItem disablePadding sx={{ pl: 4 }}>
-                <ListItemButton
-                  selected={location.pathname === '/business-processes/contract-approval'}
-                  onClick={() => handleNavigate('/business-processes/contract-approval')}
-                  sx={{ py: 0.5, minHeight: 34 }}
-                >
-                  <ListItemText primary="Согласование договоров" primaryTypographyProps={{ fontSize: 14 }} />
-                </ListItemButton>
-              </ListItem>
+              <>
+                <ListItem disablePadding sx={{ pl: 4 }}>
+                  <ListItemButton
+                    selected={location.pathname === '/business-processes/contract-approval'}
+                    onClick={() => handleNavigate('/business-processes/contract-approval')}
+                    sx={{ py: 0.5, minHeight: 34 }}
+                  >
+                    <ListItemText primary="Согласование договоров" primaryTypographyProps={{ fontSize: 14 }} />
+                  </ListItemButton>
+                </ListItem>
+                <ListItem disablePadding sx={{ pl: 4 }}>
+                  <ListItemButton
+                    selected={location.pathname === '/business-processes/bill-of-lading'}
+                    onClick={() => handleNavigate('/business-processes/bill-of-lading')}
+                    sx={{ py: 0.5, minHeight: 34 }}
+                  >
+                    <ListItemText primary="Коносамент" primaryTypographyProps={{ fontSize: 14 }} />
+                  </ListItemButton>
+                </ListItem>
+              </>
             )}
           </>
         )}
@@ -771,6 +782,7 @@ const DashboardLayout = () => {
               {location.pathname.includes('/summary-report') && 'Сводный отчет'}
               {location.pathname.includes('/admin') && 'Администрирование'}
               {location.pathname.includes('/business-processes/contract-approval') && 'Согласование договоров'}
+              {location.pathname.includes('/business-processes/bill-of-lading') && 'Коносамент'}
               {location.pathname.includes('/business-processes/dashboard') && 'Дашборд БП'}
               {location.pathname.includes('/settings') && 'Настройки'}
             </Typography>
