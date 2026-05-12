@@ -15,6 +15,7 @@ type NotesUnreadState = {
 let ws: WebSocket | null = null;
 let pollTimer: number | null = null;
 let reconnectTimer: number | null = null;
+let connectTimer: number | null = null;
 let visibilityHandler: (() => void) | null = null;
 let focusHandler: (() => void) | null = null;
 let refreshWindowEventHandler: (() => void) | null = null;
@@ -29,6 +30,10 @@ const clearRuntime = () => {
   if (reconnectTimer) {
     window.clearTimeout(reconnectTimer);
     reconnectTimer = null;
+  }
+  if (connectTimer) {
+    window.clearTimeout(connectTimer);
+    connectTimer = null;
   }
   if (ws) {
     ws.close();
@@ -135,7 +140,12 @@ const useNotesUnreadStore = create<NotesUnreadState>((set, get) => {
     window.addEventListener('focus', focusHandler);
     window.addEventListener('notes:unread-refresh', refreshWindowEventHandler);
 
-    connectWs();
+    // Defer WS connect a tick so StrictMode mount->unmount cycle in dev
+    // doesn't create a socket only to close it immediately.
+    connectTimer = window.setTimeout(() => {
+      connectTimer = null;
+      connectWs();
+    }, 0);
   };
 
   const stop = () => {
