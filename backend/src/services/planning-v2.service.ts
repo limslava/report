@@ -52,6 +52,10 @@ function hasSegmentAccess(role: string, segmentCode: PlanningSegmentCode): boole
     return true;
   }
 
+  if (segmentCode === PlanningSegmentCode.KTK_MOW && role === 'head_ktk_mow') {
+    return true;
+  }
+
   const managerRole = SEGMENT_MANAGER_ROLE[segmentCode];
   return role === managerRole;
 }

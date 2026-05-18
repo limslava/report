@@ -2,15 +2,21 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragE
 import { useSearchParams } from 'react-router-dom';
 import { Box, MenuItem, Paper, TextField } from '@mui/material';
 import { useAuthStore } from '../store/auth-store';
-import { downloadOperationsPreviewExcel, getOperationsPreviewState, saveOperationsPreviewState } from '../services/api';
+import {
+  downloadOperationsPreviewExcel,
+  getOperationsPreviewState,
+  saveOperationsPreviewState,
+  type OperationsPreviewLocation,
+} from '../services/api';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import { downloadBlob } from '../utils/download';
 import '../styles/operations-preview.css';
 
-type PreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'efficiency';
+type PreviewLocation = OperationsPreviewLocation;
+type PreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'mechanics' | 'efficiency';
 type PreviewMode = 'plan' | 'fact';
-type Department = 'Контейнеры' | 'Авто' | 'Диспетчера' | 'Курьеры';
-type EfficiencyLocation = 'ktk_vvo';
+type Department = 'Контейнеры' | 'Авто' | 'Диспетчера' | 'Курьеры' | 'Автослесари';
+type EfficiencyLocation = 'ktk_vvo' | 'ktk_mow';
 type SortField = 'manual' | 'name' | 'plate';
 type SortDirection = 'asc' | 'desc';
 type SectionSortState = { field: SortField; direction: SortDirection };
@@ -24,6 +30,7 @@ const DEFAULT_SORT_BY_SECTION: SortBySection = {
   Авто: { field: 'manual', direction: 'asc' },
   Диспетчера: { field: 'manual', direction: 'asc' },
   Курьеры: { field: 'manual', direction: 'asc' },
+  Автослесари: { field: 'manual', direction: 'asc' },
 };
 const MONTH_OPTIONS = [
   { value: 1, label: 'Январь' },
@@ -42,7 +49,45 @@ const MONTH_OPTIONS = [
 const MONTH_LABELS_SHORT = ['ЯНВ', 'ФЕВ', 'МАР', 'АПР', 'МАЙ', 'ИЮН', 'ИЮЛ', 'АВГ', 'СЕН', 'ОКТ', 'НОЯ', 'ДЕК'];
 const EFFICIENCY_LOCATION_OPTIONS: Array<{ value: EfficiencyLocation; label: string }> = [
   { value: 'ktk_vvo', label: 'КТК Влк' },
+  { value: 'ktk_mow', label: 'КТК Мск' },
 ];
+
+const LOCATION_SECTIONS: Record<PreviewLocation, PreviewSection[]> = {
+  ktk_vvo: ['containers', 'auto', 'dispatchers', 'couriers', 'efficiency'],
+  ktk_mow: ['containers', 'dispatchers', 'couriers', 'efficiency'],
+  garage_vvo: ['mechanics'],
+  garage_mow: ['mechanics'],
+};
+
+const DEPARTMENT_BY_SECTION: Partial<Record<PreviewSection, Department>> = {
+  containers: 'Контейнеры',
+  auto: 'Авто',
+  dispatchers: 'Диспетчера',
+  couriers: 'Курьеры',
+  mechanics: 'Автослесари',
+};
+
+const SECTION_BY_DEPARTMENT: Record<Department, PreviewSection> = {
+  Контейнеры: 'containers',
+  Авто: 'auto',
+  Диспетчера: 'dispatchers',
+  Курьеры: 'couriers',
+  Автослесари: 'mechanics',
+};
+
+const getLocationFromQuery = (value: string | null): PreviewLocation => {
+  if (value === 'garage') return 'garage_vvo';
+  if (value === 'ktk_mow' || value === 'garage_vvo' || value === 'garage_mow') return value;
+  return 'ktk_vvo';
+};
+
+const getDepartmentsForLocation = (location: PreviewLocation): Department[] =>
+  LOCATION_SECTIONS[location]
+    .map((section) => DEPARTMENT_BY_SECTION[section])
+    .filter(Boolean) as Department[];
+
+const isPersonnelDepartment = (department: Department): boolean =>
+  department === 'Диспетчера' || department === 'Курьеры' || department === 'Автослесари';
 
 type PersonRow = {
   id: string;
@@ -138,9 +183,19 @@ export default function OperationsPreview() {
   type VisibleRow = { personId: string; lane: '1' | '2'; personName: string; rowIndex: number; department: Department };
   type RangeRect = { rowStart: number; rowEnd: number; dayStart: number; dayEnd: number };
   const [searchParams, setSearchParams] = useSearchParams();
+  const activeLocation = getLocationFromQuery(searchParams.get('location'));
+  const activeEfficiencyLocation: EfficiencyLocation = activeLocation === 'ktk_mow' ? 'ktk_mow' : 'ktk_vvo';
+  const allowedDepartments = useMemo(() => getDepartmentsForLocation(activeLocation), [activeLocation]);
+  const allowedDepartmentSet = useMemo(() => new Set<Department>(allowedDepartments), [allowedDepartments]);
   const userId = useAuthStore((state) => state.user?.id);
   const userRole = useAuthStore((state) => state.user?.role);
-  const canManagePlanFact = userRole === 'admin' || userRole === 'head_ktk_vvo';
+  const canManagePlanFact = (
+    userRole === 'admin'
+    || userRole === 'head_ktk_vvo'
+    || userRole === 'head_ktk_mow'
+    || userRole === 'head_hr'
+    || userRole === 'hr_specialist'
+  );
   const efficiencyOnlyViewer = userRole === 'director' || userRole === 'financer';
   const canChooseEfficiencyDirection = userRole === 'director' || userRole === 'financer';
   const [filter, setFilter] = useState<'Все' | Department>('Все');
@@ -418,25 +473,21 @@ export default function OperationsPreview() {
       Авто: sortSection('Авто'),
       Диспетчера: sortSection('Диспетчера'),
       Курьеры: sortSection('Курьеры'),
+      Автослесари: sortSection('Автослесари'),
     } as const;
   }, [peopleState, baseRowIndexById, sortBySection]);
   const addDepartment: Department =
-    filter === 'Авто' || filter === 'Контейнеры' || filter === 'Диспетчера' || filter === 'Курьеры'
+    filter !== 'Все' && allowedDepartmentSet.has(filter)
       ? filter
-      : 'Контейнеры';
-  const isPersonnelSection = filter === 'Диспетчера' || filter === 'Курьеры';
+      : allowedDepartments[0] ?? 'Контейнеры';
+  const isPersonnelSection = filter !== 'Все' && isPersonnelDepartment(filter);
   const effectiveMode: PreviewMode = filter === 'Контейнеры' ? mode : 'fact';
-  const visibleCellCodes: CellCode[] = isPersonnelSection ? ['W', 'V', 'O'] : ['W', 'O', 'V', 'B', 'H', 'R', 'N'];
+  const visibleCellCodes: CellCode[] = isPersonnelSection ? ['W', 'V', 'O', 'B'] : ['W', 'O', 'V', 'B', 'H', 'R', 'N'];
   const visibleRows = useMemo<VisibleRow[]>(() => {
     const rows: VisibleRow[] = [];
     const visiblePeople =
       filter === 'Все'
-        ? [
-            ...sortedPeopleBySection.Контейнеры,
-            ...sortedPeopleBySection.Авто,
-            ...sortedPeopleBySection.Диспетчера,
-            ...sortedPeopleBySection.Курьеры,
-          ]
+        ? allowedDepartments.flatMap((department) => sortedPeopleBySection[department])
         : sortedPeopleBySection[filter];
     visiblePeople.forEach((person) => {
       rows.push({
@@ -457,7 +508,7 @@ export default function OperationsPreview() {
       }
     });
     return rows;
-  }, [filter, sortedPeopleBySection]);
+  }, [allowedDepartments, filter, sortedPeopleBySection]);
 
   const buildRangeRect = useCallback(
     (from: { personId: string; lane: '1' | '2'; day: number }, to: { personId: string; lane: '1' | '2'; day: number }): RangeRect | null => {
@@ -519,12 +570,8 @@ export default function OperationsPreview() {
 
   const activeSection = (searchParams.get('section') as PreviewSection | null) ?? null;
   const isEfficiencySection = activeSection === 'efficiency';
-  const filterFromSection = (section: PreviewSection | null): ('Все' | Department) | null => {
-    if (section === 'containers') return 'Контейнеры';
-    if (section === 'auto') return 'Авто';
-    if (section === 'dispatchers') return 'Диспетчера';
-    if (section === 'couriers') return 'Курьеры';
-    return null;
+  const filterFromSection = (section: PreviewSection | null): Department | null => {
+    return section ? DEPARTMENT_BY_SECTION[section] ?? null : null;
   };
   const currentDataSnapshot = useMemo(
     () => ({
@@ -547,14 +594,14 @@ export default function OperationsPreview() {
   const hasUnsavedChanges = hydrated && currentDataSignature !== lastSavedSignature;
 
   const getVisibleSections = (): Department[] =>
-    filter === 'Все' ? ['Контейнеры', 'Авто', 'Диспетчера', 'Курьеры'] : [filter];
+    filter === 'Все' ? allowedDepartments : [filter].filter((section) => allowedDepartmentSet.has(section));
 
   const toggleSort = (field: Exclude<SortField, 'manual'>) => {
     setSortBySection((prev) => {
       const next: SortBySection = { ...prev };
       const sections = getVisibleSections();
       sections.forEach((section) => {
-        if (field === 'plate' && (section === 'Диспетчера' || section === 'Курьеры')) {
+        if (field === 'plate' && (section === 'Диспетчера' || section === 'Курьеры' || section === 'Автослесари')) {
           return;
         }
         const current = prev[section];
@@ -702,19 +749,16 @@ export default function OperationsPreview() {
 
   const resolveSectionForExport = (): PreviewSection => {
     if (activeSection === 'efficiency') return 'efficiency';
-    if (filter === 'Контейнеры') return 'containers';
-    if (filter === 'Авто') return 'auto';
-    if (filter === 'Диспетчера') return 'dispatchers';
-    if (filter === 'Курьеры') return 'couriers';
-    if (activeSection === 'containers' || activeSection === 'auto' || activeSection === 'dispatchers' || activeSection === 'couriers') {
+    if (filter !== 'Все') return SECTION_BY_DEPARTMENT[filter];
+    if (activeSection && LOCATION_SECTIONS[activeLocation].includes(activeSection)) {
       return activeSection;
     }
-    return 'containers';
+    return LOCATION_SECTIONS[activeLocation].find((section) => section !== 'efficiency') ?? 'containers';
   };
 
   useEffect(() => {
     setSortHydrated(false);
-    const storageKey = `${PREVIEW_SORT_STORAGE_PREFIX}:${userId ?? 'anonymous'}`;
+    const storageKey = `${PREVIEW_SORT_STORAGE_PREFIX}:${activeLocation}:${userId ?? 'anonymous'}`;
     try {
       const raw = localStorage.getItem(storageKey);
       if (!raw) {
@@ -737,31 +781,41 @@ export default function OperationsPreview() {
         Авто: normalizeSection('Авто'),
         Диспетчера: normalizeSection('Диспетчера'),
         Курьеры: normalizeSection('Курьеры'),
+        Автослесари: normalizeSection('Автослесари'),
       });
     } catch {
       setSortBySection(DEFAULT_SORT_BY_SECTION);
     } finally {
       setSortHydrated(true);
     }
-  }, [userId]);
+  }, [activeLocation, userId]);
 
   useEffect(() => {
     if (!sortHydrated) return;
-    const storageKey = `${PREVIEW_SORT_STORAGE_PREFIX}:${userId ?? 'anonymous'}`;
+    const storageKey = `${PREVIEW_SORT_STORAGE_PREFIX}:${activeLocation}:${userId ?? 'anonymous'}`;
     try {
       localStorage.setItem(storageKey, JSON.stringify(sortBySection));
     } catch {
       // ignore localStorage write issues
     }
-  }, [sortBySection, sortHydrated, userId]);
+  }, [activeLocation, sortBySection, sortHydrated, userId]);
 
   useEffect(() => {
     if (!efficiencyOnlyViewer) return;
     if (activeSection === 'efficiency') return;
     const next = new URLSearchParams(searchParams);
+    if (!next.get('location')) {
+      next.set('location', 'ktk_vvo');
+    }
     next.set('section', 'efficiency');
     setSearchParams(next, { replace: true });
   }, [activeSection, efficiencyOnlyViewer, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (efficiencyLocation !== activeEfficiencyLocation) {
+      setEfficiencyLocation(activeEfficiencyLocation);
+    }
+  }, [activeEfficiencyLocation, efficiencyLocation]);
 
   useEffect(() => {
     let cancelled = false;
@@ -775,7 +829,8 @@ export default function OperationsPreview() {
     };
 
     const restoreFromPayload = (payload: Partial<PreviewPersistedState> | null | undefined) => {
-      const liveSection = (new URLSearchParams(window.location.search).get('section') as PreviewSection | null) ?? activeSection;
+      const liveSectionRaw = new URLSearchParams(window.location.search).get('section') as PreviewSection | null;
+      const liveSection = liveSectionRaw && LOCATION_SECTIONS[activeLocation].includes(liveSectionRaw) ? liveSectionRaw : activeSection;
       const sectionFilter = filterFromSection(liveSection);
       const restoredPeopleByMonthRaw: PeopleByMonth = (() => {
         if (payload?.peopleByMonth && typeof payload.peopleByMonth === 'object') {
@@ -796,6 +851,7 @@ export default function OperationsPreview() {
           payload?.filter === 'Авто' ||
           payload?.filter === 'Диспетчера' ||
           payload?.filter === 'Курьеры' ||
+          payload?.filter === 'Автослесари' ||
           payload?.filter === 'Все'
             ? payload.filter
             : fallback.filter
@@ -820,7 +876,7 @@ export default function OperationsPreview() {
             ? payload.meta.peopleMonthVersions
             : {},
       };
-      setFilter(restored.filter);
+      setFilter(restored.filter === 'Все' || allowedDepartmentSet.has(restored.filter) ? restored.filter : allowedDepartments[0] ?? 'Все');
       setMonthValue(restored.monthValue);
       setMode(restored.mode);
       setAllOverrides(restored.overrides);
@@ -836,9 +892,14 @@ export default function OperationsPreview() {
     };
 
     const bootstrap = async () => {
-      const requestedSection: PreviewSection = efficiencyOnlyViewer ? 'efficiency' : activeSection ?? 'containers';
+      const requestedSection: PreviewSection = efficiencyOnlyViewer
+        ? 'efficiency'
+        : activeSection && LOCATION_SECTIONS[activeLocation].includes(activeSection)
+          ? activeSection
+          : LOCATION_SECTIONS[activeLocation].find((section) => section !== 'efficiency') ?? 'containers';
       try {
         const response = await getOperationsPreviewState({
+          location: activeLocation,
           section: requestedSection,
         });
         const payload = (response.data?.state ?? null) as Partial<PreviewPersistedState> | null;
@@ -849,7 +910,7 @@ export default function OperationsPreview() {
       }
 
       try {
-        const raw = localStorage.getItem(PREVIEW_STORAGE_KEY);
+        const raw = localStorage.getItem(`${PREVIEW_STORAGE_KEY}:${activeLocation}`);
         if (!raw) {
           restoreFromPayload(null);
           return;
@@ -865,15 +926,16 @@ export default function OperationsPreview() {
     return () => {
       cancelled = true;
     };
-  }, [efficiencyOnlyViewer]);
+  }, [activeLocation, activeSection, allowedDepartments, allowedDepartmentSet, efficiencyOnlyViewer]);
 
   useEffect(() => {
     const mapped = filterFromSection(activeSection);
     if (!mapped) return;
+    if (!allowedDepartmentSet.has(mapped)) return;
     if (filter !== mapped) {
       setFilter(mapped);
     }
-  }, [activeSection, filter]);
+  }, [activeSection, allowedDepartmentSet, filter]);
 
   useEffect(() => {
     if (filter !== 'Контейнеры' && mode !== 'fact') {
@@ -1329,6 +1391,8 @@ export default function OperationsPreview() {
       const response = await saveOperationsPreviewState(
         {
           ...scopedPayload,
+          location: activeLocation,
+          section: resolveSectionForExport(),
           overridesPatch: {
             [currentScopeKey]: {
               set: setPatch,
@@ -1343,14 +1407,19 @@ export default function OperationsPreview() {
               [monthValue]: scopeVersionsRef.current.peopleMonthVersions[monthValue] ?? null,
             },
           },
-        } as unknown as Record<string, unknown>
+        } as unknown as Record<string, unknown>,
+        null,
+        {
+          location: activeLocation,
+          section: resolveSectionForExport(),
+        }
       );
       const nextUpdatedAt = typeof response.data?.updatedAt === 'string' ? response.data.updatedAt : new Date().toISOString();
       scopeVersionsRef.current.overrideScopeVersions[currentScopeKey] = nextUpdatedAt;
       scopeVersionsRef.current.peopleMonthVersions[monthValue] = nextUpdatedAt;
       try {
         localStorage.setItem(
-          PREVIEW_STORAGE_KEY,
+          `${PREVIEW_STORAGE_KEY}:${activeLocation}`,
           JSON.stringify({
             ...currentSnapshot,
             savedAt: new Date().toISOString(),
@@ -1467,6 +1536,7 @@ export default function OperationsPreview() {
 
       const section = resolveSectionForExport();
       const response = await downloadOperationsPreviewExcel({
+        location: activeLocation,
         section,
         year: parsedMonth.year,
         month: parsedMonth.month,
@@ -1513,7 +1583,14 @@ export default function OperationsPreview() {
                 select
                 size="small"
                 value={efficiencyLocation}
-                onChange={(event) => setEfficiencyLocation(event.target.value as EfficiencyLocation)}
+                onChange={(event) => {
+                  const nextLocation = event.target.value as EfficiencyLocation;
+                  setEfficiencyLocation(nextLocation);
+                  const next = new URLSearchParams(searchParams);
+                  next.set('location', nextLocation);
+                  next.set('section', 'efficiency');
+                  setSearchParams(next);
+                }}
                 sx={{
                   width: 180,
                   '& .MuiInputBase-root': { height: 40 },
@@ -1681,7 +1758,7 @@ export default function OperationsPreview() {
               </div>
             </div>
 
-            {(['Контейнеры', 'Авто', 'Диспетчера', 'Курьеры'] as const).map((section) => {
+            {allowedDepartments.map((section) => {
               if (filter !== 'Все' && filter !== section) return null;
               const sectionPeople = sortedPeopleBySection[section];
               return (
@@ -2490,7 +2567,7 @@ export default function OperationsPreview() {
           <Paper className="ops-efficiency-card">
             <div className="ops-efficiency-block">
               <div className="ops-efficiency-block__title">
-                Расчет показателей использования контейнеровозов {parsedMonth.year} г.
+                Расчет показателей использования контейнеровозов {parsedMonth.year} г. — {activeLocation === 'ktk_mow' ? 'КТК Москва' : 'КТК Владивосток'}
               </div>
               <table className="ops-efficiency-table">
                 <thead>
@@ -2554,9 +2631,10 @@ export default function OperationsPreview() {
               </table>
             </div>
 
+            {activeLocation !== 'ktk_mow' && (
             <div className="ops-efficiency-block">
               <div className="ops-efficiency-block__title">
-                Расчет показателей использования автовозов {parsedMonth.year} г.
+                Расчет показателей использования автовозов {parsedMonth.year} г. — КТК Владивосток
               </div>
               <table className="ops-efficiency-table">
                 <thead>
@@ -2619,6 +2697,7 @@ export default function OperationsPreview() {
                 </tbody>
               </table>
             </div>
+            )}
           </Paper>
         </section>
       )}
@@ -2632,7 +2711,9 @@ export default function OperationsPreview() {
                   ? 'рабочий день'
                   : CELL_META[code].code === 'О'
                     ? 'отпуск'
-                    : 'выходной'
+                    : CELL_META[code].code === 'Б'
+                      ? 'больничный'
+                      : 'выходной'
                 : code === 'H' && filter === 'Авто'
                   ? 'Погрузка'
                   : CELL_META[code].label}
@@ -2760,6 +2841,8 @@ export default function OperationsPreview() {
                   ? 'Диспетчер'
                   : editPerson.department === 'Курьеры'
                     ? 'Оперативник'
+                    : editPerson.department === 'Автослесари'
+                      ? 'Автослесарь'
                     : 'Первый водитель'}
               </span>
               <input
@@ -2768,7 +2851,7 @@ export default function OperationsPreview() {
                 onChange={(event) => setEditPerson((prev) => (prev ? { ...prev, name: event.target.value } : prev))}
               />
             </label>
-            {editPerson.department !== 'Диспетчера' && editPerson.department !== 'Курьеры' && (
+            {!isPersonnelDepartment(editPerson.department) && (
               <>
                 <label className="ops-control">
                   <span>Второй водитель</span>

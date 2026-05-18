@@ -2,20 +2,29 @@ import { Request, Response } from 'express';
 import ExcelJS from 'exceljs';
 import { AppDataSource } from '../config/data-source';
 import { OperationsPreviewState } from '../models/operations-preview-state.model';
+import { recordAuditLog } from '../services/audit-log.service';
 
 const operationsPreviewRepo = AppDataSource.getRepository(OperationsPreviewState);
 const OPERATIONS_PREVIEW_SCOPE_KEY = 'ktk_vvo_preview_v1';
+const OPERATIONS_PREVIEW_SCOPE_BY_LOCATION = {
+  ktk_vvo: OPERATIONS_PREVIEW_SCOPE_KEY,
+  ktk_mow: 'ktk_mow_preview_v1',
+  garage_vvo: 'garage_preview_v1',
+  garage_mow: 'garage_mow_preview_v1',
+} as const;
 
-const isValidFilter = (value: unknown): value is 'Все' | 'Контейнеры' | 'Авто' | 'Диспетчера' | 'Курьеры' =>
+const isValidFilter = (value: unknown): value is 'Все' | Department =>
   value === 'Все' ||
   value === 'Контейнеры' ||
   value === 'Авто' ||
   value === 'Диспетчера' ||
-  value === 'Курьеры';
+  value === 'Курьеры' ||
+  value === 'Автослесари';
 
-type PreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'efficiency';
+type PreviewLocation = keyof typeof OPERATIONS_PREVIEW_SCOPE_BY_LOCATION;
+type PreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'mechanics' | 'efficiency';
 type PreviewMode = 'plan' | 'fact';
-type Department = 'Контейнеры' | 'Авто' | 'Диспетчера' | 'Курьеры';
+type Department = 'Контейнеры' | 'Авто' | 'Диспетчера' | 'Курьеры' | 'Автослесари';
 type CellCode = 'W' | 'O' | 'B' | 'H' | 'R' | 'N' | 'V' | 'E';
 type OverrideScopeKey = `${PreviewMode}|${string}`;
 type SortField = 'manual' | 'name' | 'plate';
@@ -61,6 +70,7 @@ const DEPARTMENT_BY_SECTION: Record<PreviewSection, Department> = {
   auto: 'Авто',
   dispatchers: 'Диспетчера',
   couriers: 'Курьеры',
+  mechanics: 'Автослесари',
   efficiency: 'Контейнеры',
 };
 
@@ -69,6 +79,7 @@ const SECTION_LABEL: Record<PreviewSection, string> = {
   auto: 'Автовозы',
   dispatchers: 'Диспетчера',
   couriers: 'Оперативники',
+  mechanics: 'Автослесарь',
   efficiency: 'Эффективность',
 };
 
@@ -145,10 +156,47 @@ const mergePreviewPayload = (
   };
 };
 
+const isValidLocation = (value: unknown): value is PreviewLocation =>
+  value === 'ktk_vvo' || value === 'ktk_mow' || value === 'garage_vvo' || value === 'garage_mow';
+
+const parseLocation = (value: unknown): PreviewLocation => {
+  if (value === 'garage') return 'garage_vvo';
+  return isValidLocation(value) ? value : 'ktk_vvo';
+};
+
 const isValidSection = (value: unknown): value is PreviewSection =>
-  value === 'containers' || value === 'auto' || value === 'dispatchers' || value === 'couriers' || value === 'efficiency';
+  value === 'containers' ||
+  value === 'auto' ||
+  value === 'dispatchers' ||
+  value === 'couriers' ||
+  value === 'mechanics' ||
+  value === 'efficiency';
 
 const isEfficiencyOnlyViewer = (role: unknown): boolean => role === 'director' || role === 'financer';
+
+const isAllowedSectionForLocation = (location: PreviewLocation, section: PreviewSection): boolean => {
+  if (location === 'garage_vvo' || location === 'garage_mow') return section === 'mechanics';
+  if (location === 'ktk_mow') return section === 'containers' || section === 'dispatchers' || section === 'couriers' || section === 'efficiency';
+  return section === 'containers' || section === 'auto' || section === 'dispatchers' || section === 'couriers' || section === 'efficiency';
+};
+
+const canAccessLocationSection = (role: unknown, location: PreviewLocation, section: PreviewSection): boolean => {
+  if (!isAllowedSectionForLocation(location, section)) return false;
+  if (role === 'admin') return true;
+  if ((role === 'head_hr' || role === 'hr_specialist') && section !== 'efficiency') return true;
+  if (role === 'garage_head' || role === 'garage_head_vvo') return location === 'garage_vvo' && section === 'mechanics';
+  if (role === 'manager_ktk_vvo' || role === 'head_ktk_vvo') return location === 'ktk_vvo';
+  if (role === 'manager_ktk_mow' || role === 'head_ktk_mow') return location === 'ktk_mow';
+  if (isEfficiencyOnlyViewer(role)) return (location === 'ktk_vvo' || location === 'ktk_mow') && section === 'efficiency';
+  return false;
+};
+
+const assertPreviewAccess = (role: unknown, location: PreviewLocation, section: PreviewSection) => {
+  if (canAccessLocationSection(role, location, section)) return;
+  const error: any = new Error('Access denied for requested operations preview scope');
+  error.statusCode = 403;
+  throw error;
+};
 
 const isValidSortField = (value: unknown): value is SortField =>
   value === 'manual' || value === 'name' || value === 'plate';
@@ -229,17 +277,13 @@ const parseMonth = (value: unknown, fallback: number): number => {
 };
 
 export const getOperationsPreviewState = async (req: Request, res: Response) => {
-  if (isEfficiencyOnlyViewer(req.user?.role)) {
-    const sectionRaw = req.query.section;
-    if (!isValidSection(sectionRaw) || sectionRaw !== 'efficiency') {
-      const error: any = new Error('Access denied for requested section');
-      error.statusCode = 403;
-      throw error;
-    }
-  }
+  const location = parseLocation(req.query.location);
+  const sectionRaw = req.query.section;
+  const section: PreviewSection = isValidSection(sectionRaw) ? sectionRaw : 'containers';
+  assertPreviewAccess(req.user?.role, location, section);
 
   const row = await operationsPreviewRepo.findOne({
-    where: { scopeKey: OPERATIONS_PREVIEW_SCOPE_KEY },
+    where: { scopeKey: OPERATIONS_PREVIEW_SCOPE_BY_LOCATION[location] },
   });
 
   res.json({
@@ -249,6 +293,11 @@ export const getOperationsPreviewState = async (req: Request, res: Response) => 
 };
 
 export const saveOperationsPreviewState = async (req: Request, res: Response) => {
+  const location = parseLocation(req.query.location ?? req.body?.location);
+  const sectionRaw = req.query.section ?? req.body?.section;
+  const section: PreviewSection = isValidSection(sectionRaw) ? sectionRaw : 'containers';
+  assertPreviewAccess(req.user?.role, location, section);
+
   const sanitized = sanitizePayload(req.body);
   const clientVersions = (req.body?.clientVersions ?? {}) as SaveClientVersions;
   const overridesPatch = (req.body?.overridesPatch ?? null) as OverridesPatchPayload | null;
@@ -256,6 +305,12 @@ export const saveOperationsPreviewState = async (req: Request, res: Response) =>
   const hasOverridesSnapshot = !!sanitized.overrides;
   const hasOverridesPatch = !!overridesPatch && typeof overridesPatch === 'object' && Object.keys(overridesPatch).length > 0;
   const hasPeoplePayload = !!sanitized.peopleByMonth || !!sanitized.peopleState;
+  const auditOverrideScopes = hasOverridesPatch
+    ? Object.keys(overridesPatch ?? {})
+    : Object.keys(((sanitized as PreviewPersistedState).overrides ?? {}));
+  const auditPeopleMonths = Object.keys(((sanitized as PreviewPersistedState).peopleByMonth ?? {}));
+  const auditPatchSetCount = Object.values(overridesPatch ?? {}).reduce((sum, patch) => sum + Object.keys(patch?.set ?? {}).length, 0);
+  const auditPatchUnsetCount = Object.values(overridesPatch ?? {}).reduce((sum, patch) => sum + (patch?.unset ?? []).length, 0);
 
   if ((!hasOverridesSnapshot && !hasOverridesPatch) && !hasPeoplePayload) {
     const error: any = new Error('Invalid operations preview payload');
@@ -264,7 +319,7 @@ export const saveOperationsPreviewState = async (req: Request, res: Response) =>
   }
 
   let row = await operationsPreviewRepo.findOne({
-    where: { scopeKey: OPERATIONS_PREVIEW_SCOPE_KEY },
+    where: { scopeKey: OPERATIONS_PREVIEW_SCOPE_BY_LOCATION[location] },
   });
 
   if (!row) {
@@ -284,7 +339,7 @@ export const saveOperationsPreviewState = async (req: Request, res: Response) =>
       },
     };
     row = operationsPreviewRepo.create({
-      scopeKey: OPERATIONS_PREVIEW_SCOPE_KEY,
+      scopeKey: OPERATIONS_PREVIEW_SCOPE_BY_LOCATION[location],
       payload: payloadWithMeta,
       updatedByUserId: req.user?.id ?? null,
     });
@@ -364,6 +419,27 @@ export const saveOperationsPreviewState = async (req: Request, res: Response) =>
   }
 
   const saved = await operationsPreviewRepo.save(row);
+  await recordAuditLog({
+    action: 'WORK_SCHEDULE_SAVED',
+    userId: req.user?.id ?? null,
+    entityType: 'operations_preview',
+    entityId: `${location}:${section}:${String(sanitized.monthValue ?? '')}`,
+    details: {
+      location,
+      section,
+      monthValue: sanitized.monthValue ?? null,
+      mode: sanitized.mode ?? null,
+      filter: sanitized.filter ?? null,
+      overrideScopes: auditOverrideScopes,
+      peopleMonths: auditPeopleMonths,
+      hasOverridesSnapshot,
+      hasOverridesPatch,
+      hasPeoplePayload,
+      setCount: hasOverridesPatch ? auditPatchSetCount : null,
+      unsetCount: hasOverridesPatch ? auditPatchUnsetCount : null,
+    },
+    req,
+  });
   res.json({
     ok: true,
     updatedAt: saved.updatedAt,
@@ -371,6 +447,7 @@ export const saveOperationsPreviewState = async (req: Request, res: Response) =>
 };
 
 export const downloadOperationsPreviewExcel = async (req: Request, res: Response) => {
+  const location = parseLocation(req.query.location);
   const sectionRaw = req.query.section;
   if (!isValidSection(sectionRaw)) {
     const error: any = new Error('Invalid section');
@@ -378,12 +455,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
     throw error;
   }
   const section = sectionRaw;
-
-  if (isEfficiencyOnlyViewer(req.user?.role) && section !== 'efficiency') {
-    const error: any = new Error('Access denied for requested section');
-    error.statusCode = 403;
-    throw error;
-  }
+  assertPreviewAccess(req.user?.role, location, section);
 
   const department = DEPARTMENT_BY_SECTION[section];
 
@@ -399,7 +471,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
   const sortDirection: SortDirection = isValidSortDirection(req.query.sortDirection) ? req.query.sortDirection : 'asc';
 
   const row = await operationsPreviewRepo.findOne({
-    where: { scopeKey: OPERATIONS_PREVIEW_SCOPE_KEY },
+    where: { scopeKey: OPERATIONS_PREVIEW_SCOPE_BY_LOCATION[location] },
   });
 
   const payload = (row?.payload ?? {}) as PreviewPersistedState;
@@ -407,8 +479,8 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
   const peopleByMonth = extractPeopleByMonth(payload);
   if (section === 'efficiency') {
     const workbook = new ExcelJS.Workbook();
-    const locationLabel = 'КТК Владивосток';
-    const sheet = workbook.addWorksheet('Эффективность КТК Влк');
+    const locationLabel = location === 'ktk_mow' ? 'КТК Москва' : 'КТК Владивосток';
+    const sheet = workbook.addWorksheet(location === 'ktk_mow' ? 'Эффективность КТК Мск' : 'Эффективность КТК Влк');
     const months = Array.from({ length: 12 }, (_, index) => index + 1);
     const monthLabels = ['ЯНВАРЬ', 'ФЕВРАЛЬ', 'МАРТ', 'АПРЕЛЬ', 'МАЙ', 'ИЮНЬ', 'ИЮЛЬ', 'АВГУСТ', 'СЕНТЯБРЬ', 'ОКТЯБРЬ', 'НОЯБРЬ', 'ДЕКАБРЬ'];
     const thin: ExcelJS.BorderStyle = 'thin';
@@ -604,12 +676,14 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
       'Количество контейнеровозов',
       containers
     );
-    renderBlock(
-      16,
-      `Расчет показателей использования автовозов ${year} г. — ${locationLabel}`,
-      'Количество автовозов',
-      auto
-    );
+    if (location !== 'ktk_mow') {
+      renderBlock(
+        16,
+        `Расчет показателей использования автовозов ${year} г. — ${locationLabel}`,
+        'Количество автовозов',
+        auto
+      );
+    }
 
     const buffer = await workbook.xlsx.writeBuffer();
     const filename = `График эффективности - ${locationLabel}.xlsx`;
@@ -654,7 +728,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
     return scopeOverrides[key] ?? getMonthlyCell(rowIndex, day, department);
   };
 
-  const isPersonnel = section === 'dispatchers' || section === 'couriers';
+  const isPersonnel = section === 'dispatchers' || section === 'couriers' || section === 'mechanics';
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('График работы');
 
@@ -894,13 +968,14 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
         { code: '1', text: 'рабочий день', bg: COLORS.cellWork, color: 'FF0F172A' },
         { code: 'О', text: 'отпуск', bg: COLORS.cellVacation, color: 'FF4A2C8A' },
         { code: 'В', text: 'выходной', bg: COLORS.cellWeekend, color: 'FF7B2323' },
+        { code: 'Б', text: 'больничный', bg: COLORS.cellSick, color: 'FF0F385E' },
       ]
     : [
         { code: '1', text: 'на линии', bg: COLORS.cellWork, color: 'FF0F172A' },
         { code: 'В', text: 'выходной', bg: COLORS.cellWeekend, color: 'FF7B2323' },
         { code: 'О', text: 'отпуск', bg: COLORS.cellVacation, color: 'FF4A2C8A' },
         { code: 'Б', text: 'больничный', bg: COLORS.cellSick, color: 'FF0F385E' },
-        { code: 'П', text: 'огрузка', bg: COLORS.cellHalfDay, color: 'FF0F172A' },
+        { code: 'П', text: 'погрузка', bg: COLORS.cellHalfDay, color: 'FF0F172A' },
         { code: 'Р', text: 'ремонт', bg: COLORS.cellRepair, color: 'FF0A4A52' },
         { code: 'Н', text: 'нет водителя', bg: COLORS.cellNoDriver, color: 'FF1F2937' },
       ];
@@ -925,6 +1000,455 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
 
   const buffer = await workbook.xlsx.writeBuffer();
   const filename = `График работы - ${SECTION_LABEL[section]} - ${String(month).padStart(2, '0')}.${year}.xlsx`;
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', buildContentDisposition(filename));
+  res.send(Buffer.from(buffer));
+};
+
+type RenderScheduleWorksheetParams = {
+  workbook: ExcelJS.Workbook;
+  sheetName: string;
+  tabColor: string;
+  section: Exclude<PreviewSection, 'efficiency'>;
+  department: Department;
+  year: number;
+  month: number;
+  monthValue: string;
+  mode: PreviewMode;
+  peopleByMonth: Record<string, PersonRow[]>;
+  overrides: Record<OverrideScopeKey, Record<string, CellCode>>;
+};
+
+const renderOperationsScheduleWorksheet = ({
+  workbook,
+  sheetName,
+  tabColor,
+  section,
+  department,
+  year,
+  month,
+  monthValue,
+  mode,
+  peopleByMonth,
+  overrides,
+}: RenderScheduleWorksheetParams): void => {
+  const allPeople = resolvePeopleForMonth(monthValue, peopleByMonth);
+  const sectionPeople = allPeople
+    .map((person, index) => ({ ...person, rowIndex: index }))
+    .filter((person) => person.department === department);
+
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const monthDays = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const weekdays = monthDays.map((day) => WEEKDAY_LABELS[new Date(year, month - 1, day).getDay()]);
+  const scopeKey = `${mode}|${monthValue}` as OverrideScopeKey;
+  const scopeOverrides = overrides[scopeKey] ?? {};
+  const isPersonnel = section === 'dispatchers' || section === 'couriers' || section === 'mechanics';
+  const sheet = workbook.addWorksheet(makeSheetName(workbook, sheetName));
+  sheet.properties.tabColor = { argb: tabColor };
+
+  const COLORS = {
+    border: 'FFD6DCE8',
+    titleBg: 'FFE6E6E6',
+    header: 'FFF2F4F9',
+    weekend: 'FFF3F3F3',
+    totalRow: 'FFEAF2FF',
+    white: 'FFFFFFFF',
+    cellWork: 'FF87D4A1',
+    cellHalfDay: 'FFE6CF73',
+    cellSick: 'FF87BDDE',
+    cellRepair: 'FF56C6CE',
+    cellNoDriver: 'FF95A5B6',
+    cellWeekend: 'FFEBC1C1',
+    cellVacation: 'FFB394E0',
+    cellEmpty: 'FFFFFFFF',
+    textDark: 'FF1F2937',
+    textRed: 'FFD32F2F',
+  } as const;
+
+  const getCellCode = (rowIndex: number, day: number, personId: string, lane: '1' | '2' = '1'): CellCode => {
+    const key = `${personId}-${lane}-${day}`;
+    return scopeOverrides[key] ?? getMonthlyCell(rowIndex, day, department);
+  };
+
+  const startRow = 4;
+  const nameCol = 1;
+  const plateCol = isPersonnel ? -1 : 2;
+  const noteCol = isPersonnel ? -1 : 3;
+  const dayStartCol = isPersonnel ? 2 : 4;
+  const totalCol = dayStartCol + monthDays.length;
+
+  sheet.getColumn(nameCol).width = 28;
+  if (!isPersonnel) {
+    sheet.getColumn(plateCol).width = 13;
+    sheet.getColumn(noteCol).width = 17;
+  }
+  monthDays.forEach((_, idx) => {
+    sheet.getColumn(dayStartCol + idx).width = 4.3;
+  });
+  sheet.getColumn(totalCol).width = isPersonnel ? 18 : 12;
+
+  sheet.mergeCells(1, 1, 1, totalCol);
+  sheet.getCell(1, 1).value = `График работы - ${SECTION_LABEL[section]} (${mode === 'plan' ? 'План' : 'Факт'})`;
+  sheet.getCell(1, 1).font = { bold: true, size: 13, name: 'Arial', color: { argb: COLORS.textDark } };
+  sheet.getCell(1, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.titleBg } };
+  sheet.getCell(1, 1).alignment = { horizontal: 'left', vertical: 'middle' };
+  sheet.getRow(1).height = 24;
+
+  sheet.mergeCells(2, 1, 2, totalCol);
+  sheet.getCell(2, 1).value = `Период: ${String(month).padStart(2, '0')}.${year}`;
+  sheet.getCell(2, 1).font = { size: 11, name: 'Arial', color: { argb: 'FF5F6B7A' } };
+  sheet.getCell(2, 1).alignment = { horizontal: 'left', vertical: 'middle' };
+  sheet.getRow(2).height = 20;
+
+  const headerDaysRow = startRow;
+  const headerWeekdaysRow = startRow + 1;
+  const verticalHeaderEnd = startRow + 1;
+  const thinBorderStyle: ExcelJS.BorderStyle = 'thin';
+  const fullBorder: Partial<ExcelJS.Borders> = {
+    top: { style: thinBorderStyle, color: { argb: COLORS.border } },
+    left: { style: thinBorderStyle, color: { argb: COLORS.border } },
+    bottom: { style: thinBorderStyle, color: { argb: COLORS.border } },
+    right: { style: thinBorderStyle, color: { argb: COLORS.border } },
+  };
+
+  const applyBorderRange = (rowNumber: number) => {
+    for (let col = 1; col <= totalCol; col += 1) {
+      sheet.getCell(rowNumber, col).border = fullBorder;
+    }
+  };
+
+  const applyHeaderFill = (rowNumber: number) => {
+    for (let col = 1; col <= totalCol; col += 1) {
+      sheet.getCell(rowNumber, col).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.header } };
+    }
+  };
+
+  sheet.mergeCells(headerDaysRow, nameCol, verticalHeaderEnd, nameCol);
+  sheet.getCell(headerDaysRow, nameCol).value = 'ФИО';
+  if (!isPersonnel) {
+    sheet.mergeCells(headerDaysRow, plateCol, verticalHeaderEnd, plateCol);
+    sheet.getCell(headerDaysRow, plateCol).value = 'Г/Н ТС';
+    sheet.mergeCells(headerDaysRow, noteCol, verticalHeaderEnd, noteCol);
+    sheet.getCell(headerDaysRow, noteCol).value = 'Примечание';
+  }
+  sheet.mergeCells(headerDaysRow, totalCol, verticalHeaderEnd, totalCol);
+  sheet.getCell(headerDaysRow, totalCol).value = isPersonnel ? 'Количество рабочих смен' : 'Кол-во смен';
+
+  monthDays.forEach((day, index) => {
+    const col = dayStartCol + index;
+    const dateCell = sheet.getCell(headerDaysRow, col);
+    const weekdayCell = sheet.getCell(headerWeekdaysRow, col);
+    dateCell.value = day;
+    weekdayCell.value = weekdays[index];
+    const isWeekend = weekdays[index] === 'сб' || weekdays[index] === 'вс';
+    if (isWeekend) {
+      weekdayCell.font = { color: { argb: COLORS.textRed }, size: 11, name: 'Arial' };
+      dateCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.weekend } };
+      weekdayCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.weekend } };
+    }
+  });
+
+  [headerDaysRow, headerWeekdaysRow].forEach((rowNumber) => {
+    applyBorderRange(rowNumber);
+    applyHeaderFill(rowNumber);
+    const row = sheet.getRow(rowNumber);
+    row.height = rowNumber === headerDaysRow ? 30 : 26;
+    row.eachCell((cell, colNumber) => {
+      const isLeft = colNumber === nameCol || (!isPersonnel && (colNumber === plateCol || colNumber === noteCol));
+      cell.alignment = { vertical: 'middle', horizontal: isLeft ? 'left' : 'center' };
+      if (!cell.font) {
+        cell.font = { size: 11, name: 'Arial', color: { argb: COLORS.textDark } };
+      }
+    });
+  });
+
+  const styleDayCell = (cell: ExcelJS.Cell, code: CellCode, isWeekend: boolean) => {
+    const styleMap: Record<CellCode, { bg: string; color: string }> = {
+      W: { bg: COLORS.cellWork, color: 'FF0F172A' },
+      H: { bg: COLORS.cellHalfDay, color: 'FF0F172A' },
+      B: { bg: COLORS.cellSick, color: 'FF0F385E' },
+      R: { bg: COLORS.cellRepair, color: 'FF0A4A52' },
+      N: { bg: COLORS.cellNoDriver, color: 'FF1F2937' },
+      O: { bg: COLORS.cellWeekend, color: 'FF7B2323' },
+      V: { bg: COLORS.cellVacation, color: 'FF4A2C8A' },
+      E: { bg: isWeekend ? COLORS.weekend : COLORS.cellEmpty, color: 'FF374151' },
+    };
+    const dayStyle = styleMap[code];
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: dayStyle.bg } };
+    cell.font = { size: 11, name: 'Arial', bold: code !== 'E', color: { argb: dayStyle.color } };
+  };
+
+  let cursorRow = startRow + 2;
+  sectionPeople.forEach((person) => {
+    const lanes: Array<'1' | '2'> = person.secondName ? ['1', '2'] : ['1'];
+    const personStartRow = cursorRow;
+    lanes.forEach((lane) => {
+      const rowIndex = lane === '1' ? person.rowIndex : person.rowIndex + 50;
+      const name = lane === '1' ? person.name : person.secondName ?? '';
+      const note = lane === '1' ? person.note ?? '' : person.secondNote ?? '';
+
+      sheet.getCell(cursorRow, nameCol).value = name;
+      if (!isPersonnel) {
+        sheet.getCell(cursorRow, plateCol).value = lane === '1' ? person.plate : '';
+        sheet.getCell(cursorRow, noteCol).value = note;
+      }
+
+      let workCount = 0;
+      monthDays.forEach((day, index) => {
+        const code = getCellCode(rowIndex, day, person.id, lane);
+        if (code === 'W') workCount += 1;
+        const dayCol = dayStartCol + index;
+        const cell = sheet.getCell(cursorRow, dayCol);
+        cell.value = toCellLabel(code);
+        styleDayCell(cell, code, weekdays[index] === 'сб' || weekdays[index] === 'вс');
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      });
+      sheet.getCell(cursorRow, totalCol).value = workCount;
+      sheet.getRow(cursorRow).height = 28;
+      for (let col = 1; col <= totalCol; col += 1) {
+        const cell = sheet.getCell(cursorRow, col);
+        if (col === nameCol || (!isPersonnel && (col === plateCol || col === noteCol))) {
+          cell.alignment = { horizontal: 'left', vertical: 'middle' };
+          if (!cell.font) cell.font = { size: 11, name: 'Arial', color: { argb: COLORS.textDark } };
+        } else if (col === totalCol) {
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          cell.font = { size: 11, bold: true, name: 'Arial', color: { argb: COLORS.textDark } };
+        }
+        if (!cell.fill) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.white } };
+        }
+        cell.border = fullBorder;
+      }
+      cursorRow += 1;
+    });
+
+    if (!isPersonnel && person.secondName) {
+      sheet.mergeCells(personStartRow, plateCol, personStartRow + 1, plateCol);
+      const plateCell = sheet.getCell(personStartRow, plateCol);
+      plateCell.value = person.plate;
+      plateCell.alignment = { horizontal: 'left', vertical: 'middle' };
+      plateCell.font = { size: 11, name: 'Arial', color: { argb: COLORS.textDark } };
+      plateCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.white } };
+      for (let row = personStartRow; row <= personStartRow + 1; row += 1) {
+        sheet.getCell(row, plateCol).border = fullBorder;
+      }
+    }
+  });
+
+  sheet.getCell(cursorRow, nameCol).value = isPersonnel ? 'На смене:' : 'Итого';
+  if (!isPersonnel) {
+    const uniquePlates = new Set(
+      sectionPeople.map((person) => person.plate.trim().toUpperCase()).filter((plate) => plate.length > 0)
+    ).size;
+    sheet.getCell(cursorRow, plateCol).value = uniquePlates;
+  }
+
+  monthDays.forEach((day, index) => {
+    const total = sectionPeople.reduce((acc, person) => {
+      const code = getCellCode(person.rowIndex, day, person.id, '1');
+      if (section === 'containers' || section === 'auto') {
+        const primaryWorked = code === 'W' || code === 'H';
+        const secondaryWorked = person.secondName
+          ? (() => {
+              const code2 = getCellCode(person.rowIndex + 50, day, person.id, '2');
+              return code2 === 'W' || code2 === 'H';
+            })()
+          : false;
+        return acc + (primaryWorked || secondaryWorked ? 1 : 0);
+      }
+
+      let next = code === 'W' ? acc + 1 : acc;
+      if (person.secondName) {
+        const code2 = getCellCode(person.rowIndex + 50, day, person.id, '2');
+        if (code2 === 'W') next += 1;
+      }
+      return next;
+    }, 0);
+    sheet.getCell(cursorRow, dayStartCol + index).value = total;
+  });
+  sheet.getRow(cursorRow).height = 30;
+  for (let col = 1; col <= totalCol; col += 1) {
+    const cell = sheet.getCell(cursorRow, col);
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.totalRow } };
+    cell.border = fullBorder;
+    if (col === nameCol || (!isPersonnel && (col === plateCol || col === noteCol))) {
+      cell.alignment = { horizontal: 'left', vertical: 'middle' };
+      cell.font = { size: 11, bold: true, name: 'Arial', color: { argb: COLORS.textDark } };
+    } else {
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.font = { size: 11, name: 'Arial', color: { argb: COLORS.textDark } };
+    }
+  }
+
+  const legendStartRow = cursorRow + 2;
+  const legendItems = isPersonnel
+    ? [
+        { code: '1', text: 'рабочий день', bg: COLORS.cellWork, color: 'FF0F172A' },
+        { code: 'О', text: 'отпуск', bg: COLORS.cellVacation, color: 'FF4A2C8A' },
+        { code: 'В', text: 'выходной', bg: COLORS.cellWeekend, color: 'FF7B2323' },
+        { code: 'Б', text: 'больничный', bg: COLORS.cellSick, color: 'FF0F385E' },
+      ]
+    : [
+        { code: '1', text: 'на линии', bg: COLORS.cellWork, color: 'FF0F172A' },
+        { code: 'В', text: 'выходной', bg: COLORS.cellWeekend, color: 'FF7B2323' },
+        { code: 'О', text: 'отпуск', bg: COLORS.cellVacation, color: 'FF4A2C8A' },
+        { code: 'Б', text: 'больничный', bg: COLORS.cellSick, color: 'FF0F385E' },
+        { code: 'П', text: 'погрузка', bg: COLORS.cellHalfDay, color: 'FF0F172A' },
+        { code: 'Р', text: 'ремонт', bg: COLORS.cellRepair, color: 'FF0A4A52' },
+        { code: 'Н', text: 'нет водителя', bg: COLORS.cellNoDriver, color: 'FF1F2937' },
+      ];
+  let legendCol = 1;
+  legendItems.forEach((item) => {
+    sheet.mergeCells(legendStartRow, legendCol, legendStartRow, legendCol + 2);
+    const legendCell = sheet.getCell(legendStartRow, legendCol);
+    legendCell.value = `${item.code} — ${item.text}`;
+    legendCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: item.bg } };
+    legendCell.font = { size: 11, name: 'Arial', color: { argb: item.color }, bold: true };
+    legendCell.alignment = { horizontal: 'left', vertical: 'middle' };
+    legendCell.border = fullBorder;
+    for (let col = legendCol; col <= legendCol + 2; col += 1) {
+      sheet.getCell(legendStartRow, col).border = fullBorder;
+      sheet.getCell(legendStartRow, col).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: item.bg } };
+    }
+    legendCol += 4;
+  });
+  sheet.getRow(legendStartRow).height = 22;
+  sheet.views = [{ state: 'frozen', ySplit: startRow + 1, xSplit: dayStartCol - 1 }];
+};
+
+
+const REPORT_LOCATION_PREFIX: Record<PreviewLocation, string> = {
+  ktk_vvo: 'Влд',
+  ktk_mow: 'МСК',
+  garage_vvo: 'Влд',
+  garage_mow: 'МСК',
+};
+
+const REPORT_SHEET_TAB_COLOR_BY_LOCATION: Record<PreviewLocation, string> = {
+  ktk_vvo: 'FFBFD7F5',
+  ktk_mow: 'FFFFD6BA',
+  garage_vvo: 'FFCFE8D6',
+  garage_mow: 'FFE5E7EB',
+};
+
+const REPORT_MONTH_NAMES = [
+  '',
+  'январь',
+  'февраль',
+  'март',
+  'апрель',
+  'май',
+  'июнь',
+  'июль',
+  'август',
+  'сентябрь',
+  'октябрь',
+  'ноябрь',
+  'декабрь',
+];
+
+const REPORT_SECTION_SHEET_LABEL: Record<PreviewSection, string> = {
+  containers: 'Контейнеровозы',
+  auto: 'Автовозы',
+  dispatchers: 'Диспетчера',
+  couriers: 'Оперативники',
+  mechanics: 'Автослесарь',
+  efficiency: 'Эффективность',
+};
+
+const parseReportCity = (value: unknown, locations: PreviewLocation[]): 'vvo' | 'mow' => {
+  if (value === 'mow') return 'mow';
+  if (value === 'vvo') return 'vvo';
+  return locations.includes('ktk_mow') && !locations.includes('ktk_vvo') && !locations.includes('garage_vvo') ? 'mow' : 'vvo';
+};
+
+const parseCsv = (value: unknown): string[] => {
+  if (typeof value !== 'string') return [];
+  return value.split(',').map((item) => item.trim()).filter(Boolean);
+};
+
+const makeSheetName = (workbook: ExcelJS.Workbook, rawName: string): string => {
+  const base = rawName.replace(/[\\/*?:\[\]]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 31) || 'Лист';
+  let name = base;
+  let index = 2;
+  while (workbook.getWorksheet(name)) {
+    const suffix = ` ${index}`;
+    name = `${base.slice(0, 31 - suffix.length)}${suffix}`;
+    index += 1;
+  }
+  return name;
+};
+
+export const downloadOperationsPreviewReport = async (req: Request, res: Response) => {
+  if (req.user?.role !== 'admin' && req.user?.role !== 'head_hr' && req.user?.role !== 'hr_specialist') {
+    const error: any = new Error('Access denied for operations preview report');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const now = new Date();
+  const year = parseYear(req.query.year, now.getFullYear());
+  const month = parseMonth(req.query.month, now.getMonth() + 1);
+  const monthValue = `${year}-${String(month).padStart(2, '0')}`;
+  const requestedLocations = parseCsv(req.query.locations)
+    .filter(isValidLocation)
+    .filter((location) => location !== 'garage_mow') as PreviewLocation[];
+  const requestedSections = parseCsv(req.query.sections).filter(isValidSection) as PreviewSection[];
+  const requestedModes = parseCsv(req.query.modes).filter((mode): mode is PreviewMode => mode === 'plan' || mode === 'fact');
+  const locations = requestedLocations.length > 0 ? requestedLocations : (['ktk_vvo', 'ktk_mow', 'garage_vvo'] as PreviewLocation[]);
+  const reportCity = parseReportCity(req.query.city, locations);
+  const sections = requestedSections.length > 0 ? requestedSections : (['containers', 'auto', 'dispatchers', 'couriers', 'mechanics'] as PreviewSection[]);
+  const modes = requestedModes.length > 0 ? requestedModes : (['fact'] as PreviewMode[]);
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Logistics Reporting';
+  workbook.created = new Date();
+
+  let sheetsCount = 0;
+  for (const location of locations) {
+    const row = await operationsPreviewRepo.findOne({
+      where: { scopeKey: OPERATIONS_PREVIEW_SCOPE_BY_LOCATION[location] },
+    });
+    const payload = (row?.payload ?? {}) as PreviewPersistedState;
+    const overrides = (payload.overrides ?? {}) as Record<OverrideScopeKey, Record<string, CellCode>>;
+    const peopleByMonth = extractPeopleByMonth(payload);
+
+    for (const section of sections) {
+      if (section === 'efficiency' || !canAccessLocationSection(req.user?.role, location, section)) continue;
+      const department = DEPARTMENT_BY_SECTION[section];
+      const sectionModes = section === 'containers' ? modes : (['fact'] as PreviewMode[]);
+
+      for (const mode of sectionModes) {
+        const modeLabel = section === 'containers' ? ` (${mode === 'plan' ? 'план' : 'факт'})` : '';
+        const sheetTitle = `${REPORT_LOCATION_PREFIX[location]} - ${REPORT_SECTION_SHEET_LABEL[section]}${modeLabel}`;
+        renderOperationsScheduleWorksheet({
+          workbook,
+          sheetName: sheetTitle,
+          tabColor: REPORT_SHEET_TAB_COLOR_BY_LOCATION[location],
+          section: section as Exclude<PreviewSection, 'efficiency'>,
+          department,
+          year,
+          month,
+          monthValue,
+          mode,
+          peopleByMonth,
+          overrides,
+        });
+        sheetsCount += 1;
+      }
+    }
+  }
+
+  if (sheetsCount === 0) {
+    const error: any = new Error('No report sections available for selected filters');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const reportCityLabel = reportCity === 'mow' ? 'Москва' : 'Владивосток';
+  const reportMonthName = REPORT_MONTH_NAMES[month] ?? String(month).padStart(2, '0');
+  const filename = `ГР ${reportCityLabel} - ${reportMonthName} ${year}.xlsx`;
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', buildContentDisposition(filename));
   res.send(Buffer.from(buffer));

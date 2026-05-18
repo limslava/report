@@ -18,6 +18,20 @@
   - Added backend cache for `/v2/planning/reports/tech-dashboard` (short TTL) and frontend debounce/lazy chart init for faster loading.
 
 - Work schedule (Operations Preview)
+  - Added new schedule roles and access scopes:
+    `Руководитель отдела кадров`, `Специалист отдела кадров`,
+    `Начальник гаража Владивосток`, `Руководитель КТК Москва`.
+  - Added separate work schedule scopes for Vladivostok and Moscow.
+  - Reworked admin/HR schedule menu into location-first hierarchy:
+    `Владивосток -> Диспетчерский отдел/Гараж` and
+    `Москва -> Диспетчерский отдел`.
+  - Added garage mechanic schedule section (`Автослесарь`) and sick leave status
+    `Б — больничный` for personnel schedules.
+  - Added HR/admin schedule report builder with location-dependent filters and
+    multi-sheet Excel export.
+  - Unified report Excel sheets with regular schedule exports: headers, colors,
+    totals, legends, frozen panes, readable sheet names, and soft sheet tab colors.
+  - Added work schedule audit action `WORK_SCHEDULE_SAVED`.
   - Reworked KTK Vladivostok left menu into "График работы" with nested sections:
     `Контейнеровозы`, `Автовозы`, `Диспетчера`, `Курьеры (Оперативники)`.
   - Added role-aware access/scoping for KTK VVO manager/head/admin in work schedule screens.

@@ -4,6 +4,7 @@ export const DEPARTMENT_ROLES = [
   'manager_ktk_vvo',
   'head_ktk_vvo',
   'manager_ktk_mow',
+  'head_ktk_mow',
   'manager_auto',
   'manager_rail',
   'manager_extra',

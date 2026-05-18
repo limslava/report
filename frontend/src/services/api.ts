@@ -105,12 +105,20 @@ export const getSmtpConfig = () => api.get('/smtp-config');
 export const saveSmtpConfig = (data: any) => api.post('/smtp-config', data);
 export const testSmtpConfig = () => api.post('/smtp-config/test');
 
-export const getOperationsPreviewState = (params?: { section?: 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'efficiency' }) =>
+export type OperationsPreviewLocation = 'ktk_vvo' | 'ktk_mow' | 'garage_vvo' | 'garage_mow';
+export type OperationsPreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'mechanics' | 'efficiency';
+
+export const getOperationsPreviewState = (params?: { location?: OperationsPreviewLocation; section?: OperationsPreviewSection }) =>
   api.get('/operations-preview/state', { params });
-export const saveOperationsPreviewState = (state: Record<string, unknown>, updatedAt?: string | null) =>
-  api.put('/operations-preview/state', updatedAt ? { ...state, updatedAt } : state);
+export const saveOperationsPreviewState = (
+  state: Record<string, unknown>,
+  updatedAt?: string | null,
+  params?: { location?: OperationsPreviewLocation; section?: OperationsPreviewSection }
+) =>
+  api.put('/operations-preview/state', updatedAt ? { ...state, updatedAt } : state, { params });
 export const downloadOperationsPreviewExcel = async (params: {
-  section: 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'efficiency';
+  location?: OperationsPreviewLocation;
+  section: OperationsPreviewSection;
   year: number;
   month: number;
   mode: 'plan' | 'fact';
@@ -119,6 +127,23 @@ export const downloadOperationsPreviewExcel = async (params: {
 }) =>
   api.get('/operations-preview/export', {
     params,
+    responseType: 'blob',
+  });
+export const downloadOperationsPreviewReport = async (params: {
+  year: number;
+  month: number;
+  city?: 'vvo' | 'mow';
+  locations?: OperationsPreviewLocation[];
+  sections?: Exclude<OperationsPreviewSection, 'efficiency'>[];
+  modes?: Array<'plan' | 'fact'>;
+}) =>
+  api.get('/operations-preview/report', {
+    params: {
+      ...params,
+      locations: params.locations?.join(','),
+      sections: params.sections?.join(','),
+      modes: params.modes?.join(','),
+    },
     responseType: 'blob',
   });
 
