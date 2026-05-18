@@ -23,10 +23,21 @@ import {
 
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
 const OperationsPreview = lazy(() => import('./pages/OperationsPreview'));
+const OperationsScheduleReportsPage = lazy(() => import('./pages/OperationsScheduleReportsPage'));
 
 function App() {
   const { token, user } = useAuthStore();
   const isAuthenticated = !!token;
+  const defaultAuthenticatedRoute = (() => {
+    if (canViewTechDashboard(user?.role)) return '/sw-tech-dashboard';
+    if (user?.role === 'garage_head' || user?.role === 'garage_head_vvo') {
+      return '/operations-preview?location=garage_vvo&section=mechanics';
+    }
+    if (user?.role === 'head_hr' || user?.role === 'hr_specialist') {
+      return '/operations-preview?location=ktk_vvo&section=containers';
+    }
+    return '/plans';
+  })();
 
   return (
     <Routes>
@@ -38,7 +49,7 @@ function App() {
           <Route path="/" element={<DashboardLayout />}>
           <Route
             index
-            element={<Navigate to={canViewTechDashboard(user?.role) ? '/sw-tech-dashboard' : '/plans'} replace />}
+            element={<Navigate to={defaultAuthenticatedRoute} replace />}
           />
           <Route
             path="summary-report"
@@ -83,6 +94,16 @@ function App() {
               <RouteAccessGuard allow={canAccessOperationsPreview(user?.role) || canViewOperationsEfficiency(user?.role)}>
                 <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
                   <OperationsPreview />
+                </Suspense>
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="operations-preview/reports"
+            element={(
+              <RouteAccessGuard allow={user?.role === 'admin' || user?.role === 'head_hr' || user?.role === 'hr_specialist'}>
+                <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
+                  <OperationsScheduleReportsPage />
                 </Suspense>
               </RouteAccessGuard>
             )}
