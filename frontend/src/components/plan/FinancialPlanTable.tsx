@@ -426,7 +426,7 @@ export default function FinancialPlanTable({ year, onYearChange, canEdit }: Fina
       setError(null);
       const { blob, filename } = await financialPlanApi.downloadExcel({ year });
       const fallbackName = `Валовая прибыль, план — ${year}.xlsx`;
-      downloadBlob(blob, filename ?? fallbackName);
+      await downloadBlob(blob, filename ?? fallbackName);
     } catch (err: any) {
       setError(err?.message || 'Ошибка выгрузки Excel');
     } finally {

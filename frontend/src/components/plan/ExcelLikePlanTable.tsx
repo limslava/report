@@ -312,7 +312,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
         asOfDate: currentContext.asOfDate,
       });
       const fallbackName = `${report?.segment.name ?? currentContext.segmentCode} — ${formatDateForFilename(currentContext.asOfDate)}.xlsx`;
-      downloadBlob(blob, filename ?? fallbackName);
+      await downloadBlob(blob, filename ?? fallbackName);
     } catch (err: any) {
       setError(err?.message || 'Ошибка выгрузки Excel');
     } finally {

@@ -694,20 +694,20 @@ const DashboardLayout = () => {
                               <>
                                 <ListItem disablePadding sx={{ pl: 8 }}>
                                   <ListItemButton
-                                    selected={location.pathname === '/operations-preview' && location.search.includes('location=ktk_vvo') && location.search.includes('section=auto')}
-                                    onClick={() => handleNavigate('/operations-preview?location=ktk_vvo&section=auto')}
-                                    sx={{ py: 0.5, minHeight: 30 }}
-                                  >
-                                    <ListItemText primary="Автовозы" primaryTypographyProps={{ fontSize: 13 }} />
-                                  </ListItemButton>
-                                </ListItem>
-                                <ListItem disablePadding sx={{ pl: 8 }}>
-                                  <ListItemButton
                                     selected={location.pathname === '/operations-preview' && location.search.includes('location=ktk_vvo') && location.search.includes('section=containers')}
                                     onClick={() => handleNavigate('/operations-preview?location=ktk_vvo&section=containers')}
                                     sx={{ py: 0.5, minHeight: 30 }}
                                   >
                                     <ListItemText primary="Контейнеровозы" primaryTypographyProps={{ fontSize: 13 }} />
+                                  </ListItemButton>
+                                </ListItem>
+                                <ListItem disablePadding sx={{ pl: 8 }}>
+                                  <ListItemButton
+                                    selected={location.pathname === '/operations-preview' && location.search.includes('location=ktk_vvo') && location.search.includes('section=auto')}
+                                    onClick={() => handleNavigate('/operations-preview?location=ktk_vvo&section=auto')}
+                                    sx={{ py: 0.5, minHeight: 30 }}
+                                  >
+                                    <ListItemText primary="Автовозы" primaryTypographyProps={{ fontSize: 13 }} />
                                   </ListItemButton>
                                 </ListItem>
                                 <ListItem disablePadding sx={{ pl: 8 }}>

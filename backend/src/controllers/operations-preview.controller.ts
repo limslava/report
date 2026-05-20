@@ -25,10 +25,11 @@ type PreviewLocation = keyof typeof OPERATIONS_PREVIEW_SCOPE_BY_LOCATION;
 type PreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'mechanics' | 'efficiency';
 type PreviewMode = 'plan' | 'fact';
 type Department = 'Контейнеры' | 'Авто' | 'Диспетчера' | 'Курьеры' | 'Автослесари';
-type CellCode = 'W' | 'O' | 'B' | 'H' | 'R' | 'N' | 'V' | 'E';
+type CellCode = 'W' | 'O' | 'B' | 'H' | 'S' | 'R' | 'N' | 'V' | 'E';
 type OverrideScopeKey = `${PreviewMode}|${string}`;
 type SortField = 'manual' | 'name' | 'plate';
 type SortDirection = 'asc' | 'desc';
+const VALID_CELL_CODES = new Set<CellCode>(['W', 'O', 'B', 'H', 'S', 'R', 'N', 'V', 'E']);
 
 type PersonRow = {
   id: string;
@@ -217,6 +218,19 @@ const getMonthlyCell = (_rowIndex: number, _day: number, _department: Department
   return 'E';
 };
 
+const normalizeCellCode = (value: unknown): CellCode => {
+  return typeof value === 'string' && VALID_CELL_CODES.has(value as CellCode) ? (value as CellCode) : 'E';
+};
+
+const getShiftValueForCount = (department: Department, code: CellCode): number => {
+  if (code === 'W') return 1;
+  if (department === 'Авто' && code === 'S') return 1;
+  if (code !== 'H') return 0;
+  if (department === 'Контейнеры') return 0.5;
+  if (department === 'Авто') return 1;
+  return 0;
+};
+
 const toCellLabel = (code: CellCode): string => {
   const map: Record<CellCode, string> = {
     E: '',
@@ -225,14 +239,16 @@ const toCellLabel = (code: CellCode): string => {
     V: 'О',
     B: 'Б',
     H: 'П',
+    S: 'С',
     R: 'Р',
     N: 'Н',
   };
-  return map[code];
+  return map[normalizeCellCode(code)];
 };
 
 const buildContentDisposition = (filename: string): string => {
-  const sanitized = filename.replace(/"/g, '');
+  const normalized = filename.normalize('NFC');
+  const sanitized = normalized.replace(/"/g, '');
   const asciiFallback = sanitized
     .normalize('NFKD')
     .replace(/[^\x20-\x7E]+/g, '_')
@@ -240,7 +256,7 @@ const buildContentDisposition = (filename: string): string => {
     .replace(/\s+/g, ' ')
     .trim();
   const safeFallback = asciiFallback || 'report.xlsx';
-  const encoded = encodeURIComponent(filename)
+  const encoded = encodeURIComponent(normalized)
     .replace(/['()]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)
     .replace(/\*/g, '%2A');
   return `attachment; filename="${safeFallback}"; filename*=UTF-8''${encoded}`;
@@ -385,7 +401,7 @@ export const saveOperationsPreviewState = async (req: Request, res: Response) =>
         const toSet = patch?.set ?? {};
         const toUnset = patch?.unset ?? [];
         Object.entries(toSet).forEach(([cellKey, cellCode]) => {
-          currentScope[cellKey] = cellCode;
+          currentScope[cellKey] = normalizeCellCode(cellCode);
         });
         toUnset.forEach((cellKey) => {
           delete currentScope[cellKey];
@@ -465,7 +481,12 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
   const monthValue = `${year}-${String(month).padStart(2, '0')}`;
 
   const requestedMode: PreviewMode = req.query.mode === 'plan' ? 'plan' : 'fact';
-  const mode: PreviewMode = section === 'containers' ? requestedMode : 'fact';
+  const canUseMechanicPlan = section === 'mechanics' && (
+    req.user?.role === 'admin'
+    || req.user?.role === 'head_hr'
+    || req.user?.role === 'hr_specialist'
+  );
+  const mode: PreviewMode = section === 'containers' || canUseMechanicPlan ? requestedMode : 'fact';
 
   const sortField: SortField = isValidSortField(req.query.sortField) ? req.query.sortField : 'manual';
   const sortDirection: SortDirection = isValidSortDirection(req.query.sortDirection) ? req.query.sortDirection : 'asc';
@@ -492,7 +513,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
     };
 
     const toVehicleDayCode = (codes: CellCode[]): 'WORK' | 'REPAIR' | 'NO_DRIVER' | 'SICK' | 'OFF' | 'EMPTY' => {
-      if (codes.some((code) => code === 'W' || code === 'H')) return 'WORK';
+      if (codes.some((code) => code === 'W' || code === 'H' || code === 'S')) return 'WORK';
       if (codes.some((code) => code === 'R')) return 'REPAIR';
       if (codes.some((code) => code === 'N')) return 'NO_DRIVER';
       if (codes.some((code) => code === 'B')) return 'SICK';
@@ -725,7 +746,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
     lane: '1' | '2' = '1'
   ): CellCode => {
     const key = `${personId}-${lane}-${day}`;
-    return scopeOverrides[key] ?? getMonthlyCell(rowIndex, day, department);
+    return normalizeCellCode(scopeOverrides[key] ?? getMonthlyCell(rowIndex, day, department));
   };
 
   const isPersonnel = section === 'dispatchers' || section === 'couriers' || section === 'mechanics';
@@ -741,6 +762,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
     white: 'FFFFFFFF',
     cellWork: 'FF87D4A1',
     cellHalfDay: 'FFE6CF73',
+    cellCargoRemoval: 'FFF8C99B',
     cellSick: 'FF87BDDE',
     cellRepair: 'FF56C6CE',
     cellNoDriver: 'FF95A5B6',
@@ -848,6 +870,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
     const styleMap: Record<CellCode, { bg: string; color: string }> = {
       W: { bg: COLORS.cellWork, color: 'FF0F172A' },
       H: { bg: COLORS.cellHalfDay, color: 'FF0F172A' },
+      S: { bg: COLORS.cellCargoRemoval, color: 'FF7C2D12' },
       B: { bg: COLORS.cellSick, color: 'FF0F385E' },
       R: { bg: COLORS.cellRepair, color: 'FF0A4A52' },
       N: { bg: COLORS.cellNoDriver, color: 'FF1F2937' },
@@ -855,9 +878,10 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
       V: { bg: COLORS.cellVacation, color: 'FF4A2C8A' },
       E: { bg: isWeekend ? COLORS.weekend : COLORS.cellEmpty, color: 'FF374151' },
     };
-    const s = styleMap[code];
+    const normalizedCode = normalizeCellCode(code);
+    const s = styleMap[normalizedCode] ?? styleMap.E;
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: s.bg } };
-    cell.font = { size: 11, name: 'Arial', bold: code !== 'E', color: { argb: s.color } };
+    cell.font = { size: 11, name: 'Arial', bold: normalizedCode !== 'E', color: { argb: s.color } };
   };
 
   let cursorRow = startRow + 2;
@@ -878,7 +902,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
       let workCount = 0;
       monthDays.forEach((day, index) => {
         const code = getCellCode(rowIndex, day, person.id, lane);
-        if (code === 'W') workCount += 1;
+        workCount += getShiftValueForCount(department, code);
         const dayCol = dayStartCol + index;
         const cell = sheet.getCell(cursorRow, dayCol);
         cell.value = toCellLabel(code);
@@ -929,11 +953,11 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
     const total = sectionPeople.reduce((acc, person) => {
       const code = getCellCode(person.rowIndex, day, person.id, '1');
       if (section === 'containers' || section === 'auto') {
-        const primaryWorked = code === 'W' || code === 'H';
+        const primaryWorked = code === 'W' || code === 'H' || (section === 'auto' && code === 'S');
         const secondaryWorked = person.secondName
           ? (() => {
               const code2 = getCellCode(person.rowIndex + 50, day, person.id, '2');
-              return code2 === 'W' || code2 === 'H';
+              return code2 === 'W' || code2 === 'H' || (section === 'auto' && code2 === 'S');
             })()
           : false;
         return acc + (primaryWorked || secondaryWorked ? 1 : 0);
@@ -976,6 +1000,9 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
         { code: 'О', text: 'отпуск', bg: COLORS.cellVacation, color: 'FF4A2C8A' },
         { code: 'Б', text: 'больничный', bg: COLORS.cellSick, color: 'FF0F385E' },
         { code: 'П', text: 'погрузка', bg: COLORS.cellHalfDay, color: 'FF0F172A' },
+        ...(section === 'auto'
+          ? [{ code: 'С', text: 'снятие груза', bg: COLORS.cellCargoRemoval, color: 'FF7C2D12' }]
+          : []),
         { code: 'Р', text: 'ремонт', bg: COLORS.cellRepair, color: 'FF0A4A52' },
         { code: 'Н', text: 'нет водителя', bg: COLORS.cellNoDriver, color: 'FF1F2937' },
       ];
@@ -1055,6 +1082,7 @@ const renderOperationsScheduleWorksheet = ({
     white: 'FFFFFFFF',
     cellWork: 'FF87D4A1',
     cellHalfDay: 'FFE6CF73',
+    cellCargoRemoval: 'FFF8C99B',
     cellSick: 'FF87BDDE',
     cellRepair: 'FF56C6CE',
     cellNoDriver: 'FF95A5B6',
@@ -1067,7 +1095,7 @@ const renderOperationsScheduleWorksheet = ({
 
   const getCellCode = (rowIndex: number, day: number, personId: string, lane: '1' | '2' = '1'): CellCode => {
     const key = `${personId}-${lane}-${day}`;
-    return scopeOverrides[key] ?? getMonthlyCell(rowIndex, day, department);
+    return normalizeCellCode(scopeOverrides[key] ?? getMonthlyCell(rowIndex, day, department));
   };
 
   const startRow = 4;
@@ -1166,6 +1194,7 @@ const renderOperationsScheduleWorksheet = ({
     const styleMap: Record<CellCode, { bg: string; color: string }> = {
       W: { bg: COLORS.cellWork, color: 'FF0F172A' },
       H: { bg: COLORS.cellHalfDay, color: 'FF0F172A' },
+      S: { bg: COLORS.cellCargoRemoval, color: 'FF7C2D12' },
       B: { bg: COLORS.cellSick, color: 'FF0F385E' },
       R: { bg: COLORS.cellRepair, color: 'FF0A4A52' },
       N: { bg: COLORS.cellNoDriver, color: 'FF1F2937' },
@@ -1173,9 +1202,10 @@ const renderOperationsScheduleWorksheet = ({
       V: { bg: COLORS.cellVacation, color: 'FF4A2C8A' },
       E: { bg: isWeekend ? COLORS.weekend : COLORS.cellEmpty, color: 'FF374151' },
     };
-    const dayStyle = styleMap[code];
+    const normalizedCode = normalizeCellCode(code);
+    const dayStyle = styleMap[normalizedCode] ?? styleMap.E;
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: dayStyle.bg } };
-    cell.font = { size: 11, name: 'Arial', bold: code !== 'E', color: { argb: dayStyle.color } };
+    cell.font = { size: 11, name: 'Arial', bold: normalizedCode !== 'E', color: { argb: dayStyle.color } };
   };
 
   let cursorRow = startRow + 2;
@@ -1196,7 +1226,7 @@ const renderOperationsScheduleWorksheet = ({
       let workCount = 0;
       monthDays.forEach((day, index) => {
         const code = getCellCode(rowIndex, day, person.id, lane);
-        if (code === 'W') workCount += 1;
+        workCount += getShiftValueForCount(department, code);
         const dayCol = dayStartCol + index;
         const cell = sheet.getCell(cursorRow, dayCol);
         cell.value = toCellLabel(code);
@@ -1247,11 +1277,11 @@ const renderOperationsScheduleWorksheet = ({
     const total = sectionPeople.reduce((acc, person) => {
       const code = getCellCode(person.rowIndex, day, person.id, '1');
       if (section === 'containers' || section === 'auto') {
-        const primaryWorked = code === 'W' || code === 'H';
+        const primaryWorked = code === 'W' || code === 'H' || (section === 'auto' && code === 'S');
         const secondaryWorked = person.secondName
           ? (() => {
               const code2 = getCellCode(person.rowIndex + 50, day, person.id, '2');
-              return code2 === 'W' || code2 === 'H';
+              return code2 === 'W' || code2 === 'H' || (section === 'auto' && code2 === 'S');
             })()
           : false;
         return acc + (primaryWorked || secondaryWorked ? 1 : 0);
@@ -1294,6 +1324,9 @@ const renderOperationsScheduleWorksheet = ({
         { code: 'О', text: 'отпуск', bg: COLORS.cellVacation, color: 'FF4A2C8A' },
         { code: 'Б', text: 'больничный', bg: COLORS.cellSick, color: 'FF0F385E' },
         { code: 'П', text: 'погрузка', bg: COLORS.cellHalfDay, color: 'FF0F172A' },
+        ...(section === 'auto'
+          ? [{ code: 'С', text: 'снятие груза', bg: COLORS.cellCargoRemoval, color: 'FF7C2D12' }]
+          : []),
         { code: 'Р', text: 'ремонт', bg: COLORS.cellRepair, color: 'FF0A4A52' },
         { code: 'Н', text: 'нет водителя', bg: COLORS.cellNoDriver, color: 'FF1F2937' },
       ];
@@ -1416,10 +1449,10 @@ export const downloadOperationsPreviewReport = async (req: Request, res: Respons
     for (const section of sections) {
       if (section === 'efficiency' || !canAccessLocationSection(req.user?.role, location, section)) continue;
       const department = DEPARTMENT_BY_SECTION[section];
-      const sectionModes = section === 'containers' ? modes : (['fact'] as PreviewMode[]);
+      const sectionModes = section === 'containers' || section === 'mechanics' ? modes : (['fact'] as PreviewMode[]);
 
       for (const mode of sectionModes) {
-        const modeLabel = section === 'containers' ? ` (${mode === 'plan' ? 'план' : 'факт'})` : '';
+        const modeLabel = section === 'containers' || section === 'mechanics' ? ` (${mode === 'plan' ? 'план' : 'факт'})` : '';
         const sheetTitle = `${REPORT_LOCATION_PREFIX[location]} - ${REPORT_SECTION_SHEET_LABEL[section]}${modeLabel}`;
         renderOperationsScheduleWorksheet({
           workbook,
@@ -1445,10 +1478,16 @@ export const downloadOperationsPreviewReport = async (req: Request, res: Respons
     throw error;
   }
 
-  const buffer = await workbook.xlsx.writeBuffer();
   const reportCityLabel = reportCity === 'mow' ? 'Москва' : 'Владивосток';
   const reportMonthName = REPORT_MONTH_NAMES[month] ?? String(month).padStart(2, '0');
-  const filename = `ГР ${reportCityLabel} - ${reportMonthName} ${year}.xlsx`;
+  const filename = `ГР_${reportCityLabel}_${reportMonthName}_${year}.xlsx`.normalize('NFC');
+  const documentTitle = filename.replace(/\.xlsx$/i, '');
+  workbook.title = documentTitle;
+  workbook.subject = documentTitle;
+  workbook.description = documentTitle;
+  workbook.modified = new Date();
+
+  const buffer = await workbook.xlsx.writeBuffer();
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', buildContentDisposition(filename));
   res.send(Buffer.from(buffer));

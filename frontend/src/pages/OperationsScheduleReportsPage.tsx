@@ -67,15 +67,15 @@ const monthOptions = [
 
 const modeOptions: Array<SelectOption<'plan' | 'fact'>> = [
   { value: 'fact', label: 'Факт' },
-  { value: 'plan', label: 'План контейнеровозов' },
+  { value: 'plan', label: 'План' },
 ];
 
 const extractFilename = (disposition?: string): string | null => {
   if (!disposition) return null;
   const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
-  if (encoded) return decodeURIComponent(encoded);
+  if (encoded) return decodeURIComponent(encoded).normalize('NFC');
   const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1];
-  return plain ?? null;
+  return plain?.normalize('NFC') ?? null;
 };
 
 export default function OperationsScheduleReportsPage() {
@@ -112,7 +112,7 @@ export default function OperationsScheduleReportsPage() {
       if (locationValue === 'ktk_mow' && (sectionValue === 'auto' || sectionValue === 'mechanics')) return sectionCount;
       if (locationValue === 'garage_vvo' && sectionValue !== 'mechanics') return sectionCount;
       if (locationValue === 'ktk_vvo' && sectionValue === 'mechanics') return sectionCount;
-      return sectionCount + (sectionValue === 'containers' ? effectiveModes.length : 1);
+      return sectionCount + (sectionValue === 'containers' || sectionValue === 'mechanics' ? effectiveModes.length : 1);
     }, 0);
   }, 0);
 
@@ -161,7 +161,7 @@ export default function OperationsScheduleReportsPage() {
       setError(null);
       const response = await downloadOperationsPreviewReport({ year, month, city, locations, sections: effectiveSections, modes: effectiveModes });
       const filename = extractFilename(response.headers['content-disposition']) ?? `Графики работы - ${String(month).padStart(2, '0')}.${year}.xlsx`;
-      downloadBlob(response.data as Blob, filename);
+      await downloadBlob(response.data as Blob, filename);
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Не удалось сформировать отчет. Проверьте фильтры и попробуйте еще раз.');
     } finally {
