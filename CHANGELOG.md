@@ -31,6 +31,17 @@
     multi-sheet Excel export.
   - Unified report Excel sheets with regular schedule exports: headers, colors,
     totals, legends, frozen panes, readable sheet names, and soft sheet tab colors.
+  - Fixed multi-sheet report downloads on macOS/Finder: report files now keep the
+    expected `ГР_<город>_<месяц>_<год>.xlsx` name when saved.
+  - Added fallback normalization for schedule cell codes in Excel exports, so
+    unexpected legacy values no longer break report generation.
+  - HR roles now have read-only access to work schedule facts and can edit only
+    allowed plan layers (`Контейнеровозы`, `Автослесарь`).
+  - Added `План/Факт` mode for `Автослесарь` for admin and HR roles; garage head
+    keeps fact-only access.
+  - Added auto schedule status `С — снятие груза`; it is counted as one shift in
+    totals and efficiency calculations.
+  - Updated work schedule menu order: `Контейнеровозы` before `Автовозы`.
   - Added work schedule audit action `WORK_SCHEDULE_SAVED`.
   - Reworked KTK Vladivostok left menu into "График работы" with nested sections:
     `Контейнеровозы`, `Автовозы`, `Диспетчера`, `Курьеры (Оперативники)`.

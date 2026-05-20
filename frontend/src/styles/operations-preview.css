@@ -818,6 +818,12 @@
   font-weight: 600;
 }
 
+.ops-matrix__cell--cargo-removal {
+  background: #f8c99b;
+  color: #7c2d12;
+  font-weight: 600;
+}
+
 .ops-matrix__cell--repair {
   background: #4fd1d6;
   color: #083344;
@@ -927,6 +933,7 @@
 
 .legend-item.work { background: #8fdda3; color: #0f172a; }
 .legend-item.half { background: #f2d77a; color: #0f172a; }
+.legend-item.cargo-removal { background: #f8c99b; color: #7c2d12; }
 .legend-item.repair { background: #4fd1d6; color: #083344; }
 .legend-item.off { background: #fecaca; color: #7f1d1d; }
 .legend-item.vacation { background: #c7a2f3; color: #2e1065; }

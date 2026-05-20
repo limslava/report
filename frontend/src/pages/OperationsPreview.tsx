@@ -101,7 +101,7 @@ type PersonRow = {
 
 const PREVIEW_PEOPLE: PersonRow[] = [];
 
-type CellCode = 'W' | 'O' | 'B' | 'H' | 'R' | 'N' | 'V' | 'E';
+type CellCode = 'W' | 'O' | 'B' | 'H' | 'S' | 'R' | 'N' | 'V' | 'E';
 type OverrideScopeKey = `${PreviewMode}|${string}`;
 type ScopedOverrides = Record<OverrideScopeKey, Record<string, CellCode>>;
 type PeopleByMonth = Record<string, PersonRow[]>;
@@ -125,8 +125,14 @@ const CELL_META: Record<CellCode, { code: string; label: string; css: string }> 
   V: { code: 'О', label: 'отпуск', css: 'vacation' },
   B: { code: 'Б', label: 'больничный', css: 'sick' },
   H: { code: 'П', label: 'пол дня', css: 'half' },
+  S: { code: 'С', label: 'снятие груза', css: 'cargo-removal' },
   R: { code: 'Р', label: 'ремонт', css: 'repair' },
   N: { code: 'Н', label: 'нет водителя', css: 'idle' },
+};
+
+const VALID_CELL_CODES = new Set<CellCode>(['W', 'O', 'B', 'H', 'S', 'R', 'N', 'V', 'E']);
+const normalizeCellCode = (value: unknown): CellCode => {
+  return typeof value === 'string' && VALID_CELL_CODES.has(value as CellCode) ? (value as CellCode) : 'E';
 };
 
 const getMonthlyCell = (_rowIndex: number, _day: number, _department: Department): CellCode => {
@@ -135,6 +141,7 @@ const getMonthlyCell = (_rowIndex: number, _day: number, _department: Department
 
 const getShiftValueForCount = (department: Department, code: CellCode): number => {
   if (code === 'W') return 1;
+  if (department === 'Авто' && code === 'S') return 1;
   if (code !== 'H') return 0;
   if (department === 'Контейнеры') return 0.5;
   if (department === 'Авто') return 1;
@@ -167,14 +174,14 @@ const extractFilename = (disposition?: string): string | null => {
   const utfMatch = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
   if (utfMatch?.[1]) {
     try {
-      return decodeURIComponent(utfMatch[1]);
+      return decodeURIComponent(utfMatch[1]).normalize('NFC');
     } catch {
-      return utfMatch[1];
+      return utfMatch[1].normalize('NFC');
     }
   }
   const asciiMatch = /filename="([^"]+)"/i.exec(disposition);
   if (asciiMatch?.[1]) {
-    return asciiMatch[1];
+    return asciiMatch[1].normalize('NFC');
   }
   return null;
 };
@@ -189,6 +196,7 @@ export default function OperationsPreview() {
   const allowedDepartmentSet = useMemo(() => new Set<Department>(allowedDepartments), [allowedDepartments]);
   const userId = useAuthStore((state) => state.user?.id);
   const userRole = useAuthStore((state) => state.user?.role);
+  const isHrScheduleRole = userRole === 'head_hr' || userRole === 'hr_specialist';
   const canManagePlanFact = (
     userRole === 'admin'
     || userRole === 'head_ktk_vvo'
@@ -370,7 +378,7 @@ export default function OperationsPreview() {
           lane: '1' | '2' = '1'
         ): CellCode => {
           const key = `${personId}-${lane}-${day}`;
-          return factOverrides[key] ?? getMonthlyCell(rowIndex, day, department);
+          return normalizeCellCode(factOverrides[key] ?? getMonthlyCell(rowIndex, day, department));
         };
 
         const uniquePlatesCount = new Set(
@@ -393,7 +401,7 @@ export default function OperationsPreview() {
             const code2 = person.secondName ? getCellCodeForMonth(rowIndex + 50, day, person.id, '2') : null;
             const dayCodes = [code1, code2].filter(Boolean) as CellCode[];
 
-            const isWorked = dayCodes.some((code) => code === 'W' || code === 'H');
+            const isWorked = dayCodes.some((code) => code === 'W' || code === 'H' || code === 'S');
             if (isWorked) {
               workAutoDays += 1;
               continue;
@@ -481,8 +489,19 @@ export default function OperationsPreview() {
       ? filter
       : allowedDepartments[0] ?? 'Контейнеры';
   const isPersonnelSection = filter !== 'Все' && isPersonnelDepartment(filter);
-  const effectiveMode: PreviewMode = filter === 'Контейнеры' ? mode : 'fact';
-  const visibleCellCodes: CellCode[] = isPersonnelSection ? ['W', 'V', 'O', 'B'] : ['W', 'O', 'V', 'B', 'H', 'R', 'N'];
+  const canManageMechanicPlan = userRole === 'admin' || isHrScheduleRole;
+  const canUsePlanMode = (
+    (filter === 'Контейнеры' && canManagePlanFact)
+    || (filter === 'Автослесари' && canManageMechanicPlan)
+  );
+  const effectiveMode: PreviewMode = (filter === 'Контейнеры' || filter === 'Автослесари') ? mode : 'fact';
+  const canEditCurrentSchedule = !isHrScheduleRole || (effectiveMode === 'plan' && (filter === 'Контейнеры' || filter === 'Автослесари'));
+  const canEditRows = !isHrScheduleRole;
+  const visibleCellCodes: CellCode[] = isPersonnelSection
+    ? ['W', 'V', 'O', 'B']
+    : filter === 'Авто'
+      ? ['W', 'O', 'V', 'B', 'H', 'S', 'R', 'N']
+      : ['W', 'O', 'V', 'B', 'H', 'R', 'N'];
   const visibleRows = useMemo<VisibleRow[]>(() => {
     const rows: VisibleRow[] = [];
     const visiblePeople =
@@ -635,6 +654,7 @@ export default function OperationsPreview() {
   };
 
   const reorderPersonByDrop = (sourceId: string, targetId: string, position: 'before' | 'after' = 'before') => {
+    if (!canEditRows) return;
     if (sourceId === targetId) return;
     setPeopleStateForCurrentMonth((prev) => {
       const fromIndex = prev.findIndex((item) => item.id === sourceId);
@@ -938,14 +958,14 @@ export default function OperationsPreview() {
   }, [activeSection, allowedDepartmentSet, filter]);
 
   useEffect(() => {
-    if (filter !== 'Контейнеры' && mode !== 'fact') {
+    if (filter !== 'Контейнеры' && filter !== 'Автослесари' && mode !== 'fact') {
       setMode('fact');
       return;
     }
-    if (!canManagePlanFact && mode !== 'fact') {
+    if (!canUsePlanMode && mode !== 'fact') {
       setMode('fact');
     }
-  }, [canManagePlanFact, mode, filter]);
+  }, [canUsePlanMode, mode, filter]);
 
   useEffect(() => {
     setHasUnsavedChanges(hasUnsavedChanges);
@@ -963,7 +983,7 @@ export default function OperationsPreview() {
     const key = `${personId}-${lane}-${day}`;
     const scopeKey = `${targetMode}|${monthValue}` as OverrideScopeKey;
     const scopeOverrides = allOverrides[scopeKey] ?? {};
-    return scopeOverrides[key] ?? getMonthlyCell(rowIndex, day, department);
+    return normalizeCellCode(scopeOverrides[key] ?? getMonthlyCell(rowIndex, day, department));
   };
 
   const setCellCode = ({
@@ -985,7 +1005,7 @@ export default function OperationsPreview() {
     setAllOverrides((prev) => {
       const current = prev[scopeKey] ?? {};
       const baseline = getMonthlyCell(rowIndex, day, department);
-      const currentResolved = current[key] ?? baseline;
+      const currentResolved = normalizeCellCode(current[key] ?? baseline);
       if (currentResolved === code) return prev;
 
       const nextScope = { ...current };
@@ -1004,11 +1024,13 @@ export default function OperationsPreview() {
   };
 
   const hasManualFactEditsForMonth = useMemo(() => {
+    const planDepartment: Department | null = filter === 'Контейнеры' || filter === 'Автослесари' ? filter : null;
+    if (!planDepartment) return false;
     const planKey = `plan|${monthValue}` as OverrideScopeKey;
     const factKey = `fact|${monthValue}` as OverrideScopeKey;
     const planMap = allOverrides[planKey] ?? {};
     const factMap = allOverrides[factKey] ?? {};
-    const sectionPeople = peopleState.filter((person) => person.department === 'Контейнеры');
+    const sectionPeople = peopleState.filter((person) => person.department === planDepartment);
 
     for (const person of sectionPeople) {
       const rowIndex = peopleState.findIndex((candidate) => candidate.id === person.id);
@@ -1017,16 +1039,16 @@ export default function OperationsPreview() {
       for (const day of monthDays) {
         const keyLane1 = `${person.id}-1-${day}`;
         if (factMap[keyLane1] !== undefined) {
-          const factValue = factMap[keyLane1] ?? getMonthlyCell(rowIndex, day, 'Контейнеры');
-          const planValue = planMap[keyLane1] ?? getMonthlyCell(rowIndex, day, 'Контейнеры');
+          const factValue = factMap[keyLane1] ?? getMonthlyCell(rowIndex, day, planDepartment);
+          const planValue = planMap[keyLane1] ?? getMonthlyCell(rowIndex, day, planDepartment);
           if (factValue !== planValue) return true;
         }
 
         if (person.secondName) {
           const keyLane2 = `${person.id}-2-${day}`;
           if (factMap[keyLane2] !== undefined) {
-            const factValue = factMap[keyLane2] ?? getMonthlyCell(rowIndex + 50, day, 'Контейнеры');
-            const planValue = planMap[keyLane2] ?? getMonthlyCell(rowIndex + 50, day, 'Контейнеры');
+            const factValue = factMap[keyLane2] ?? getMonthlyCell(rowIndex + 50, day, planDepartment);
+            const planValue = planMap[keyLane2] ?? getMonthlyCell(rowIndex + 50, day, planDepartment);
             if (factValue !== planValue) return true;
           }
         }
@@ -1034,14 +1056,16 @@ export default function OperationsPreview() {
     }
 
     return false;
-  }, [allOverrides, monthValue, peopleState, monthDays]);
+  }, [allOverrides, monthValue, peopleState, monthDays, filter]);
 
   const applyCopyPlanToFact = (options?: { switchToFactAfterCopy?: boolean }) => {
+    const planDepartment: Department | null = filter === 'Контейнеры' || filter === 'Автослесари' ? filter : null;
+    if (!planDepartment) return;
     const switchToFactAfterCopy = options?.switchToFactAfterCopy ?? false;
     const planKey = `plan|${monthValue}` as OverrideScopeKey;
     const factKey = `fact|${monthValue}` as OverrideScopeKey;
     const planMap = allOverrides[planKey] ?? {};
-    const sectionPeople = peopleState.filter((person) => person.department === 'Контейнеры');
+    const sectionPeople = peopleState.filter((person) => person.department === planDepartment);
     const nextFactMap: Record<string, CellCode> = {};
 
     sectionPeople.forEach((person) => {
@@ -1050,14 +1074,14 @@ export default function OperationsPreview() {
 
       monthDays.forEach((day) => {
         const keyLane1 = `${person.id}-1-${day}`;
-        const planLane1 = planMap[keyLane1] ?? getMonthlyCell(rowIndex, day, 'Контейнеры');
+        const planLane1 = planMap[keyLane1] ?? getMonthlyCell(rowIndex, day, planDepartment);
         if (planLane1 !== 'E') {
           nextFactMap[keyLane1] = planLane1;
         }
 
         if (person.secondName) {
           const keyLane2 = `${person.id}-2-${day}`;
-          const planLane2 = planMap[keyLane2] ?? getMonthlyCell(rowIndex + 50, day, 'Контейнеры');
+          const planLane2 = planMap[keyLane2] ?? getMonthlyCell(rowIndex + 50, day, planDepartment);
           if (planLane2 !== 'E') {
             nextFactMap[keyLane2] = planLane2;
           }
@@ -1076,7 +1100,7 @@ export default function OperationsPreview() {
   };
 
   const handleCopyPlanToFact = () => {
-    if (hasManualFactEditsForMonth && canManagePlanFact) {
+    if (hasManualFactEditsForMonth && canUsePlanMode) {
       setCopyConfirmOpen(true);
       return;
     }
@@ -1084,6 +1108,7 @@ export default function OperationsPreview() {
   };
 
   const handleDeletePerson = (personId: string) => {
+    if (!canEditRows) return;
     setPeopleStateForCurrentMonth((prev) => prev.filter((item) => item.id !== personId));
     setAllOverrides((prev) => {
       const next: ScopedOverrides = { ...prev };
@@ -1103,6 +1128,7 @@ export default function OperationsPreview() {
   };
 
   const handlePastePerson = (targetDepartment: Department) => {
+    if (!canEditRows) return;
     if (!clipboardPerson) return;
     setPeopleStateForCurrentMonth((prev) => [
       ...prev,
@@ -1135,7 +1161,7 @@ export default function OperationsPreview() {
         if (event.key === 'ArrowDown') nextRowIndex = Math.min(visibleRows.length - 1, currentIndex + 1);
         const nextRow = visibleRows[nextRowIndex];
         const nextKey = `${nextRow.personId}-${nextRow.lane}-${nextDay}`;
-        const nextValue = overrides[nextKey] ?? getMonthlyCell(nextRow.rowIndex, nextDay, nextRow.department);
+        const nextValue = normalizeCellCode(overrides[nextKey] ?? getMonthlyCell(nextRow.rowIndex, nextDay, nextRow.department));
         const nextPoint = { personId: nextRow.personId, lane: nextRow.lane, day: nextDay };
         setSelectedCell({
           key: nextKey,
@@ -1186,6 +1212,7 @@ export default function OperationsPreview() {
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
         event.preventDefault();
+        if (!canEditCurrentSchedule) return;
         if (clipboardRange && clipboardRange.length > 0) {
           const anchorIdx = visibleRows.findIndex((row) => row.personId === selectedCell.personId && row.lane === selectedCell.lane);
           if (anchorIdx >= 0) {
@@ -1244,6 +1271,7 @@ export default function OperationsPreview() {
       }
       if (event.key === 'Backspace' || event.key === 'Delete') {
         event.preventDefault();
+        if (!canEditCurrentSchedule) return;
         if (selectionRect) {
           for (let r = selectionRect.rowStart; r <= selectionRect.rowEnd; r += 1) {
             const row = visibleRows[r];
@@ -1282,6 +1310,8 @@ export default function OperationsPreview() {
         'в': 'O',
         'о': 'V',
         'б': 'B',
+        'с': 'S',
+        'c': 'S',
         'н': 'N',
         'п': 'H',
         'р': 'R',
@@ -1290,6 +1320,7 @@ export default function OperationsPreview() {
       const code = keyMap[key];
       if (!code) return;
       if (!visibleCellCodes.includes(code)) return;
+      if (!canEditCurrentSchedule) return;
       event.preventDefault();
       setCellCode({
         key: selectedCell.key,
@@ -1305,7 +1336,7 @@ export default function OperationsPreview() {
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [selectedCell, visibleRows, overrides, clipboardCell, clipboardRange, lastPaintKeyAt, paintCode, isPainting, paintRow, visibleCellCodes, monthDays.length, selectionRect]);
+  }, [selectedCell, visibleRows, overrides, clipboardCell, clipboardRange, lastPaintKeyAt, paintCode, isPainting, paintRow, visibleCellCodes, monthDays.length, selectionRect, canEditCurrentSchedule]);
 
   useEffect(() => {
     const handleMouseUp = () => {
@@ -1317,6 +1348,7 @@ export default function OperationsPreview() {
   }, []);
 
   const startNoteEdit = (person: PersonRow, lane: '1' | '2') => {
+    if (!canEditRows) return;
     setContextMenu(null);
     setActiveCell(null);
     setEditPerson(null);
@@ -1349,21 +1381,36 @@ export default function OperationsPreview() {
       await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
       const latestAllOverrides = allOverridesRef.current;
       const latestPeopleByMonth = peopleByMonthRef.current;
-      const currentScopeOverrides = latestAllOverrides[currentScopeKey] ?? {};
-      const prevScopeOverrides = lastSavedSnapshot?.overrides?.[currentScopeKey] ?? {};
-      const setPatch: Record<string, CellCode> = {};
-      const unsetPatch: string[] = [];
+      const previousOverrides = lastSavedSnapshot?.overrides ?? {};
+      const candidateScopeKeys = new Set<OverrideScopeKey>([
+        ...Object.keys(latestAllOverrides),
+        ...Object.keys(previousOverrides),
+      ] as OverrideScopeKey[]);
+      const overridesPatch = Array.from(candidateScopeKeys).reduce((acc, scopeKey) => {
+        const currentScopeOverrides = latestAllOverrides[scopeKey] ?? {};
+        const prevScopeOverrides = previousOverrides[scopeKey] ?? {};
+        const setPatch: Record<string, CellCode> = {};
+        const unsetPatch: string[] = [];
 
-      Object.entries(currentScopeOverrides).forEach(([key, value]) => {
-        if (prevScopeOverrides[key] !== value) {
-          setPatch[key] = value;
+        Object.entries(currentScopeOverrides).forEach(([key, value]) => {
+          if (prevScopeOverrides[key] !== value) {
+            setPatch[key] = value;
+          }
+        });
+        Object.keys(prevScopeOverrides).forEach((key) => {
+          if (!(key in currentScopeOverrides)) {
+            unsetPatch.push(key);
+          }
+        });
+
+        if (Object.keys(setPatch).length > 0 || unsetPatch.length > 0) {
+          acc[scopeKey] = {
+            set: setPatch,
+            unset: unsetPatch,
+          };
         }
-      });
-      Object.keys(prevScopeOverrides).forEach((key) => {
-        if (!(key in currentScopeOverrides)) {
-          unsetPatch.push(key);
-        }
-      });
+        return acc;
+      }, {} as Record<OverrideScopeKey, { set: Record<string, CellCode>; unset: string[] }>);
 
       const currentMonthPeople = resolvePeopleForMonth(monthValue, latestPeopleByMonth);
       const previousMonthPeople = (() => {
@@ -1373,7 +1420,7 @@ export default function OperationsPreview() {
       })();
       const peopleMonthChanged = JSON.stringify(currentMonthPeople) !== JSON.stringify(previousMonthPeople);
 
-      if (Object.keys(setPatch).length === 0 && unsetPatch.length === 0 && !peopleMonthChanged) {
+      if (Object.keys(overridesPatch).length === 0 && !peopleMonthChanged) {
         return true;
       }
 
@@ -1393,16 +1440,14 @@ export default function OperationsPreview() {
           ...scopedPayload,
           location: activeLocation,
           section: resolveSectionForExport(),
-          overridesPatch: {
-            [currentScopeKey]: {
-              set: setPatch,
-              unset: unsetPatch,
-            },
-          },
+          overridesPatch,
           clientVersions: {
-            overrideScopeVersions: {
-              [currentScopeKey]: scopeVersionsRef.current.overrideScopeVersions[currentScopeKey] ?? null,
-            },
+            overrideScopeVersions: Object.fromEntries(
+              Object.keys(overridesPatch).map((scopeKey) => [
+                scopeKey,
+                scopeVersionsRef.current.overrideScopeVersions[scopeKey] ?? null,
+              ])
+            ),
             peopleMonthVersions: {
               [monthValue]: scopeVersionsRef.current.peopleMonthVersions[monthValue] ?? null,
             },
@@ -1415,7 +1460,9 @@ export default function OperationsPreview() {
         }
       );
       const nextUpdatedAt = typeof response.data?.updatedAt === 'string' ? response.data.updatedAt : new Date().toISOString();
-      scopeVersionsRef.current.overrideScopeVersions[currentScopeKey] = nextUpdatedAt;
+      Object.keys(overridesPatch).forEach((scopeKey) => {
+        scopeVersionsRef.current.overrideScopeVersions[scopeKey] = nextUpdatedAt;
+      });
       scopeVersionsRef.current.peopleMonthVersions[monthValue] = nextUpdatedAt;
       try {
         localStorage.setItem(
@@ -1547,7 +1594,7 @@ export default function OperationsPreview() {
       const filename =
         extractFilename(response.headers['content-disposition']) ??
         `График работы - ${String(parsedMonth.month).padStart(2, '0')}.${parsedMonth.year}.xlsx`;
-      downloadBlob(response.data as Blob, filename);
+      await downloadBlob(response.data as Blob, filename);
     } catch {
       setCopyStatus({ type: 'error', text: 'Не удалось скачать Excel. Повторите попытку.' });
     } finally {
@@ -1627,7 +1674,7 @@ export default function OperationsPreview() {
                 ))}
               </TextField>
             )}
-            {!isEfficiencySection && canManagePlanFact && filter === 'Контейнеры' && (
+            {!isEfficiencySection && canUsePlanMode && (
               <TextField
                 label="Режим"
                 select
@@ -1655,7 +1702,7 @@ export default function OperationsPreview() {
               >
                 {downloading ? 'Скачивание...' : 'Скачать Excel'}
               </button>
-              {!isEfficiencySection && canManagePlanFact && mode === 'plan' && filter === 'Контейнеры' && (
+              {!isEfficiencySection && canUsePlanMode && mode === 'plan' && (filter === 'Контейнеры' || filter === 'Автослесари') && (
                 <button
                   type="button"
                   className="ops-btn ops-btn--copy"
@@ -1668,17 +1715,19 @@ export default function OperationsPreview() {
               )}
               {!isEfficiencySection && (
                 <>
-                  <button
-                    type="button"
-                    className="ops-btn ops-btn--add"
-                    style={{ marginRight: 10 }}
-                    onClick={() => {
-                      setAddError(null);
-                      setAddOpen(true);
-                    }}
-                  >
-                    Добавить
-                  </button>
+                  {canEditRows && (
+                    <button
+                      type="button"
+                      className="ops-btn ops-btn--add"
+                      style={{ marginRight: 10 }}
+                      onClick={() => {
+                        setAddError(null);
+                        setAddOpen(true);
+                      }}
+                    >
+                      Добавить
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="ops-btn ops-btn--save"
@@ -1897,9 +1946,10 @@ export default function OperationsPreview() {
                           <div className={`ops-matrix__cell ops-matrix__cell--sticky ops-matrix__cell--name${selectedCellInCurrentView && selectedCell?.personId === person.id && selectedCell?.lane === lane ? ' ops-matrix__cell--name-selected' : ''}`}>
                             <div className="ops-matrix__name">
                               <span
-                                onDoubleClick={() => setEditPerson(person)}
+                                onDoubleClick={() => { if (canEditRows) setEditPerson(person); }}
                                 onContextMenu={(event) => {
                                   event.preventDefault();
+                                  if (!canEditRows) return;
                                   setContextMenu({
                                     x: event.clientX,
                                     y: event.clientY,
@@ -1921,11 +1971,12 @@ export default function OperationsPreview() {
                               {!isSecond && (
                                 <div className="ops-matrix__plate">
                                   <span
-                                    onDoubleClick={() => setEditPerson(person)}
+                                    onDoubleClick={() => { if (canEditRows) setEditPerson(person); }}
                                     onContextMenu={(event) => {
                                       event.preventDefault();
-                                      setContextMenu({
-                                        x: event.clientX,
+                                      if (!canEditRows) return;
+                                  setContextMenu({
+                                    x: event.clientX,
                                         y: event.clientY,
                                         person,
                                         target: 'plate',
@@ -1987,7 +2038,7 @@ export default function OperationsPreview() {
                             return (
                               <div
                                 key={`${person.id}-${lane}-${day}`}
-                                className={`ops-matrix__cell ops-matrix__cell--${meta.css} ops-matrix__cell--editable${getCrosshairClass(person.id, lane, day)}${(selectedCell?.key === `${person.id}-${lane}-${day}` || isKeyInSelection(person.id, lane, day)) ? ' ops-matrix__cell--selected' : ''}`}
+                                className={`ops-matrix__cell ops-matrix__cell--${meta.css}${canEditCurrentSchedule ? ' ops-matrix__cell--editable' : ''}${getCrosshairClass(person.id, lane, day)}${(selectedCell?.key === `${person.id}-${lane}-${day}` || isKeyInSelection(person.id, lane, day)) ? ' ops-matrix__cell--selected' : ''}`}
                                 style={{ gridColumn: dayColumnStart + dayIndex }}
                                 title={`${name}: ${meta.label}`}
                                 role="button"
@@ -2035,10 +2086,13 @@ export default function OperationsPreview() {
                                     rowIndex,
                                     department: person.department,
                                   });
-                                  setIsPainting(true);
-                                  setPaintRow({ personId: person.id, lane });
+                                  if (canEditCurrentSchedule) {
+                                    setIsPainting(true);
+                                    setPaintRow({ personId: person.id, lane });
+                                  }
                                 }}
                                 onMouseEnter={() => {
+                                  if (!canEditCurrentSchedule) return;
                                   if (!isPainting) return;
                                   if (!paintRow || paintRow.personId !== person.id || paintRow.lane !== lane) return;
                                   const key = `${person.id}-${lane}-${day}`;
@@ -2122,9 +2176,10 @@ export default function OperationsPreview() {
                             >
                               <div className="ops-matrix__name">
                                 <span
-                                  onDoubleClick={() => setEditPerson(person)}
+                                  onDoubleClick={() => { if (canEditRows) setEditPerson(person); }}
                                   onContextMenu={(event) => {
                                     event.preventDefault();
+                                    if (!canEditRows) return;
                                     setContextMenu({ x: event.clientX, y: event.clientY, person, target: 'name', lane: '1' });
                                   }}
                                   title="Двойной щелчок для редактирования"
@@ -2139,9 +2194,10 @@ export default function OperationsPreview() {
                             >
                               <div className="ops-matrix__name">
                                 <span
-                                  onDoubleClick={() => setEditPerson(person)}
+                                  onDoubleClick={() => { if (canEditRows) setEditPerson(person); }}
                                   onContextMenu={(event) => {
                                     event.preventDefault();
+                                    if (!canEditRows) return;
                                     setContextMenu({ x: event.clientX, y: event.clientY, person, target: 'name', lane: '2' });
                                   }}
                                   title="Двойной щелчок для редактирования"
@@ -2156,9 +2212,10 @@ export default function OperationsPreview() {
                             >
                               <div className="ops-matrix__plate">
                                 <span
-                                  onDoubleClick={() => setEditPerson(person)}
+                                  onDoubleClick={() => { if (canEditRows) setEditPerson(person); }}
                                   onContextMenu={(event) => {
                                     event.preventDefault();
+                                    if (!canEditRows) return;
                                     setContextMenu({ x: event.clientX, y: event.clientY, person, target: 'plate' });
                                   }}
                                   title="Двойной щелчок для редактирования"
@@ -2241,7 +2298,7 @@ export default function OperationsPreview() {
                               return (
                                 <Fragment key={`grid-${person.id}-${day}`}>
                                   <div
-                                    className={`ops-matrix__cell ops-matrix__cell--${meta1.css} ops-matrix__cell--editable${getCrosshairClass(person.id, '1', day)}${(selectedCell?.key === `${person.id}-1-${day}` || isKeyInSelection(person.id, '1', day)) ? ' ops-matrix__cell--selected' : ''}`}
+                                    className={`ops-matrix__cell ops-matrix__cell--${meta1.css}${canEditCurrentSchedule ? ' ops-matrix__cell--editable' : ''}${getCrosshairClass(person.id, '1', day)}${(selectedCell?.key === `${person.id}-1-${day}` || isKeyInSelection(person.id, '1', day)) ? ' ops-matrix__cell--selected' : ''}`}
                                     style={{ gridColumn: col, gridRow: 1 }}
                                     title={`${person.name}: ${meta1.label}`}
                                     role="button"
@@ -2289,10 +2346,13 @@ export default function OperationsPreview() {
                                         rowIndex: person.rowIndex,
                                         department: person.department,
                                       });
-                                      setIsPainting(true);
-                                      setPaintRow({ personId: person.id, lane: '1' });
+                                      if (canEditCurrentSchedule) {
+                                        setIsPainting(true);
+                                        setPaintRow({ personId: person.id, lane: '1' });
+                                      }
                                     }}
                                   onMouseEnter={() => {
+                                    if (!canEditCurrentSchedule) return;
                                     if (!isPainting) return;
                                     if (!paintRow || paintRow.personId !== person.id || paintRow.lane !== '1') return;
                                     const key = `${person.id}-1-${day}`;
@@ -2330,7 +2390,7 @@ export default function OperationsPreview() {
                                     {meta1.code}
                                   </div>
                                   <div
-                                    className={`ops-matrix__cell ops-matrix__cell--${meta2.css} ops-matrix__cell--editable ops-matrix__cell--row2${getCrosshairClass(person.id, '2', day)}${(selectedCell?.key === `${person.id}-2-${day}` || isKeyInSelection(person.id, '2', day)) ? ' ops-matrix__cell--selected' : ''}`}
+                                    className={`ops-matrix__cell ops-matrix__cell--${meta2.css}${canEditCurrentSchedule ? ' ops-matrix__cell--editable' : ''} ops-matrix__cell--row2${getCrosshairClass(person.id, '2', day)}${(selectedCell?.key === `${person.id}-2-${day}` || isKeyInSelection(person.id, '2', day)) ? ' ops-matrix__cell--selected' : ''}`}
                                     style={{ gridColumn: col, gridRow: 2 }}
                                     title={`${person.secondName}: ${meta2.label}`}
                                     role="button"
@@ -2378,10 +2438,13 @@ export default function OperationsPreview() {
                                         rowIndex: person.rowIndex + 50,
                                         department: person.department,
                                       });
-                                      setIsPainting(true);
-                                      setPaintRow({ personId: person.id, lane: '2' });
+                                      if (canEditCurrentSchedule) {
+                                        setIsPainting(true);
+                                        setPaintRow({ personId: person.id, lane: '2' });
+                                      }
                                     }}
                                   onMouseEnter={() => {
+                                    if (!canEditCurrentSchedule) return;
                                     if (!isPainting) return;
                                     if (!paintRow || paintRow.personId !== person.id || paintRow.lane !== '2') return;
                                     const key = `${person.id}-2-${day}`;
@@ -2486,11 +2549,11 @@ export default function OperationsPreview() {
                         sectionPeople.reduce((acc, person) => {
                           const code = getCellCode(person.rowIndex, day, person.id, person.department, '1');
                           if (section === 'Контейнеры' || section === 'Авто') {
-                            const primaryWorked = code === 'W' || code === 'H';
+                            const primaryWorked = code === 'W' || code === 'H' || (section === 'Авто' && code === 'S');
                             const secondaryWorked = person.secondName
                               ? (() => {
                                   const code2 = getCellCode(person.rowIndex + 50, day, person.id, person.department, '2');
-                                  return code2 === 'W' || code2 === 'H';
+                                  return code2 === 'W' || code2 === 'H' || (section === 'Авто' && code2 === 'S');
                                 })()
                               : false;
                             return acc + (primaryWorked || secondaryWorked ? 1 : 0);
@@ -2716,6 +2779,8 @@ export default function OperationsPreview() {
                       : 'выходной'
                 : code === 'H' && filter === 'Авто'
                   ? 'Погрузка'
+                  : code === 'S' && filter === 'Авто'
+                    ? 'Снятие груза'
                   : CELL_META[code].label}
             </span>
           ))}
@@ -2933,6 +2998,7 @@ export default function OperationsPreview() {
               type="button"
               className="ops-context-item"
               onClick={() => {
+                if (!canEditRows) return;
                 setEditPerson(contextMenu.person);
                 setContextMenu(null);
               }}
