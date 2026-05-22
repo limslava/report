@@ -35,8 +35,9 @@
     expected `ГР_<город>_<месяц>_<год>.xlsx` name when saved.
   - Added fallback normalization for schedule cell codes in Excel exports, so
     unexpected legacy values no longer break report generation.
-  - HR roles now have read-only access to work schedule facts and can edit only
-    allowed plan layers (`Контейнеровозы`, `Автослесарь`).
+  - HR roles now have read-only access to most work schedule facts, can edit
+    allowed plan layers (`Контейнеровозы`, `Автослесарь`), and can add/edit
+    Vladivostok garage mechanics (`Автослесарь`) in both plan and fact modes.
   - Added `План/Факт` mode for `Автослесарь` for admin and HR roles; garage head
     keeps fact-only access.
   - Added auto schedule status `С — снятие груза`; it is counted as one shift in
