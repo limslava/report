@@ -495,8 +495,10 @@ export default function OperationsPreview() {
     || (filter === 'Автослесари' && canManageMechanicPlan)
   );
   const effectiveMode: PreviewMode = (filter === 'Контейнеры' || filter === 'Автослесари') ? mode : 'fact';
-  const canEditCurrentSchedule = !isHrScheduleRole || (effectiveMode === 'plan' && (filter === 'Контейнеры' || filter === 'Автослесари'));
+  const canManageVvoMechanics = isHrScheduleRole && activeLocation === 'garage_vvo' && filter === 'Автослесари';
+  const canEditCurrentSchedule = !isHrScheduleRole || canManageVvoMechanics || (effectiveMode === 'plan' && (filter === 'Контейнеры' || filter === 'Автослесари'));
   const canEditRows = !isHrScheduleRole;
+  const canAddRows = canEditRows || (isHrScheduleRole && activeLocation === 'garage_vvo' && addDepartment === 'Автослесари');
   const visibleCellCodes: CellCode[] = isPersonnelSection
     ? ['W', 'V', 'O', 'B']
     : filter === 'Авто'
@@ -1715,7 +1717,7 @@ export default function OperationsPreview() {
               )}
               {!isEfficiencySection && (
                 <>
-                  {canEditRows && (
+                  {canAddRows && (
                     <button
                       type="button"
                       className="ops-btn ops-btn--add"
@@ -2834,6 +2836,7 @@ export default function OperationsPreview() {
                 type="button"
                 className="ops-btn ops-modal__btn-left"
                 onClick={() => {
+                  if (!canAddRows) return;
                   const name = newPerson.name.trim();
                   const plate = newPerson.plate.trim();
                   const secondName = newPerson.secondName.trim();
