@@ -31,23 +31,6 @@
   gap: 12px;
 }
 
-.ops-preview__save-status {
-  margin-top: -10px;
-  font-size: 13px;
-  color: #0f766e;
-  background: #ecfeff;
-  border: 1px solid #99f6e4;
-  border-radius: 10px;
-  padding: 8px 12px;
-  width: fit-content;
-}
-
-.ops-preview__save-status.dirty {
-  color: #92400e;
-  background: #fffbeb;
-  border-color: #fde68a;
-}
-
 .ops-btn {
   border: 1px solid transparent;
   background: #2563eb;
@@ -91,6 +74,12 @@
   background: #fbc02d;
   border-color: #fbc02d;
   color: #1f2937;
+}
+
+.ops-btn--fill-prev {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #fff;
 }
 
 .ops-btn--download {
