@@ -1069,13 +1069,14 @@ export default function OperationsPreview() {
     return false;
   }, [allOverrides, monthValue, peopleState, monthDays, filter]);
 
-  const applyCopyPlanToFact = (options?: { switchToFactAfterCopy?: boolean }) => {
+  const applyCopyPlanToFact = (options?: { switchToFactAfterCopy?: boolean }): boolean => {
     const planDepartment: Department | null = filter === 'Контейнеры' || filter === 'Автослесари' ? filter : null;
-    if (!planDepartment) return;
+    if (!planDepartment) return false;
     const switchToFactAfterCopy = options?.switchToFactAfterCopy ?? false;
     const planKey = `plan|${monthValue}` as OverrideScopeKey;
     const factKey = `fact|${monthValue}` as OverrideScopeKey;
-    const planMap = allOverrides[planKey] ?? {};
+    const currentOverrides = allOverridesRef.current;
+    const planMap = currentOverrides[planKey] ?? {};
     const sectionPeople = peopleState.filter((person) => person.department === planDepartment);
     const nextFactMap: Record<string, CellCode> = {};
 
@@ -1100,14 +1101,26 @@ export default function OperationsPreview() {
       });
     });
 
-    setAllOverrides((prev) => ({
-      ...prev,
+    const nextOverrides = {
+      ...currentOverrides,
       [factKey]: nextFactMap,
-    }));
+    };
+    allOverridesRef.current = nextOverrides;
+    setAllOverrides(nextOverrides);
     if (switchToFactAfterCopy) {
       setMode('fact');
     }
-    setCopyStatus({ type: 'success', text: 'План успешно скопирован во Факт за выбранный месяц.' });
+    return true;
+  };
+
+  const copyPlanToFactAndSave = async () => {
+    const copied = applyCopyPlanToFact({ switchToFactAfterCopy: false });
+    if (!copied) return;
+    setCopyStatus({ type: 'success', text: 'План скопирован во Факт. Сохраняем изменения...' });
+    const saved = await saveDraft();
+    if (saved) {
+      setCopyStatus({ type: 'success', text: 'План скопирован во Факт и сохранен.' });
+    }
   };
 
   const handleCopyPlanToFact = () => {
@@ -1115,7 +1128,7 @@ export default function OperationsPreview() {
       setCopyConfirmOpen(true);
       return;
     }
-    applyCopyPlanToFact({ switchToFactAfterCopy: false });
+    void copyPlanToFactAndSave();
   };
 
   const handleFillPlanFromPreviousMonth = () => {
@@ -1796,7 +1809,7 @@ export default function OperationsPreview() {
                     className="ops-btn ops-btn--copy"
                     style={{ marginRight: 10 }}
                     onClick={handleCopyPlanToFact}
-                    disabled={hasUnsavedChanges}
+                    disabled={hasUnsavedChanges || saving}
                   >
                     Скопировать
                   </button>
@@ -2981,9 +2994,10 @@ export default function OperationsPreview() {
                 type="button"
                 className="ops-btn ops-modal__btn-left"
                 onClick={() => {
-                  applyCopyPlanToFact({ switchToFactAfterCopy: false });
                   setCopyConfirmOpen(false);
+                  void copyPlanToFactAndSave();
                 }}
+                disabled={saving}
               >
                 Заменить
               </button>
