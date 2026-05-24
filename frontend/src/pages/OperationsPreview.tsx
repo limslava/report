@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Box, MenuItem, Paper, TextField } from '@mui/material';
+import { Alert, Box, MenuItem, Paper, Snackbar, TextField } from '@mui/material';
 import { useAuthStore } from '../store/auth-store';
 import {
   downloadOperationsPreviewExcel,
@@ -169,6 +169,14 @@ const getPrevMonthValue = (value: string): string | null => {
   return `${year}-${String(month - 1).padStart(2, '0')}`;
 };
 
+const getDaysInMonthValue = (value: string): number => {
+  const [yearRaw, monthRaw] = value.split('-');
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) return 31;
+  return new Date(year, month, 0).getDate();
+};
+
 const extractFilename = (disposition?: string): string | null => {
   if (!disposition) return null;
   const utfMatch = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
@@ -281,6 +289,7 @@ export default function OperationsPreview() {
   const [downloading, setDownloading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [copyConfirmOpen, setCopyConfirmOpen] = useState(false);
+  const [fillPrevConfirmOpen, setFillPrevConfirmOpen] = useState(false);
   const [newPerson, setNewPerson] = useState<{
     name: string;
     secondName: string;
@@ -1109,6 +1118,74 @@ export default function OperationsPreview() {
     applyCopyPlanToFact({ switchToFactAfterCopy: false });
   };
 
+  const handleFillPlanFromPreviousMonth = () => {
+    const planDepartment: Department | null = filter === 'Контейнеры' || filter === 'Автослесари' ? filter : null;
+    const prevMonth = getPrevMonthValue(monthValue);
+    if (!planDepartment || !prevMonth) return;
+
+    const prevPeople = clonePeople(resolvePeopleForMonth(prevMonth, peopleByMonthRef.current))
+      .filter((person) => person.department === planDepartment);
+    if (prevPeople.length === 0) {
+      setCopyStatus({ type: 'error', text: 'В прошлом месяце нет строк для переноса.' });
+      return;
+    }
+
+    const prevPlanKey = `plan|${prevMonth}` as OverrideScopeKey;
+    const prevFactKey = `fact|${prevMonth}` as OverrideScopeKey;
+    const currentPlanKey = `plan|${monthValue}` as OverrideScopeKey;
+    const prevPlan = allOverridesRef.current[prevPlanKey] ?? {};
+    const prevFact = allOverridesRef.current[prevFactKey] ?? {};
+    const prevDaysInMonth = getDaysInMonthValue(prevMonth);
+    const nextPlan: Record<string, CellCode> = {};
+
+    prevPeople.forEach((person, rowIndex) => {
+      monthDays.forEach((day) => {
+        if (day > prevDaysInMonth) return;
+        const lane1Key = `${person.id}-1-${day}`;
+        const lane1 = normalizeCellCode(prevPlan[lane1Key] ?? prevFact[lane1Key] ?? getMonthlyCell(rowIndex, day, planDepartment));
+        if (lane1 !== 'E') {
+          nextPlan[lane1Key] = lane1;
+        }
+
+        if (person.secondName) {
+          const lane2Key = `${person.id}-2-${day}`;
+          const lane2 = normalizeCellCode(prevPlan[lane2Key] ?? prevFact[lane2Key] ?? getMonthlyCell(rowIndex + 50, day, planDepartment));
+          if (lane2 !== 'E') {
+            nextPlan[lane2Key] = lane2;
+          }
+        }
+      });
+    });
+
+    setPeopleByMonth((prev) => {
+      const currentRows = clonePeople(resolvePeopleForMonth(monthValue, prev));
+      const nextRows = [
+        ...currentRows.filter((person) => person.department !== planDepartment),
+        ...prevPeople,
+      ];
+      const nextPeopleByMonth = {
+        ...prev,
+        [monthValue]: nextRows,
+      };
+      peopleByMonthRef.current = nextPeopleByMonth;
+      return nextPeopleByMonth;
+    });
+
+    setAllOverrides((prev) => {
+      const nextOverrides = {
+        ...prev,
+        [currentPlanKey]: nextPlan,
+      };
+      allOverridesRef.current = nextOverrides;
+      return nextOverrides;
+    });
+
+    setCopyStatus({
+      type: 'success',
+      text: 'План заполнен из прошлого месяца. Проверьте данные и нажмите «Сохранить».',
+    });
+  };
+
   const handleDeletePerson = (personId: string) => {
     if (!canEditRows) return;
     setPeopleStateForCurrentMonth((prev) => prev.filter((item) => item.id !== personId));
@@ -1705,15 +1782,25 @@ export default function OperationsPreview() {
                 {downloading ? 'Скачивание...' : 'Скачать Excel'}
               </button>
               {!isEfficiencySection && canUsePlanMode && mode === 'plan' && (filter === 'Контейнеры' || filter === 'Автослесари') && (
-                <button
-                  type="button"
-                  className="ops-btn ops-btn--copy"
-                  style={{ marginRight: 10 }}
-                  onClick={handleCopyPlanToFact}
-                  disabled={hasUnsavedChanges}
-                >
-                  Скопировать
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="ops-btn ops-btn--fill-prev"
+                    style={{ marginRight: 10 }}
+                    onClick={() => setFillPrevConfirmOpen(true)}
+                  >
+                    Заполнить из прошлого месяца
+                  </button>
+                  <button
+                    type="button"
+                    className="ops-btn ops-btn--copy"
+                    style={{ marginRight: 10 }}
+                    onClick={handleCopyPlanToFact}
+                    disabled={hasUnsavedChanges}
+                  >
+                    Скопировать
+                  </button>
+                </>
               )}
               {!isEfficiencySection && (
                 <>
@@ -1746,9 +1833,24 @@ export default function OperationsPreview() {
           </Box>
         </Paper>
       </section>
-      {copyStatus && (
-        <div className={`ops-preview__save-status ${copyStatus.type === 'error' ? 'dirty' : ''}`}>{copyStatus.text}</div>
-      )}
+      <Snackbar
+        open={Boolean(copyStatus)}
+        autoHideDuration={copyStatus?.type === 'error' ? 8000 : 5000}
+        onClose={(_, reason) => {
+          if (reason === 'clickaway') return;
+          setCopyStatus(null);
+        }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert
+          severity={copyStatus?.type === 'error' ? 'error' : 'success'}
+          variant="filled"
+          onClose={() => setCopyStatus(null)}
+          sx={{ maxWidth: 560, alignItems: 'center' }}
+        >
+          {copyStatus?.text}
+        </Alert>
+      </Snackbar>
 
       {!isEfficiencySection && (
       <section className="ops-preview__matrix" ref={matrixSectionRef}>
@@ -2890,6 +2992,37 @@ export default function OperationsPreview() {
                 className="ops-btn ghost ops-modal__btn-right"
                 onClick={() => {
                   setCopyConfirmOpen(false);
+                  setCopyStatus(null);
+                }}
+              >
+                Отменить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {fillPrevConfirmOpen && (
+        <div className="ops-modal">
+          <div className="ops-modal__content">
+            <div className="ops-modal__title">Подтверждение</div>
+            <div className="ops-modal__subtitle">План текущего месяца будет заменен данными прошлого месяца.</div>
+            <div className="ops-modal__subtitle">Продолжить?</div>
+            <div className="ops-modal__actions ops-modal__actions--split">
+              <button
+                type="button"
+                className="ops-btn ops-modal__btn-left"
+                onClick={() => {
+                  handleFillPlanFromPreviousMonth();
+                  setFillPrevConfirmOpen(false);
+                }}
+              >
+                Заполнить
+              </button>
+              <button
+                type="button"
+                className="ops-btn ghost ops-modal__btn-right"
+                onClick={() => {
+                  setFillPrevConfirmOpen(false);
                   setCopyStatus(null);
                 }}
               >
