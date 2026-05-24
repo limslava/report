@@ -40,6 +40,8 @@
     Vladivostok garage mechanics (`Автослесарь`) in both plan and fact modes.
   - Added `Заполнить из прошлого месяца` for plan mode in `Контейнеровозы` and
     `Автослесарь`, copying the previous month's roster and plan cells into the selected month.
+  - `План -> Факт` copy for plan-enabled schedules now saves automatically after copy
+    or replace confirmation.
   - Added `План/Факт` mode for `Автослесарь` for admin and HR roles; garage head
     keeps fact-only access.
   - Added auto schedule status `С — снятие груза`; it is counted as one shift in
