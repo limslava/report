@@ -38,6 +38,8 @@
   - HR roles now have read-only access to most work schedule facts, can edit
     allowed plan layers (`Контейнеровозы`, `Автослесарь`), and can add/edit
     Vladivostok garage mechanics (`Автослесарь`) in both plan and fact modes.
+  - HR roles can now open the row editor for Vladivostok garage mechanics by
+    double-clicking or using the name context menu.
   - Added `Заполнить из прошлого месяца` for plan mode in `Контейнеровозы` and
     `Автослесарь`, copying the previous month's roster and plan cells into the selected month.
   - `План -> Факт` copy for plan-enabled schedules now saves automatically after copy
