@@ -506,7 +506,7 @@ export default function OperationsPreview() {
   const effectiveMode: PreviewMode = (filter === 'Контейнеры' || filter === 'Автослесари') ? mode : 'fact';
   const canManageVvoMechanics = isHrScheduleRole && activeLocation === 'garage_vvo' && filter === 'Автослесари';
   const canEditCurrentSchedule = !isHrScheduleRole || canManageVvoMechanics || (effectiveMode === 'plan' && (filter === 'Контейнеры' || filter === 'Автослесари'));
-  const canEditRows = !isHrScheduleRole;
+  const canEditRows = !isHrScheduleRole || canManageVvoMechanics;
   const canAddRows = canEditRows || (isHrScheduleRole && activeLocation === 'garage_vvo' && addDepartment === 'Автослесари');
   const visibleCellCodes: CellCode[] = isPersonnelSection
     ? ['W', 'V', 'O', 'B']
