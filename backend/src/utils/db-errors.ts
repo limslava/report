@@ -4,6 +4,7 @@ type UnknownError = {
 };
 
 const TRANSIENT_CODES = new Set<string>([
+  'EAI_AGAIN',
   'ECONNREFUSED',
   'ETIMEDOUT',
   'ECONNRESET',

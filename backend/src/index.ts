@@ -16,7 +16,7 @@ const PORT = getAppPort();
 async function startServer() {
   try {
     assertProductionEnv();
-    await withRetry(() => AppDataSource.initialize(), { attempts: 5, baseDelayMs: 500, maxDelayMs: 5000 });
+    await withRetry(() => AppDataSource.initialize(), { attempts: 12, baseDelayMs: 1000, maxDelayMs: 10000 });
     logger.info('Database connected successfully');
     await ensureDefaultAdmin();
     try {
