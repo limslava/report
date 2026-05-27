@@ -737,10 +737,10 @@ async function appendApprovalSheetPdf(
   rows.push([
     'Генеральный директор',
     'Васильковский М.О.',
-    '—',
-    '—',
-    '—',
-    '—',
+    '',
+    '',
+    '',
+    '',
   ]);
 
   for (const row of rows) {
@@ -1809,12 +1809,17 @@ export const uploadContractStepAttachments = async (req: Request, res: Response,
 
     const currentUserId = req.user?.id;
     const isSigningStep = step.roleCode === 'secretary';
+    const isAssignedRoleParticipant = Boolean(
+      currentUserId
+      && step.approverUserId === currentUserId
+      && req.user?.role === step.roleCode,
+    );
     const canCompleteSigning = Boolean(
       isSigningStep
       && currentUserId
       && (req.user?.role === 'admin' || contract.initiatorId === currentUserId || step.approverUserId === currentUserId),
     );
-    const canAttach = Boolean(currentUserId && (step.approverUserId === currentUserId || canCompleteSigning));
+    const canAttach = Boolean(currentUserId && (isAssignedRoleParticipant || canCompleteSigning));
     if (!canAttach) {
       const error: any = new Error('Файл может прикрепить только назначенный участник или инициатор на этапе подписания');
       error.statusCode = 403;

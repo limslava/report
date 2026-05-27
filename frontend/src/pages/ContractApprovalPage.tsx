@@ -398,8 +398,9 @@ export default function ContractApprovalPage() {
   const isChiefAccountant = currentUser?.role === 'chief_accountant';
   const isAdmin = currentUser?.role === 'admin';
   const isReadOnlyRegistry = currentUser?.role === 'general_director';
+  const canUseMyContracts = !isReadOnlyRegistry && currentUser?.role !== 'lawyer';
   const canUseInbox = isSecurity || isApprovalWorkRole;
-  const initialSection: ContractSection = canUseInbox ? 'inbox' : (isAdmin || isReadOnlyRegistry) ? 'registry' : 'mine';
+  const initialSection: ContractSection = canUseInbox ? 'inbox' : (isAdmin || isReadOnlyRegistry || !canUseMyContracts) ? 'registry' : 'mine';
   const [tab, setTab] = useState(0);
   const [contractSection, setContractSection] = useState<ContractSection>(initialSection);
   const [contracts, setContracts] = useState<ContractRecord[]>([]);
@@ -941,7 +942,7 @@ export default function ContractApprovalPage() {
   }, [selectedContractId]);
 
   useEffect(() => {
-    setContractSection(canUseInbox ? 'inbox' : (isAdmin || isReadOnlyRegistry) ? 'registry' : 'mine');
+    setContractSection(canUseInbox ? 'inbox' : (isAdmin || isReadOnlyRegistry || !canUseMyContracts) ? 'registry' : 'mine');
     if (isSecurity) {
       setTab(2);
     } else if (isApprovalWorkRole) {
@@ -949,7 +950,7 @@ export default function ContractApprovalPage() {
     } else {
       setTab(0);
     }
-  }, [canUseInbox, currentUser?.role, isSecurity, isApprovalWorkRole, isAdmin, isReadOnlyRegistry]);
+  }, [canUseInbox, currentUser?.role, isSecurity, isApprovalWorkRole, isAdmin, isReadOnlyRegistry, canUseMyContracts]);
 
   useEffect(() => {
     if (!isSecurity) return;
@@ -1051,6 +1052,7 @@ export default function ContractApprovalPage() {
     && Boolean(step.assignedAt)
     && (
       step.approverUserId === currentUser?.id
+      && currentUser?.role === step.roleCode
       || (
         step.roleCode === 'secretary'
         && (sheet.contract.initiator?.id === currentUser?.id || currentUser?.role === 'admin')
@@ -1239,7 +1241,10 @@ export default function ContractApprovalPage() {
 
   const canAttachToStep = (step: SheetStep) => Boolean(
     currentUser
-    && (currentUser.id === step.approverUserId || canFinalizeSignature(step))
+    && (
+      (currentUser.id === step.approverUserId && currentUser.role === step.roleCode)
+      || canFinalizeSignature(step)
+    )
     && Boolean(step.assignedAt)
     && sheet?.contract.status === 'in_approval'
     && (step.revisionNo ?? 1) === (sheet?.contract.revisionNo ?? 1)
@@ -1340,7 +1345,7 @@ export default function ContractApprovalPage() {
     .join(' ')
     .toLowerCase();
 
-  const registryBaseContracts = contractSection === 'mine'
+  const registryBaseContracts = contractSection === 'mine' && canUseMyContracts
     ? contracts.filter((contract) => contract.initiator?.id === currentUser?.id)
     : contracts;
   const registrySearchQuery = registrySearch.trim().toLowerCase();
@@ -1768,7 +1773,7 @@ export default function ContractApprovalPage() {
                 Согласование договоров
               </Button>
             )}
-            {!isReadOnlyRegistry && (
+            {canUseMyContracts && (
               <Button
                 size="small"
                 variant={contractSection === 'mine' ? 'contained' : 'text'}
@@ -2058,6 +2063,15 @@ export default function ContractApprovalPage() {
                         <TableCell>{renderStepFiles(step, sheet.contract.id)}</TableCell>
                       </TableRow>
                     ))}
+                    <TableRow key="general-director-signature">
+                      <TableCell>Генеральный директор</TableCell>
+                      <TableCell>Васильковский М.О.</TableCell>
+                      <TableCell></TableCell>
+                      <TableCell></TableCell>
+                      <TableCell></TableCell>
+                      <TableCell></TableCell>
+                      <TableCell></TableCell>
+                    </TableRow>
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -2718,6 +2732,15 @@ export default function ContractApprovalPage() {
                         <TableCell>{renderStepFiles(step, sheet.contract.id)}</TableCell>
                       </TableRow>
                     ))}
+                    <TableRow key="general-director-signature">
+                      <TableCell>Генеральный директор</TableCell>
+                      <TableCell>Васильковский М.О.</TableCell>
+                      <TableCell></TableCell>
+                      <TableCell></TableCell>
+                      <TableCell></TableCell>
+                      <TableCell></TableCell>
+                      <TableCell></TableCell>
+                    </TableRow>
                   </TableBody>
                 </Table>
               </TableContainer>
