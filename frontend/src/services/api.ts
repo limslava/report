@@ -83,6 +83,88 @@ export const getRuntimeAppSettings = () => api.get('/auth/app-settings');
 
 export const getUsers = (params?: any) => api.get('/admin/users', { params });
 export const getUsersDirectory = () => api.get('/users/directory');
+export const getContracts = () => api.get('/contracts');
+export const getMasterContracts = () => api.get('/contracts/masters');
+export const getContractReferences = () => api.get('/contracts/reference');
+export const getContractSlaRules = () => api.get('/contracts/sla-rules');
+export const updateContractSlaRules = (rules: Array<{
+  contractType: 'expense' | 'income';
+  incomeSubtype?: 'standard' | 'with_psr' | null;
+  roleCode: string;
+  slaWorkdays: number;
+  isActive?: boolean;
+}>) => api.put('/contracts/sla-rules', { rules });
+export const getWorkCalendar = (year: number) => api.get('/contracts/work-calendar', { params: { year } });
+export const syncWorkCalendar = (year: number, source: 'isdayoff' | 'weekend-default' = 'isdayoff') =>
+  api.post('/contracts/work-calendar/sync', null, { params: { year, source } });
+export const upsertWorkCalendarDay = (date: string, payload: { isWorkday: boolean; comment?: string | null }) =>
+  api.put(`/contracts/work-calendar/${date}`, payload);
+export const getContractDuplicates = (params: { inn: string; contractType: 'expense' | 'income' }) =>
+  api.get('/contracts/duplicates', { params });
+export const resolveCounterpartyByInn = (inn: string) => api.get('/counterparties/resolve', { params: { inn } });
+export const resolveCounterpartyByName = (name: string) => api.get('/counterparties/resolve-by-name', { params: { name } });
+export const lookupSinokorBl = (blNo: string, debug = false) =>
+  api.get(`/carriers/sinokor/bl/${encodeURIComponent(blNo)}`, { params: debug ? { debug: '1' } : undefined });
+export const createContract = (data: {
+  contractNumber: string;
+  contractType: 'expense' | 'income';
+  incomeSubtype?: 'standard' | 'with_psr' | null;
+  counterpartyName: string;
+  counterpartyShortName?: string | null;
+  ownershipForm?: string | null;
+  counterpartyForm?: 'ooo' | 'ao' | 'pao' | 'zao' | 'ip' | null;
+  counterpartyInn: string;
+  subject?: string | null;
+  contractDate?: string | null;
+  psrFlag?: boolean;
+  signingMethod?: 'edo' | 'post';
+  allowDuplicate?: boolean;
+  clientRequestId?: string | null;
+}) => api.post('/contracts', data);
+export const updateDraftContract = (
+  contractId: string,
+  data: Parameters<typeof createContract>[0]
+) => api.put(`/contracts/${contractId}/draft`, data);
+export const deleteDraftContract = (contractId: string) => api.delete(`/contracts/${contractId}/draft`);
+export const prepareContractRevision = (contractId: string) => api.post(`/contracts/${contractId}/new-revision`);
+export const uploadContractAttachments = (
+  contractId: string,
+  files: Array<{ name: string; mimeType?: string | null; size?: number; contentBase64: string }>
+) => api.post(`/contracts/${contractId}/attachments`, { files });
+export const uploadContractStepAttachments = (
+  contractId: string,
+  stepId: string,
+  files: Array<{ name: string; mimeType?: string | null; size?: number; contentBase64: string }>
+) => api.post(`/contracts/${contractId}/steps/${stepId}/attachments`, { files });
+export const getContractAttachments = (contractId: string) => api.get(`/contracts/${contractId}/attachments`);
+export const downloadContractAttachment = (attachmentId: string) =>
+  api.get(`/contracts/attachments/${attachmentId}/download`, { responseType: 'blob' });
+export const previewContractAttachment = (attachmentId: string) =>
+  api.get(`/contracts/attachments/${attachmentId}/preview`, { responseType: 'blob' });
+export const deleteContractAttachment = (attachmentId: string) =>
+  api.delete(`/contracts/attachments/${attachmentId}`);
+export const getSecurityContractInbox = (view: 'active' | 'processed' | 'completed_month' | 'all' = 'active') =>
+  api.get('/contracts/security/inbox', { params: { view } });
+export const getMyContractApprovalInbox = (view: 'active' | 'processed' | 'completed_month' | 'all' = 'active') =>
+  api.get('/contracts/approval-inbox/my', { params: { view } });
+export const getMyApprovalDashboard = () => api.get('/contracts/approval-dashboard/my');
+export const submitSecurityVisa = (
+  contractId: string,
+  data: { visa: 'approved' | 'rejected' | 'approved_with_remarks'; comment?: string | null }
+) => api.post(`/contracts/security/inbox/${contractId}/visa`, data);
+export const getContractApprovalSheet = (id: string) => api.get(`/contracts/${id}/approval-sheet`);
+export const getContractDecisionHistory = (id: string) => api.get(`/contracts/${id}/decision-history`);
+export const downloadContractPrintPackage = (id: string) =>
+  api.get(`/contracts/${id}/print-package`, { responseType: 'blob' });
+export const startContractApproval = (id: string) => api.post(`/contracts/${id}/start-approval`);
+export const decideContractApprovalStep = (
+  contractId: string,
+  stepId: string,
+  data: {
+    decision: 'approve' | 'rework' | 'reject';
+    comment?: string | null;
+  }
+) => api.post(`/contracts/${contractId}/steps/${stepId}/decision`, data);
 export const inviteUser = (data: any) => api.post('/admin/users/invite', data);
 export const updateUser = (id: string, data: any) => api.put(`/admin/users/${id}`, data);
 export const resetUserPasswordByAdmin = (id: string) => api.post(`/admin/users/${id}/reset-password`);
@@ -93,6 +175,17 @@ export const getSystemStats = () => api.get('/admin/stats');
 export const getAuditLog = (params?: any) => api.get('/admin/audit', { params });
 export const getAppSettings = () => api.get('/admin/app-settings');
 export const updateAppSettings = (data: { appTitle: string }) => api.put('/admin/app-settings', data);
+export const getContractWorkSchedules = () => api.get('/admin/contract-work-schedules');
+export const upsertContractWorkSchedules = (items: Array<{
+  scope: 'global' | 'role' | 'user';
+  roleCode?: string | null;
+  userId?: string | null;
+  timezone: string;
+  workdayStart: string;
+  workdayEnd: string;
+  workdays: number[];
+  isActive?: boolean;
+}>) => api.put('/admin/contract-work-schedules', { items });
 
 export const getEmailSchedules = () => api.get('/email-schedules');
 export const getEmailSchedule = (id: string) => api.get(`/email-schedules/${id}`);

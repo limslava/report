@@ -10,15 +10,22 @@ import AdminPage from './pages/AdminPage';
 import SettingsPage from './pages/SettingsPage';
 import PlansPage from './pages/PlansPage';
 import SWTechDashboardPage from './pages/SWTechDashboardPage';
+import ContractApprovalPage from './pages/ContractApprovalPage';
+import BPApprovalDashboardPage from './pages/BPApprovalDashboardPage';
+import SinokorTestPage from './pages/SinokorTestPage';
 import RouteAccessGuard from './components/auth/RouteAccessGuard';
 import {
   canAccessAdmin,
+  canAccessBillOfLading,
+  canAccessContractApproval,
   canAccessOperationsPreview,
   canViewOperationsEfficiency,
   canViewCalendar,
   canViewFinancialPlan,
+  canViewPlans,
   canViewSummary,
   canViewTechDashboard,
+  canViewBPDashboard,
 } from './utils/rolePermissions';
 
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
@@ -30,6 +37,9 @@ function App() {
   const isAuthenticated = !!token;
   const defaultAuthenticatedRoute = (() => {
     if (canViewTechDashboard(user?.role)) return '/sw-tech-dashboard';
+    if (canViewPlans(user?.role)) return '/plans';
+    if (canViewBPDashboard(user?.role)) return '/business-processes/dashboard';
+    if (canAccessContractApproval(user?.role)) return '/business-processes/contract-approval';
     if (user?.role === 'garage_head' || user?.role === 'garage_head_vvo') {
       return '/operations-preview?location=garage_vvo&section=mechanics';
     }
@@ -52,6 +62,14 @@ function App() {
             element={<Navigate to={defaultAuthenticatedRoute} replace />}
           />
           <Route
+            path="business-processes/dashboard"
+            element={(
+              <RouteAccessGuard allow={canViewBPDashboard(user?.role)}>
+                <BPApprovalDashboardPage />
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
             path="summary-report"
             element={(
               <RouteAccessGuard allow={canViewSummary(user?.role)}>
@@ -68,8 +86,22 @@ function App() {
             )}
           />
           <Route path="settings" element={<SettingsPage />} />
-          <Route path="plans" element={<PlansPage mode="daily" />} />
-          <Route path="plans/totals" element={<PlansPage mode="totals" />} />
+          <Route
+            path="plans"
+            element={(
+              <RouteAccessGuard allow={canViewPlans(user?.role)}>
+                <PlansPage mode="daily" />
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="plans/totals"
+            element={(
+              <RouteAccessGuard allow={canViewPlans(user?.role)}>
+                <PlansPage mode="totals" />
+              </RouteAccessGuard>
+            )}
+          />
           <Route
             path="plans/financial"
             element={(
@@ -113,6 +145,30 @@ function App() {
             element={(
               <RouteAccessGuard allow={canViewTechDashboard(user?.role)}>
                 <SWTechDashboardPage />
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="business-processes/contract-approval"
+            element={(
+              <RouteAccessGuard allow={canAccessContractApproval(user?.role)}>
+                <ContractApprovalPage />
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="business-processes/bill-of-lading"
+            element={(
+              <RouteAccessGuard allow={canAccessBillOfLading(user?.role)}>
+                <SinokorTestPage />
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="sinokor-test"
+            element={(
+              <RouteAccessGuard allow={canAccessBillOfLading(user?.role)}>
+                <SinokorTestPage />
               </RouteAccessGuard>
             )}
           />

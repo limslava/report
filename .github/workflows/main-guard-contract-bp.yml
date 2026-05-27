@@ -1,0 +1,33 @@
+name: Main Guard - Contract BP WIP
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  block-contract-bp-wip:
+    name: Block WIP markers for main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate no WIP marker in PR diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          MARKER='BP_CONTRACT_APPROVAL_WIP'
+          DIFF_TEXT=$(git diff --unified=0 "$BASE_SHA" "$HEAD_SHA" || true)
+
+          if echo "$DIFF_TEXT" | grep -q "$MARKER"; then
+            echo "ERROR: Found forbidden marker '$MARKER' in PR diff to main."
+            echo "Remove marker-related WIP changes or keep the PR as draft outside main flow."
+            exit 1
+          fi
+
+          echo "OK: no forbidden WIP marker found in PR diff."

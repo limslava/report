@@ -212,8 +212,8 @@ export default function OperationsPreview() {
     || userRole === 'head_hr'
     || userRole === 'hr_specialist'
   );
-  const efficiencyOnlyViewer = userRole === 'director' || userRole === 'financer';
-  const canChooseEfficiencyDirection = userRole === 'director' || userRole === 'financer';
+  const efficiencyOnlyViewer = userRole === 'director' || userRole === 'general_director' || userRole === 'financer';
+  const canChooseEfficiencyDirection = userRole === 'director' || userRole === 'general_director' || userRole === 'financer';
   const [filter, setFilter] = useState<'Все' | Department>('Все');
   const [monthValue, setMonthValue] = useState('2026-04');
   const [mode, setMode] = useState<PreviewMode>('fact');

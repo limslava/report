@@ -173,7 +173,7 @@ const isValidSection = (value: unknown): value is PreviewSection =>
   value === 'mechanics' ||
   value === 'efficiency';
 
-const isEfficiencyOnlyViewer = (role: unknown): boolean => role === 'director' || role === 'financer';
+const isEfficiencyOnlyViewer = (role: unknown): boolean => role === 'director' || role === 'general_director' || role === 'financer';
 
 const isAllowedSectionForLocation = (location: PreviewLocation, section: PreviewSection): boolean => {
   if (location === 'garage_vvo' || location === 'garage_mow') return section === 'mechanics';

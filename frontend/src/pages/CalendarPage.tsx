@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Dialog, DialogActions, DialogContent, DialogTitle, Button } from '@mui/material';
 import { useAuthStore } from '../store/auth-store';
 import {
   addMonths,
@@ -174,7 +175,12 @@ function formatTimeValue(date: Date): string {
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Администратор',
   director: 'Директор',
+  general_director: 'Генеральный директор',
   financer: 'Финансовая дирекция',
+  chief_accountant: 'Главный бухгалтер',
+  lawyer: 'Юрист',
+  security: 'СБ',
+  secretary: 'Офис-менеджер',
   manager_sales: 'Отдел продаж',
   head_sales: 'Руководитель отдела продаж',
   manager_ktk_vvo: 'Диспетчерский отдел Влд',
@@ -194,6 +200,7 @@ const ROLE_LABELS: Record<string, string> = {
 export default function CalendarPage() {
   const refreshUnread = useNotesUnreadStore((state) => state.refresh);
   const setUnreadCount = useNotesUnreadStore((state) => state.setCount);
+  const unreadCount = useNotesUnreadStore((state) => state.unreadCount);
   const [cursor, setCursor] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [notesByDate, setNotesByDate] = useState<NotesByDate>({});
@@ -237,6 +244,11 @@ export default function CalendarPage() {
     dateKey: string;
   } | null>(null);
   const [usersDirectory, setUsersDirectory] = useState<Array<{ id: string; fullName: string; role: string }>>([]);
+  const [dayNotesModalOpen, setDayNotesModalOpen] = useState(false);
+  const [dayNotesModalDate, setDayNotesModalDate] = useState<Date | null>(null);
+  const [unreadModalOpen, setUnreadModalOpen] = useState(false);
+  const [unreadLoading, setUnreadLoading] = useState(false);
+  const [unreadNotes, setUnreadNotes] = useState<CalendarNote[]>([]);
   const quickInputRef = useRef<HTMLTextAreaElement | null>(null);
   const quickAddRef = useRef<HTMLDivElement | null>(null);
   const eventTitleRef = useRef<HTMLTextAreaElement | null>(null);
@@ -255,6 +267,8 @@ export default function CalendarPage() {
   const monthDays = useMemo(() => buildMonthGrid(cursor), [cursor]);
   const selectedKey = formatDateKey(selectedDate);
   const notes = notesByDate[selectedKey] ?? [];
+  const dayNotesModalKey = dayNotesModalDate ? formatDateKey(dayNotesModalDate) : null;
+  const dayNotesModalNotes = dayNotesModalKey ? (notesByDate[dayNotesModalKey] ?? []) : [];
   const yearMonths = useMemo(() => buildYearMonths(cursor), [cursor]);
   const weekDays = useMemo(() => {
     const start = startOfWeek(selectedDate);
@@ -327,8 +341,8 @@ export default function CalendarPage() {
     if (targets.length === 0) return "Адресаты не указаны";
     return targets.join(", ");
   };
-  const canDeleteNote = (note: CalendarNote) => canDeleteNoteWithUser(note, user);
-  const canEditNote = (note: CalendarNote) => canEditNoteWithUser(note, user);
+  const canDeleteNote = (note: CalendarNote) => note.source !== 'system' && canDeleteNoteWithUser(note, user);
+  const canEditNote = (note: CalendarNote) => note.source !== 'system' && canEditNoteWithUser(note, user);
 
   const mapApiNote = useCallback((note: ApiNote): CalendarNote => {
     const start = new Date(note.startAt);
@@ -343,6 +357,10 @@ export default function CalendarPage() {
       authorName: note.authorName,
       authorRole: resolvedRole,
       visibility: note.visibility,
+      source: note.source ?? 'manual',
+      status: note.status ?? 'active',
+      linkedContractId: note.linkedContractId ?? null,
+      linkedStepId: note.linkedStepId ?? null,
       recipientUserIds: note.recipientUserIds,
       recipientRoleIds: note.recipientRoleIds,
       startAt: note.startAt,
@@ -634,23 +652,90 @@ export default function CalendarPage() {
     setShowQuickAdd(false);
     setShowQuickTime(false);
     setShowEventPreview(true);
-    if (user && note.authorId && note.authorId !== user.id && !note.isRead) {
-      const prevCount = useNotesUnreadStore.getState().unreadCount;
-      setUnreadCount(Math.max(0, prevCount - 1));
-      markNoteReadApi(note.id).then(() => {
-        setNotesByDate((prev) => {
-          const next: NotesByDate = {};
-          Object.entries(prev).forEach(([key, list]) => {
-            next[key] = list.map((item) => (
-              item.id === note.id ? { ...item, isRead: true } : item
-            ));
-          });
-          return next;
+    void markNoteAsRead(note);
+  };
+
+  const markNoteAsRead = async (note: CalendarNote) => {
+    if (!user || !note.authorId || note.authorId === user.id || note.isRead) return;
+    const prevCount = useNotesUnreadStore.getState().unreadCount;
+    setUnreadCount(Math.max(0, prevCount - 1));
+    try {
+      await markNoteReadApi(note.id);
+      setNotesByDate((prev) => {
+        const next: NotesByDate = {};
+        Object.entries(prev).forEach(([key, list]) => {
+          next[key] = list.map((item) => (item.id === note.id ? { ...item, isRead: true } : item));
         });
-        void refreshUnread();
-      }).catch(() => {
-        setUnreadCount(prevCount);
+        return next;
       });
+      void refreshUnread();
+    } catch {
+      setUnreadCount(prevCount);
+    }
+  };
+
+  const markDayNotesAsRead = async (targetDate: Date) => {
+    const key = formatDateKey(targetDate);
+    const unread = (notesByDate[key] ?? []).filter((n) => isUnreadNote(n));
+    if (!unread.length) return;
+    const prevCount = useNotesUnreadStore.getState().unreadCount;
+    setUnreadCount(Math.max(0, prevCount - unread.length));
+    try {
+      await Promise.all(unread.map((n) => markNoteReadApi(n.id)));
+      const unreadIds = new Set(unread.map((n) => n.id));
+      setNotesByDate((prev) => ({
+        ...prev,
+        [key]: (prev[key] ?? []).map((n) => (unreadIds.has(n.id) ? { ...n, isRead: true } : n)),
+      }));
+      void refreshUnread();
+    } catch {
+      setUnreadCount(prevCount);
+    }
+  };
+
+  const loadUnreadNotes = async () => {
+    if (!user) return;
+    setUnreadLoading(true);
+    try {
+      const response = await listNotesApi({
+        from: new Date('1970-01-01T00:00:00.000Z').toISOString(),
+        to: new Date('2100-01-01T00:00:00.000Z').toISOString(),
+        includeClosed: true,
+      });
+      const items = Array.isArray(response.data) ? response.data : [];
+      const mapped = items.map(mapApiNote);
+      const onlyUnread = mapped
+        .filter((note) => isUnreadNoteWithUser(note, user))
+        .sort((a, b) => new Date(b.startAt ?? b.createdAt).getTime() - new Date(a.startAt ?? a.createdAt).getTime());
+      setUnreadNotes(onlyUnread);
+    } finally {
+      setUnreadLoading(false);
+    }
+  };
+
+  const openUnreadModal = async () => {
+    setUnreadModalOpen(true);
+    await loadUnreadNotes();
+  };
+
+  const markAllUnreadAsRead = async () => {
+    if (!unreadNotes.length) return;
+    const prevCount = useNotesUnreadStore.getState().unreadCount;
+    setUnreadCount(0);
+    try {
+      await Promise.all(unreadNotes.map((n) => markNoteReadApi(n.id)));
+      const unreadIds = new Set(unreadNotes.map((n) => n.id));
+      setNotesByDate((prev) => {
+        const next: NotesByDate = {};
+        Object.entries(prev).forEach(([key, list]) => {
+          next[key] = list.map((note) => (unreadIds.has(note.id) ? { ...note, isRead: true } : note));
+        });
+        return next;
+      });
+      setUnreadNotes([]);
+      void refreshUnread();
+    } catch {
+      setUnreadCount(prevCount);
     }
   };
 
@@ -992,17 +1077,33 @@ export default function CalendarPage() {
               <div>
                 <h3>Заметки на {formatMeta(selectedDate)}</h3>
               </div>
+              <div className="cal-actions">
+                <button
+                  className="cal-btn"
+                  type="button"
+                  onClick={() => void openUnreadModal()}
+                >
+                  Непрочитанные ({unreadCount})
+                </button>
+              </div>
             </div>
 
             <div className="note-list" style={{ marginTop: 12 }}>
               {notes.length === 0 && <div className="cal-muted">Заметок на этот день пока нет.</div>}
               {notes.map((note) => (
-                <div key={note.id} className={cx('note-item', isUnreadNote(note) && 'unread', isOwnNote(note) && 'own', isAdminExternalNote(note) && 'admin-external')}>
+                <div
+                  key={note.id}
+                  className={cx('note-item', isUnreadNote(note) && 'unread', isOwnNote(note) && 'own', isAdminExternalNote(note) && 'admin-external')}
+                  onClick={() => {
+                    openEventPreview(note, selectedDate);
+                    void markNoteAsRead(note);
+                  }}
+                >
                   <div className="note-meta">
                     <div className="note-meta-main">
                       <div className="note-time-row">
                         <span>{getStartTime(note)} — {getEndTime(note)}</span>
-                        
+                        {note.source === 'system' && <span className="note-recipient">БП</span>}
                       </div>
                       {canShowAuthor(note) && (
                         <span className="note-author">от {note.authorName}</span>
@@ -1900,7 +2001,7 @@ export default function CalendarPage() {
                           >
                             <span className={cx('event-dot', isUnreadNote(note) && 'unread', isAdminExternalNote(note) && 'admin-external')} />
                             <span className="event-title">
-                              {note.text}
+                              {note.source === 'system' ? `[БП] ${note.text}` : note.text}
                               
                               {canShowAuthor(note) && (
                                 <span className="event-author"> · {note.authorName}</span>
@@ -1910,7 +2011,18 @@ export default function CalendarPage() {
                           </div>
                         ))}
                         {dayNotes.length > maxMonthEvents && (
-                          <div className="event-more">+ ещё {dayNotes.length - maxMonthEvents}</div>
+                          <button
+                            type="button"
+                            className="event-more"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSelectedDate(day);
+                              setDayNotesModalDate(day);
+                              setDayNotesModalOpen(true);
+                            }}
+                          >
+                            + ещё {dayNotes.length - maxMonthEvents}
+                          </button>
                         )}
                       </div>
                     </div>
@@ -2028,7 +2140,7 @@ export default function CalendarPage() {
                               }
                             }}
                           >
-                            <div className="event-title">{note.text}</div>
+                            <div className="event-title">{note.source === 'system' ? `[БП] ${note.text}` : note.text}</div>
                             {canShowAuthor(note) && (
                               <div className="event-author">от {note.authorName}</div>
                             )}
@@ -2195,7 +2307,7 @@ export default function CalendarPage() {
                                   }
                                 }}
                               >
-                                <div className="event-title">{note.text}</div>
+                                <div className="event-title">{note.source === 'system' ? `[БП] ${note.text}` : note.text}</div>
                                 {canShowAuthor(note) && (
                                   <div className="event-author">от {note.authorName}</div>
                                 )}
@@ -2259,6 +2371,90 @@ export default function CalendarPage() {
 
         </div>
       </div>
+      <Dialog open={dayNotesModalOpen} onClose={() => setDayNotesModalOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          Все заметки на {dayNotesModalDate ? formatMeta(dayNotesModalDate) : ''}
+        </DialogTitle>
+        <DialogContent dividers>
+          {dayNotesModalNotes.length === 0 && <div className="cal-muted">Заметок на этот день пока нет.</div>}
+          {dayNotesModalNotes.map((note) => (
+            <div
+              key={`modal-${note.id}`}
+              className={cx('note-item', isUnreadNote(note) && 'unread', isOwnNote(note) && 'own', isAdminExternalNote(note) && 'admin-external')}
+              onClick={() => {
+                openEventPreview(note, dayNotesModalDate ?? selectedDate);
+                void markNoteAsRead(note);
+              }}
+            >
+              <div className="note-meta">
+                <div className="note-meta-main">
+                  <div className="note-time-row">
+                    <span>{getStartTime(note)} — {getEndTime(note)}</span>
+                    {note.source === 'system' && <span className="note-recipient">БП</span>}
+                  </div>
+                  {canShowAuthor(note) && <span className="note-author">от {note.authorName}</span>}
+                </div>
+              </div>
+              <textarea rows={2} value={note.text} readOnly />
+            </div>
+          ))}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              if (dayNotesModalDate) {
+                void markDayNotesAsRead(dayNotesModalDate);
+              }
+            }}
+          >
+            Отметить все прочитанными
+          </Button>
+          <Button onClick={() => setDayNotesModalOpen(false)}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={unreadModalOpen} onClose={() => setUnreadModalOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Непрочитанные заметки ({unreadCount})</DialogTitle>
+        <DialogContent dividers>
+          {unreadLoading && <div className="cal-muted">Загрузка...</div>}
+          {!unreadLoading && unreadNotes.length === 0 && (
+            <div className="cal-muted">Непрочитанных заметок нет.</div>
+          )}
+          {!unreadLoading &&
+            unreadNotes.map((note) => {
+              const noteDate = new Date(note.startAt ?? note.createdAt);
+              return (
+                <div
+                  key={`unread-${note.id}`}
+                  className={cx('note-item', 'unread', isOwnNote(note) && 'own', isAdminExternalNote(note) && 'admin-external')}
+                  onClick={() => {
+                    setSelectedDate(noteDate);
+                    setCursor(noteDate);
+                    setUnreadModalOpen(false);
+                    openEventPreview(note, noteDate);
+                  }}
+                >
+                  <div className="note-meta">
+                    <div className="note-meta-main">
+                      <div className="note-time-row">
+                        <span>{formatMeta(noteDate)}</span>
+                        <span>{getStartTime(note)} — {getEndTime(note)}</span>
+                        {note.source === 'system' && <span className="note-recipient">БП</span>}
+                      </div>
+                      {canShowAuthor(note) && <span className="note-author">от {note.authorName}</span>}
+                    </div>
+                  </div>
+                  <textarea rows={2} value={note.text} readOnly />
+                </div>
+              );
+            })}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => void markAllUnreadAsRead()} disabled={unreadLoading || unreadNotes.length === 0}>
+            Отметить все прочитанными
+          </Button>
+          <Button onClick={() => setUnreadModalOpen(false)}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 }

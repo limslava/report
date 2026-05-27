@@ -11,6 +11,8 @@ import {
   getSystemStats,
   getAppSettings,
   updateAppSettings,
+  getContractWorkSchedules,
+  upsertContractWorkSchedules,
 } from '../controllers/admin.controller';
 import { handleValidationErrors } from '../middleware/express-validator.middleware';
 import { authenticate } from '../middleware/authenticate';
@@ -110,5 +112,8 @@ router.put(
   handleValidationErrors,
   updateAppSettings
 );
+
+router.get('/contract-work-schedules', getContractWorkSchedules);
+router.put('/contract-work-schedules', upsertContractWorkSchedules);
 
 export { router as adminRouter };

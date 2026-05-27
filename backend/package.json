@@ -23,6 +23,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
     "bcryptjs": "^2.4.3",
     "bull": "^4.11.5",
     "compression": "^1.7.4",
@@ -36,6 +37,7 @@
     "joi": "^18.0.2",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^8.0.5",
+    "pdf-lib": "^1.17.1",
     "pdfkit": "^0.14.0",
     "pg": "^8.11.3",
     "qs": "^6.15.0",

@@ -26,6 +26,7 @@ router.get(
     'garage_head_vvo',
     'garage_head',
     'director',
+    'general_director',
     'financer'
   ),
   asyncHandler(getOperationsPreviewState)
@@ -58,6 +59,7 @@ router.get(
     'garage_head_vvo',
     'garage_head',
     'director',
+    'general_director',
     'financer'
   ),
   asyncHandler(downloadOperationsPreviewExcel)

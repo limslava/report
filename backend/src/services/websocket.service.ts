@@ -38,11 +38,19 @@ export interface NotesUnreadRefreshEvent {
   timestamp: string;
 }
 
+export interface ContractApprovalUpdatedEvent {
+  type: 'contract-approval:updated';
+  contractId: string;
+  timestamp: string;
+  userId?: string;
+}
+
 type OutgoingWebSocketEvent =
   | PlanUpdateEvent
   | PlanningV2SegmentUpdateEvent
   | FinancialPlanUpdateEvent
-  | NotesUnreadRefreshEvent;
+  | NotesUnreadRefreshEvent
+  | ContractApprovalUpdatedEvent;
 
 type SocketClient = {
   userId: string;
@@ -71,6 +79,10 @@ function isFinancialPlanEvent(event: OutgoingWebSocketEvent): event is Financial
 
 function isNotesUnreadRefreshEvent(event: OutgoingWebSocketEvent): event is NotesUnreadRefreshEvent {
   return event.type === 'notes:unread-refresh';
+}
+
+function isContractApprovalUpdatedEvent(event: OutgoingWebSocketEvent): event is ContractApprovalUpdatedEvent {
+  return event.type === 'contract-approval:updated';
 }
 
 export class PlanWebSocketService {
@@ -199,7 +211,16 @@ export class PlanWebSocketService {
   }
 
   private canReceiveNotesEvents(role: string): boolean {
-    return role === 'admin' || role === 'director' || role === 'manager_auto';
+    return role === 'admin' || role === 'director' || role === 'general_director' || role === 'manager_auto';
+  }
+
+  private canReceiveContractEvents(role: string): boolean {
+    return role === 'admin'
+      || role === 'security'
+      || role === 'lawyer'
+      || role === 'chief_accountant'
+      || role === 'financer'
+      || role === 'secretary';
   }
 
   private handleClientMessage(ws: WebSocket, data: any) {
@@ -253,6 +274,10 @@ export class PlanWebSocketService {
         return;
       }
 
+      if (isContractApprovalUpdatedEvent(event) && !this.canReceiveContractEvents(meta.role)) {
+        return;
+      }
+
       socket.send(message);
     });
 
@@ -278,7 +303,12 @@ export class PlanWebSocketService {
       return;
     }
 
-    logger.debug('Broadcasted plan update');
+    if (isContractApprovalUpdatedEvent(event)) {
+      logger.debug(`Broadcasted contract approval update for ${event.contractId}`);
+      return;
+    }
+
+    logger.debug('Broadcasted realtime update');
   }
 
   notifyPlanningV2SegmentUpdated(params: {
@@ -309,6 +339,15 @@ export class PlanWebSocketService {
   notifyNotesUnreadRefresh() {
     this.broadcastPlanUpdate({
       type: 'notes:unread-refresh',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  notifyContractApprovalUpdated(params: { contractId: string; userId?: string }) {
+    this.broadcastPlanUpdate({
+      type: 'contract-approval:updated',
+      contractId: params.contractId,
+      userId: params.userId,
       timestamp: new Date().toISOString(),
     });
   }

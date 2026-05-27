@@ -34,11 +34,28 @@ export class User {
     | 'manager_extra'
     | 'manager_to'
     | 'financer'
+    | 'chief_accountant'
+    | 'lawyer'
+    | 'security'
+    | 'secretary'
     | 'director'
+    | 'general_director'
     | 'admin';
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive!: boolean;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  timezone!: string | null;
+
+  @Column({ name: 'workday_start', type: 'varchar', length: 5, nullable: true })
+  workdayStart!: string | null;
+
+  @Column({ name: 'workday_end', type: 'varchar', length: 5, nullable: true })
+  workdayEnd!: string | null;
+
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  workdays!: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

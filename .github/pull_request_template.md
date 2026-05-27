@@ -4,6 +4,10 @@
 ## Почему это нужно
 - 
 
+## Guard для main
+- [ ] PR в `main` не содержит WIP-маркеры: `BP_CONTRACT_APPROVAL_WIP`
+- [ ] Для незавершенных задач используется только `Draft PR`
+
 ## Как проверялось
 - [ ] `backend`: `npm run build`
 - [ ] `frontend`: `npm run build`

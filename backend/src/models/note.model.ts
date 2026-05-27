@@ -10,6 +10,8 @@ import { NoteRecipient } from './note-recipient.model';
 import { NoteRead } from './note-read.model';
 
 export type NoteVisibility = 'private' | 'targeted' | 'broadcast';
+export type NoteSource = 'manual' | 'system';
+export type NoteStatus = 'active' | 'closed';
 
 @Entity('notes')
 export class Note {
@@ -33,6 +35,18 @@ export class Note {
 
   @Column({ type: 'varchar', length: 20 })
   visibility!: NoteVisibility;
+
+  @Column({ type: 'varchar', length: 20, default: 'manual' })
+  source!: NoteSource;
+
+  @Column({ type: 'varchar', length: 20, default: 'active' })
+  status!: NoteStatus;
+
+  @Column({ name: 'linked_contract_id', type: 'uuid', nullable: true })
+  linkedContractId!: string | null;
+
+  @Column({ name: 'linked_step_id', type: 'uuid', nullable: true })
+  linkedStepId!: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

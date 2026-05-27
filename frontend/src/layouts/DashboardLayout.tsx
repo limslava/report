@@ -42,19 +42,25 @@ import {
   LocalShipping,
   ExpandLess,
   ExpandMore,
+  AccountTree,
 } from '@mui/icons-material';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/auth-store';
 import {
+  canAccessBillOfLading,
+  canAccessContractApproval,
   canAccessAdmin,
   canAccessOperationsPreview,
   canViewCalendar,
   canViewOperationsEfficiency,
   canViewFinancialPlan,
+  canViewPlans,
   canViewSummary,
   canViewTechDashboard,
   canViewTotalsInPlans,
+  canViewBPDashboard,
+  canShowBPDashboardMenu,
 } from '../utils/rolePermissions';
 import { getHasUnsavedChanges, getUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import { getRuntimeAppSettings } from '../services/api';
@@ -95,6 +101,7 @@ const DashboardLayout = () => {
   const [isMoscowDispatchSubmenuOpen, setIsMoscowDispatchSubmenuOpen] = useState(false);
   const [isWorkGarageSubmenuOpen, setIsWorkGarageSubmenuOpen] = useState(false);
   const [isMoscowGarageSubmenuOpen, setIsMoscowGarageSubmenuOpen] = useState(false);
+  const [isBusinessProcessSubmenuOpen, setIsBusinessProcessSubmenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
@@ -145,7 +152,7 @@ const DashboardLayout = () => {
   const isGarageHead = user?.role === 'garage_head' || user?.role === 'garage_head_vvo';
   const isAdmin = canAccessAdmin(user?.role);
   const canUseWorkSchedule = canAccessOperationsPreview(user?.role);
-  const canViewPlansMenu = !isHrScheduleRole && !isGarageHead;
+  const canViewPlansMenu = canViewPlans(user?.role) && !isHrScheduleRole && !isGarageHead;
   const canViewVvoSchedule = isAdmin || isHrScheduleRole || isKtkVvoManager;
   const canViewMoscowSchedule = isAdmin || isHrScheduleRole || isKtkMowManager;
   const canViewVvoGarageSchedule = isAdmin || isHrScheduleRole || isGarageHead;
@@ -155,11 +162,18 @@ const DashboardLayout = () => {
     : isKtkMowManager
       ? '/operations-preview?location=ktk_mow&section=containers'
       : '/operations-preview?location=ktk_vvo&section=containers';
+  const canOpenContractApproval = canAccessContractApproval(user?.role);
+  const canOpenBillOfLading = canAccessBillOfLading(user?.role);
+  const showBPDashboardMenu = canShowBPDashboardMenu(user?.role);
   const homeRoute = canViewTechDashboard(user?.role)
     ? '/sw-tech-dashboard'
-    : canViewPlansMenu
+    : (canViewPlansMenu && canViewPlans(user?.role))
       ? '/plans'
-      : defaultScheduleRoute;
+      : canViewBPDashboard(user?.role)
+        ? '/business-processes/dashboard'
+        : canOpenContractApproval
+          ? '/business-processes/contract-approval'
+          : defaultScheduleRoute;
   const serviceHealth = useServiceHealth();
   const idleTimeoutRef = useRef<number | null>(null);
   const techPeriodDebounceRef = useRef<number | null>(null);
@@ -385,6 +399,7 @@ const DashboardLayout = () => {
         moscowDispatch: boolean;
         workGarage: boolean;
         moscowGarage: boolean;
+        businessProcess: boolean;
       }>;
       if (typeof parsed.plans === 'boolean') setIsPlansSubmenuOpen(parsed.plans);
       if (typeof parsed.work === 'boolean') setIsWorkSubmenuOpen(parsed.work);
@@ -395,6 +410,7 @@ const DashboardLayout = () => {
       if (typeof parsed.moscowDispatch === 'boolean') setIsMoscowDispatchSubmenuOpen(parsed.moscowDispatch);
       if (typeof parsed.workGarage === 'boolean') setIsWorkGarageSubmenuOpen(parsed.workGarage);
       if (typeof parsed.moscowGarage === 'boolean') setIsMoscowGarageSubmenuOpen(parsed.moscowGarage);
+      if (typeof parsed.businessProcess === 'boolean') setIsBusinessProcessSubmenuOpen(parsed.businessProcess);
     } catch {
       // ignore invalid persisted submenu state
     }
@@ -414,6 +430,7 @@ const DashboardLayout = () => {
           moscowDispatch: isMoscowDispatchSubmenuOpen,
           workGarage: isWorkGarageSubmenuOpen,
           moscowGarage: isMoscowGarageSubmenuOpen,
+          businessProcess: isBusinessProcessSubmenuOpen,
         }),
       );
     } catch {
@@ -429,6 +446,7 @@ const DashboardLayout = () => {
     isMoscowDispatchSubmenuOpen,
     isWorkGarageSubmenuOpen,
     isMoscowGarageSubmenuOpen,
+    isBusinessProcessSubmenuOpen,
   ]);
 
 
@@ -895,6 +913,65 @@ const DashboardLayout = () => {
             )}
           </>
         )}
+        {canOpenContractApproval && (
+          <>
+            <ListItem disablePadding>
+              <Tooltip title={!isPinnedOpen ? 'Бизнес процесс' : ''} placement="right">
+                <ListItemButton
+                  selected={location.pathname.startsWith('/business-processes')}
+                  onClick={() => {
+                    const nextOpen = !isBusinessProcessSubmenuOpen;
+                    setIsBusinessProcessSubmenuOpen(nextOpen);
+                    if (nextOpen && !location.pathname.startsWith('/business-processes')) {
+                      handleNavigate('/business-processes/contract-approval');
+                    }
+                  }}
+                >
+                  <ListItemIcon sx={{ minWidth: isPinnedOpen ? 40 : 0, justifyContent: 'center' }}>
+                    <AccountTree />
+                  </ListItemIcon>
+                  {isPinnedOpen && <ListItemText primary="Бизнес процесс" />}
+                  {isPinnedOpen ? (isBusinessProcessSubmenuOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />) : null}
+                </ListItemButton>
+              </Tooltip>
+            </ListItem>
+            {isPinnedOpen && isBusinessProcessSubmenuOpen && (
+              <>
+                {showBPDashboardMenu && (
+                  <ListItem disablePadding sx={{ pl: 4 }}>
+                    <ListItemButton
+                      selected={location.pathname === '/business-processes/dashboard'}
+                      onClick={() => handleNavigate('/business-processes/dashboard')}
+                      sx={{ py: 0.5, minHeight: 34 }}
+                    >
+                      <ListItemText primary="Дашборд" primaryTypographyProps={{ fontSize: 14 }} />
+                    </ListItemButton>
+                  </ListItem>
+                )}
+                <ListItem disablePadding sx={{ pl: 4 }}>
+                  <ListItemButton
+                    selected={location.pathname === '/business-processes/contract-approval'}
+                    onClick={() => handleNavigate('/business-processes/contract-approval')}
+                    sx={{ py: 0.5, minHeight: 34 }}
+                  >
+                    <ListItemText primary="Согласование договоров" primaryTypographyProps={{ fontSize: 14 }} />
+                  </ListItemButton>
+                </ListItem>
+                {canOpenBillOfLading && (
+                  <ListItem disablePadding sx={{ pl: 4 }}>
+                    <ListItemButton
+                      selected={location.pathname === '/business-processes/bill-of-lading'}
+                      onClick={() => handleNavigate('/business-processes/bill-of-lading')}
+                      sx={{ py: 0.5, minHeight: 34 }}
+                    >
+                      <ListItemText primary="Коносамент" primaryTypographyProps={{ fontSize: 14 }} />
+                    </ListItemButton>
+                  </ListItem>
+                )}
+              </>
+            )}
+          </>
+        )}
         {menuItems.map((item) => (
           <ListItem disablePadding key={item.key}>
             <Tooltip title={!isPinnedOpen ? item.label : ''} placement="right">
@@ -929,7 +1006,12 @@ const DashboardLayout = () => {
             <MenuIcon />
           </IconButton>
           {!isTechDashboardRoute && (
-            <Typography variant="h6" noWrap sx={{ flexGrow: 1 }}>
+            <Typography
+              variant="h6"
+              noWrap
+              onClick={() => handleNavigate(homeRoute)}
+              sx={{ flexGrow: 1, cursor: 'pointer' }}
+            >
               {(location.pathname === '/' || location.pathname.includes('/plans') || location.pathname.includes('/operations-preview')) &&
                 (canUseWorkSchedule
                   ? (location.pathname === '/operations-preview' && location.search.includes('section=containers')
@@ -954,6 +1036,9 @@ const DashboardLayout = () => {
                   : 'Показатели')}
               {location.pathname.includes('/summary-report') && 'Сводный отчет'}
               {location.pathname.includes('/admin') && 'Администрирование'}
+              {location.pathname.includes('/business-processes/contract-approval') && 'Согласование договоров'}
+              {location.pathname.includes('/business-processes/bill-of-lading') && 'Коносамент'}
+              {location.pathname.includes('/business-processes/dashboard') && 'Согласование договоров'}
               {location.pathname.includes('/settings') && 'Настройки'}
             </Typography>
           )}
@@ -1070,6 +1155,8 @@ const DashboardLayout = () => {
           flexGrow: 1,
           p: isTechDashboardRoute ? { xs: 0, sm: 0 } : { xs: 0.75, sm: 1 },
           width: { sm: `calc(100% - ${drawerWidth}px)` },
+          boxSizing: 'border-box',
+          overflowX: isTechDashboardRoute ? 'hidden' : 'auto',
           overflowY: isTechDashboardRoute ? 'hidden' : 'auto',
         }}
       >

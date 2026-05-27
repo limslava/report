@@ -8,6 +8,10 @@ export type CalendarNote = {
   authorName?: string;
   authorRole?: string;
   visibility?: 'private' | 'targeted' | 'broadcast';
+  source?: 'manual' | 'system';
+  status?: 'active' | 'closed';
+  linkedContractId?: string | null;
+  linkedStepId?: string | null;
   recipientUserIds?: string[];
   recipientRoleIds?: string[];
   startAt?: string;

@@ -10,8 +10,9 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash VARCHAR(255) NOT NULL,
   full_name VARCHAR(255) NOT NULL,
   role VARCHAR(50) NOT NULL CHECK (role IN (
-    'admin', 'director', 'financer', 'manager_sales',
-    'manager_ktk_vvo', 'manager_ktk_mow', 'manager_auto', 'manager_rail', 'manager_extra', 'manager_to'
+    'admin', 'director', 'general_director', 'financer', 'chief_accountant', 'lawyer', 'security', 'secretary',
+    'manager_sales', 'head_sales', 'manager_ktk_vvo', 'head_ktk_vvo', 'manager_ktk_mow',
+    'manager_auto', 'manager_rail', 'manager_extra', 'manager_to'
   )),
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMP DEFAULT NOW(),

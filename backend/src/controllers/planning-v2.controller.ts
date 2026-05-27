@@ -544,7 +544,7 @@ export const getPlanningYearTotals = async (req: Request, res: Response, next: N
 
     const segments = await planningV2Service.getSegmentsForRole(user.role);
     const allowedCodes = segments.map((segment) => segment.code);
-    const canEditBasePlan = user.role === 'admin' || user.role === 'director';
+    const canEditBasePlan = user.role === 'admin' || user.role === 'director' || user.role === 'general_director';
     const rows = await planningV2TotalsService.getYearTotals(year, {
       allowedSegmentCodes: allowedCodes,
       ensureMetrics: canEditBasePlan,
@@ -563,8 +563,8 @@ export const updatePlanningBasePlan = async (req: Request, res: Response, next: 
       return;
     }
 
-    if (user.role !== 'admin' && user.role !== 'director') {
-      res.status(403).json({ error: 'Only admin or director can edit base plans' });
+    if (user.role !== 'admin' && user.role !== 'director' && user.role !== 'general_director') {
+      res.status(403).json({ error: 'Only admin or director roles can edit base plans' });
       return;
     }
 
