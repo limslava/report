@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Card, CardContent, Grid, Stack, Typography } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { getMyApprovalDashboard } from '../services/api';
+import { subscribePlansRealtime } from '../services/plans-realtime';
 
 type DashboardData = {
   inWork: number;
@@ -36,27 +37,32 @@ function MetricCard({
 }) {
   return (
     <Card
+      component={onClick ? 'button' : 'div'}
       variant="outlined"
       onClick={onClick}
       sx={{
-        borderRadius: '8px',
-        border: '1px solid #d7dce4',
-        boxShadow: '0 2px 8px rgba(23, 43, 77, 0.08)',
+        width: '100%',
+        minHeight: 116,
+        textAlign: 'left',
+        font: 'inherit',
+        borderRadius: '10px',
+        border: '1px solid #d8e1ee',
+        boxShadow: '0 1px 3px rgba(23, 43, 77, 0.06)',
         background: '#fff',
         cursor: onClick ? 'pointer' : 'default',
-        transition: 'transform 120ms ease, box-shadow 120ms ease',
+        transition: 'border-color 120ms ease, box-shadow 120ms ease',
         '&:hover': onClick
           ? {
-            transform: 'translateY(-1px)',
-            boxShadow: '0 4px 14px rgba(23, 43, 77, 0.14)',
+            borderColor: '#9eb6d5',
+            boxShadow: '0 3px 9px rgba(23, 43, 77, 0.10)',
           }
           : undefined,
       }}
     >
-      <CardContent sx={{ p: '8px 10px !important' }}>
-        <Typography sx={{ fontSize: 22, color: '#667084', mb: 0.25, lineHeight: 1.2 }}>{title}</Typography>
-        <Typography sx={{ color, fontWeight: 800, lineHeight: 1.06, fontSize: 54 }}>{value}</Typography>
-        <Typography sx={{ color: '#6a7382', fontSize: 18, mt: 0.25 }}>{hint}</Typography>
+      <CardContent sx={{ p: '14px 16px !important', display: 'grid', gap: 0.25 }}>
+        <Typography sx={{ fontSize: 14, fontWeight: 600, color: '#586980', lineHeight: 1.25 }}>{title}</Typography>
+        <Typography sx={{ color, fontWeight: 700, lineHeight: 1.08, fontSize: 36 }}>{value}</Typography>
+        <Typography sx={{ color: '#6b7788', fontSize: 12.5, lineHeight: 1.3 }}>{hint}</Typography>
       </CardContent>
     </Card>
   );
@@ -82,23 +88,37 @@ export default function BPApprovalDashboardPage() {
   };
 
   useEffect(() => {
-    load();
-    const timer = window.setInterval(load, 60_000);
-    return () => window.clearInterval(timer);
+    void load();
+    const unsubscribe = subscribePlansRealtime((payload) => {
+      const event = payload as { type?: string };
+      if (event.type === 'contract-approval:updated') {
+        void load();
+      }
+    });
+    const refreshOnFocus = () => {
+      if (document.visibilityState === 'visible') {
+        void load();
+      }
+    };
+    window.addEventListener('focus', refreshOnFocus);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', refreshOnFocus);
+    };
   }, []);
 
   const nowLabel = useMemo(() => new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date()), [data]);
 
   return (
-    <Box sx={{ p: { xs: 1, sm: 2 }, display: 'grid', gap: 2 }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ px: 0.5 }}>
-        <Typography variant="h5" sx={{ fontWeight: 700 }}>Дашборд согласования договоров</Typography>
+    <Box sx={{ p: { xs: 1.5, sm: 2.5 }, display: 'grid', gap: 2, width: '100%' }}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} sx={{ gap: 0.5 }}>
+        <Typography variant="h5" sx={{ fontWeight: 700, fontSize: { xs: 21, sm: 24 }, color: '#24344d' }}>Согласование договоров</Typography>
         <Typography variant="caption" color="text.secondary">Обновлено: {nowLabel}</Typography>
       </Stack>
 
       {error && <Alert severity="error">{error}</Alert>}
 
-      <Grid container spacing={1.5}>
+      <Grid container spacing={1.25}>
         <Grid item xs={12} sm={6} md={4}>
           <MetricCard
             title="Новые"
@@ -136,7 +156,13 @@ export default function BPApprovalDashboardPage() {
           />
         </Grid>
         <Grid item xs={12} sm={6} md={4}>
-          <MetricCard title="Завершено за месяц" value={data.completedMonth} hint="Обработанные заявки" color="#455a64" />
+          <MetricCard
+            title="Завершено за месяц"
+            value={data.completedMonth}
+            hint="Ваши решения в этом месяце"
+            color="#455a64"
+            onClick={() => navigate('/business-processes/contract-approval?kpi=completed_month')}
+          />
         </Grid>
         <Grid item xs={12} sm={6} md={4}>
           <MetricCard title="Среднее время" value={`${data.avgProcessingHours} ч`} hint="От назначения до решения" color="#6a1b9a" />

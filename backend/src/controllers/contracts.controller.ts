@@ -1,8 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
-import { In, IsNull } from 'typeorm';
+import { EntityManager, In, IsNull } from 'typeorm';
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
+import os from 'os';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import fontkit from '@pdf-lib/fontkit';
+import { PDFDocument, PDFFont, PDFPage, rgb } from 'pdf-lib';
 import { AppDataSource } from '../config/data-source';
 import {
   Contract,
@@ -14,6 +19,7 @@ import {
   ContractType,
 } from '../models/contract.model';
 import { ContractApprovalDecision, ContractApprovalStep } from '../models/contract-approval-step.model';
+import { ContractApprovalDecisionEvent } from '../models/contract-approval-decision-event.model';
 import { ContractAttachment } from '../models/contract-attachment.model';
 import { User } from '../models/user.model';
 import { COUNTERPARTY_FORMS, COUNTERPARTY_FORM_MAP } from '../constants/counterparty-forms';
@@ -24,13 +30,16 @@ import {
 } from '../services/contract-approval-sla.service';
 import { calculateDeadlineBySchedule, resolveEffectiveWorkSchedule } from '../services/contract-work-schedule.service';
 import { listCalendarByYear, syncCalendarBySource, upsertCalendarDay } from '../services/workday-calendar.service';
-import { notifyStepAssigned } from '../services/contract-approval-notification.service';
+import { notifyDecisionChanged, notifyStepAssigned } from '../services/contract-approval-notification.service';
+import { planWebSocketService } from '../services/websocket.service';
 import { logger } from '../utils/logger';
 
 const contractRepository = AppDataSource.getRepository(Contract);
 const stepRepository = AppDataSource.getRepository(ContractApprovalStep);
+const decisionEventRepository = AppDataSource.getRepository(ContractApprovalDecisionEvent);
 const attachmentRepository = AppDataSource.getRepository(ContractAttachment);
 const userRepository = AppDataSource.getRepository(User);
+const execFileAsync = promisify(execFile);
 
 const ROLE_LABELS: Record<string, string> = {
   initiator: 'Инициатор',
@@ -39,7 +48,17 @@ const ROLE_LABELS: Record<string, string> = {
   chief_accountant: 'Главный бухгалтер',
   financer: 'Финансовый директор',
   general_director: 'Генеральный директор',
+  secretary: 'Офис-менеджер',
 };
+
+const PARALLEL_APPROVAL_ROLES = ['lawyer', 'chief_accountant', 'financer'] as const;
+const APPROVAL_DASHBOARD_ROLES = new Set(['security', 'lawyer', 'chief_accountant', 'financer', 'secretary']);
+const MAX_CONTRACT_FILE_BYTES = 20 * 1024 * 1024;
+const ALLOWED_CONTRACT_FILE_EXTENSIONS = new Set(['.pdf', '.doc', '.docx', '.png', '.jpg', '.jpeg']);
+
+function notifyContractApprovalUpdated(contractId: string, userId?: string) {
+  planWebSocketService.notifyContractApprovalUpdated({ contractId, userId });
+}
 
 function toIsoOrNull(value: Date | string | null | undefined): string | null {
   if (!value) return null;
@@ -59,7 +78,7 @@ function toYmdOrNull(value: Date | string | null | undefined): string | null {
   return value.toISOString().slice(0, 10);
 }
 
-function buildAttachmentDisposition(filename: string): string {
+function buildAttachmentDisposition(filename: string, disposition: 'attachment' | 'inline' = 'attachment'): string {
   // RFC-friendly dual filename:
   // - filename="<ascii>" for legacy clients / strict Node header validation
   // - filename*=UTF-8''<percent-encoded> for proper UTF-8 names
@@ -68,11 +87,138 @@ function buildAttachmentDisposition(filename: string): string {
     .replace(/[^\x20-\x7E]/g, '_')
     .trim() || 'attachment';
   const encoded = encodeURIComponent(filename.replace(/[\r\n]/g, '')).replace(/%20/g, '+');
-  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
+  return `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
 }
 
 function normalizeFilename(name: string): string {
   return name.replace(/[^\w.\-()\u0400-\u04FF ]/g, '_').slice(0, 180) || 'document';
+}
+
+function getContractsUploadRoot(contractId: string): string {
+  const configuredRoot = process.env.UPLOAD_PATH
+    ? path.resolve(process.env.UPLOAD_PATH)
+    : path.resolve(process.cwd(), 'uploads');
+  return path.join(configuredRoot, 'contracts', contractId);
+}
+
+function serializeAttachment(item: ContractAttachment) {
+  return {
+    id: item.id,
+    originalName: item.originalName,
+    sizeBytes: item.sizeBytes,
+    mimeType: item.mimeType,
+    createdAt: item.createdAt,
+    uploadedByUserId: item.uploadedByUserId,
+    context: item.context,
+    revisionNo: item.revisionNo || 1,
+  };
+}
+
+function assertAllowedContractFile(file: any, originalName: string, buffer: Buffer): void {
+  const extension = path.extname(originalName).toLowerCase();
+  if (!ALLOWED_CONTRACT_FILE_EXTENSIONS.has(extension)) {
+    const error: any = new Error('Разрешены файлы PDF, DOC, DOCX, PNG и JPG');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (buffer.length === 0 || buffer.length > MAX_CONTRACT_FILE_BYTES) {
+    const error: any = new Error('Размер одного файла должен быть от 1 байта до 20 МБ');
+    error.statusCode = 400;
+    throw error;
+  }
+  const declaredSize = Number(file?.size);
+  if (Number.isFinite(declaredSize) && declaredSize > 0 && declaredSize !== buffer.length) {
+    const error: any = new Error('Размер загруженного файла не совпадает с переданными данными');
+    error.statusCode = 400;
+    throw error;
+  }
+}
+
+async function hasIdenticalAttachment(
+  contractId: string,
+  approvalStepId: string | null,
+  context: 'contract' | 'approval_step',
+  originalName: string,
+  revisionNo: number,
+  buffer: Buffer,
+): Promise<boolean> {
+  const candidates = await attachmentRepository.find({
+    where: {
+      contractId,
+      approvalStepId: approvalStepId ?? IsNull(),
+      context,
+      originalName,
+      sizeBytes: buffer.length,
+      revisionNo,
+    },
+  });
+  const incomingHash = crypto.createHash('sha256').update(buffer).digest('hex');
+  for (const candidate of candidates) {
+    // Avoid dropping a corrected file solely because its name and byte count match.
+    // eslint-disable-next-line no-await-in-loop
+    const readablePath = await resolveAttachmentPath(candidate);
+    if (!readablePath) continue;
+    // eslint-disable-next-line no-await-in-loop
+    const existingBuffer = await fs.readFile(readablePath);
+    const existingHash = crypto.createHash('sha256').update(existingBuffer).digest('hex');
+    if (existingHash === incomingHash) return true;
+  }
+  return false;
+}
+
+async function persistContractAttachments(params: {
+  contractId: string;
+  files: any[];
+  approvalStepId?: string | null;
+  uploadedByUserId?: string | null;
+  context?: 'contract' | 'approval_step';
+  revisionNo?: number;
+}): Promise<number> {
+  const {
+    contractId,
+    files,
+    approvalStepId = null,
+    uploadedByUserId = null,
+    context = 'contract',
+    revisionNo = 1,
+  } = params;
+  const uploadsRoot = getContractsUploadRoot(contractId);
+  await fs.mkdir(uploadsRoot, { recursive: true });
+
+  let uploaded = 0;
+  for (const file of files) {
+    const originalName = normalizeFilename(String(file?.name || 'document'));
+    const contentBase64 = String(file?.contentBase64 || '');
+    if (!contentBase64) continue;
+
+    const buffer = Buffer.from(contentBase64, 'base64');
+    assertAllowedContractFile(file, originalName, buffer);
+    // eslint-disable-next-line no-await-in-loop
+    if (await hasIdenticalAttachment(contractId, approvalStepId, context, originalName, revisionNo, buffer)) continue;
+
+    const ext = path.extname(originalName);
+    const storedName = `${Date.now()}-${crypto.randomUUID()}${ext}`;
+    const fullPath = path.join(uploadsRoot, storedName);
+    // eslint-disable-next-line no-await-in-loop
+    await fs.writeFile(fullPath, buffer);
+
+    const attachment = attachmentRepository.create({
+      contractId,
+      approvalStepId,
+      uploadedByUserId,
+      context,
+      revisionNo,
+      originalName,
+      mimeType: file?.mimeType ? String(file.mimeType) : null,
+      sizeBytes: buffer.length,
+      storagePath: fullPath,
+    });
+    // eslint-disable-next-line no-await-in-loop
+    await attachmentRepository.save(attachment);
+    uploaded += 1;
+  }
+
+  return uploaded;
 }
 
 async function resolveAttachmentPath(item: ContractAttachment): Promise<string | null> {
@@ -83,6 +229,7 @@ async function resolveAttachmentPath(item: ContractAttachment): Promise<string |
   }
   const basename = path.basename(item.storagePath || '');
   if (basename) {
+    candidates.add(path.join(getContractsUploadRoot(item.contractId), basename));
     candidates.add(path.resolve(process.cwd(), 'uploads', 'contracts', item.contractId, basename));
   }
   if (item.originalName) {
@@ -118,6 +265,97 @@ async function resolveAttachmentPath(item: ContractAttachment): Promise<string |
   return null;
 }
 
+function isDocxAttachment(item: ContractAttachment): boolean {
+  return path.extname(item.originalName).toLowerCase() === '.docx'
+    || item.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+}
+
+async function resolveAttachmentForUser(attachmentId: string, userId?: string, role?: string) {
+  const item = await attachmentRepository.findOne({ where: { id: attachmentId }, relations: ['contract'] as any });
+  if (!item) {
+    const error: any = new Error('Файл не найден');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const contract = item.contract ?? await contractRepository.findOne({ where: { id: item.contractId } });
+  if (!contract) {
+    const error: any = new Error('Договор для вложения не найден');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const routeSteps = await stepRepository.find({ where: { contractId: contract.id } });
+  if (!hasContractDetailAccess(contract, routeSteps, userId, role)) {
+    const error: any = new Error('Нет доступа к файлу договора');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const readablePath = await resolveAttachmentPath(item);
+  if (!readablePath) {
+    const error: any = new Error('Файл вложения не найден в хранилище');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return { item, readablePath };
+}
+
+async function getDocxPdfPreviewPath(readablePath: string): Promise<string> {
+  const cachedPreviewPath = `${readablePath}.preview.pdf`;
+  try {
+    await fs.access(cachedPreviewPath);
+    return cachedPreviewPath;
+  } catch {
+    // PDF will be generated below and reused for later views.
+  }
+
+  const outputDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'contract-docx-preview-'));
+  const libreOfficeBins = [
+    process.env.LIBREOFFICE_BIN,
+    'libreoffice',
+    'soffice',
+  ].filter(Boolean) as string[];
+  let converterNotFound = false;
+  try {
+    for (const libreOfficeBin of libreOfficeBins) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await execFileAsync(
+          libreOfficeBin,
+          ['--headless', '--convert-to', 'pdf', '--outdir', outputDirectory, readablePath],
+          { timeout: 60_000, maxBuffer: 1024 * 1024 },
+        );
+        converterNotFound = false;
+        break;
+      } catch (error: any) {
+        if (error?.code === 'ENOENT') {
+          converterNotFound = true;
+          continue;
+        }
+        throw error;
+      }
+    }
+    if (converterNotFound) {
+      const unavailable: any = new Error('Предпросмотр DOCX временно недоступен: на сервере не установлен конвертер документов');
+      unavailable.statusCode = 503;
+      throw unavailable;
+    }
+    const generatedFiles = await fs.readdir(outputDirectory);
+    const generatedPdf = generatedFiles.find((fileName) => fileName.toLowerCase().endsWith('.pdf'));
+    if (!generatedPdf) {
+      const error: any = new Error('Не удалось сформировать PDF-просмотр документа DOCX');
+      error.statusCode = 500;
+      throw error;
+    }
+    await fs.copyFile(path.join(outputDirectory, generatedPdf), cachedPreviewPath);
+    return cachedPreviewPath;
+  } finally {
+    await fs.rm(outputDirectory, { recursive: true, force: true });
+  }
+}
+
 async function resolveApproverUserId(roleCode: string, contract: Contract): Promise<string> {
   if (roleCode === 'initiator') {
     return contract.initiatorId;
@@ -151,15 +389,448 @@ async function resolveApproverUserId(roleCode: string, contract: Contract): Prom
 }
 
 function buildRouteRoles(contract: Contract): string[] {
-  if (contract.contractType === ContractType.EXPENSE) {
-    return ['security', 'lawyer', 'chief_accountant', 'financer', 'general_director'];
+  void contract;
+  return ['security', ...PARALLEL_APPROVAL_ROLES, 'secretary'];
+}
+
+function getLatestApprovalRevision(steps: ContractApprovalStep[]): number {
+  return Math.max(1, ...steps.map((step) => step.revisionNo || 1));
+}
+
+function getCurrentApprovalSteps(steps: ContractApprovalStep[]): ContractApprovalStep[] {
+  const latestRevision = getLatestApprovalRevision(steps);
+  return steps.filter((step) => (step.revisionNo || 1) === latestRevision);
+}
+
+function getNextRevisionForDocuments(contractStatus: ContractStatus, steps: ContractApprovalStep[]): number {
+  const latestRevision = getLatestApprovalRevision(steps);
+  return contractStatus === ContractStatus.REWORK ? latestRevision + 1 : latestRevision;
+}
+
+function hasContractDetailAccess(contract: Contract, steps: ContractApprovalStep[], userId?: string, userRole?: string | null): boolean {
+  if (!userId) return false;
+  if (userRole === 'admin') return true;
+  if (userRole === 'general_director') return true;
+  // Signed contracts are part of the common registry for users admitted to this BP module.
+  if (contract.status === ContractStatus.APPROVED) return true;
+  if (contract.initiatorId === userId) return true;
+
+  return steps.some((step) => step.approverUserId === userId || step.roleCode === userRole);
+}
+
+function canCreateFinalPrintPackage(steps: ContractApprovalStep[]): boolean {
+  const currentSteps = getCurrentApprovalSteps(steps);
+  const securityStep = currentSteps.find((step) => step.roleCode === 'security');
+  const parallelSteps = currentSteps.filter((step) => (
+    PARALLEL_APPROVAL_ROLES.includes(step.roleCode as typeof PARALLEL_APPROVAL_ROLES[number])
+  ));
+  return securityStep?.decision === ContractApprovalDecision.APPROVE
+    && parallelSteps.length === PARALLEL_APPROVAL_ROLES.length
+    && parallelSteps.every((step) => Boolean(step.decision));
+}
+
+async function saveDecisionEvent(
+  manager: EntityManager | null,
+  params: {
+    contractId: string;
+    step: ContractApprovalStep;
+    actorUserId: string;
+    previousDecision: ContractApprovalDecision | null;
+    previousComment: string | null;
+  },
+): Promise<void> {
+  const repository = manager ? manager.getRepository(ContractApprovalDecisionEvent) : decisionEventRepository;
+  const event = repository.create({
+    contractId: params.contractId,
+    approvalStepId: params.step.id,
+    actorUserId: params.actorUserId,
+    roleCode: params.step.roleCode,
+    revisionNo: params.step.revisionNo || 1,
+    previousDecision: params.previousDecision,
+    newDecision: params.step.decision as ContractApprovalDecision,
+    previousComment: params.previousComment,
+    newComment: params.step.comment,
+  });
+  await repository.save(event);
+}
+
+function assertContractDetailAccess(contract: Contract, steps: ContractApprovalStep[], userId?: string, userRole?: string | null): void {
+  if (hasContractDetailAccess(contract, steps, userId, userRole)) return;
+
+  const error: any = new Error('Нет доступа к карточке договора');
+  error.statusCode = userId ? 403 : 401;
+  throw error;
+}
+
+const PDF_A4: [number, number] = [595.28, 841.89];
+const PDF_MARGIN = 24;
+
+type PdfTextStyle = {
+  size?: number;
+  bold?: boolean;
+  color?: ReturnType<typeof rgb>;
+};
+
+type PdfFonts = {
+  regular: PDFFont;
+  bold: PDFFont;
+};
+
+function safePdfText(value: unknown): string {
+  return String(value ?? '—').trim() || '—';
+}
+
+function formatPdfDate(value: Date | string | null | undefined): string {
+  const ymd = toYmdOrNull(value);
+  if (!ymd) return '—';
+  const [year, month, day] = ymd.split('-');
+  return [day, month, year].filter(Boolean).join('.');
+}
+
+function formatPdfDateTime(value: Date | string | null | undefined): string {
+  if (!value) return '—';
+  const date = typeof value === 'string' ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return '—';
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'Asia/Vladivostok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function formatPdfContractType(contract: Contract): string {
+  if (contract.contractType === ContractType.EXPENSE) return 'Расходный';
+  return contract.incomeSubtype === ContractIncomeSubtype.WITH_PSR ? 'Доходный (с ПСР)' : 'Доходный (без ПСР)';
+}
+
+function formatPdfTemplateKind(contract: Contract): string {
+  return contract.templateKind === ContractTemplateKind.TYPICAL ? 'типовой' : 'не типовой';
+}
+
+function formatPdfSigningMethod(contract: Contract): string {
+  return contract.signingMethod === ContractSigningMethod.EDO ? 'ЭДО' : 'почта';
+}
+
+function formatPdfStepDecision(step: ContractApprovalStep): string {
+  if (!step.decision) return step.assignedAt ? 'Ожидает' : '—';
+  if (step.decision === ContractApprovalDecision.REJECT) return 'Не согласован';
+  if (step.decision === ContractApprovalDecision.REWORK) return 'На доработку';
+  return step.comment?.trim() ? 'Согласован с замечаниями' : 'Согласован';
+}
+
+function buildContractPdfPackageFileName(contract: Contract): string {
+  const counterparty = safePdfText(contract.counterpartyName)
+    .replace(/[\\/:*?"<>|]+/g, '')
+    .replace(/\s+/g, '_')
+    .slice(0, 80) || 'Контрагент';
+  return `${counterparty}_${formatPdfDate(contract.contractDate)}.pdf`;
+}
+
+async function loadPdfFonts(pdf: PDFDocument): Promise<PdfFonts> {
+  pdf.registerFontkit(fontkit);
+  const candidates = [
+    process.env.PDF_FONT_PATH,
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+    '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+    '/System/Library/Fonts/Supplemental/Arial Unicode.ttf',
+    '/System/Library/Fonts/Supplemental/Arial.ttf',
+    '/Library/Fonts/Arial Unicode.ttf',
+  ].filter(Boolean) as string[];
+
+  let regularBytes: Uint8Array | null = null;
+  let boldBytes: Uint8Array | null = null;
+  for (const candidate of candidates) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const data = await fs.readFile(candidate);
+      if (candidate.toLowerCase().includes('bold')) {
+        boldBytes = data;
+      } else {
+        regularBytes = regularBytes ?? data;
+      }
+    } catch {
+      // try next font
+    }
+  }
+  boldBytes = boldBytes ?? regularBytes;
+  if (!regularBytes || !boldBytes) {
+    const error: any = new Error('Не найден шрифт для формирования PDF-пакета');
+    error.statusCode = 500;
+    throw error;
   }
 
-  if (contract.incomeSubtype === ContractIncomeSubtype.STANDARD) {
-    return ['security', 'general_director'];
+  return {
+    regular: await pdf.embedFont(regularBytes, { subset: true }),
+    bold: await pdf.embedFont(boldBytes, { subset: true }),
+  };
+}
+
+function wrapPdfText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const words = safePdfText(text).split(/\s+/);
+  const lines: string[] = [];
+  let line = '';
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (font.widthOfTextAtSize(next, size) <= maxWidth) {
+      line = next;
+      continue;
+    }
+    if (line) lines.push(line);
+    if (font.widthOfTextAtSize(word, size) <= maxWidth) {
+      line = word;
+      continue;
+    }
+    let chunk = '';
+    for (const char of word) {
+      const nextChunk = `${chunk}${char}`;
+      if (font.widthOfTextAtSize(nextChunk, size) > maxWidth && chunk) {
+        lines.push(chunk);
+        chunk = char;
+      } else {
+        chunk = nextChunk;
+      }
+    }
+    line = chunk;
+  }
+  if (line) lines.push(line);
+  return lines.length ? lines : ['—'];
+}
+
+function drawPdfText(
+  page: PDFPage,
+  fonts: PdfFonts,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  style: PdfTextStyle = {},
+): number {
+  const size = style.size ?? 9;
+  const font = style.bold ? fonts.bold : fonts.regular;
+  const lines = wrapPdfText(text, font, size, maxWidth);
+  let cursorY = y;
+  for (const line of lines) {
+    page.drawText(line, {
+      x,
+      y: cursorY,
+      size,
+      font,
+      color: style.color ?? rgb(0.13, 0.16, 0.22),
+    });
+    cursorY -= size + 2;
+  }
+  return cursorY;
+}
+
+function drawPdfCell(
+  page: PDFPage,
+  fonts: PdfFonts,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  style: PdfTextStyle = {},
+): void {
+  page.drawRectangle({
+    x,
+    y,
+    width,
+    height,
+    borderColor: rgb(0.25, 0.25, 0.25),
+    borderWidth: 0.7,
+  });
+  drawPdfText(page, fonts, text, x + 6, y + height - 14, width - 12, style);
+}
+
+function ensurePdfPage(pdf: PDFDocument, y: number, requiredHeight = 0): { page: PDFPage; y: number } {
+  const pages = pdf.getPages();
+  if (!pages.length || y - requiredHeight < 80) {
+    return { page: pdf.addPage(PDF_A4), y: PDF_A4[1] - PDF_MARGIN };
+  }
+  return { page: pages[pages.length - 1], y };
+}
+
+function getApprovalStartDate(steps: ContractApprovalStep[], contract: Contract): Date | string | null {
+  return steps.find((step) => step.assignedAt)?.assignedAt ?? contract.createdAt ?? null;
+}
+
+async function appendApprovalSheetPdf(
+  pdf: PDFDocument,
+  contract: Contract,
+  steps: ContractApprovalStep[],
+  filesByStep: Map<string, ContractAttachment[]>,
+): Promise<void> {
+  const fonts = await loadPdfFonts(pdf);
+  const contentWidth = PDF_A4[0] - PDF_MARGIN * 2;
+  let page = pdf.addPage(PDF_A4);
+  let y = PDF_A4[1] - PDF_MARGIN;
+
+  const title = 'Лист согласования ООО «Симпл Вэй»';
+  const titleWidth = fonts.bold.widthOfTextAtSize(title, 12);
+  page.drawText(title, {
+    x: (PDF_A4[0] - titleWidth) / 2,
+    y,
+    size: 12,
+    font: fonts.bold,
+  });
+  y -= 26;
+
+  const labelWidth = 190;
+  const valueWidth = contentWidth - labelWidth;
+  const infoRows = [
+    ['Контрагент:', contract.counterpartyName],
+    ['Тип договора (типовой/не типовой):', formatPdfTemplateKind(contract)],
+    ['Предмет/номера договора:', contract.subject || contract.contractNumber],
+    ['ПСР (Протокол разногласий):', contract.psrFlag ? 'ПСР' : '—'],
+    ['Статья бюджета (доходный/расходный):', formatPdfContractType(contract)],
+    ['Способ подписания (ЭДО/почта):', formatPdfSigningMethod(contract)],
+  ] as const;
+  for (const [label, value] of infoRows) {
+    const rowHeight = 34;
+    drawPdfCell(page, fonts, label, PDF_MARGIN, y - rowHeight, labelWidth, rowHeight, { bold: true, size: 8.5 });
+    drawPdfCell(page, fonts, value, PDF_MARGIN + labelWidth, y - rowHeight, valueWidth, rowHeight, { size: 8.5 });
+    y -= rowHeight;
   }
 
-  return ['security', 'lawyer', 'chief_accountant', 'financer', 'general_director'];
+  y -= 24;
+  const section = 'Согласование сторон';
+  const sectionWidth = fonts.bold.widthOfTextAtSize(section, 10);
+  page.drawText(section, { x: (PDF_A4[0] - sectionWidth) / 2, y, size: 10, font: fonts.bold });
+  y -= 18;
+
+  const headers = ['Сторона', 'ФИО', 'Статус', 'Дата принятия', 'Дата визирования', 'Комментарий'];
+  const widths = [112, 108, 90, 72, 76, contentWidth - 112 - 108 - 90 - 72 - 76];
+  const headerHeight = 34;
+  let x = PDF_MARGIN;
+  headers.forEach((header, index) => {
+    drawPdfCell(page, fonts, header, x, y - headerHeight, widths[index], headerHeight, { bold: true, size: 8 });
+    x += widths[index];
+  });
+  y -= headerHeight;
+
+  void filesByStep;
+  const rows: string[][] = [];
+  const startDate = getApprovalStartDate(steps, contract);
+  rows.push([
+    'Инициатор (ответственный менеджер)',
+    contract.initiator?.fullName ?? contract.initiator?.email ?? '—',
+    'Согласован',
+    formatPdfDateTime(startDate),
+    formatPdfDateTime(startDate),
+    '—',
+  ]);
+  for (const step of steps.filter((item) => item.roleCode !== 'secretary')) {
+    rows.push([
+      ROLE_LABELS[step.roleCode] ?? step.roleCode,
+      step.approverUser?.fullName ?? step.approverUser?.email ?? '—',
+      formatPdfStepDecision(step),
+      formatPdfDateTime(step.acceptedAt),
+      formatPdfDateTime(step.signedAt),
+      step.comment?.trim() || '—',
+    ]);
+  }
+  rows.push([
+    'Генеральный директор',
+    'Васильковский М.О.',
+    '—',
+    '—',
+    '—',
+    '—',
+  ]);
+
+  for (const row of rows) {
+    const cellLineCounts = row.map((text, index) => {
+      const font = index === 0 ? fonts.bold : fonts.regular;
+      return wrapPdfText(text, font, 7.2, widths[index] - 10).length;
+    });
+    const rowHeight = Math.max(28, Math.max(...cellLineCounts) * 9.5 + 12);
+    const next = ensurePdfPage(pdf, y, rowHeight);
+    page = next.page;
+    y = next.y;
+    x = PDF_MARGIN;
+    row.forEach((text, index) => {
+      drawPdfCell(page, fonts, text, x, y - rowHeight, widths[index], rowHeight, {
+        bold: index === 0,
+        size: 7.2,
+      });
+      x += widths[index];
+    });
+    y -= rowHeight;
+  }
+
+}
+
+async function appendTextNoticePage(pdf: PDFDocument, title: string, message: string): Promise<void> {
+  const fonts = await loadPdfFonts(pdf);
+  const page = pdf.addPage(PDF_A4);
+  let y = PDF_A4[1] - PDF_MARGIN;
+  y = drawPdfText(page, fonts, title, PDF_MARGIN, y, PDF_A4[0] - PDF_MARGIN * 2, { bold: true, size: 13 });
+  drawPdfText(page, fonts, message, PDF_MARGIN, y - 12, PDF_A4[0] - PDF_MARGIN * 2, { size: 9 });
+}
+
+async function appendAttachmentToPdf(pdf: PDFDocument, attachment: ContractAttachment): Promise<void> {
+  const readablePath = await resolveAttachmentPath(attachment);
+  if (!readablePath) {
+    await appendTextNoticePage(pdf, 'Файл не найден', attachment.originalName);
+    return;
+  }
+
+  const ext = path.extname(attachment.originalName).toLowerCase();
+  try {
+    if (ext === '.pdf' || attachment.mimeType === 'application/pdf' || isDocxAttachment(attachment)) {
+      const sourcePath = isDocxAttachment(attachment) ? await getDocxPdfPreviewPath(readablePath) : readablePath;
+      const sourcePdf = await PDFDocument.load(await fs.readFile(sourcePath), { ignoreEncryption: true });
+      const copiedPages = await pdf.copyPages(sourcePdf, sourcePdf.getPageIndices());
+      copiedPages.forEach((copiedPage) => pdf.addPage(copiedPage));
+      return;
+    }
+
+    if (['.png', '.jpg', '.jpeg'].includes(ext) || ['image/png', 'image/jpeg'].includes(attachment.mimeType || '')) {
+      const imageBytes = await fs.readFile(readablePath);
+      const image = ext === '.png' || attachment.mimeType === 'image/png'
+        ? await pdf.embedPng(imageBytes)
+        : await pdf.embedJpg(imageBytes);
+      const page = pdf.addPage(PDF_A4);
+      const maxWidth = PDF_A4[0] - PDF_MARGIN * 2;
+      const maxHeight = PDF_A4[1] - PDF_MARGIN * 2;
+      const scale = Math.min(maxWidth / image.width, maxHeight / image.height, 1);
+      const width = image.width * scale;
+      const height = image.height * scale;
+      page.drawImage(image, {
+        x: (PDF_A4[0] - width) / 2,
+        y: (PDF_A4[1] - height) / 2,
+        width,
+        height,
+      });
+      return;
+    }
+
+    await appendTextNoticePage(
+      pdf,
+      'Файл не включен в PDF-пакет',
+      `${attachment.originalName}\nФормат можно скачать отдельно из карточки договора.`,
+    );
+  } catch (error) {
+    logger.warn('Failed to append contract attachment to PDF package', {
+      attachmentId: attachment.id,
+      originalName: attachment.originalName,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    await appendTextNoticePage(
+      pdf,
+      'Файл не удалось включить в PDF-пакет',
+      `${attachment.originalName}\nФайл можно скачать отдельно из карточки договора.`,
+    );
+  }
+}
+
+function isParallelSecretaryRoute(steps: ContractApprovalStep[]): boolean {
+  return steps.some((step) => step.roleCode === 'secretary');
 }
 
 function requireStartFields(contract: Contract): void {
@@ -355,16 +1026,51 @@ export const listContracts = async (_req: Request, res: Response, next: NextFunc
       list.push(step);
       stepsByContract.set(step.contractId, list);
     }
+    const secretaryStepIds = steps
+      .filter((step) => step.roleCode === 'secretary')
+      .map((step) => step.id);
+    const secretaryAttachments = secretaryStepIds.length
+      ? await attachmentRepository.find({
+        where: { approvalStepId: In(secretaryStepIds) },
+        select: ['approvalStepId'],
+      })
+      : [];
+    const secretaryStepsWithFiles = new Set(
+      secretaryAttachments
+        .map((attachment) => attachment.approvalStepId)
+        .filter((stepId): stepId is string => Boolean(stepId)),
+    );
 
     res.json(contracts.map((contract) => ({
       ...(function getFlowMeta() {
-        const contractSteps = stepsByContract.get(contract.id) ?? [];
+        const contractSteps = getCurrentApprovalSteps(stepsByContract.get(contract.id) ?? []);
         const currentPending = contractSteps.find((s) => !s.decision) ?? null;
         const lastDecided = [...contractSteps].reverse().find((s) => Boolean(s.decision)) ?? null;
-        const currentStageLabel = currentPending ? `Проверка ${ROLE_LABELS[currentPending.roleCode] ?? currentPending.roleCode}` : null;
+        const hasParallelRoute = isParallelSecretaryRoute(contractSteps);
+        const securityStep = contractSteps.find((s) => s.roleCode === 'security') ?? null;
+        const secretaryStep = contractSteps.find((s) => s.roleCode === 'secretary') ?? null;
+        const secretaryHasSignedFile = secretaryStep ? secretaryStepsWithFiles.has(secretaryStep.id) : false;
+        const parallelSteps = contractSteps.filter((s) => PARALLEL_APPROVAL_ROLES.includes(s.roleCode as typeof PARALLEL_APPROVAL_ROLES[number]));
+        const completedParallelCount = parallelSteps.filter((s) => Boolean(s.decision)).length;
+        const hasParallelRemarks = parallelSteps.some((s) => (
+          s.decision === ContractApprovalDecision.REJECT
+          || Boolean(s.comment?.trim())
+        ));
+        let currentStageLabel = currentPending ? `Проверка ${ROLE_LABELS[currentPending.roleCode] ?? currentPending.roleCode}` : null;
         let statusDetail: string | null = null;
         if (contract.status === ContractStatus.IN_APPROVAL) {
-          statusDetail = currentStageLabel;
+          if (hasParallelRoute && !securityStep?.decision) {
+            statusDetail = 'Проверка СБ';
+            currentStageLabel = statusDetail;
+          } else if (hasParallelRoute && secretaryStep?.assignedAt && !secretaryStep.decision) {
+            statusDetail = hasParallelRemarks ? 'На подписи, есть замечания' : 'На подписи';
+            currentStageLabel = statusDetail;
+          } else if (hasParallelRoute) {
+            statusDetail = `Согласование: ${completedParallelCount} из ${parallelSteps.length}`;
+            currentStageLabel = statusDetail;
+          } else {
+            statusDetail = currentStageLabel;
+          }
         } else if (contract.status === ContractStatus.REJECTED && lastDecided?.decision === ContractApprovalDecision.REJECT) {
           if (lastDecided.roleCode === 'security') {
             statusDetail = 'Отклонено СБ';
@@ -376,6 +1082,10 @@ export const listContracts = async (_req: Request, res: Response, next: NextFunc
           currentStageRole: currentPending?.roleCode ?? null,
           currentStageLabel,
           statusDetail,
+          needsSignedAttachment: (
+            (contract.status === ContractStatus.APPROVED || Boolean(secretaryStep?.assignedAt))
+            && !secretaryHasSignedFile
+          ),
         };
       }()),
       id: contract.id,
@@ -419,11 +1129,14 @@ export const listSecurityInbox = async (req: Request, res: Response, next: NextF
     }
 
     const view = String(req.query.view || 'active').trim();
-    if (!['active', 'processed', 'all'].includes(view)) {
+    if (!['active', 'processed', 'completed_month', 'all'].includes(view)) {
       const error: any = new Error('Некорректный фильтр');
       error.statusCode = 400;
       throw error;
     }
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
 
     const steps = await stepRepository.find({
       where: {
@@ -433,13 +1146,26 @@ export const listSecurityInbox = async (req: Request, res: Response, next: NextF
       order: { createdAt: 'DESC' },
     });
 
-    const filteredSteps = steps
+    const latestStepsByContract = new Map<string, ContractApprovalStep>();
+    for (const step of steps) {
+      const existing = latestStepsByContract.get(step.contractId);
+      if (!existing || (step.revisionNo || 1) > (existing.revisionNo || 1)) {
+        latestStepsByContract.set(step.contractId, step);
+      }
+    }
+    const filteredSteps = Array.from(latestStepsByContract.values())
       .filter((step) => {
         if (!step.contract) return false;
         const isActive = !step.decision && step.contract.status === ContractStatus.IN_APPROVAL;
         const isProcessed = Boolean(step.decision);
         if (view === 'active') return isActive;
         if (view === 'processed') return isProcessed;
+        if (view === 'completed_month') {
+          return isProcessed
+            && step.approverUserId === currentUserId
+            && Boolean(step.signedAt)
+            && new Date(step.signedAt as Date) >= startOfMonth;
+        }
         return isActive || isProcessed;
       });
 
@@ -463,7 +1189,7 @@ export const listSecurityInbox = async (req: Request, res: Response, next: NextF
 
     const data = await Promise.all(uniqueSteps.map(async (step) => {
         const files = await attachmentRepository.find({
-          where: { contractId: step.contractId },
+          where: { contractId: step.contractId, approvalStepId: IsNull(), revisionNo: step.revisionNo || 1 },
           order: { createdAt: 'ASC' },
         });
 
@@ -485,14 +1211,107 @@ export const listSecurityInbox = async (req: Request, res: Response, next: NextF
           securityDecision: step.decision,
           securitySignedAt: toIsoOrNull(step.signedAt),
           securityComment: step.comment,
-          attachments: files.map((f) => ({
-            id: f.id,
-            originalName: f.originalName,
-            sizeBytes: f.sizeBytes,
-            mimeType: f.mimeType,
-          })),
+          attachments: files.map(serializeAttachment),
         };
       }));
+
+    res.json(data);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const listMyApprovalInbox = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const currentUserRole = req.user?.role;
+    const currentUserId = req.user?.id;
+    if (!currentUserId) {
+      const error: any = new Error('Пользователь не авторизован');
+      error.statusCode = 401;
+      throw error;
+    }
+    if (!currentUserRole || !PARALLEL_APPROVAL_ROLES.includes(currentUserRole as typeof PARALLEL_APPROVAL_ROLES[number])
+      && currentUserRole !== 'secretary') {
+      const error: any = new Error('Для роли недоступна очередь согласования');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const view = String(req.query.view || 'active').trim();
+    if (!['active', 'processed', 'completed_month', 'all'].includes(view)) {
+      const error: any = new Error('Некорректный фильтр');
+      error.statusCode = 400;
+      throw error;
+    }
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const steps = await stepRepository.find({
+      where: { roleCode: currentUserRole, approverUserId: currentUserId },
+      relations: ['contract', 'contract.initiator'],
+      order: { createdAt: 'DESC' },
+    });
+
+    const latestStepsByContract = new Map<string, ContractApprovalStep>();
+    for (const step of steps) {
+      const existing = latestStepsByContract.get(step.contractId);
+      if (!existing || (step.revisionNo || 1) > (existing.revisionNo || 1)) {
+        latestStepsByContract.set(step.contractId, step);
+      }
+    }
+    const filteredSteps = Array.from(latestStepsByContract.values()).filter((step) => {
+      if (!step.contract || !step.assignedAt) return false;
+      const isActive = !step.decision && step.contract.status === ContractStatus.IN_APPROVAL;
+      const isProcessed = Boolean(step.decision);
+      if (view === 'active') return isActive;
+      if (view === 'processed') return isProcessed;
+      if (view === 'completed_month') {
+        return isProcessed && Boolean(step.signedAt) && new Date(step.signedAt as Date) >= startOfMonth;
+      }
+      return isActive || isProcessed;
+    });
+
+    const uniqueByContract = new Map<string, ContractApprovalStep>();
+    for (const step of filteredSteps) {
+      const existing = uniqueByContract.get(step.contractId);
+      if (!existing || new Date(step.createdAt).getTime() > new Date(existing.createdAt).getTime()) {
+        uniqueByContract.set(step.contractId, step);
+      }
+    }
+
+    const uniqueSteps = Array.from(uniqueByContract.values())
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    const data = await Promise.all(uniqueSteps.map(async (step) => {
+      const files = await attachmentRepository.find({
+        where: { contractId: step.contractId, approvalStepId: IsNull(), revisionNo: step.revisionNo || 1 },
+        order: { createdAt: 'ASC' },
+      });
+
+      return {
+        contractId: step.contract.id,
+        stepId: step.id,
+        contractNumber: step.contract.contractNumber,
+        counterpartyShortName: step.contract.counterpartyShortName,
+        counterpartyInn: step.contract.counterpartyInn,
+        contractType: step.contract.contractType,
+        incomeSubtype: step.contract.incomeSubtype,
+        counterpartyName: step.contract.counterpartyName,
+        subject: step.contract.subject,
+        contractDate: toYmdOrNull(step.contract.contractDate),
+        signingMethod: step.contract.signingMethod,
+        initiatorName: step.contract.initiator?.fullName ?? '—',
+        assignedAt: toIsoOrNull(step.assignedAt),
+        deadlineAt: toIsoOrNull(step.deadlineAt),
+        stepDecision: step.decision,
+        stepSignedAt: toIsoOrNull(step.signedAt),
+        stepComment: step.comment,
+        roleCode: step.roleCode,
+        roleLabel: ROLE_LABELS[step.roleCode] ?? step.roleCode,
+        attachments: files.map(serializeAttachment),
+      };
+    }));
 
     res.json(data);
   } catch (error) {
@@ -509,6 +1328,11 @@ export const getMyApprovalDashboard = async (req: Request, res: Response, next: 
       error.statusCode = 401;
       throw error;
     }
+    if (!currentUserRole || !APPROVAL_DASHBOARD_ROLES.has(currentUserRole)) {
+      const error: any = new Error('Дашборд согласования доступен только участникам маршрута согласования');
+      error.statusCode = 403;
+      throw error;
+    }
 
     const now = new Date();
     const startOfToday = new Date(now);
@@ -523,11 +1347,20 @@ export const getMyApprovalDashboard = async (req: Request, res: Response, next: 
       order: { assignedAt: 'DESC', createdAt: 'DESC' },
       take: 5000,
     });
+    const currentRoleSteps = Array.from(roleSteps.reduce((latestByContract, step) => {
+      const existing = latestByContract.get(step.contractId);
+      if (!existing || (step.revisionNo || 1) > (existing.revisionNo || 1)) {
+        latestByContract.set(step.contractId, step);
+      }
+      return latestByContract;
+    }, new Map<string, ContractApprovalStep>()).values());
 
     // Workload is role-based (new employee sees the role queue).
-    const activeRoleSteps = roleSteps.filter((step) => !step.decision && step.contract?.status === ContractStatus.IN_APPROVAL);
+    const activeRoleSteps = currentRoleSteps.filter((step) => (
+      !step.decision && Boolean(step.assignedAt) && step.contract?.status === ContractStatus.IN_APPROVAL
+    ));
     // Personal productivity is user-based.
-    const processedMySteps = roleSteps.filter(
+    const processedMySteps = currentRoleSteps.filter(
       (step) => step.approverUserId === currentUserId && Boolean(step.decision) && step.signedAt,
     );
 
@@ -735,7 +1568,150 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
 
     const saved = await contractRepository.save(contract);
 
+    notifyContractApprovalUpdated(saved.id, req.user.id);
     res.status(201).json({ id: saved.id, reused: false });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateDraftContract = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const contract = await contractRepository.findOne({ where: { id } });
+    if (!contract) {
+      const error: any = new Error('Договор не найден');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (![ContractStatus.DRAFT, ContractStatus.REWORK].includes(contract.status)) {
+      const error: any = new Error('Редактировать можно только черновик или новую редакцию договора');
+      error.statusCode = 400;
+      throw error;
+    }
+    if (req.user?.role !== 'admin' && contract.initiatorId !== req.user?.id) {
+      const error: any = new Error('Редактировать договор может только его инициатор');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const {
+      contractNumber,
+      contractType,
+      incomeSubtype,
+      counterpartyName,
+      counterpartyShortName,
+      counterpartyForm,
+      counterpartyInn,
+      subject,
+      contractDate,
+      psrFlag,
+      signingMethod,
+    } = req.body as {
+      contractNumber: string;
+      contractType: ContractType;
+      incomeSubtype?: ContractIncomeSubtype | null;
+      counterpartyName: string;
+      counterpartyShortName?: string | null;
+      counterpartyForm?: string | null;
+      counterpartyInn: string;
+      subject?: string | null;
+      contractDate?: string | null;
+      psrFlag?: boolean;
+      signingMethod?: ContractSigningMethod;
+    };
+
+    const parsedContractDate = contractDate ? new Date(contractDate) : null;
+    if (parsedContractDate && Number.isNaN(parsedContractDate.getTime())) {
+      const error: any = new Error('Некорректная дата договора');
+      error.statusCode = 400;
+      throw error;
+    }
+    validateInnByCounterpartyForm(counterpartyInn.trim(), counterpartyForm ?? null);
+
+    const normalizedIncomeSubtype = contractType === ContractType.INCOME
+      ? (incomeSubtype ?? ContractIncomeSubtype.STANDARD)
+      : null;
+    contract.contractNumber = contractNumber.trim();
+    contract.contractType = contractType;
+    contract.incomeSubtype = normalizedIncomeSubtype;
+    contract.counterpartyName = counterpartyName.trim();
+    contract.counterpartyShortName = counterpartyShortName?.trim() || null;
+    contract.counterpartyForm = counterpartyForm || null;
+    contract.counterpartyInn = counterpartyInn.trim();
+    contract.subject = subject?.trim() || null;
+    contract.contractDate = parsedContractDate;
+    contract.psrFlag = contractType === ContractType.INCOME && normalizedIncomeSubtype === ContractIncomeSubtype.WITH_PSR
+      ? true
+      : Boolean(psrFlag);
+    contract.signingMethod = signingMethod ?? ContractSigningMethod.POST;
+
+    await contractRepository.save(contract);
+    notifyContractApprovalUpdated(contract.id, req.user?.id);
+    res.json({ id: contract.id });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteDraftContract = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const contract = await contractRepository.findOne({ where: { id } });
+    if (!contract) {
+      const error: any = new Error('Договор не найден');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (contract.status !== ContractStatus.DRAFT) {
+      const error: any = new Error('Удалить можно только черновик договора');
+      error.statusCode = 400;
+      throw error;
+    }
+    if (req.user?.role !== 'admin' && contract.initiatorId !== req.user?.id) {
+      const error: any = new Error('Удалить черновик может только его инициатор');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    await contractRepository.remove(contract);
+    const configuredUploads = getContractsUploadRoot(id);
+    await fs.rm(configuredUploads, { recursive: true, force: true });
+    const legacyUploads = path.resolve(process.cwd(), 'uploads', 'contracts', id);
+    if (legacyUploads !== configuredUploads) {
+      await fs.rm(legacyUploads, { recursive: true, force: true });
+    }
+    notifyContractApprovalUpdated(id, req.user?.id);
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const prepareContractRevision = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const contract = await contractRepository.findOne({ where: { id } });
+    if (!contract) {
+      const error: any = new Error('Договор не найден');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (contract.status !== ContractStatus.IN_APPROVAL) {
+      const error: any = new Error('Новую редакцию можно подготовить только для договора на согласовании');
+      error.statusCode = 400;
+      throw error;
+    }
+    if (req.user?.role !== 'admin' && contract.initiatorId !== req.user?.id) {
+      const error: any = new Error('Новую редакцию может подготовить только инициатор договора или администратор');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    contract.status = ContractStatus.REWORK;
+    await contractRepository.save(contract);
+    notifyContractApprovalUpdated(contract.id, req.user?.id);
+    res.json({ message: 'Текущий круг сохранен в истории. Загрузите новую редакцию и отправьте ее на согласование' });
   } catch (error) {
     next(error);
   }
@@ -753,37 +1729,40 @@ export const uploadContractAttachments = async (req: Request, res: Response, nex
       throw error;
     }
 
+    const currentUserId = req.user?.id;
+    const canUploadContractFiles = Boolean(
+      currentUserId
+      && (req.user?.role === 'admin' || contract.initiatorId === currentUserId),
+    );
+    if (!canUploadContractFiles) {
+      const error: any = new Error('Файлы договора может прикрепить только инициатор или администратор');
+      error.statusCode = 403;
+      throw error;
+    }
+    if (![ContractStatus.DRAFT, ContractStatus.REWORK].includes(contract.status)) {
+      const error: any = new Error('Файлы договора можно менять только в черновике или на доработке');
+      error.statusCode = 400;
+      throw error;
+    }
+
     if (!files.length) {
       res.json({ uploaded: 0 });
       return;
     }
 
-    const uploadsRoot = path.resolve(process.cwd(), 'uploads', 'contracts', id);
-    await fs.mkdir(uploadsRoot, { recursive: true });
+    const routeSteps = await stepRepository.find({ where: { contractId: id } });
+    const revisionNo = getNextRevisionForDocuments(contract.status, routeSteps);
+    const uploaded = await persistContractAttachments({
+      contractId: id,
+      files,
+      uploadedByUserId: currentUserId ?? null,
+      context: 'contract',
+      revisionNo,
+    });
 
-    let uploaded = 0;
-    for (const file of files) {
-      const originalName = normalizeFilename(String(file?.name || 'document'));
-      const contentBase64 = String(file?.contentBase64 || '');
-      if (!contentBase64) continue;
-
-      const buffer = Buffer.from(contentBase64, 'base64');
-      const ext = path.extname(originalName);
-      const storedName = `${Date.now()}-${crypto.randomUUID()}${ext}`;
-      const fullPath = path.join(uploadsRoot, storedName);
-      await fs.writeFile(fullPath, buffer);
-
-      const attachment = attachmentRepository.create({
-        contractId: id,
-        originalName,
-        mimeType: file?.mimeType ? String(file.mimeType) : null,
-        sizeBytes: buffer.length,
-        storagePath: fullPath,
-      });
-      await attachmentRepository.save(attachment);
-      uploaded += 1;
+    if (uploaded > 0) {
+      notifyContractApprovalUpdated(id, currentUserId);
     }
-
     res.json({ uploaded });
   } catch (error) {
     next(error);
@@ -793,20 +1772,124 @@ export const uploadContractAttachments = async (req: Request, res: Response, nex
 export const listContractAttachments = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
+    const contract = await contractRepository.findOne({ where: { id } });
+    if (!contract) {
+      const error: any = new Error('Договор не найден');
+      error.statusCode = 404;
+      throw error;
+    }
+    const steps = await stepRepository.find({ where: { contractId: id } });
+    assertContractDetailAccess(contract, steps, req.user?.id, req.user?.role);
+
     const rows = await attachmentRepository.find({ where: { contractId: id }, order: { createdAt: 'ASC' } });
-    res.json(rows.map((item) => ({
-      id: item.id,
-      originalName: item.originalName,
-      sizeBytes: item.sizeBytes,
-      mimeType: item.mimeType,
-      createdAt: item.createdAt,
-    })));
+    res.json(rows.map(serializeAttachment));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const uploadContractStepAttachments = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id, stepId } = req.params;
+    const files = Array.isArray(req.body?.files) ? req.body.files : [];
+
+    const contract = await contractRepository.findOne({ where: { id } });
+    if (!contract) {
+      const error: any = new Error('Договор не найден');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const step = await stepRepository.findOne({ where: { id: stepId, contractId: id } });
+    if (!step) {
+      const error: any = new Error('Шаг согласования не найден');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const currentUserId = req.user?.id;
+    const isSigningStep = step.roleCode === 'secretary';
+    const canCompleteSigning = Boolean(
+      isSigningStep
+      && currentUserId
+      && (req.user?.role === 'admin' || contract.initiatorId === currentUserId || step.approverUserId === currentUserId),
+    );
+    const canAttach = Boolean(currentUserId && (step.approverUserId === currentUserId || canCompleteSigning));
+    if (!canAttach) {
+      const error: any = new Error('Файл может прикрепить только назначенный участник или инициатор на этапе подписания');
+      error.statusCode = 403;
+      throw error;
+    }
+    if (contract.status !== ContractStatus.IN_APPROVAL || !step.assignedAt) {
+      const error: any = new Error('Файлы можно прикреплять только к назначенному шагу активного согласования');
+      error.statusCode = 400;
+      throw error;
+    }
+    const routeSteps = await stepRepository.find({ where: { contractId: id } });
+    if ((step.revisionNo || 1) !== getLatestApprovalRevision(routeSteps)) {
+      const error: any = new Error('Файлы нельзя добавлять к завершенной редакции договора');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!files.length) {
+      res.json({ uploaded: 0 });
+      return;
+    }
+
+    const uploaded = await persistContractAttachments({
+      contractId: id,
+      files,
+      approvalStepId: stepId,
+      uploadedByUserId: currentUserId ?? null,
+      context: 'approval_step',
+      revisionNo: step.revisionNo || 1,
+    });
+
+    if (uploaded > 0) {
+      notifyContractApprovalUpdated(id, currentUserId);
+    }
+    res.json({ uploaded });
   } catch (error) {
     next(error);
   }
 };
 
 export const downloadContractAttachment = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { attachmentId } = req.params;
+    const { item, readablePath } = await resolveAttachmentForUser(attachmentId, req.user?.id, req.user?.role);
+    const data = await fs.readFile(readablePath);
+    res.setHeader('Content-Type', item.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', buildAttachmentDisposition(item.originalName));
+    res.send(data);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const previewContractAttachment = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { attachmentId } = req.params;
+    const { item, readablePath } = await resolveAttachmentForUser(attachmentId, req.user?.id, req.user?.role);
+    if (isDocxAttachment(item)) {
+      const previewPath = await getDocxPdfPreviewPath(readablePath);
+      const previewName = `${path.basename(item.originalName, path.extname(item.originalName))}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', buildAttachmentDisposition(previewName, 'inline'));
+      res.send(await fs.readFile(previewPath));
+      return;
+    }
+
+    res.setHeader('Content-Type', item.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', buildAttachmentDisposition(item.originalName, 'inline'));
+    res.send(await fs.readFile(readablePath));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteContractAttachment = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { attachmentId } = req.params;
     const item = await attachmentRepository.findOne({ where: { id: attachmentId }, relations: ['contract'] as any });
@@ -816,9 +1899,7 @@ export const downloadContractAttachment = async (req: Request, res: Response, ne
       throw error;
     }
 
-    const currentUserId = req.user?.id;
     const isAdmin = req.user?.role === 'admin';
-    const isSecurity = req.user?.role === 'security';
     const contract = item.contract ?? await contractRepository.findOne({ where: { id: item.contractId } });
     if (!contract) {
       const error: any = new Error('Договор для вложения не найден');
@@ -826,23 +1907,20 @@ export const downloadContractAttachment = async (req: Request, res: Response, ne
       throw error;
     }
 
-    if (!isAdmin && !isSecurity && currentUserId !== contract.initiatorId) {
-      const error: any = new Error('Нет доступа к файлу договора');
+    if (!isAdmin) {
+      const error: any = new Error('Удалить файл может только администратор');
       error.statusCode = 403;
       throw error;
     }
 
     const readablePath = await resolveAttachmentPath(item);
-    if (!readablePath) {
-      const error: any = new Error('Файл вложения не найден в хранилище');
-      error.statusCode = 404;
-      throw error;
+    if (readablePath) {
+      await fs.unlink(readablePath);
+      await fs.rm(`${readablePath}.preview.pdf`, { force: true });
     }
-
-    const data = await fs.readFile(readablePath);
-    res.setHeader('Content-Type', item.mimeType || 'application/octet-stream');
-    res.setHeader('Content-Disposition', buildAttachmentDisposition(item.originalName));
-    res.send(data);
+    await attachmentRepository.remove(item);
+    notifyContractApprovalUpdated(item.contractId, req.user?.id);
+    res.json({ ok: true });
   } catch (error) {
     next(error);
   }
@@ -869,14 +1947,16 @@ export const securityVisaDecision = async (req: Request, res: Response, next: Ne
       throw error;
     }
     if (contract.status !== ContractStatus.IN_APPROVAL) {
-      const error: any = new Error('Договор не находится на согласовании');
+      const error: any = new Error('Изменить визу СБ можно только пока договор находится на согласовании');
       error.statusCode = 400;
       throw error;
     }
-
-    const steps = await stepRepository.find({ where: { contractId }, order: { orderNo: 'ASC' } });
-    const currentStep = steps.find((s) => !s.decision);
-    if (!currentStep || currentStep.roleCode !== 'security') {
+    const allSteps = await stepRepository.find({ where: { contractId }, order: { orderNo: 'ASC' } });
+    const steps = getCurrentApprovalSteps(allSteps);
+    const currentStep = steps.find((s) => !s.decision) ?? null;
+    const securityStep = steps.find((s) => s.roleCode === 'security') ?? null;
+    const isCurrentSecurityStep = Boolean(currentStep && securityStep && currentStep.id === securityStep.id);
+    if (!securityStep || (!securityStep.decision && !isCurrentSecurityStep)) {
       const error: any = new Error('Сейчас нет активного шага СБ');
       error.statusCode = 400;
       throw error;
@@ -894,42 +1974,74 @@ export const securityVisaDecision = async (req: Request, res: Response, next: Ne
       throw error;
     }
 
+    const priorDecision = securityStep.decision;
+    const priorComment = securityStep.comment?.trim() || null;
     const decision = visa === 'rejected' ? ContractApprovalDecision.REJECT : ContractApprovalDecision.APPROVE;
-    currentStep.decision = decision;
-    currentStep.comment = normalizedComment;
-    currentStep.acceptedAt = new Date();
-    currentStep.signedAt = new Date();
+    securityStep.decision = decision;
+    securityStep.comment = normalizedComment;
+    securityStep.acceptedAt = securityStep.acceptedAt ?? new Date();
+    securityStep.signedAt = new Date();
 
-    const hasPending = steps.some((s) => !s.decision && s.id !== currentStep.id);
-    const nextPending = steps.find((s) => !s.decision && s.id !== currentStep.id) ?? null;
+    const hasParallelRoute = isParallelSecretaryRoute(steps);
+    const nextPending = steps.find((s) => !s.decision && s.id !== securityStep.id) ?? null;
+    const nextSteps = hasParallelRoute
+      ? steps.filter((s) => PARALLEL_APPROVAL_ROLES.includes(s.roleCode as typeof PARALLEL_APPROVAL_ROLES[number]) && !s.decision)
+      : (nextPending ? [nextPending] : []);
+    const stepsToNotify: ContractApprovalStep[] = [];
 
     await AppDataSource.transaction(async (manager) => {
-      if (currentStep.approverUserId !== currentUserId && req.user?.role === 'security') {
-        currentStep.approverUserId = currentUserId;
+      if (securityStep.approverUserId !== currentUserId && req.user?.role === 'security') {
+        securityStep.approverUserId = currentUserId;
       }
-      await manager.save(currentStep);
+      await manager.save(securityStep);
+      await saveDecisionEvent(manager, {
+        contractId,
+        step: securityStep,
+        actorUserId: currentUserId,
+        previousDecision: priorDecision,
+        previousComment: priorComment,
+      });
       if (decision === ContractApprovalDecision.REJECT) {
         contract.status = ContractStatus.REJECTED;
         await manager.save(contract);
         return;
       }
-      if (nextPending) {
-        const now = new Date();
-        nextPending.assignedAt = now;
-        const nextSchedule = await resolveEffectiveWorkSchedule(nextPending.roleCode, nextPending.approverUserId);
-        nextPending.deadlineAt = await calculateDeadlineBySchedule(now, nextPending.slaWorkdays || 1, nextSchedule);
-        await manager.save(nextPending);
+      for (const nextStep of nextSteps) {
+        if (!nextStep.assignedAt) {
+          const now = new Date();
+          nextStep.assignedAt = now;
+          const nextSchedule = await resolveEffectiveWorkSchedule(nextStep.roleCode, nextStep.approverUserId);
+          nextStep.deadlineAt = await calculateDeadlineBySchedule(now, nextStep.slaWorkdays || 1, nextSchedule);
+          await manager.save(nextStep);
+          stepsToNotify.push(nextStep);
+        }
       }
-      contract.status = hasPending ? ContractStatus.IN_APPROVAL : ContractStatus.APPROVED;
+      contract.status = nextSteps.length || steps.some((s) => !s.decision && s.id !== securityStep.id)
+        ? ContractStatus.IN_APPROVAL
+        : ContractStatus.APPROVED;
       await manager.save(contract);
     });
 
-    if (nextPending) {
-      void notifyStepAssigned(contract, nextPending, [nextPending.approverUserId, contract.initiatorId]).catch((error) => {
-        logger.error('Failed to send step-assigned notification (advanceFromCurrentPendingStep):', error);
+    for (const nextStep of stepsToNotify) {
+      void notifyStepAssigned(contract, nextStep).catch((error) => {
+        logger.error('Failed to send step-assigned notification (securityVisaDecision):', error);
       });
     }
+    const securityDecisionChanged = Boolean(priorDecision)
+      && (priorDecision !== decision || priorComment !== normalizedComment);
+    if (securityDecisionChanged) {
+      const affectedSteps = steps.filter((step) => (
+        PARALLEL_APPROVAL_ROLES.includes(step.roleCode as typeof PARALLEL_APPROVAL_ROLES[number])
+        && Boolean(step.decision)
+      ));
+      if (affectedSteps.length) {
+        void notifyDecisionChanged(contract, securityStep, priorDecision, priorComment, affectedSteps).catch((error) => {
+          logger.error('Failed to send changed Security visa notification:', error);
+        });
+      }
+    }
 
+    notifyContractApprovalUpdated(contractId, currentUserId);
     res.json({ ok: true, status: contract.status });
   } catch (error) {
     next(error);
@@ -950,13 +2062,60 @@ export const getContractApprovalSheet = async (req: Request, res: Response, next
       throw error;
     }
 
-    const steps = await stepRepository.find({
+    const allSteps = await stepRepository.find({
       where: { contractId: id },
       relations: ['approverUser'],
       order: { orderNo: 'ASC' },
     });
+    assertContractDetailAccess(contract, allSteps, req.user?.id, req.user?.role);
+
+    const allContractFiles = await attachmentRepository.find({
+      where: { contractId: id, approvalStepId: IsNull() },
+      order: { createdAt: 'ASC' },
+    });
+    const stepFiles = await attachmentRepository.find({
+      where: { contractId: id },
+      order: { createdAt: 'ASC' },
+    });
+    const currentRevisionNo = contract.status === ContractStatus.REWORK
+      ? getLatestApprovalRevision(allSteps) + 1
+      : Math.max(
+        getLatestApprovalRevision(allSteps),
+        ...allContractFiles.map((file) => file.revisionNo || 1),
+      );
+    const steps = allSteps.filter((step) => (step.revisionNo || 1) === currentRevisionNo);
+    const contractFiles = allContractFiles.filter((file) => (file.revisionNo || 1) === currentRevisionNo);
+    const filesByStep = new Map<string, ContractAttachment[]>();
+    stepFiles
+      .filter((file) => Boolean(file.approvalStepId))
+      .forEach((file) => {
+        const current = filesByStep.get(file.approvalStepId as string) ?? [];
+        current.push(file);
+        filesByStep.set(file.approvalStepId as string, current);
+      });
 
     const currentStep = steps.find((step) => !step.decision) ?? null;
+    const serializeStep = (step: ContractApprovalStep) => ({
+      id: step.id,
+      roleCode: step.roleCode,
+      roleLabel: ROLE_LABELS[step.roleCode] ?? step.roleCode,
+      approverUserId: step.approverUserId,
+      approverName: step.approverUser?.fullName ?? '—',
+      orderNo: step.orderNo,
+      revisionNo: step.revisionNo || 1,
+      acceptedAt: toIsoOrNull(step.acceptedAt),
+      signedAt: toIsoOrNull(step.signedAt),
+      decision: step.decision,
+      comment: step.comment,
+      slaWorkdays: step.slaWorkdays,
+      assignedAt: toIsoOrNull(step.assignedAt),
+      deadlineAt: toIsoOrNull(step.deadlineAt),
+      attachments: (filesByStep.get(step.id) ?? []).map(serializeAttachment),
+    });
+    const previousRevisionNumbers = [...new Set(allSteps
+      .map((step) => step.revisionNo || 1)
+      .filter((revisionNo) => revisionNo < currentRevisionNo))]
+      .sort((a, b) => b - a);
 
     res.json({
       contract: {
@@ -974,28 +2133,133 @@ export const getContractApprovalSheet = async (req: Request, res: Response, next
         psrFlag: contract.psrFlag,
         signingMethod: contract.signingMethod,
         status: contract.status,
+        attachments: contractFiles.map(serializeAttachment),
+        revisionNo: currentRevisionNo,
         initiator: contract.initiator ? { id: contract.initiator.id, fullName: contract.initiator.fullName } : null,
         assignedGeneralDirector: contract.assignedGeneralDirector
           ? { id: contract.assignedGeneralDirector.id, fullName: contract.assignedGeneralDirector.fullName }
           : null,
       },
       currentStepId: currentStep?.id ?? null,
-      steps: steps.map((step) => ({
-        id: step.id,
-        roleCode: step.roleCode,
-        roleLabel: ROLE_LABELS[step.roleCode] ?? step.roleCode,
-        approverUserId: step.approverUserId,
-        approverName: step.approverUser?.fullName ?? '—',
-        orderNo: step.orderNo,
-        acceptedAt: toIsoOrNull(step.acceptedAt),
-        signedAt: toIsoOrNull(step.signedAt),
-        decision: step.decision,
-        comment: step.comment,
-        slaWorkdays: step.slaWorkdays,
-        assignedAt: toIsoOrNull(step.assignedAt),
-        deadlineAt: toIsoOrNull(step.deadlineAt),
+      steps: steps.map(serializeStep),
+      previousRevisions: previousRevisionNumbers.map((revisionNo) => ({
+        revisionNo,
+        attachments: allContractFiles
+          .filter((file) => (file.revisionNo || 1) === revisionNo)
+          .map(serializeAttachment),
+        steps: allSteps
+          .filter((step) => (step.revisionNo || 1) === revisionNo)
+          .map(serializeStep),
       })),
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getContractDecisionHistory = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const contractExists = await contractRepository.exist({ where: { id } });
+    if (!contractExists) {
+      const error: any = new Error('Договор не найден');
+      error.statusCode = 404;
+      throw error;
+    }
+    const events = await decisionEventRepository.find({
+      where: { contractId: id },
+      relations: ['actorUser'],
+      order: { createdAt: 'DESC' },
+    });
+    res.json(events.map((event) => ({
+      id: event.id,
+      roleCode: event.roleCode,
+      roleLabel: ROLE_LABELS[event.roleCode] ?? event.roleCode,
+      revisionNo: event.revisionNo,
+      actorName: event.actorUser?.fullName ?? '—',
+      previousDecision: event.previousDecision,
+      newDecision: event.newDecision,
+      previousComment: event.previousComment,
+      newComment: event.newComment,
+      createdAt: event.createdAt,
+    })));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const downloadContractPrintPackage = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const contract = await contractRepository.findOne({
+      where: { id },
+      relations: ['initiator', 'assignedGeneralDirector', 'parentContract'],
+    });
+
+    if (!contract) {
+      const error: any = new Error('Договор не найден');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const allSteps = await stepRepository.find({
+      where: { contractId: id },
+      relations: ['approverUser'],
+      order: { orderNo: 'ASC' },
+    });
+    assertContractDetailAccess(contract, allSteps, req.user?.id, req.user?.role);
+    if (!canCreateFinalPrintPackage(allSteps)) {
+      const error: any = new Error('Распечатать финальный пакет можно только после получения всех обязательных виз');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const allContractFiles = await attachmentRepository.find({
+      where: { contractId: id, approvalStepId: IsNull() },
+      order: { createdAt: 'ASC' },
+    });
+    const allStepFiles = await attachmentRepository.find({
+      where: { contractId: id },
+      order: { createdAt: 'ASC' },
+    });
+    const currentRevisionNo = contract.status === ContractStatus.REWORK
+      ? getLatestApprovalRevision(allSteps) + 1
+      : Math.max(
+        getLatestApprovalRevision(allSteps),
+        ...allContractFiles.map((file) => file.revisionNo || 1),
+      );
+    const steps = allSteps.filter((step) => (step.revisionNo || 1) === currentRevisionNo);
+    const contractFiles = allContractFiles.filter((file) => (file.revisionNo || 1) === currentRevisionNo);
+    const filesByStep = new Map<string, ContractAttachment[]>();
+    allStepFiles
+      .filter((file) => Boolean(file.approvalStepId) && (file.revisionNo || 1) === currentRevisionNo)
+      .forEach((file) => {
+        const current = filesByStep.get(file.approvalStepId as string) ?? [];
+        current.push(file);
+        filesByStep.set(file.approvalStepId as string, current);
+      });
+
+    const pdf = await PDFDocument.create();
+    await appendApprovalSheetPdf(pdf, contract, steps, filesByStep);
+
+    const approvalAttachments = steps
+      .filter((step) => step.roleCode !== 'secretary')
+      .flatMap((step) => filesByStep.get(step.id) ?? []);
+
+    for (const attachment of approvalAttachments) {
+      // eslint-disable-next-line no-await-in-loop
+      await appendAttachmentToPdf(pdf, attachment);
+    }
+    for (const attachment of contractFiles) {
+      // eslint-disable-next-line no-await-in-loop
+      await appendAttachmentToPdf(pdf, attachment);
+    }
+
+    const fileName = buildContractPdfPackageFileName(contract);
+    const bytes = await pdf.save();
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', buildAttachmentDisposition(fileName, 'attachment'));
+    res.send(Buffer.from(bytes));
   } catch (error) {
     next(error);
   }
@@ -1004,11 +2268,23 @@ export const getContractApprovalSheet = async (req: Request, res: Response, next
 export const startContractApproval = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
+    const currentUserId = req.user?.id;
     const contract = await contractRepository.findOne({ where: { id } });
 
     if (!contract) {
       const error: any = new Error('Договор не найден');
       error.statusCode = 404;
+      throw error;
+    }
+
+    if (!currentUserId) {
+      const error: any = new Error('Authentication required');
+      error.statusCode = 401;
+      throw error;
+    }
+    if (req.user?.role !== 'admin' && contract.initiatorId !== currentUserId) {
+      const error: any = new Error('Запустить согласование может только инициатор договора или администратор');
+      error.statusCode = 403;
       throw error;
     }
 
@@ -1022,6 +2298,35 @@ export const startContractApproval = async (req: Request, res: Response, next: N
       if (existingSteps.some((step) => !step.decision)) {
         res.json({ message: 'Маршрут уже запущен' });
         return;
+      }
+      const error: any = new Error('Маршрут уже был завершен. Перезапуск без возврата на доработку недоступен');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (![ContractStatus.DRAFT, ContractStatus.REWORK].includes(contract.status)) {
+      const error: any = new Error('Запустить согласование можно только из черновика или статуса "На доработке"');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const existingRouteSteps = await stepRepository.find({ where: { contractId: contract.id } });
+    if (contract.status === ContractStatus.DRAFT && existingRouteSteps.length > 0) {
+      const error: any = new Error('У черновика уже есть история согласования. Создайте новую редакцию вместо перезаписи истории');
+      error.statusCode = 400;
+      throw error;
+    }
+    const revisionNo = contract.status === ContractStatus.REWORK
+      ? getLatestApprovalRevision(existingRouteSteps) + 1
+      : 1;
+    if (contract.status === ContractStatus.REWORK) {
+      const revisedFilesCount = await attachmentRepository.count({
+        where: { contractId: contract.id, approvalStepId: IsNull(), revisionNo },
+      });
+      if (!revisedFilesCount) {
+        const error: any = new Error('Перед повторным согласованием приложите файл новой редакции договора');
+        error.statusCode = 400;
+        throw error;
       }
     }
 
@@ -1043,6 +2348,7 @@ export const startContractApproval = async (req: Request, res: Response, next: N
         roleCode,
         approverUserId,
         orderNo: index + 1,
+        revisionNo,
         acceptedAt: null,
         signedAt: null,
         decision: null,
@@ -1058,7 +2364,6 @@ export const startContractApproval = async (req: Request, res: Response, next: N
     }
 
     await AppDataSource.transaction(async (manager) => {
-      await manager.delete(ContractApprovalStep, { contractId: contract.id });
       const created = manager.create(ContractApprovalStep, stepsPayload);
       await manager.save(created);
 
@@ -1068,11 +2373,12 @@ export const startContractApproval = async (req: Request, res: Response, next: N
 
     const firstStep = stepsPayload[0] as ContractApprovalStep | undefined;
     if (firstStep) {
-      void notifyStepAssigned(contract, firstStep, [firstStep.approverUserId, contract.initiatorId]).catch((error) => {
+      void notifyStepAssigned(contract, firstStep).catch((error) => {
         logger.error('Failed to send step-assigned notification (startContractApproval):', error);
       });
     }
 
+    notifyContractApprovalUpdated(contract.id, currentUserId);
     res.json({ message: 'Маршрут согласования запущен' });
   } catch (error) {
     next(error);
@@ -1082,16 +2388,13 @@ export const startContractApproval = async (req: Request, res: Response, next: N
 export const decideContractApprovalStep = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id, stepId } = req.params;
-    const {
-      decision,
-      comment,
-      acceptedAt,
-      signedAt,
-    } = req.body as {
+    const respondWithUpdate = (payload: { message: string }) => {
+      notifyContractApprovalUpdated(id, req.user?.id);
+      res.json(payload);
+    };
+    const { decision, comment } = req.body as {
       decision: ContractApprovalDecision;
       comment?: string | null;
-      acceptedAt?: string | null;
-      signedAt?: string | null;
     };
 
     const contract = await contractRepository.findOne({ where: { id } });
@@ -1107,10 +2410,11 @@ export const decideContractApprovalStep = async (req: Request, res: Response, ne
       throw error;
     }
 
-    const steps = await stepRepository.find({
+    const allSteps = await stepRepository.find({
       where: { contractId: id },
       order: { orderNo: 'ASC' },
     });
+    const steps = getCurrentApprovalSteps(allSteps);
 
     const step = steps.find((item) => item.id === stepId);
     if (!step) {
@@ -1119,9 +2423,16 @@ export const decideContractApprovalStep = async (req: Request, res: Response, ne
       throw error;
     }
 
+    const wasProcessedStep = Boolean(step.decision);
+    const priorDecision = step.decision;
+    const priorComment = step.comment?.trim() || null;
+    const hasParallelRoute = isParallelSecretaryRoute(steps);
     const currentStep = steps.find((item) => !item.decision);
-    if (!currentStep || currentStep.id !== step.id) {
-      const error: any = new Error('Можно обработать только текущий шаг согласования');
+    const canProcessAssignedParallelStep = hasParallelRoute
+      && step.roleCode !== 'security'
+      && Boolean(step.assignedAt);
+    if (!wasProcessedStep && !canProcessAssignedParallelStep && (!currentStep || currentStep.id !== step.id)) {
+      const error: any = new Error('Этот шаг согласования еще не назначен');
       error.statusCode = 400;
       throw error;
     }
@@ -1131,45 +2442,135 @@ export const decideContractApprovalStep = async (req: Request, res: Response, ne
       error.statusCode = 401;
       throw error;
     }
-    if (req.user.role !== 'admin' && step.approverUserId !== req.user.id) {
+    const initiatorMayConfirmSignature = step.roleCode === 'secretary' && contract.initiatorId === req.user.id;
+    if (req.user.role !== 'admin' && step.approverUserId !== req.user.id && !initiatorMayConfirmSignature) {
       const error: any = new Error('Действие доступно только текущему согласующему');
       error.statusCode = 403;
       throw error;
     }
 
     const normalizedComment = comment?.trim() ?? '';
-    if ((decision === ContractApprovalDecision.REWORK || decision === ContractApprovalDecision.REJECT) && !normalizedComment) {
-      const error: any = new Error('Комментарий обязателен для возврата на доработку и отклонения');
+    if (decision === ContractApprovalDecision.REWORK && !normalizedComment) {
+      const error: any = new Error('Комментарий обязателен для возврата на доработку');
       error.statusCode = 400;
       throw error;
     }
 
-    const acceptedDate = acceptedAt ? new Date(acceptedAt) : new Date();
-    const signedDate = signedAt ? new Date(signedAt) : new Date();
+    const decisionDate = new Date();
 
-    if (Number.isNaN(acceptedDate.getTime()) || Number.isNaN(signedDate.getTime())) {
-      const error: any = new Error('Некорректный формат даты');
-      error.statusCode = 400;
-      throw error;
+    if (step.roleCode === 'secretary' && decision === ContractApprovalDecision.APPROVE) {
+      const signedFilesCount = await attachmentRepository.count({
+        where: { contractId: id, approvalStepId: step.id },
+      });
+      if (signedFilesCount === 0) {
+        const error: any = new Error('Перед подтверждением подписи приложите подписанный экземпляр договора');
+        error.statusCode = 400;
+        throw error;
+      }
     }
 
     step.decision = decision;
     step.comment = normalizedComment || null;
-    step.acceptedAt = acceptedDate;
-    step.signedAt = signedDate;
-    await stepRepository.save(step);
+    step.acceptedAt = step.acceptedAt ?? decisionDate;
+    step.signedAt = decisionDate;
+    await AppDataSource.transaction(async (manager) => {
+      await manager.save(step);
+      await saveDecisionEvent(manager, {
+        contractId: id,
+        step,
+        actorUserId: req.user!.id,
+        previousDecision: priorDecision,
+        previousComment: priorComment,
+      });
+    });
+
+    const isParallelApprovalStep = hasParallelRoute
+      && PARALLEL_APPROVAL_ROLES.includes(step.roleCode as typeof PARALLEL_APPROVAL_ROLES[number]);
+    if (isParallelApprovalStep) {
+      const parallelSteps = steps.filter((item) => PARALLEL_APPROVAL_ROLES.includes(item.roleCode as typeof PARALLEL_APPROVAL_ROLES[number]));
+      const decisionChanged = wasProcessedStep
+        && (priorDecision !== decision || priorComment !== (normalizedComment || null));
+      if (decisionChanged) {
+        const affectedSteps = parallelSteps.filter((item) => item.id !== step.id && Boolean(item.decision));
+        if (affectedSteps.length) {
+          void notifyDecisionChanged(contract, step, priorDecision, priorComment, affectedSteps).catch((error) => {
+            logger.error('Failed to send changed parallel visa notification:', error);
+          });
+        }
+      }
+      const parallelComplete = parallelSteps.every((item) => Boolean(item.decision));
+      const hasRemarks = parallelSteps.some((item) => (
+        item.decision === ContractApprovalDecision.REJECT
+        || item.decision === ContractApprovalDecision.REWORK
+        || Boolean(item.comment?.trim())
+      ));
+      const secretaryStep = steps.find((item) => item.roleCode === 'secretary') ?? null;
+      contract.status = ContractStatus.IN_APPROVAL;
+      await contractRepository.save(contract);
+
+      if (parallelComplete && secretaryStep && !secretaryStep.assignedAt) {
+        const assignedAt = new Date();
+        secretaryStep.assignedAt = assignedAt;
+        const secretarySchedule = await resolveEffectiveWorkSchedule(secretaryStep.roleCode, secretaryStep.approverUserId);
+        secretaryStep.deadlineAt = await calculateDeadlineBySchedule(
+          assignedAt,
+          Math.max(1, secretaryStep.slaWorkdays || 1),
+          secretarySchedule
+        );
+        await stepRepository.save(secretaryStep);
+        void notifyStepAssigned(contract, secretaryStep).catch((error) => {
+          logger.error('Failed to send secretary notification (decideContractApprovalStep):', error);
+        });
+        respondWithUpdate({
+          message: hasRemarks
+            ? 'Все визы получены, есть замечания. Договор направлен офис-менеджеру на подпись'
+            : 'Все визы получены. Договор направлен офис-менеджеру на подпись',
+        });
+        return;
+      }
+
+      respondWithUpdate({ message: wasProcessedStep ? 'Виза согласования обновлена' : 'Решение сохранено' });
+      return;
+    }
+
+    if (wasProcessedStep) {
+      if (decision === ContractApprovalDecision.REWORK) {
+        contract.status = ContractStatus.REWORK;
+      } else if (decision === ContractApprovalDecision.REJECT) {
+        contract.status = ContractStatus.REJECTED;
+      } else {
+        contract.status = steps.some((item) => !item.decision && item.id !== step.id)
+          ? ContractStatus.IN_APPROVAL
+          : ContractStatus.APPROVED;
+      }
+      await contractRepository.save(contract);
+      respondWithUpdate({ message: 'Виза согласования обновлена' });
+      return;
+    }
 
     if (decision === ContractApprovalDecision.REWORK) {
       contract.status = ContractStatus.REWORK;
       await contractRepository.save(contract);
-      res.json({ message: 'Договор возвращен на доработку' });
+      respondWithUpdate({ message: 'Договор возвращен на доработку' });
       return;
     }
 
     if (decision === ContractApprovalDecision.REJECT) {
       contract.status = ContractStatus.REJECTED;
       await contractRepository.save(contract);
-      res.json({ message: 'Договор отклонен' });
+      respondWithUpdate({ message: 'Договор отклонен' });
+      return;
+    }
+
+    if (hasParallelRoute) {
+      if (step.roleCode === 'secretary') {
+        contract.status = ContractStatus.APPROVED;
+        await contractRepository.save(contract);
+        respondWithUpdate({ message: 'Подписание договора подтверждено' });
+        return;
+      }
+
+      respondWithUpdate({ message: 'Решение сохранено' });
       return;
     }
 
@@ -1194,12 +2595,12 @@ export const decideContractApprovalStep = async (req: Request, res: Response, ne
       nextPending.reminderOverdueSentAt = null;
       nextPending.escalationSentAt = null;
       await stepRepository.save(nextPending);
-      void notifyStepAssigned(contract, nextPending, [nextPending.approverUserId, contract.initiatorId]).catch((error) => {
+      void notifyStepAssigned(contract, nextPending).catch((error) => {
         logger.error('Failed to send step-assigned notification (decideContractApprovalStep):', error);
       });
     }
 
-    res.json({ message: contract.status === ContractStatus.APPROVED ? 'Договор согласован' : 'Шаг согласования подтвержден' });
+    respondWithUpdate({ message: contract.status === ContractStatus.APPROVED ? 'Договор согласован' : 'Шаг согласования подтвержден' });
   } catch (error) {
     next(error);
   }

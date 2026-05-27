@@ -1,34 +1,57 @@
 import { Router } from 'express';
 import { body, param } from 'express-validator';
 import { authenticate } from '../middleware/authenticate';
-import { roleOrAdmin } from '../middleware/admin-only.middleware';
+import { adminOnly, roleOrAdmin } from '../middleware/admin-only.middleware';
 import { handleValidationErrors } from '../middleware/express-validator.middleware';
 import {
   createContract,
   decideContractApprovalStep,
+  deleteContractAttachment,
+  deleteDraftContract,
   downloadContractAttachment,
+  downloadContractPrintPackage,
   findContractDuplicates,
   getContractReferences,
+  getContractDecisionHistory,
   getContractSlaRules,
   getContractApprovalSheet,
+  listMyApprovalInbox,
   getMyApprovalDashboard,
   getWorkCalendar,
   listContractAttachments,
   listContracts,
   listSecurityInbox,
   listMasterContracts,
+  prepareContractRevision,
+  previewContractAttachment,
   securityVisaDecision,
   syncWorkCalendar,
   startContractApproval,
+  uploadContractStepAttachments,
   uploadContractAttachments,
   updateContractSlaRules,
+  updateDraftContract,
   upsertWorkCalendarDay,
 } from '../controllers/contracts.controller';
 
 const router = Router();
 
+const APPROVAL_ROLES = ['security', 'lawyer', 'chief_accountant', 'financer', 'secretary'];
+const INITIATOR_ROLES = [
+  'manager_sales',
+  'head_sales',
+  'manager_ktk_vvo',
+  'head_ktk_vvo',
+  'manager_ktk_mow',
+  'manager_auto',
+  'manager_rail',
+  'manager_extra',
+  'manager_to',
+];
+const writeContractAccess = roleOrAdmin(...APPROVAL_ROLES, ...INITIATOR_ROLES);
+
 router.use(authenticate);
-router.use(roleOrAdmin('security', 'lawyer', 'chief_accountant'));
+router.use(roleOrAdmin(...APPROVAL_ROLES, ...INITIATOR_ROLES, 'general_director'));
 
 router.get('/', listContracts);
 router.get('/masters', listMasterContracts);
@@ -36,6 +59,7 @@ router.get('/reference', getContractReferences);
 router.get('/sla-rules', getContractSlaRules);
 router.put(
   '/sla-rules',
+  adminOnly,
   [
     body('rules').isArray(),
     body('rules.*.contractType').isIn(['expense', 'income']),
@@ -48,9 +72,10 @@ router.put(
   updateContractSlaRules,
 );
 router.get('/work-calendar', getWorkCalendar);
-router.post('/work-calendar/sync', syncWorkCalendar);
+router.post('/work-calendar/sync', adminOnly, syncWorkCalendar);
 router.put(
   '/work-calendar/:date',
+  adminOnly,
   [
     param('date').matches(/^\d{4}-\d{2}-\d{2}$/),
     body('isWorkday').isBoolean(),
@@ -61,6 +86,7 @@ router.put(
 );
 router.get('/duplicates', findContractDuplicates);
 router.get('/approval-dashboard/my', getMyApprovalDashboard);
+router.get('/approval-inbox/my', listMyApprovalInbox);
 router.get('/security/inbox', listSecurityInbox);
 router.post(
   '/security/inbox/:contractId/visa',
@@ -73,13 +99,18 @@ router.post(
   securityVisaDecision,
 );
 router.get('/attachments/:attachmentId/download', [param('attachmentId').isUUID()], handleValidationErrors, downloadContractAttachment);
+router.get('/attachments/:attachmentId/preview', [param('attachmentId').isUUID()], handleValidationErrors, previewContractAttachment);
+router.delete('/attachments/:attachmentId', [param('attachmentId').isUUID()], handleValidationErrors, deleteContractAttachment);
+router.get('/:id/decision-history', adminOnly, [param('id').isUUID()], handleValidationErrors, getContractDecisionHistory);
 router.get('/:id/approval-sheet', [param('id').isUUID()], handleValidationErrors, getContractApprovalSheet);
+router.get('/:id/print-package', [param('id').isUUID()], handleValidationErrors, downloadContractPrintPackage);
 router.get('/:id/attachments', [param('id').isUUID()], handleValidationErrors, listContractAttachments);
 router.post(
   '/:id/attachments',
+  writeContractAccess,
   [
     param('id').isUUID(),
-    body('files').isArray({ min: 1 }),
+    body('files').isArray({ min: 1, max: 10 }),
     body('files.*.name').isString().trim().notEmpty().isLength({ max: 255 }),
     body('files.*.mimeType').optional({ nullable: true }).isString().isLength({ max: 120 }),
     body('files.*.contentBase64').isString().notEmpty(),
@@ -91,6 +122,7 @@ router.post(
 
 router.post(
   '/',
+  writeContractAccess,
   [
     body('contractNumber').isString().trim().notEmpty().isLength({ max: 100 }),
     body('contractType').isIn(['expense', 'income']),
@@ -112,20 +144,58 @@ router.post(
   createContract,
 );
 
-router.post('/:id/start-approval', [param('id').isUUID()], handleValidationErrors, startContractApproval);
+router.put(
+  '/:id/draft',
+  writeContractAccess,
+  [
+    param('id').isUUID(),
+    body('contractNumber').isString().trim().notEmpty().isLength({ max: 100 }),
+    body('contractType').isIn(['expense', 'income']),
+    body('incomeSubtype').optional({ nullable: true }).isIn(['standard', 'with_psr']),
+    body('counterpartyName').isString().trim().notEmpty().isLength({ max: 255 }),
+    body('counterpartyShortName').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
+    body('counterpartyForm').optional({ nullable: true }).isIn(['ooo', 'ao', 'pao', 'zao', 'ip']),
+    body('counterpartyInn').isString().trim().matches(/^(\d{10}|\d{12})$/),
+    body('subject').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
+    body('contractDate').optional({ nullable: true }).isISO8601(),
+    body('psrFlag').optional().isBoolean(),
+    body('signingMethod').optional().isIn(['edo', 'post']),
+  ],
+  handleValidationErrors,
+  updateDraftContract,
+);
+router.delete('/:id/draft', writeContractAccess, [param('id').isUUID()], handleValidationErrors, deleteDraftContract);
+
+router.post('/:id/new-revision', writeContractAccess, [param('id').isUUID()], handleValidationErrors, prepareContractRevision);
+router.post('/:id/start-approval', writeContractAccess, [param('id').isUUID()], handleValidationErrors, startContractApproval);
 
 router.post(
   '/:id/steps/:stepId/decision',
+  writeContractAccess,
   [
     param('id').isUUID(),
     param('stepId').isUUID(),
     body('decision').isIn(['approve', 'rework', 'reject']),
     body('comment').optional({ nullable: true }).isString(),
-    body('acceptedAt').optional({ nullable: true }).isISO8601(),
-    body('signedAt').optional({ nullable: true }).isISO8601(),
   ],
   handleValidationErrors,
   decideContractApprovalStep,
+);
+
+router.post(
+  '/:id/steps/:stepId/attachments',
+  writeContractAccess,
+  [
+    param('id').isUUID(),
+    param('stepId').isUUID(),
+    body('files').isArray({ min: 1, max: 10 }),
+    body('files.*.name').isString().trim().notEmpty().isLength({ max: 255 }),
+    body('files.*.mimeType').optional({ nullable: true }).isString().isLength({ max: 120 }),
+    body('files.*.contentBase64').isString().notEmpty(),
+    body('files.*.size').optional().isInt({ min: 1 }),
+  ],
+  handleValidationErrors,
+  uploadContractStepAttachments,
 );
 
 export { router as contractsRouter };

@@ -16,6 +16,7 @@ import SinokorTestPage from './pages/SinokorTestPage';
 import RouteAccessGuard from './components/auth/RouteAccessGuard';
 import {
   canAccessAdmin,
+  canAccessBillOfLading,
   canAccessContractApproval,
   canAccessOperationsPreview,
   canViewOperationsEfficiency,
@@ -147,12 +148,19 @@ function App() {
           <Route
             path="business-processes/bill-of-lading"
             element={(
-              <RouteAccessGuard allow={canAccessContractApproval(user?.role)}>
+              <RouteAccessGuard allow={canAccessBillOfLading(user?.role)}>
                 <SinokorTestPage />
               </RouteAccessGuard>
             )}
           />
-          <Route path="sinokor-test" element={<SinokorTestPage />} />
+          <Route
+            path="sinokor-test"
+            element={(
+              <RouteAccessGuard allow={canAccessBillOfLading(user?.role)}>
+                <SinokorTestPage />
+              </RouteAccessGuard>
+            )}
+          />
         </Route>
       ) : (
         <Route path="*" element={<Navigate to="/login" replace />} />

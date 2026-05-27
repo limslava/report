@@ -3,7 +3,6 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -14,31 +13,41 @@ import {
   MenuItem,
   Paper,
   Select,
+  Snackbar,
   Stack,
-  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Tabs,
   TextField,
   Typography,
 } from '@mui/material';
 import { useLocation } from 'react-router-dom';
 import {
   createContract,
+  decideContractApprovalStep,
+  deleteContractAttachment,
+  deleteDraftContract,
   downloadContractAttachment,
+  downloadContractPrintPackage,
   getSecurityContractInbox,
+  getMyContractApprovalInbox,
   getContractApprovalSheet,
+  getContractDecisionHistory,
   getContractDuplicates,
   getContracts,
+  prepareContractRevision,
+  previewContractAttachment,
   resolveCounterpartyByInn,
   startContractApproval,
   submitSecurityVisa,
+  updateDraftContract,
+  uploadContractStepAttachments,
   uploadContractAttachments,
 } from '../services/api';
+import { subscribePlansRealtime } from '../services/plans-realtime';
 import { useAuthStore } from '../store/auth-store';
 import { downloadBlob } from '../utils/download';
 import '../styles/contract-approval.css';
@@ -67,6 +76,8 @@ type ContractRecord = {
   currentStageRole?: string | null;
   currentStageLabel?: string | null;
   statusDetail?: string | null;
+  needsSignedAttachment?: boolean;
+  initiator?: { id: string; fullName: string; role: string } | null;
 };
 
 type DuplicateContract = {
@@ -74,8 +85,13 @@ type DuplicateContract = {
   contractNumber: string;
   contractDate: string | null;
   subject: string | null;
-  status: string;
+  status: ContractRecord['status'];
 };
+
+type SecurityVisaValue = '' | 'approved' | 'rejected' | 'approved_with_remarks';
+type ApprovalDecisionValue = '' | 'approved' | 'rejected' | 'approved_with_remarks';
+type InboxView = 'active' | 'processed' | 'all' | 'new' | 'due_today' | 'overdue' | 'completed_month';
+type ContractSection = 'inbox' | 'mine' | 'registry';
 
 type SheetStep = {
   id: string;
@@ -84,12 +100,31 @@ type SheetStep = {
   approverUserId: string;
   approverName: string;
   orderNo: number;
+  revisionNo?: number;
   acceptedAt: string | null;
   signedAt: string | null;
   assignedAt?: string | null;
   deadlineAt?: string | null;
   decision: 'approve' | 'rework' | 'reject' | null;
   comment: string | null;
+  attachments: ContractAttachmentRef[];
+};
+
+type ContractAttachmentRef = {
+  id: string;
+  originalName: string;
+  sizeBytes: number;
+  mimeType: string | null;
+  createdAt?: string;
+  uploadedByUserId?: string | null;
+  context?: 'contract' | 'approval_step';
+  revisionNo?: number;
+};
+
+type ApprovalRevision = {
+  revisionNo: number;
+  attachments: ContractAttachmentRef[];
+  steps: SheetStep[];
 };
 
 type ApprovalSheet = {
@@ -106,11 +141,27 @@ type ApprovalSheet = {
     psrFlag: boolean;
     signingMethod: 'edo' | 'post';
     status: 'draft' | 'in_approval' | 'rework' | 'approved' | 'rejected';
+    revisionNo?: number;
+    attachments: ContractAttachmentRef[];
     initiator: { id: string; fullName: string } | null;
     assignedGeneralDirector: { id: string; fullName: string } | null;
   };
   currentStepId: string | null;
   steps: SheetStep[];
+  previousRevisions?: ApprovalRevision[];
+};
+
+type DecisionHistoryEvent = {
+  id: string;
+  roleCode: string;
+  roleLabel: string;
+  revisionNo: number;
+  actorName: string;
+  previousDecision: 'approve' | 'rework' | 'reject' | null;
+  newDecision: 'approve' | 'rework' | 'reject';
+  previousComment: string | null;
+  newComment: string | null;
+  createdAt: string;
 };
 
 type SecurityInboxItem = {
@@ -131,21 +182,46 @@ type SecurityInboxItem = {
   securityDecision: 'approve' | 'rework' | 'reject' | null;
   securitySignedAt: string | null;
   securityComment?: string | null;
-  attachments: Array<{
-    id: string;
-    originalName: string;
-    sizeBytes: number;
-    mimeType: string | null;
-  }>;
+  attachments: ContractAttachmentRef[];
+};
+
+type ApprovalInboxItem = {
+  contractId: string;
+  stepId: string;
+  contractNumber: string;
+  counterpartyShortName: string | null;
+  counterpartyInn: string;
+  contractType: 'expense' | 'income';
+  incomeSubtype: 'standard' | 'with_psr' | null;
+  counterpartyName: string;
+  subject: string | null;
+  contractDate: string | null;
+  signingMethod: 'edo' | 'post';
+  initiatorName: string;
+  assignedAt: string | null;
+  deadlineAt: string | null;
+  stepDecision: 'approve' | 'rework' | 'reject' | null;
+  stepSignedAt: string | null;
+  stepComment: string | null;
+  roleCode: string;
+  roleLabel: string;
+  attachments: ContractAttachmentRef[];
 };
 
 const STATUS_LABELS: Record<ContractRecord['status'], string> = {
   draft: 'Черновик',
   in_approval: 'На согласовании',
   rework: 'На доработке',
-  approved: 'Согласован',
+  approved: 'Подписан',
   rejected: 'Отклонен',
 };
+
+function formatDecisionLabel(decision: DecisionHistoryEvent['newDecision'] | null, comment?: string | null): string {
+  if (!decision) return 'Не выбрано';
+  if (decision === 'reject') return 'Не согласован';
+  if (decision === 'rework') return 'Возвращен на доработку';
+  return comment?.trim() ? 'Согласован с замечаниями' : 'Согласован';
+}
 
 function normalizeCounterpartyName(fullName: string): string {
   const trimmed = fullName.trim();
@@ -193,6 +269,87 @@ function formatContractTypeLabel(
   return `Доходный${incomeSubtype === 'with_psr' ? ' (с ПСР)' : ' (без ПСР)'}`;
 }
 
+function getSecurityVisaLabel(item: Pick<SecurityInboxItem, 'securityDecision' | 'securityComment'>): string {
+  if (!item.securityDecision) return 'Не обработан';
+  if (item.securityDecision === 'reject') return 'Не согласован';
+  if (item.securityComment?.trim()) return 'Согласован с замечаниями';
+  return 'Согласован';
+}
+
+function getSecurityVisaColor(item: Pick<SecurityInboxItem, 'securityDecision' | 'securityComment'>): 'default' | 'success' | 'warning' | 'error' {
+  if (!item.securityDecision) return 'default';
+  if (item.securityDecision === 'reject') return 'error';
+  if (item.securityComment?.trim()) return 'warning';
+  return 'success';
+}
+
+function getStepDecisionLabel(step: Pick<SheetStep, 'decision' | 'comment' | 'roleCode' | 'assignedAt'>): string {
+  if (step.roleCode === 'secretary' && step.decision === 'approve') return 'Подписан';
+  if (step.roleCode === 'secretary' && step.assignedAt && !step.decision) return 'На подписи';
+  if (!step.decision) return 'Ожидает';
+  if (step.decision === 'reject') return 'Не согласован';
+  if (step.decision === 'rework') return 'На доработку';
+  if (step.comment?.trim()) return 'Согласован с замечаниями';
+  return 'Согласован';
+}
+
+function getApprovalStartDate(sheet: ApprovalSheet): string | null {
+  return sheet.steps.find((step) => step.assignedAt)?.assignedAt
+    ?? sheet.steps.find((step) => step.acceptedAt)?.acceptedAt
+    ?? null;
+}
+
+function buildPrintFileName(sheet: ApprovalSheet): string {
+  const counterparty = normalizeCounterpartyName(sheet.contract.counterpartyName)
+    .replace(/[\\/:*?"<>|]+/g, '')
+    .replace(/\s+/g, '_')
+    .slice(0, 80) || 'Контрагент';
+  const date = sheet.contract.contractDate || new Date().toISOString().slice(0, 10);
+  return `${counterparty}_${date}`;
+}
+
+function getStepDecisionTone(step: Pick<SheetStep, 'decision' | 'comment' | 'roleCode'>): 'default' | 'success' | 'warning' | 'error' {
+  if (!step.decision) return 'default';
+  if (step.decision === 'reject' || step.decision === 'rework') return 'error';
+  if (step.comment?.trim()) return 'warning';
+  return 'success';
+}
+
+function getApprovalInboxDecisionLabel(item: Pick<ApprovalInboxItem, 'stepDecision' | 'stepComment' | 'roleCode' | 'assignedAt'>): string {
+  return getStepDecisionLabel({
+    decision: item.stepDecision,
+    comment: item.stepComment,
+    roleCode: item.roleCode,
+    assignedAt: item.assignedAt,
+  });
+}
+
+function getApprovalInboxDecisionTone(item: Pick<ApprovalInboxItem, 'stepDecision' | 'stepComment' | 'roleCode'>): 'default' | 'success' | 'warning' | 'error' {
+  return getStepDecisionTone({
+    decision: item.stepDecision,
+    comment: item.stepComment,
+    roleCode: item.roleCode,
+  });
+}
+
+async function fileToUploadPayload(file: File) {
+  const contentBase64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const raw = String(reader.result || '');
+      resolve(raw.split(',')[1] || '');
+    };
+    reader.onerror = () => reject(new Error(`Не удалось прочитать файл: ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+  return {
+    name: file.name,
+    mimeType: file.type || null,
+    size: file.size,
+    contentBase64,
+  };
+}
+
 const REGISTRY_COLUMNS = [
   { key: 'idx', label: '№', width: 36 },
   { key: 'number', label: '№ договора', width: 80 },
@@ -201,9 +358,8 @@ const REGISTRY_COLUMNS = [
   { key: 'subject', label: 'Предмет договора', width: 160 },
   { key: 'counterparty', label: 'Контрагент', width: 173 },
   { key: 'inn', label: 'ИНН', width: 110 },
-  { key: 'status', label: 'Статус', width: 90 },
-  { key: 'stage', label: 'Текущий этап', width: 150 },
-  { key: 'sheet', label: 'Лист', width: 78 },
+  { key: 'status', label: 'Статус', width: 104 },
+  { key: 'stage', label: 'Ход согласования', width: 190 },
 ] as const;
 
 const SB_COLUMNS = [
@@ -216,18 +372,38 @@ const SB_COLUMNS = [
   { key: 'inn', label: 'ИНН', width: 96 },
   { key: 'initiator', label: 'Инициатор', width: 190 },
   { key: 'deadline', label: 'Дедлайн', width: 104 },
-  { key: 'contract', label: 'Договор', width: 74 },
-  { key: 'visa', label: 'Виза СБ', width: 184 },
-  { key: 'comment', label: 'Комментарий', width: 250 },
-  { key: 'action', label: 'Статус отправки', width: 140 },
+  { key: 'visa', label: 'Виза СБ', width: 160 },
 ] as const;
+
+const APPROVAL_INBOX_COLUMNS = [
+  { key: 'idx', label: '№', width: 48 },
+  { key: 'number', label: '№ договора', width: 96 },
+  { key: 'date', label: 'Дата', width: 100 },
+  { key: 'type', label: 'Тип', width: 132 },
+  { key: 'subject', label: 'Предмет договора', width: 180 },
+  { key: 'counterparty', label: 'Контрагент', width: 200 },
+  { key: 'inn', label: 'ИНН', width: 96 },
+  { key: 'initiator', label: 'Инициатор', width: 190 },
+  { key: 'deadline', label: 'Дедлайн', width: 104 },
+  { key: 'decision', label: 'Мое решение', width: 170 },
+] as const;
+
+const ACCOUNTANT_SIGNING_COLUMN = { key: 'signing', label: 'Способ подписания', width: 134 } as const;
 
 export default function ContractApprovalPage() {
   const location = useLocation();
   const currentUser = useAuthStore((state) => state.user);
   const isSecurity = currentUser?.role === 'security';
+  const isApprovalWorkRole = ['lawyer', 'chief_accountant', 'financer', 'secretary'].includes(currentUser?.role ?? '');
+  const isChiefAccountant = currentUser?.role === 'chief_accountant';
+  const isAdmin = currentUser?.role === 'admin';
+  const isReadOnlyRegistry = currentUser?.role === 'general_director';
+  const canUseInbox = isSecurity || isApprovalWorkRole;
+  const initialSection: ContractSection = canUseInbox ? 'inbox' : (isAdmin || isReadOnlyRegistry) ? 'registry' : 'mine';
   const [tab, setTab] = useState(0);
+  const [contractSection, setContractSection] = useState<ContractSection>(initialSection);
   const [contracts, setContracts] = useState<ContractRecord[]>([]);
+  const [registrySearch, setRegistrySearch] = useState('');
   const [selectedContractId, setSelectedContractId] = useState('');
   const [sheet, setSheet] = useState<ApprovalSheet | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -241,6 +417,12 @@ export default function ContractApprovalPage() {
   const [wizardResolvedInn, setWizardResolvedInn] = useState('');
   const [wizardDuplicates, setWizardDuplicates] = useState<DuplicateContract[]>([]);
   const [wizardFiles, setWizardFiles] = useState<File[]>([]);
+  const [wizardExistingFiles, setWizardExistingFiles] = useState<ContractAttachmentRef[]>([]);
+  const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
+  const [draftDeleteTarget, setDraftDeleteTarget] = useState<ContractRecord | null>(null);
+  const [draftDeleting, setDraftDeleting] = useState(false);
+  const [revisionTarget, setRevisionTarget] = useState<ContractRecord | null>(null);
+  const [revisionPreparing, setRevisionPreparing] = useState(false);
   const [wizardPrefill, setWizardPrefill] = useState<{
     resolvedInn?: string;
     counterpartyName?: string;
@@ -259,17 +441,41 @@ export default function ContractApprovalPage() {
   });
 
   const [securityInbox, setSecurityInbox] = useState<SecurityInboxItem[]>([]);
-  const [securityInboxView, setSecurityInboxView] = useState<'active' | 'processed' | 'all' | 'new' | 'due_today' | 'overdue'>('active');
+  const [securityInboxView, setSecurityInboxView] = useState<InboxView>('active');
   const [securitySearch, setSecuritySearch] = useState('');
-  const [securityVisa, setSecurityVisa] = useState<Record<string, { visa: 'approved' | 'rejected' | 'approved_with_remarks'; comment: string }>>({});
+  const [securityVisa, setSecurityVisa] = useState<Record<string, { visa: SecurityVisaValue; comment: string }>>({});
+  const [approvalInbox, setApprovalInbox] = useState<ApprovalInboxItem[]>([]);
+  const [approvalInboxView, setApprovalInboxView] = useState<InboxView>('active');
+  const [approvalSearch, setApprovalSearch] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewFileName, setPreviewFileName] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewMimeType, setPreviewMimeType] = useState<string | null>(null);
+  const [previewAttachmentId, setPreviewAttachmentId] = useState<string | null>(null);
   const [sheetModalOpen, setSheetModalOpen] = useState(false);
   const [sheetModalLoading, setSheetModalLoading] = useState(false);
+  const [resumeWizardAfterSheet, setResumeWizardAfterSheet] = useState(false);
+  const [securityCardOpen, setSecurityCardOpen] = useState(false);
+  const [securityCardLoading, setSecurityCardLoading] = useState(false);
+  const [securityCardContractId, setSecurityCardContractId] = useState<string | null>(null);
+  const [securityUploadBusy, setSecurityUploadBusy] = useState(false);
+  const [approvalDecision, setApprovalDecision] = useState<ApprovalDecisionValue>('');
+  const [approvalComment, setApprovalComment] = useState('');
+  const [approvalDecisionBusy, setApprovalDecisionBusy] = useState(false);
+  const [printPackageBusy, setPrintPackageBusy] = useState(false);
+  const [attachmentDeleteTarget, setAttachmentDeleteTarget] = useState<{
+    file: ContractAttachmentRef;
+    contractId: string;
+  } | null>(null);
+  const [attachmentDeleting, setAttachmentDeleting] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryEvent[]>([]);
+  const approvalInboxColumns = isChiefAccountant
+    ? [...APPROVAL_INBOX_COLUMNS.slice(0, 4), ACCOUNTANT_SIGNING_COLUMN, ...APPROVAL_INBOX_COLUMNS.slice(4)]
+    : APPROVAL_INBOX_COLUMNS;
 
   const loadRegistryData = async (): Promise<ContractRecord[]> => {
     const contractsRes = await getContracts();
@@ -302,13 +508,28 @@ export default function ContractApprovalPage() {
   const loadSecurityInbox = async () => {
     if (!isSecurity) return;
     try {
-      const apiView = securityInboxView === 'new' || securityInboxView === 'due_today' || securityInboxView === 'overdue'
-        ? 'active'
-        : securityInboxView;
-      const response = await getSecurityContractInbox(apiView);
+      const apiView = securityInboxView === 'new' || securityInboxView === 'due_today' || securityInboxView === 'overdue' || securityInboxView === 'completed_month'
+          ? 'active'
+          : securityInboxView;
+      const safeApiView = securityInboxView === 'completed_month' ? 'processed' : apiView;
+      const response = await getSecurityContractInbox(safeApiView);
       setSecurityInbox(Array.isArray(response.data) ? response.data : []);
     } catch (e: any) {
       setError(e?.response?.data?.message || e?.message || 'Не удалось загрузить входящие СБ');
+    }
+  };
+
+  const loadApprovalInbox = async () => {
+    if (!isApprovalWorkRole) return;
+    try {
+      const apiView = approvalInboxView === 'new' || approvalInboxView === 'due_today' || approvalInboxView === 'overdue' || approvalInboxView === 'completed_month'
+          ? 'active'
+          : approvalInboxView;
+      const safeApiView = approvalInboxView === 'completed_month' ? 'processed' : apiView;
+      const response = await getMyContractApprovalInbox(safeApiView);
+      setApprovalInbox(Array.isArray(response.data) ? response.data : []);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || 'Не удалось загрузить договоры на согласование');
     }
   };
 
@@ -326,6 +547,21 @@ export default function ContractApprovalPage() {
     }
   };
 
+  const openDecisionHistory = async () => {
+    if (!sheet?.contract.id || !isAdmin) return;
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    setError(null);
+    try {
+      const response = await getContractDecisionHistory(sheet.contract.id);
+      setDecisionHistory(Array.isArray(response.data) ? response.data : []);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || 'Не удалось загрузить историю решений');
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   const resetWizard = () => {
     setWizardStep(0);
     setWizardDuplicates([]);
@@ -335,6 +571,8 @@ export default function ContractApprovalPage() {
     setWizardInnResolving(false);
     setWizardResolvedInn('');
     setWizardFiles([]);
+    setWizardExistingFiles([]);
+    setEditingDraftId(null);
     setWizard({
       clientRequestId: crypto.randomUUID(),
       counterpartyInn: '',
@@ -352,6 +590,87 @@ export default function ContractApprovalPage() {
     setWizardOpen(true);
   };
 
+  const continueDraft = async (draft: ContractRecord, startNewRevision = false) => {
+    resetWizard();
+    let existingFiles: ContractAttachmentRef[] = [];
+    try {
+      if (startNewRevision) {
+        existingFiles = [];
+      } else if (sheet?.contract.id === draft.id) {
+        existingFiles = sheet.contract.attachments;
+      } else {
+        const response = await getContractApprovalSheet(draft.id);
+        existingFiles = response.data?.contract?.attachments ?? [];
+        setSheet(response.data);
+      }
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || 'Не удалось загрузить вложения черновика');
+      return;
+    }
+    setEditingDraftId(draft.id);
+    setWizardExistingFiles(existingFiles);
+    setWizardPrefill({
+      resolvedInn: draft.counterpartyInn,
+      counterpartyName: draft.counterpartyName,
+      counterpartyShortName: draft.counterpartyShortName || undefined,
+      counterpartyForm: draft.counterpartyForm || undefined,
+    });
+    setWizardResolvedInn(draft.counterpartyInn);
+    setWizard({
+      clientRequestId: crypto.randomUUID(),
+      counterpartyInn: draft.counterpartyInn,
+      contractType: draft.contractType,
+      psrMode: draft.incomeSubtype === 'with_psr' || draft.psrFlag ? 'with_psr' : 'without_psr',
+      contractNumber: draft.contractNumber,
+      subject: draft.subject || '',
+      contractDate: draft.contractDate || '',
+      signingMethod: draft.signingMethod,
+    });
+    setWizardStep(5);
+    setWizardOpen(true);
+  };
+
+  const beginNewRevision = async () => {
+    if (!revisionTarget || revisionPreparing) return;
+    setError(null);
+    setSuccess(null);
+    try {
+      setRevisionPreparing(true);
+      const response = await prepareContractRevision(revisionTarget.id);
+      const contractToEdit: ContractRecord = { ...revisionTarget, status: 'rework' };
+      setRevisionTarget(null);
+      closeSheetModal();
+      await loadRegistry();
+      await continueDraft(contractToEdit, true);
+      setSuccess(response.data?.message || 'Подготовлена новая редакция договора');
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || 'Не удалось начать новую редакцию');
+    } finally {
+      setRevisionPreparing(false);
+    }
+  };
+
+  const removeDraft = async () => {
+    if (!draftDeleteTarget || draftDeleting) return;
+    setError(null);
+    setSuccess(null);
+    try {
+      setDraftDeleting(true);
+      await deleteDraftContract(draftDeleteTarget.id);
+      if (selectedContractId === draftDeleteTarget.id) {
+        setSelectedContractId('');
+        setSheet(null);
+      }
+      setDraftDeleteTarget(null);
+      await loadRegistry();
+      setSuccess('Черновик удален');
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || 'Не удалось удалить черновик');
+    } finally {
+      setDraftDeleting(false);
+    }
+  };
+
   const prevWizardStep = () => {
     if (wizardStep === 4) {
       setWizardStep(0);
@@ -365,7 +684,30 @@ export default function ContractApprovalPage() {
     resetWizard();
   };
 
-  const requiresAttachmentStep = () => wizard.contractType !== 'income' || wizard.psrMode === 'with_psr';
+  // Вложения временно разрешены для всех типов, пока шаблон доходного договора не формируется автоматически.
+  const requiresAttachmentStep = () => true;
+
+  const appendWizardFiles = (files: File[]) => {
+    if (!files.length) return;
+    const known = new Set([
+      ...wizardExistingFiles.map((file) => `${file.originalName}:${file.sizeBytes}`),
+      ...wizardFiles.map((file) => `${file.name}:${file.size}`),
+    ]);
+    const uniqueFiles = files.filter((file) => {
+      const key = `${file.name}:${file.size}`;
+      if (known.has(key)) return false;
+      known.add(key);
+      return true;
+    });
+
+    const skipped = files.length - uniqueFiles.length;
+    if (uniqueFiles.length) {
+      setWizardFiles([...wizardFiles, ...uniqueFiles]);
+    }
+    if (skipped > 0) {
+      setError('Часть файлов уже приложена к черновику и не будет добавлена повторно');
+    }
+  };
 
   const runWizardChecks = async () => {
     try {
@@ -440,7 +782,7 @@ export default function ContractApprovalPage() {
         return;
       }
 
-      const createRes = await createContract({
+      const contractPayload: Parameters<typeof createContract>[0] = {
         clientRequestId: wizard.clientRequestId,
         contractNumber: wizard.contractNumber.trim(),
         contractType: wizard.contractType,
@@ -456,29 +798,14 @@ export default function ContractApprovalPage() {
         psrFlag: wizard.psrMode === 'with_psr',
         signingMethod: wizard.signingMethod,
         allowDuplicate: true,
-      });
+      };
+      const saveRes = editingDraftId
+        ? await updateDraftContract(editingDraftId, contractPayload)
+        : await createContract(contractPayload);
 
-      createdId = createRes.data?.id as string | undefined;
+      createdId = saveRes.data?.id as string | undefined;
       if (createdId && wizardFiles.length) {
-        const filesPayload = await Promise.all(
-          wizardFiles.map(async (file) => {
-            const base64 = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => {
-                const raw = String(reader.result || '');
-                resolve(raw.split(',')[1] || '');
-              };
-              reader.onerror = () => reject(new Error(`Не удалось прочитать файл: ${file.name}`));
-              reader.readAsDataURL(file);
-            });
-            return {
-              name: file.name,
-              mimeType: file.type || null,
-              size: file.size,
-              contentBase64: base64,
-            };
-          })
-        );
+        const filesPayload = await Promise.all(wizardFiles.map(fileToUploadPayload));
         await uploadContractAttachments(createdId, filesPayload);
       }
 
@@ -568,49 +895,138 @@ export default function ContractApprovalPage() {
   }, [isSecurity, securityInboxView]);
 
   useEffect(() => {
+    loadApprovalInbox();
+  }, [isApprovalWorkRole, approvalInboxView]);
+
+  useEffect(() => {
+    const refreshVisibleData = () => {
+      if (document.visibilityState !== 'visible') return;
+      void loadRegistry();
+      if (isSecurity) {
+        void loadSecurityInbox();
+      } else if (isApprovalWorkRole) {
+        void loadApprovalInbox();
+      }
+    };
+    const unsubscribe = subscribePlansRealtime((payload) => {
+      const event = payload as { type?: string; contractId?: string };
+      if (event.type !== 'contract-approval:updated') return;
+
+      refreshVisibleData();
+      if (event.contractId && sheetModalOpen && selectedContractId === event.contractId) {
+        void loadSheet(event.contractId);
+      }
+      if (event.contractId && securityCardOpen && securityCardContractId === event.contractId) {
+        void loadSheet(event.contractId);
+      }
+    });
+    window.addEventListener('focus', refreshVisibleData);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', refreshVisibleData);
+    };
+  }, [
+    isSecurity,
+    isApprovalWorkRole,
+    securityInboxView,
+    approvalInboxView,
+    sheetModalOpen,
+    selectedContractId,
+    securityCardOpen,
+    securityCardContractId,
+  ]);
+
+  useEffect(() => {
     loadSheet(selectedContractId);
   }, [selectedContractId]);
 
   useEffect(() => {
+    setContractSection(canUseInbox ? 'inbox' : (isAdmin || isReadOnlyRegistry) ? 'registry' : 'mine');
     if (isSecurity) {
       setTab(2);
+    } else if (isApprovalWorkRole) {
+      setTab(3);
+    } else {
+      setTab(0);
     }
-  }, [isSecurity]);
+  }, [canUseInbox, currentUser?.role, isSecurity, isApprovalWorkRole, isAdmin, isReadOnlyRegistry]);
 
   useEffect(() => {
     if (!isSecurity) return;
     const params = new URLSearchParams(location.search);
     const kpi = (params.get('kpi') || '').toLowerCase();
     if (kpi === 'new') {
+      setContractSection('inbox');
       setSecurityInboxView('new');
       setSecuritySearch('');
       setTab(2);
       return;
     }
     if (kpi === 'in_work') {
+      setContractSection('inbox');
       setSecurityInboxView('active');
       setSecuritySearch('');
       setTab(2);
       return;
     }
     if (kpi === 'due_today') {
+      setContractSection('inbox');
       setSecurityInboxView('due_today');
       setSecuritySearch('');
       setTab(2);
       return;
     }
     if (kpi === 'overdue') {
+      setContractSection('inbox');
       setSecurityInboxView('overdue');
       setSecuritySearch('');
       setTab(2);
       return;
     }
+    if (kpi === 'completed_month') {
+      setContractSection('inbox');
+      setSecurityInboxView('completed_month');
+      setSecuritySearch('');
+      setTab(2);
+    }
   }, [isSecurity, location.search]);
 
+  useEffect(() => {
+    if (!isApprovalWorkRole) return;
+    const params = new URLSearchParams(location.search);
+    const kpi = (params.get('kpi') || '').toLowerCase();
+    if (kpi === 'new') {
+      setContractSection('inbox');
+      setApprovalInboxView('new');
+      setApprovalSearch('');
+    } else if (kpi === 'in_work') {
+      setContractSection('inbox');
+      setApprovalInboxView('active');
+      setApprovalSearch('');
+    } else if (kpi === 'due_today') {
+      setContractSection('inbox');
+      setApprovalInboxView('due_today');
+      setApprovalSearch('');
+    } else if (kpi === 'overdue') {
+      setContractSection('inbox');
+      setApprovalInboxView('overdue');
+      setApprovalSearch('');
+    } else if (kpi === 'completed_month') {
+      setContractSection('inbox');
+      setApprovalInboxView('completed_month');
+      setApprovalSearch('');
+    }
+    setTab(3);
+  }, [isApprovalWorkRole, location.search]);
+
   const onSecurityVisa = async (item: SecurityInboxItem) => {
-    const form = securityVisa[item.contractId] ?? { visa: 'approved' as const, comment: '' };
+    const form = securityVisa[item.contractId] ?? { visa: '' as const, comment: '' };
+    if (!form.visa) {
+      setError('Выберите решение СБ');
+      return;
+    }
     if (form.visa === 'approved_with_remarks' && !form.comment.trim()) {
-      setError('Для "Согласован с замечаниями" обязателен комментарий');
+      setError('Для решения "Согласован с замечаниями" заполните обязательный комментарий');
       return;
     }
     setError(null);
@@ -622,8 +1038,80 @@ export default function ContractApprovalPage() {
       });
       setSuccess('Виза СБ сохранена');
       await Promise.all([loadSecurityInbox(), loadRegistry(), loadSheet(selectedContractId)]);
+      if (securityInboxView !== 'processed' && securityInboxView !== 'all') {
+        closeSecurityCard();
+      }
     } catch (e: any) {
       setError(e?.response?.data?.message || e?.message || 'Не удалось сохранить визу СБ');
+    }
+  };
+
+  const availableApprovalSteps = sheet?.steps.filter((step) => (
+    step.roleCode !== 'security'
+    && Boolean(step.assignedAt)
+    && (
+      step.approverUserId === currentUser?.id
+      || (
+        step.roleCode === 'secretary'
+        && (sheet.contract.initiator?.id === currentUser?.id || currentUser?.role === 'admin')
+      )
+    )
+    && (
+      !step.decision
+      || ((isApprovalWorkRole || currentUser?.role === 'admin') && sheet?.contract.status === 'in_approval')
+    )
+  )) ?? [];
+  const activeMyApprovalStep = availableApprovalSteps.find((step) => step.roleCode === 'secretary' && !step.decision)
+    ?? availableApprovalSteps.find((step) => !step.decision)
+    ?? availableApprovalSteps[0]
+    ?? null;
+
+  useEffect(() => {
+    if (!activeMyApprovalStep || activeMyApprovalStep.roleCode === 'secretary') {
+      setApprovalDecision('');
+      setApprovalComment('');
+      return;
+    }
+    setApprovalDecision(
+      activeMyApprovalStep.decision === 'reject'
+        ? 'rejected'
+        : activeMyApprovalStep.decision === 'approve' && activeMyApprovalStep.comment?.trim()
+          ? 'approved_with_remarks'
+          : activeMyApprovalStep.decision === 'approve'
+            ? 'approved'
+            : ''
+    );
+    setApprovalComment(activeMyApprovalStep.comment ?? '');
+  }, [activeMyApprovalStep?.id, activeMyApprovalStep?.decision, activeMyApprovalStep?.comment]);
+
+  const submitMyApprovalDecision = async () => {
+    if (!sheet || !activeMyApprovalStep || approvalDecisionBusy) return;
+    const isSecretaryTask = activeMyApprovalStep.roleCode === 'secretary';
+    if (!isSecretaryTask && !approvalDecision) {
+      setError('Выберите решение');
+      return;
+    }
+    if (approvalDecision === 'approved_with_remarks' && !approvalComment.trim()) {
+      setError('Для решения "Согласован с замечаниями" заполните обязательный комментарий');
+      return;
+    }
+    const decision = isSecretaryTask
+      ? 'approve'
+      : approvalDecision === 'rejected' ? 'reject' : 'approve';
+    setError(null);
+    setSuccess(null);
+    try {
+      setApprovalDecisionBusy(true);
+      const response = await decideContractApprovalStep(sheet.contract.id, activeMyApprovalStep.id, {
+        decision,
+        comment: approvalComment.trim() || null,
+      });
+      setSuccess(response.data?.message || 'Решение сохранено');
+      await Promise.all([loadRegistry(), loadApprovalInbox(), loadSheet(sheet.contract.id)]);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || 'Не удалось сохранить решение');
+    } finally {
+      setApprovalDecisionBusy(false);
     }
   };
 
@@ -632,6 +1120,7 @@ export default function ContractApprovalPage() {
     setPreviewLoading(false);
     setPreviewError(null);
     setPreviewFileName('');
+    setPreviewAttachmentId(null);
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
     }
@@ -639,9 +1128,74 @@ export default function ContractApprovalPage() {
     setPreviewMimeType(null);
   };
 
+  const printApprovalSheet = () => {
+    if (!sheet) return;
+    const previousTitle = document.title;
+    document.title = buildPrintFileName(sheet);
+    const restoreTitle = () => {
+      document.title = previousTitle;
+      window.removeEventListener('afterprint', restoreTitle);
+    };
+    window.addEventListener('afterprint', restoreTitle);
+    window.print();
+    window.setTimeout(restoreTitle, 1500);
+  };
+
+  const printDocumentPackage = async () => {
+    if (!sheet) return;
+    setError(null);
+    setSuccess(null);
+    const previousTitle = document.title;
+    const packageTitle = buildPrintFileName(sheet);
+    try {
+      setPrintPackageBusy(true);
+      const response = await downloadContractPrintPackage(sheet.contract.id);
+      const blob = new Blob([response.data as BlobPart], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      iframe.src = url;
+      const cleanup = () => {
+        window.setTimeout(() => {
+          iframe.remove();
+          URL.revokeObjectURL(url);
+          document.title = previousTitle;
+        }, 1000);
+      };
+      iframe.onload = () => {
+        document.title = packageTitle;
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        cleanup();
+      };
+      document.body.appendChild(iframe);
+      setSuccess('PDF-пакет отправлен на печать');
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || 'Не удалось сформировать PDF-пакет');
+      document.title = previousTitle;
+    } finally {
+      setPrintPackageBusy(false);
+    }
+  };
+
   const closeSheetModal = () => {
     setSheetModalOpen(false);
     setSheetModalLoading(false);
+    if (resumeWizardAfterSheet) {
+      setResumeWizardAfterSheet(false);
+      setWizardOpen(true);
+    }
+  };
+
+  const closeSecurityCard = () => {
+    setSecurityCardOpen(false);
+    setSecurityCardLoading(false);
+    setSecurityCardContractId(null);
   };
 
   const openSheetModal = async (contractId: string) => {
@@ -657,18 +1211,93 @@ export default function ContractApprovalPage() {
     }
   };
 
+  const openSecurityCard = async (item: SecurityInboxItem) => {
+    setSecurityCardContractId(item.contractId);
+    setSecurityCardOpen(true);
+    setSecurityCardLoading(true);
+    setError(null);
+    setSecurityVisa((prev) => ({
+      ...prev,
+      [item.contractId]: prev[item.contractId] ?? {
+        visa: mapDecisionToVisa(item.securityDecision, item.securityComment),
+        comment: item.securityComment ?? '',
+      },
+    }));
+    try {
+      await loadSheet(item.contractId);
+      setSelectedContractId(item.contractId);
+    } finally {
+      setSecurityCardLoading(false);
+    }
+  };
+
+  const canFinalizeSignature = (step: SheetStep) => Boolean(
+    step.roleCode === 'secretary'
+    && currentUser
+    && (step.approverUserId === currentUser.id || sheet?.contract.initiator?.id === currentUser.id || currentUser.role === 'admin')
+  );
+
+  const canAttachToStep = (step: SheetStep) => Boolean(
+    currentUser
+    && (currentUser.id === step.approverUserId || canFinalizeSignature(step))
+    && Boolean(step.assignedAt)
+    && sheet?.contract.status === 'in_approval'
+    && (step.revisionNo ?? 1) === (sheet?.contract.revisionNo ?? 1)
+  );
+
+  const onAttachStepFiles = async (contractId: string, stepId: string, files: FileList | null) => {
+    const selectedFiles = Array.from(files ?? []);
+    if (!selectedFiles.length || securityUploadBusy) return;
+    setError(null);
+    setSuccess(null);
+    try {
+      setSecurityUploadBusy(true);
+      const filesPayload = await Promise.all(selectedFiles.map(fileToUploadPayload));
+      await uploadContractStepAttachments(contractId, stepId, filesPayload);
+      setSuccess('Файлы прикреплены к шагу согласования');
+      await loadSheet(contractId);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || 'Не удалось прикрепить файлы');
+    } finally {
+      setSecurityUploadBusy(false);
+    }
+  };
+
+  const canDeleteAttachment = (file: ContractAttachmentRef) => Boolean(
+    file.id && currentUser?.role === 'admin'
+  );
+
+  const removeAttachment = async () => {
+    if (!attachmentDeleteTarget || attachmentDeleting) return;
+    setError(null);
+    setSuccess(null);
+    try {
+      setAttachmentDeleting(true);
+      await deleteContractAttachment(attachmentDeleteTarget.file.id);
+      await loadSheet(attachmentDeleteTarget.contractId);
+      await loadSecurityInbox();
+      setAttachmentDeleteTarget(null);
+      setSuccess('Файл удален из истории согласования');
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || 'Не удалось удалить файл');
+    } finally {
+      setAttachmentDeleting(false);
+    }
+  };
+
   const onOpenAttachmentPreview = async (attachmentId: string, fallbackName: string) => {
     setError(null);
     setPreviewError(null);
     setPreviewFileName(fallbackName);
+    setPreviewAttachmentId(attachmentId);
     setPreviewLoading(true);
     setPreviewOpen(true);
     try {
-      const response = await downloadContractAttachment(attachmentId);
+      const response = await previewContractAttachment(attachmentId);
       const disposition = String(response.headers?.['content-disposition'] || '');
       const utfMatch = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
       const quotedMatch = /filename=\"([^\"]+)\"/i.exec(disposition);
-      const filename = utfMatch?.[1]
+      const previewFilename = utfMatch?.[1]
         ? decodeURIComponent(utfMatch[1]).replace(/\+/g, ' ')
         : (quotedMatch?.[1] || fallbackName || 'contract-file');
       const blob = response.data as Blob;
@@ -677,7 +1306,7 @@ export default function ContractApprovalPage() {
         URL.revokeObjectURL(previewUrl);
       }
       setPreviewUrl(url);
-      setPreviewFileName(filename);
+      setPreviewFileName(fallbackName || previewFilename);
       setPreviewMimeType(blob.type || null);
     } catch (e: any) {
       const message = e?.response?.data?.message || e?.message || 'Не удалось открыть вложение';
@@ -691,6 +1320,33 @@ export default function ContractApprovalPage() {
     left.getFullYear() === right.getFullYear()
     && left.getMonth() === right.getMonth()
     && left.getDate() === right.getDate();
+
+  const getRegistrySearchText = (contract: ContractRecord, index: number) => [
+    index + 1,
+    contract.contractNumber,
+    contract.contractDate,
+    formatContractTypeLabel(contract.contractType, contract.incomeSubtype),
+    contract.subject,
+    contract.counterpartyShortName,
+    contract.counterpartyName,
+    contract.counterpartyInn,
+    STATUS_LABELS[contract.status],
+    contract.statusDetail,
+    contract.currentStageLabel,
+    contract.initiator?.fullName,
+    contract.signingMethod === 'edo' ? 'ЭДО' : 'Почта',
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  const registryBaseContracts = contractSection === 'mine'
+    ? contracts.filter((contract) => contract.initiator?.id === currentUser?.id)
+    : contracts;
+  const registrySearchQuery = registrySearch.trim().toLowerCase();
+  const filteredRegistryContracts = registryBaseContracts.filter((contract, index) => (
+    !registrySearchQuery || getRegistrySearchText(contract, index).includes(registrySearchQuery)
+  ));
 
   const filteredSecurityInbox = securityInbox.filter((item) => {
     const now = new Date();
@@ -709,6 +1365,12 @@ export default function ContractApprovalPage() {
       if (!hasDeadline) return false;
       const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
       if (deadline > endOfToday) return false;
+    }
+    if (securityInboxView === 'completed_month') {
+      const signedAt = item.securitySignedAt ? new Date(item.securitySignedAt) : null;
+      if (!signedAt || Number.isNaN(signedAt.getTime()) || signedAt.getFullYear() !== now.getFullYear() || signedAt.getMonth() !== now.getMonth()) {
+        return false;
+      }
     }
 
     const q = securitySearch.trim().toLowerCase();
@@ -731,61 +1393,518 @@ export default function ContractApprovalPage() {
     return haystack.includes(q);
   });
 
-  const mapDecisionToVisa = (decision: SecurityInboxItem['securityDecision']): 'approved' | 'rejected' | 'approved_with_remarks' => {
+  const filteredApprovalInbox = approvalInbox.filter((item) => {
+    const now = new Date();
+    const assigned = item.assignedAt ? new Date(item.assignedAt) : null;
+    const deadline = item.deadlineAt ? new Date(item.deadlineAt) : null;
+    const hasAssigned = assigned && !Number.isNaN(assigned.getTime());
+    const hasDeadline = deadline && !Number.isNaN(deadline.getTime());
+
+    if (approvalInboxView === 'new' && (!hasAssigned || !isSameDate(assigned, now))) {
+      return false;
+    }
+    if (approvalInboxView === 'due_today' && (!hasDeadline || !isSameDate(deadline, now))) {
+      return false;
+    }
+    if (approvalInboxView === 'overdue') {
+      if (!hasDeadline) return false;
+      const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      if (deadline > endOfToday) return false;
+    }
+    if (approvalInboxView === 'completed_month') {
+      const signedAt = item.stepSignedAt ? new Date(item.stepSignedAt) : null;
+      if (!signedAt || Number.isNaN(signedAt.getTime()) || signedAt.getFullYear() !== now.getFullYear() || signedAt.getMonth() !== now.getMonth()) {
+        return false;
+      }
+    }
+
+    const q = approvalSearch.trim().toLowerCase();
+    if (!q) return true;
+    const haystack = [
+      item.contractNumber,
+      item.contractDate,
+      item.contractType === 'expense' ? 'расходный' : 'доходный',
+      item.incomeSubtype === 'with_psr' ? 'с пср' : item.incomeSubtype === 'standard' ? 'без пср' : '',
+      item.subject,
+      item.counterpartyShortName,
+      item.counterpartyName,
+      item.counterpartyInn,
+      item.initiatorName,
+      formatDateOnly(item.deadlineAt),
+      getApprovalInboxDecisionLabel(item),
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(q);
+  });
+
+  const mapDecisionToVisa = (
+    decision: SecurityInboxItem['securityDecision'],
+    comment?: string | null
+  ): SecurityVisaValue => {
+    if (!decision) return '';
     if (decision === 'reject') return 'rejected';
+    if (decision === 'approve' && comment?.trim()) return 'approved_with_remarks';
     return 'approved';
+  };
+
+  const securityCardItem = securityCardContractId
+    ? securityInbox.find((item) => item.contractId === securityCardContractId) ?? null
+    : null;
+  const securityCardForm = securityCardItem
+    ? securityVisa[securityCardItem.contractId] ?? {
+      visa: mapDecisionToVisa(securityCardItem.securityDecision, securityCardItem.securityComment),
+      comment: securityCardItem.securityComment ?? '',
+    }
+    : null;
+  const securityCardSheet = sheet?.contract.id === securityCardItem?.contractId ? sheet : null;
+  const securityApprovalStep = securityCardSheet?.steps.find((step) => step.roleCode === 'security') ?? null;
+  const mainApprovalSteps = securityCardSheet?.steps.filter((step) => (
+    step.roleCode !== 'security' && step.roleCode !== 'secretary'
+  )) ?? [];
+  const secretaryApprovalStep = securityCardSheet?.steps.find((step) => step.roleCode === 'secretary') ?? null;
+  const completedMainApprovalSteps = mainApprovalSteps.filter((step) => Boolean(step.decision)).length;
+  const approvalCardItem = sheet
+    ? approvalInbox.find((item) => item.contractId === sheet.contract.id) ?? null
+    : null;
+  const approvalCardSecurityStep = sheet?.steps.find((step) => step.roleCode === 'security') ?? null;
+  const approvalCardMainSteps = sheet?.steps.filter((step) => (
+    step.roleCode !== 'security' && step.roleCode !== 'secretary'
+  )) ?? [];
+  const approvalCardSecretaryStep = sheet?.steps.find((step) => step.roleCode === 'secretary') ?? null;
+  const approvalCardCompletedCount = approvalCardMainSteps.filter((step) => Boolean(step.decision)).length;
+  const selectedRegistryContract = sheet
+    ? contracts.find((contract) => contract.id === sheet.contract.id) ?? null
+    : null;
+  const canManageOpenDraft = Boolean(
+    selectedRegistryContract
+    && (selectedRegistryContract.status === 'draft' || selectedRegistryContract.status === 'rework')
+    && (currentUser?.role === 'admin' || selectedRegistryContract.initiator?.id === currentUser?.id),
+  );
+  const canPrepareNewRevision = Boolean(
+    selectedRegistryContract
+    && selectedRegistryContract.status === 'in_approval'
+    && (currentUser?.role === 'admin' || selectedRegistryContract.initiator?.id === currentUser?.id),
+  );
+  const renderStepFiles = (step: SheetStep, contractId: string, allowUpload = true) => (
+    <Stack spacing={0.25} alignItems="flex-start">
+      {step.attachments?.length ? (
+        <Box className="contract-file-list contract-file-list--compact">
+          {step.attachments.map((file) => (
+            <Box key={file.id} className="contract-file-item">
+              <Button
+                size="small"
+                variant="text"
+                className="contract-file-button"
+                onClick={() => onOpenAttachmentPreview(file.id, file.originalName)}
+              >
+                {file.originalName}
+              </Button>
+              {canDeleteAttachment(file) && (
+                <Button
+                  size="small"
+                  variant="text"
+                  color="error"
+                  className="contract-file-remove"
+                  onClick={() => setAttachmentDeleteTarget({ file, contractId })}
+                >
+                  Удалить
+                </Button>
+              )}
+            </Box>
+          ))}
+        </Box>
+      ) : !allowUpload || !canAttachToStep(step) ? (
+        <Typography variant="caption" color="text.secondary">—</Typography>
+      ) : null}
+      {allowUpload && canAttachToStep(step) && (
+        <Button size="small" variant="text" component="label" disabled={securityUploadBusy} className="contract-file-button">
+          {securityUploadBusy ? 'Загрузка...' : 'Прикрепить файл'}
+          <input
+            hidden
+            multiple
+            type="file"
+            onChange={(event) => {
+              void onAttachStepFiles(contractId, step.id, event.target.files);
+              event.target.value = '';
+            }}
+          />
+        </Button>
+      )}
+    </Stack>
+  );
+  const renderProcessStep = (step: SheetStep, contractId: string, expanded = false, allowUpload = true) => {
+    const hasDetails = Boolean(step.comment?.trim() || step.attachments?.length || (allowUpload && canAttachToStep(step)));
+    return (
+      <Box key={step.id} className={`contract-process-step${expanded ? ' contract-process-step--expanded' : ''}`}>
+        <Box className="contract-process-step-summary">
+          <Typography variant="body2" className="contract-process-role">{step.roleLabel}</Typography>
+          <Typography
+            variant="body2"
+            className={`contract-step-status contract-step-status--${getStepDecisionTone(step)}`}
+          >
+            {getStepDecisionLabel(step)}
+          </Typography>
+          <Typography variant="caption" className="contract-process-date">
+            {formatDateTime(step.signedAt)}
+          </Typography>
+        </Box>
+        {hasDetails && (
+          <Box className="contract-process-step-details">
+            {step.comment?.trim() && (
+              <Typography variant="body2" className="contract-process-comment">
+                <span>Комментарий:</span> {step.comment}
+              </Typography>
+            )}
+            <Box className="contract-process-files">
+              <Typography variant="caption">Файлы:</Typography>
+              {renderStepFiles(step, contractId, allowUpload)}
+            </Box>
+          </Box>
+        )}
+      </Box>
+    );
+  };
+  const renderMyApprovalAction = () => {
+    if (!activeMyApprovalStep) return null;
+    const isSecretaryTask = activeMyApprovalStep.roleCode === 'secretary';
+    if (!isSecretaryTask) {
+      const priorLabel = activeMyApprovalStep.decision
+        ? getStepDecisionLabel(activeMyApprovalStep)
+        : null;
+      const commentRequired = approvalDecision === 'approved_with_remarks';
+      return (
+        <Box className="contract-card-section contract-visa-editor">
+          <Box className="contract-visa-header">
+            <Typography variant="body2" className="contract-card-section-title">
+              Ваша задача: {activeMyApprovalStep.roleCode === 'lawyer' ? 'Виза юриста' : activeMyApprovalStep.roleLabel}
+            </Typography>
+            {priorLabel && (
+              <Typography
+                variant="caption"
+                className={`contract-visa-previous contract-visa-text--${getStepDecisionTone(activeMyApprovalStep)}`}
+              >
+                Ранее: {priorLabel}
+              </Typography>
+            )}
+          </Box>
+          <Box className="contract-visa-fields">
+            <FormControl size="small">
+              <InputLabel shrink>Решение</InputLabel>
+              <Select
+                label="Решение"
+                value={approvalDecision}
+                displayEmpty
+                onChange={(event) => setApprovalDecision(event.target.value as ApprovalDecisionValue)}
+                renderValue={(value) => value
+                  ? ({
+                    approved: 'Согласован',
+                    approved_with_remarks: 'Согласован с замечаниями',
+                    rejected: 'Не согласован',
+                  }[value] ?? value)
+                  : <Typography component="span" color="text.secondary">Выберите решение</Typography>}
+              >
+                <MenuItem value="" disabled>Выберите решение</MenuItem>
+                <MenuItem value="approved">Согласован</MenuItem>
+                <MenuItem value="approved_with_remarks">Согласован с замечаниями</MenuItem>
+                <MenuItem value="rejected">Не согласован</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              size="small"
+              label={commentRequired ? 'Комментарий *' : 'Комментарий'}
+              required={commentRequired}
+              error={commentRequired && !approvalComment.trim()}
+              value={approvalComment}
+              onChange={(event) => setApprovalComment(event.target.value)}
+              placeholder={commentRequired ? 'Укажите замечания к договору' : 'Добавьте комментарий при необходимости'}
+            />
+          </Box>
+          <Box className="contract-visa-footer">
+            <Typography
+              variant="caption"
+              className={commentRequired ? 'contract-visa-hint contract-visa-hint--required' : 'contract-visa-hint'}
+            >
+              {approvalDecision === 'approved_with_remarks'
+                ? 'Для этого решения комментарий обязателен.'
+                : 'Комментарий можно добавить при необходимости.'}
+            </Typography>
+            <Button
+              variant="contained"
+              size="small"
+              disabled={approvalDecisionBusy || !approvalDecision || (commentRequired && !approvalComment.trim())}
+              onClick={() => { void submitMyApprovalDecision(); }}
+            >
+              {approvalDecisionBusy ? 'Сохранение...' : 'Сохранить решение'}
+            </Button>
+          </Box>
+        </Box>
+      );
+    }
+    const hasSignedContractFile = Boolean(activeMyApprovalStep.attachments?.length);
+    const isSecretaryOwner = currentUser?.role === 'secretary' || activeMyApprovalStep.approverUserId === currentUser?.id;
+    const isSigningFallback = !isSecretaryOwner && sheet?.contract.initiator?.id === currentUser?.id;
+    return (
+      <Box className={`contract-card-section contract-secretary-task${isSigningFallback ? ' contract-secretary-task--compact' : ''}`}>
+        <Box className="contract-secretary-task-header">
+          <Box>
+            <Typography variant="body2" className="contract-card-section-title">
+              {isSigningFallback ? 'Подписанный экземпляр' : 'Передача на подпись'}
+            </Typography>
+            <Typography variant="caption" className="contract-secretary-task-subtitle">
+              {isSigningFallback
+                ? 'Приложите скан подписанного договора, если он уже у вас.'
+                : 'Задача офис-менеджера: подготовить пакет, получить подпись и приложить скан.'}
+            </Typography>
+          </Box>
+          <Typography
+            variant="caption"
+            className={hasSignedContractFile ? 'contract-secretary-task-status contract-secretary-task-status--ready' : 'contract-secretary-task-status'}
+          >
+            {hasSignedContractFile ? 'Файл приложен' : 'Нужен подписанный файл'}
+          </Typography>
+        </Box>
+        <Box className="contract-secretary-task-body">
+          {!isSigningFallback && (
+            <Box className="contract-secretary-task-instruction">
+              <Typography variant="caption">Что сделать</Typography>
+              <Typography variant="body2">
+                Распечатайте договор и лист согласования, передайте на подпись. После возврата подписи приложите скан подписанного экземпляра.
+              </Typography>
+              <Stack direction="row" spacing={1} className="contract-secretary-task-print-actions">
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => { void printDocumentPackage(); }}
+                  disabled={!sheet || printPackageBusy}
+                >
+                  {printPackageBusy ? 'Формирование...' : 'Распечатать договор'}
+                </Button>
+              </Stack>
+            </Box>
+          )}
+          <Box className="contract-secretary-task-files">
+            <Typography variant="caption">Подписанный экземпляр</Typography>
+            {sheet && renderStepFiles(activeMyApprovalStep, sheet.contract.id)}
+          </Box>
+          <Button
+            className="contract-secretary-task-button"
+            variant="contained"
+            size="small"
+            disabled={approvalDecisionBusy || !hasSignedContractFile}
+            onClick={() => { void submitMyApprovalDecision(); }}
+          >
+            {approvalDecisionBusy ? 'Сохранение...' : 'Завершить подписание'}
+          </Button>
+        </Box>
+      </Box>
+    );
+  };
+
+  const renderPreviousRevisions = () => {
+    if (!sheet?.previousRevisions?.length) return null;
+    return (
+      <Box className="contract-card-section contract-process">
+        <Typography variant="body2" className="contract-card-section-title">Предыдущие редакции</Typography>
+        {sheet.previousRevisions.map((revision) => (
+          <Box key={revision.revisionNo} className="contract-process-group">
+            <Box className="contract-process-group-heading">
+              <Typography variant="body2">Редакция {revision.revisionNo}</Typography>
+              <Typography variant="caption" className="contract-process-note">Сохранена в истории</Typography>
+            </Box>
+            {!!revision.attachments.length && (
+              <Box className="contract-process-files">
+                <Typography variant="caption">Документы:</Typography>
+                <Box className="contract-file-list contract-file-list--compact">
+                  {revision.attachments.map((file) => (
+                    <Button
+                      key={file.id}
+                      size="small"
+                      variant="text"
+                      className="contract-file-button"
+                      onClick={() => onOpenAttachmentPreview(file.id, file.originalName)}
+                    >
+                      {file.originalName}
+                    </Button>
+                  ))}
+                </Box>
+              </Box>
+            )}
+            {revision.steps
+              .filter((step) => step.roleCode !== 'secretary')
+              .map((step) => renderProcessStep(step, sheet.contract.id))}
+          </Box>
+        ))}
+      </Box>
+    );
+  };
+
+  const switchContractSection = (section: ContractSection, nextTab: number) => {
+    if (contractSection !== section) {
+      setSecuritySearch('');
+      setApprovalSearch('');
+      setRegistrySearch('');
+    }
+    setContractSection(section);
+    setTab(nextTab);
   };
 
 
   return (
     <Box sx={{ px: { xs: 0.125, sm: 0.25 }, py: { xs: 0.25, sm: 0.375 }, display: 'grid', gap: 0.5 }}>
-      <Paper sx={{ px: 0.25, py: 0.375 }}>
-        {isSecurity ? (
-          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1, gap: 1 }}>
-            <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
-              <FormControl size="small" sx={{ minWidth: 180 }}>
-                <InputLabel id="sb-view-label">Фильтр</InputLabel>
-                <Select
-                  labelId="sb-view-label"
-                  label="Фильтр"
-                  value={securityInboxView}
-                  onChange={(e) => setSecurityInboxView(e.target.value as 'active' | 'processed' | 'all' | 'new' | 'due_today' | 'overdue')}
-                >
-                  <MenuItem value="active">В работе</MenuItem>
-                  <MenuItem value="new">Новые</MenuItem>
-                  <MenuItem value="due_today">Дедлайн сегодня</MenuItem>
-                  <MenuItem value="overdue">Просрочено</MenuItem>
-                  <MenuItem value="processed">Обработанные</MenuItem>
-                  <MenuItem value="all">Все</MenuItem>
-                </Select>
-              </FormControl>
-              <TextField
+      <Paper sx={{ px: 0.25, py: 1 }}>
+        <Stack direction={{ xs: 'column', lg: 'row' }} alignItems={{ xs: 'stretch', lg: 'center' }} justifyContent="space-between" sx={{ px: 1, gap: 1 }}>
+          <Stack direction="row" alignItems="center" sx={{ gap: 0.5, flexWrap: 'nowrap', overflowX: 'auto', minWidth: 0 }}>
+            {canUseInbox && (
+              <Button
                 size="small"
-                label="Поиск"
-                placeholder="Поиск по любой колонке"
-                value={securitySearch}
-                onChange={(e) => setSecuritySearch(e.target.value)}
-                sx={{ minWidth: 120 }}
-              />
-            </Stack>
-            <Button variant="contained" onClick={openWizard} sx={{ mr: 1 }}>
-              Добавить
+                variant={contractSection === 'inbox' ? 'contained' : 'text'}
+                sx={{ minWidth: 0, whiteSpace: 'nowrap', px: 1.5 }}
+                onClick={() => {
+                  switchContractSection('inbox', isSecurity ? 2 : 3);
+                }}
+              >
+                Согласование договоров
+              </Button>
+            )}
+            {!isReadOnlyRegistry && (
+              <Button
+                size="small"
+                variant={contractSection === 'mine' ? 'contained' : 'text'}
+                sx={{ minWidth: 0, whiteSpace: 'nowrap', px: 1.5 }}
+                onClick={() => {
+                  switchContractSection('mine', 0);
+                }}
+              >
+                Мои договоры
+              </Button>
+            )}
+            <Button
+              size="small"
+              variant={contractSection === 'registry' ? 'contained' : 'text'}
+              sx={{ minWidth: 0, whiteSpace: 'nowrap', px: 1.5 }}
+              onClick={() => {
+                switchContractSection('registry', 0);
+              }}
+            >
+              Реестр договоров
             </Button>
           </Stack>
-        ) : (
-          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1 }}>
-            <Tabs value={tab} onChange={(_, value) => setTab(value)}>
-              <Tab label="Реестр" />
-              <Tab label="Лист согласования" />
-            </Tabs>
-            <Button variant="contained" onClick={openWizard} sx={{ mr: 1 }}>
-              Добавить
-            </Button>
-          </Stack>
-        )}
+
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: '210px 230px' },
+              alignItems: 'center',
+              justifyContent: 'end',
+              gap: 0.75,
+              width: { xs: '100%', lg: 'auto' },
+              '& .MuiInputBase-root': {
+                height: 36,
+                fontSize: 13,
+              },
+              '& .MuiInputLabel-root': {
+                fontSize: 12,
+                lineHeight: 1.1,
+              },
+              '& .MuiButton-root': {
+                height: 34,
+                fontSize: 13,
+                lineHeight: 1,
+              },
+            }}
+          >
+            <Box sx={{ width: '100%', visibility: contractSection === 'registry' ? 'hidden' : 'visible' }}>
+              {contractSection === 'inbox' && isSecurity ? (
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="sb-view-label">Фильтр</InputLabel>
+                  <Select
+                    labelId="sb-view-label"
+                    label="Фильтр"
+                    value={securityInboxView}
+                    onChange={(e) => setSecurityInboxView(e.target.value as InboxView)}
+                    MenuProps={{
+                      PaperProps: {
+                        sx: {
+                          '& .MuiMenuItem-root': { minHeight: 32, fontSize: 13 },
+                        },
+                      },
+                    }}
+                  >
+                    <MenuItem value="active">В работе</MenuItem>
+                    <MenuItem value="new">Новые</MenuItem>
+                    <MenuItem value="due_today">Дедлайн сегодня</MenuItem>
+                    <MenuItem value="overdue">Просрочено</MenuItem>
+                    <MenuItem value="completed_month">Завершено за месяц</MenuItem>
+                    <MenuItem value="processed">Обработанные</MenuItem>
+                    <MenuItem value="all">Все</MenuItem>
+                  </Select>
+                </FormControl>
+              ) : contractSection === 'inbox' ? (
+                <FormControl size="small" fullWidth>
+                  <InputLabel id="approval-view-label">Фильтр</InputLabel>
+                  <Select
+                    labelId="approval-view-label"
+                    label="Фильтр"
+                    value={approvalInboxView}
+                    onChange={(e) => setApprovalInboxView(e.target.value as InboxView)}
+                    MenuProps={{
+                      PaperProps: {
+                        sx: {
+                          '& .MuiMenuItem-root': { minHeight: 32, fontSize: 13 },
+                        },
+                      },
+                    }}
+                  >
+                    <MenuItem value="active">В работе</MenuItem>
+                    <MenuItem value="new">Новые</MenuItem>
+                    <MenuItem value="due_today">Дедлайн сегодня</MenuItem>
+                    <MenuItem value="overdue">Просрочено</MenuItem>
+                    <MenuItem value="completed_month">Завершено за месяц</MenuItem>
+                    <MenuItem value="processed">Обработанные</MenuItem>
+                    <MenuItem value="all">Все</MenuItem>
+                  </Select>
+                </FormControl>
+              ) : !isReadOnlyRegistry ? (
+                <Button variant="contained" fullWidth onClick={openWizard}>
+                  Добавить договор
+                </Button>
+              ) : (
+                <Box />
+              )}
+            </Box>
+            <TextField
+              size="small"
+              label="Поиск"
+              placeholder={contractSection === 'inbox' ? 'Поиск по любой колонке' : 'Поиск по всем колонкам'}
+              value={contractSection === 'inbox' ? (isSecurity ? securitySearch : approvalSearch) : registrySearch}
+              onChange={(e) => {
+                if (contractSection === 'inbox' && isSecurity) {
+                  setSecuritySearch(e.target.value);
+                  return;
+                }
+                if (contractSection === 'inbox') {
+                  setApprovalSearch(e.target.value);
+                  return;
+                }
+                setRegistrySearch(e.target.value);
+              }}
+              fullWidth
+              sx={{
+                width: { xs: '100%', sm: 230 },
+                justifySelf: 'end',
+                '& .MuiInputBase-input': {
+                  py: 0.75,
+                  fontSize: 13,
+                },
+              }}
+            />
+          </Box>
+        </Stack>
       </Paper>
 
-      {tab === 0 && (
+      {contractSection !== 'inbox' && tab === 0 && (
         <>
           <Paper sx={{ px: 0.25, py: 0.5 }}>
             <TableContainer className="contract-registry-table-wrap">
@@ -807,8 +1926,16 @@ export default function ContractApprovalPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {contracts.map((row, index) => (
-                    <TableRow key={row.id} hover selected={selectedContractId === row.id}>
+                  {filteredRegistryContracts.map((row, index) => {
+                    return (
+                    <TableRow
+                      key={row.id}
+                      hover
+                      selected={selectedContractId === row.id}
+                      className={`contract-clickable-row${row.needsSignedAttachment ? ' contract-row-needs-signed-file' : ''}`}
+                      title={row.needsSignedAttachment ? 'Нет подписанного экземпляра. Двойной клик откроет карточку договора' : 'Двойной клик откроет карточку договора'}
+                      onDoubleClick={() => { void openSheetModal(row.id); }}
+                    >
                       <TableCell>{index + 1}</TableCell>
                       <TableCell>{row.contractNumber}</TableCell>
                       <TableCell>{row.contractDate || '—'}</TableCell>
@@ -819,22 +1946,27 @@ export default function ContractApprovalPage() {
                       </TableCell>
                       <TableCell>{row.counterpartyInn || '—'}</TableCell>
                       <TableCell>
-                        <Chip
-                          size="small"
-                          label={STATUS_LABELS[row.status]}
-                          color={row.status === 'rejected' ? 'error' : 'default'}
-                          sx={{ fontSize: '9px', fontWeight: 600 }}
-                        />
+                        <Typography
+                          variant="body2"
+                          className={`contract-registry-status contract-registry-status--${row.status}`}
+                        >
+                          {STATUS_LABELS[row.status]}
+                        </Typography>
                       </TableCell>
-                      <TableCell>{row.statusDetail || row.currentStageLabel || '—'}</TableCell>
-                      <TableCell>
-                        <Button size="small" onClick={() => { void openSheetModal(row.id); }}>Открыть</Button>
-                      </TableCell>
+                      <TableCell>{row.needsSignedAttachment ? 'Нет подписанного файла' : (row.statusDetail || row.currentStageLabel || '—')}</TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </TableContainer>
+            {!filteredRegistryContracts.length && (
+              <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
+                {contractSection === 'mine'
+                  ? 'У вас пока нет созданных договоров.'
+                  : 'По вашему запросу ничего не найдено.'}
+              </Typography>
+            )}
           </Paper>
         </>
       )}
@@ -850,11 +1982,12 @@ export default function ContractApprovalPage() {
                 ))}
               </Select>
             </FormControl>
-            <Button variant="outlined" onClick={() => window.print()} disabled={!sheet}>Печать</Button>
+            <Button variant="outlined" onClick={printApprovalSheet} disabled={!sheet}>Печать</Button>
           </Stack>
 
           {sheet && (
             <Box className="approval-sheet-print">
+              {renderMyApprovalAction()}
               <Typography variant="h6" align="center" sx={{ mb: 2 }}>Лист согласования ООО «Симпл Вэй»</Typography>
               <TableContainer sx={{ mb: 2 }}>
                 <Table size="small" className="approval-sheet-table">
@@ -869,42 +2002,72 @@ export default function ContractApprovalPage() {
                 </Table>
               </TableContainer>
 
-              <Typography variant="subtitle1" align="center" sx={{ mb: 1 }}>Согласование сторон</Typography>
+              {sheet.steps.some((step) => step.roleCode === 'secretary' && step.attachments.length > 0) && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle1" sx={{ mb: 0.5 }}>Подписанный экземпляр</Typography>
+                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                    {sheet.steps
+                      .filter((step) => step.roleCode === 'secretary')
+                      .flatMap((step) => step.attachments)
+                      .map((file) => (
+                        <Button
+                          key={file.id}
+                          size="small"
+                          variant="text"
+                          onClick={() => onOpenAttachmentPreview(file.id, file.originalName)}
+                        >
+                          {file.originalName}
+                        </Button>
+                      ))}
+                  </Stack>
+                </Box>
+              )}
+
+              <Typography variant="subtitle1" align="center" sx={{ mb: 1 }}>Ход согласования</Typography>
               <TableContainer>
                 <Table size="small" className="approval-sheet-table">
                   <TableHead>
                     <TableRow>
                       <TableCell>Сторона</TableCell>
                       <TableCell>ФИО</TableCell>
+                      <TableCell>Статус</TableCell>
                       <TableCell>Дата принятия</TableCell>
                       <TableCell>Дата визирования</TableCell>
                       <TableCell>Комментарии</TableCell>
+                      <TableCell>Файлы</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {sheet.steps.map((step) => (
+                    <TableRow key="initiator">
+                      <TableCell>Инициатор</TableCell>
+                      <TableCell>{sheet.contract.initiator?.fullName || '—'}</TableCell>
+                      <TableCell>Согласован</TableCell>
+                      <TableCell>{formatDateTime(getApprovalStartDate(sheet))}</TableCell>
+                      <TableCell>{formatDateTime(getApprovalStartDate(sheet))}</TableCell>
+                      <TableCell>—</TableCell>
+                      <TableCell>—</TableCell>
+                    </TableRow>
+                    {sheet.steps.filter((step) => step.roleCode !== 'secretary').map((step) => (
                       <TableRow key={step.id}>
                         <TableCell>{step.roleLabel}</TableCell>
-                        <TableCell>{step.approverName}</TableCell>
+                        <TableCell>{step.approverName || '—'}</TableCell>
+                        <TableCell>{getStepDecisionLabel(step)}</TableCell>
                         <TableCell>{formatDateTime(step.acceptedAt || step.assignedAt || null)}</TableCell>
                         <TableCell>{formatDateTime(step.signedAt)}</TableCell>
                         <TableCell>{step.comment || '—'}</TableCell>
+                        <TableCell>{renderStepFiles(step, sheet.contract.id)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </TableContainer>
-
-              <Box sx={{ mt: 2 }}>
-                <Typography>Текущий статус: {STATUS_LABELS[sheet.contract.status]}</Typography>
-              </Box>
             </Box>
           )}
 
         </Paper>
       )}
 
-      {isSecurity && tab === 2 && (
+      {contractSection === 'inbox' && isSecurity && tab === 2 && (
         <Paper sx={{ px: 0.25, py: 0.5 }}>
           {!securityInbox.length && (
             <Typography variant="body2" color="text.secondary">Сейчас нет договоров на проверке СБ.</Typography>
@@ -920,19 +2083,7 @@ export default function ContractApprovalPage() {
                 <TableHead>
                   <TableRow>
                     {SB_COLUMNS.map((column) => (
-                      <TableCell
-                        key={column.key}
-                        align={column.key === 'action' ? 'left' : 'left'}
-                        sx={column.key === 'action'
-                          ? {
-                            position: 'sticky',
-                            right: 0,
-                            zIndex: 3,
-                            backgroundColor: '#f3f6fb',
-                            boxShadow: '-1px 0 0 #d0d7de',
-                          }
-                          : undefined}
-                      >
+                      <TableCell key={column.key}>
                         <Box className="registry-header-cell">
                           <span>{column.label}</span>
                         </Box>
@@ -942,13 +2093,16 @@ export default function ContractApprovalPage() {
                 </TableHead>
                 <TableBody>
                   {filteredSecurityInbox.map((item, index) => {
-                    const isProcessed = Boolean(item.securityDecision);
-                    const form = securityVisa[item.contractId] ?? {
-                      visa: mapDecisionToVisa(item.securityDecision),
-                      comment: '',
-                    };
                     return (
-                      <TableRow key={item.contractId} hover>
+                      <TableRow
+                        key={item.contractId}
+                        hover
+                        className="contract-clickable-row"
+                        title="Двойной клик откроет карточку договора"
+                        onDoubleClick={() => {
+                          void openSecurityCard(item);
+                        }}
+                      >
                         <TableCell>{index + 1}</TableCell>
                         <TableCell sx={{ whiteSpace: 'nowrap !important', verticalAlign: 'top' }}>{item.contractNumber}</TableCell>
                         <TableCell sx={{ whiteSpace: 'nowrap !important', verticalAlign: 'top' }}>{item.contractDate || '—'}</TableCell>
@@ -977,121 +2131,12 @@ export default function ContractApprovalPage() {
                         <TableCell sx={{ whiteSpace: 'normal !important', wordBreak: 'break-word', overflowWrap: 'anywhere', textOverflow: 'clip', overflow: 'visible', verticalAlign: 'top' }}>{item.initiatorName}</TableCell>
                         <TableCell>{formatDateOnly(item.deadlineAt)}</TableCell>
                         <TableCell>
-                          {item.attachments.length ? (
-                            <Stack direction="row" spacing={1} flexWrap="wrap">
-                              {item.attachments.map((file) => (
-                                <Button
-                                  key={file.id}
-                                  size="small"
-                                  variant="outlined"
-                                  sx={{
-                                    minWidth: 56,
-                                    px: 1,
-                                    py: 0.25,
-                                    fontSize: 11,
-                                    lineHeight: 1.1,
-                                  }}
-                                  onClick={() => onOpenAttachmentPreview(file.id, file.originalName)}
-                                >
-                                  Открыть
-                                </Button>
-                              ))}
-                            </Stack>
-                          ) : '—'}
-                        </TableCell>
-                        <TableCell sx={{ minWidth: 183 }}>
-                          <FormControl fullWidth size="small">
-                            <Select
-                              disabled={isProcessed}
-                              sx={{
-                                height: 20,
-                                '& .MuiSelect-select': {
-                                  fontSize: 10,
-                                  height: 20,
-                                  lineHeight: '20px',
-                                  minHeight: '20px !important',
-                                  py: 0,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  pl: 0.5,
-                                  pr: 2,
-                                },
-                              }}
-                              MenuProps={{
-                                PaperProps: {
-                                  sx: { '& .MuiMenuItem-root': { fontSize: 10 } },
-                                },
-                              }}
-                              value={form.visa}
-                              onChange={(e) => setSecurityVisa((prev) => ({
-                                ...prev,
-                                [item.contractId]: {
-                                  ...form,
-                                  visa: e.target.value as 'approved' | 'rejected' | 'approved_with_remarks',
-                                },
-                              }))}
-                            >
-                              <MenuItem value="approved">Согласован</MenuItem>
-                              <MenuItem value="rejected">Не согласован</MenuItem>
-                              <MenuItem value="approved_with_remarks">Согласован с замечаниями</MenuItem>
-                            </Select>
-                          </FormControl>
-                        </TableCell>
-                        <TableCell sx={{ minWidth: 150, whiteSpace: 'normal', verticalAlign: 'top' }}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            disabled={isProcessed}
-                            multiline
-                            minRows={1}
-                            maxRows={4}
-                            sx={{
-                              '& .MuiInputBase-input': {
-                                fontSize: 12,
-                                lineHeight: 1.2,
-                                whiteSpace: 'pre-wrap',
-                              },
-                            }}
-                            placeholder={form.visa === 'approved_with_remarks' ? 'Обязательно' : 'Необязательно'}
-                            value={isProcessed ? (item.securityComment || '') : form.comment}
-                            onChange={(e) => setSecurityVisa((prev) => ({
-                              ...prev,
-                              [item.contractId]: { ...form, comment: e.target.value },
-                            }))}
-                          />
-                        </TableCell>
-                        <TableCell
-                          align="left"
-                          sx={{
-                            position: 'sticky',
-                            right: 0,
-                            zIndex: 2,
-                            backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8fbff',
-                            boxShadow: '-1px 0 0 #d0d7de',
-                          }}
-                        >
-                          {isProcessed ? (
-                            <Typography variant="caption" sx={{ fontSize: 11, color: 'text.secondary' }}>
-                              {formatDateOnly(item.securitySignedAt)}
-                            </Typography>
-                          ) : (
-                            <Button
-                              size="small"
-                              variant="contained"
-                              sx={{
-                                minWidth: 74,
-                                height: 20,
-                                minHeight: '20px !important',
-                                px: 1,
-                                py: 0,
-                                fontSize: 11,
-                                lineHeight: '20px',
-                              }}
-                              onClick={() => onSecurityVisa(item)}
-                            >
-                              Отправить
-                            </Button>
-                          )}
+                          <Typography
+                            variant="body2"
+                            className={`contract-visa-text contract-visa-text--${getSecurityVisaColor(item)}`}
+                          >
+                            {getSecurityVisaLabel(item)}
+                          </Typography>
                         </TableCell>
                       </TableRow>
                     );
@@ -1106,12 +2151,322 @@ export default function ContractApprovalPage() {
         </Paper>
       )}
 
-      {error && <Alert severity="error">{error}</Alert>}
-      {success && <Alert severity="success">{success}</Alert>}
+      {contractSection === 'inbox' && isApprovalWorkRole && tab === 3 && (
+        <Paper sx={{ px: 0.25, py: 0.5 }}>
+          {!approvalInbox.length && (
+            <Typography variant="body2" color="text.secondary">Сейчас нет договоров для вашего согласования.</Typography>
+          )}
+          {!!filteredApprovalInbox.length && (
+            <TableContainer className="contract-registry-table-wrap">
+              <Table size="small" className="contract-registry-table">
+                <colgroup>
+                  {approvalInboxColumns.map((column) => (
+                    <col key={column.key} style={{ width: `${column.width}px` }} />
+                  ))}
+                </colgroup>
+                <TableHead>
+                  <TableRow>
+                    {approvalInboxColumns.map((column) => (
+                      <TableCell key={column.key}>
+                        <Box className="registry-header-cell">
+                          <span>{column.label}</span>
+                        </Box>
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredApprovalInbox.map((item, index) => (
+                    <TableRow
+                      key={item.contractId}
+                      hover
+                      className="contract-clickable-row"
+                      title="Двойной клик откроет карточку договора"
+                      onDoubleClick={() => { void openSheetModal(item.contractId); }}
+                    >
+                      <TableCell>{index + 1}</TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap !important', verticalAlign: 'top' }}>{item.contractNumber}</TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap !important', verticalAlign: 'top' }}>{item.contractDate || '—'}</TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap !important', verticalAlign: 'top' }}>
+                        {formatContractTypeLabel(item.contractType, item.incomeSubtype)}
+                      </TableCell>
+                      {isChiefAccountant && (
+                        <TableCell sx={{ whiteSpace: 'nowrap !important', verticalAlign: 'top' }}>
+                          {item.signingMethod === 'edo' ? 'ЭДО' : 'Почта'}
+                        </TableCell>
+                      )}
+                      <TableCell sx={{ whiteSpace: 'normal !important', wordBreak: 'break-word', overflowWrap: 'anywhere', textOverflow: 'clip', overflow: 'visible', verticalAlign: 'top' }} title={item.subject || ''}>{item.subject || '—'}</TableCell>
+                      <TableCell sx={{ whiteSpace: 'normal !important', wordBreak: 'break-word', overflowWrap: 'anywhere', textOverflow: 'clip', overflow: 'visible', verticalAlign: 'top' }} title={item.counterpartyName}>
+                        {item.counterpartyShortName?.trim() || normalizeCounterpartyName(item.counterpartyName)}
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap !important', verticalAlign: 'top', fontVariantNumeric: 'tabular-nums' }}>{item.counterpartyInn || '—'}</TableCell>
+                      <TableCell sx={{ whiteSpace: 'normal !important', wordBreak: 'break-word', overflowWrap: 'anywhere', textOverflow: 'clip', overflow: 'visible', verticalAlign: 'top' }}>{item.initiatorName}</TableCell>
+                      <TableCell>{formatDateOnly(item.deadlineAt)}</TableCell>
+                      <TableCell>
+                        <Typography
+                          variant="body2"
+                          className={`contract-visa-text contract-visa-text--${getApprovalInboxDecisionTone(item)}`}
+                        >
+                          {getApprovalInboxDecisionLabel(item)}
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+          {!!approvalInbox.length && !filteredApprovalInbox.length && (
+            <Typography variant="body2" color="text.secondary">По вашему запросу ничего не найдено.</Typography>
+          )}
+        </Paper>
+      )}
+
+      <Snackbar
+        open={Boolean(error || success)}
+        autoHideDuration={error ? 8000 : 5000}
+        onClose={(_, reason) => {
+          if (reason === 'clickaway') return;
+          setError(null);
+          setSuccess(null);
+        }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert
+          severity={error ? 'error' : 'success'}
+          variant="filled"
+          onClose={() => {
+            setError(null);
+            setSuccess(null);
+          }}
+          sx={{ maxWidth: 560, alignItems: 'center' }}
+        >
+          {error || success}
+        </Alert>
+      </Snackbar>
+
+      <Dialog
+        open={securityCardOpen}
+        onClose={closeSecurityCard}
+        fullWidth
+        maxWidth="lg"
+        PaperProps={{ className: 'contract-card-dialog' }}
+      >
+        <DialogTitle className="contract-card-title">
+          {securityCardItem ? (
+            <Box className="contract-card-title-layout">
+              <Box>
+                <Typography variant="subtitle1" className="contract-card-heading">
+                  Договор № {securityCardItem.contractNumber}
+                </Typography>
+                <Typography variant="body2" className="contract-card-subtitle">
+                  {securityCardItem.counterpartyShortName?.trim() || normalizeCounterpartyName(securityCardItem.counterpartyName)}
+                </Typography>
+              </Box>
+              {securityCardSheet && (
+                <Typography variant="caption" className="contract-overall-status">
+                  <span />{STATUS_LABELS[securityCardSheet.contract.status]}
+                </Typography>
+              )}
+            </Box>
+          ) : (
+            'Карточка договора'
+          )}
+        </DialogTitle>
+        <DialogContent dividers className="contract-card-content">
+          {securityCardLoading && (
+            <Stack direction="row" alignItems="center" spacing={1} className="contract-card-loading">
+              <CircularProgress size={18} />
+              <Typography variant="body2">Загрузка карточки...</Typography>
+            </Stack>
+          )}
+          {!securityCardLoading && !securityCardItem && (
+            <Alert severity="info">Договор больше не найден в текущем списке.</Alert>
+          )}
+          {!securityCardLoading && securityCardItem && (
+            <Stack spacing={1}>
+              <Box className="contract-card-details">
+                <Box className="contract-card-detail contract-card-detail--wide">
+                  <Typography variant="caption">Предмет договора</Typography>
+                  <Typography variant="body2">{securityCardItem.subject || '—'}</Typography>
+                </Box>
+                <Box className="contract-card-detail">
+                  <Typography variant="caption">Тип</Typography>
+                  <Typography variant="body2">{formatContractTypeLabel(securityCardItem.contractType, securityCardItem.incomeSubtype)}</Typography>
+                </Box>
+                <Box className="contract-card-detail">
+                  <Typography variant="caption">Дата договора</Typography>
+                  <Typography variant="body2">{securityCardItem.contractDate || '—'}</Typography>
+                </Box>
+                <Box className="contract-card-detail">
+                  <Typography variant="caption">ИНН</Typography>
+                  <Typography variant="body2">{securityCardItem.counterpartyInn || '—'}</Typography>
+                </Box>
+                <Box className="contract-card-detail">
+                  <Typography variant="caption">Инициатор</Typography>
+                  <Typography variant="body2">{securityCardItem.initiatorName}</Typography>
+                </Box>
+              </Box>
+
+              <Box className="contract-card-section contract-document-files">
+                <Typography variant="body2" className="contract-card-section-title">Документы договора</Typography>
+                <Box className="contract-file-list contract-file-list--compact">
+                  {securityCardItem.attachments.length ? (
+                    securityCardItem.attachments.map((file) => (
+                      <Button
+                        key={file.id}
+                        size="small"
+                        variant="text"
+                        className="contract-file-button"
+                        onClick={() => onOpenAttachmentPreview(file.id, file.originalName)}
+                      >
+                        {file.originalName}
+                      </Button>
+                    ))
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">Файлы договора не приложены.</Typography>
+                  )}
+                </Box>
+              </Box>
+
+              <Box className="contract-card-section contract-visa-editor">
+                <Box className="contract-visa-header">
+                  <Typography variant="body2" className="contract-card-section-title">Ваша задача: Виза СБ</Typography>
+                  {securityCardItem.securityDecision && (
+                    <Typography
+                      variant="caption"
+                      className={`contract-visa-previous contract-visa-text--${getSecurityVisaColor(securityCardItem)}`}
+                    >
+                      Ранее: {getSecurityVisaLabel(securityCardItem)}
+                    </Typography>
+                  )}
+                </Box>
+                <Box className="contract-visa-fields">
+                  <FormControl fullWidth size="small">
+                    <InputLabel shrink>Решение</InputLabel>
+                    <Select
+                      label="Решение"
+                      value={securityCardForm?.visa ?? ''}
+                      displayEmpty
+                      onChange={(e) => setSecurityVisa((prev) => ({
+                        ...prev,
+                        [securityCardItem.contractId]: {
+                          visa: e.target.value as SecurityVisaValue,
+                          comment: securityCardForm?.comment ?? '',
+                        },
+                      }))}
+                      renderValue={(value) => value
+                        ? ({
+                          approved: 'Согласован',
+                          approved_with_remarks: 'Согласован с замечаниями',
+                          rejected: 'Не согласован',
+                        }[value] ?? value)
+                        : <Typography component="span" color="text.secondary">Выберите решение</Typography>}
+                    >
+                      <MenuItem value="" disabled>Выберите решение</MenuItem>
+                      <MenuItem value="approved">Согласован</MenuItem>
+                      <MenuItem value="approved_with_remarks">Согласован с замечаниями</MenuItem>
+                      <MenuItem value="rejected">Не согласован</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Комментарий"
+                    required={securityCardForm?.visa === 'approved_with_remarks'}
+                    error={securityCardForm?.visa === 'approved_with_remarks' && !securityCardForm.comment.trim()}
+                    placeholder={securityCardForm?.visa === 'approved_with_remarks' ? 'Укажите замечания к договору' : 'Добавьте комментарий при необходимости'}
+                    value={securityCardForm?.comment ?? ''}
+                    onChange={(e) => setSecurityVisa((prev) => ({
+                      ...prev,
+                        [securityCardItem.contractId]: {
+                        visa: securityCardForm?.visa ?? '',
+                        comment: e.target.value,
+                      },
+                    }))}
+                  />
+                </Box>
+                <Box className="contract-visa-footer">
+                  <Typography variant="caption" className={securityCardForm?.visa === 'approved_with_remarks' ? 'contract-visa-hint contract-visa-hint--required' : 'contract-visa-hint'}>
+                    {securityCardForm?.visa === 'approved_with_remarks'
+                      ? 'Для этого решения комментарий обязателен.'
+                      : 'Комментарий можно добавить при необходимости.'}
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => onSecurityVisa(securityCardItem)}
+                    disabled={!securityCardForm?.visa || (securityCardForm.visa === 'approved_with_remarks' && !securityCardForm.comment.trim())}
+                  >
+                    Сохранить решение
+                  </Button>
+                </Box>
+              </Box>
+
+              {securityCardSheet && (
+                <Box className="contract-card-section contract-process">
+                  <Typography variant="body2" className="contract-card-section-title">Ход согласования</Typography>
+                  {securityApprovalStep && (
+                    <Box className="contract-process-group">
+                      <Box className="contract-process-group-heading">
+                        <Typography variant="body2">Проверка СБ</Typography>
+                        <Typography
+                          variant="caption"
+                          className={`contract-process-group-status contract-step-status--${getStepDecisionTone(securityApprovalStep)}`}
+                        >
+                          {securityApprovalStep.decision ? 'Завершено' : 'В работе'}
+                        </Typography>
+                      </Box>
+                      {renderProcessStep(securityApprovalStep, securityCardItem.contractId, true)}
+                    </Box>
+                  )}
+                  {!!mainApprovalSteps.length && (
+                    <Box className="contract-process-group">
+                      <Box className="contract-process-group-heading">
+                        <Box>
+                          <Typography variant="body2">Основное согласование</Typography>
+                          <Typography variant="caption" className="contract-process-note">
+                            Участники согласуют договор параллельно
+                          </Typography>
+                        </Box>
+                        <Typography variant="caption" className="contract-process-progress">
+                          {completedMainApprovalSteps} из {mainApprovalSteps.length} обработано
+                        </Typography>
+                      </Box>
+                      <Box className="contract-process-participants">
+                        {mainApprovalSteps.map((step) => renderProcessStep(step, securityCardItem.contractId))}
+                      </Box>
+                    </Box>
+                  )}
+                  {secretaryApprovalStep?.assignedAt && (
+                    <Box className="contract-process-group">
+                      <Box className="contract-process-group-heading">
+                        <Typography variant="body2">Передача на подпись</Typography>
+                        <Typography variant="caption" className="contract-process-progress">
+                          {secretaryApprovalStep.decision ? 'Подписание подтверждено' : 'На подписи'}
+                        </Typography>
+                      </Box>
+                      {renderProcessStep(secretaryApprovalStep, securityCardItem.contractId, false, false)}
+                    </Box>
+                  )}
+                </Box>
+              )}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions className="contract-card-actions">
+          <Button onClick={closeSecurityCard}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={previewOpen} onClose={closePreview} fullWidth maxWidth="lg">
         <DialogTitle>{previewFileName || 'Просмотр договора'}</DialogTitle>
         <DialogContent sx={{ minHeight: 620, p: 0, overflow: 'auto' }}>
+          {!previewLoading && !previewError && previewUrl && /\.docx$/i.test(previewFileName) && (
+            <Alert severity="info" sx={{ borderRadius: 0 }}>
+              Для просмотра показана PDF-версия документа. При скачивании будет сохранен исходный файл DOCX.
+            </Alert>
+          )}
           {previewLoading && (
             <Box sx={{ minHeight: 620, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <CircularProgress />
@@ -1155,33 +2510,144 @@ export default function ContractApprovalPage() {
           )}
         </DialogContent>
         <DialogActions>
-          {previewUrl && (
+          {previewUrl && previewAttachmentId && (
             <Button
               onClick={async () => {
-                if (!previewUrl) return;
-                const response = await fetch(previewUrl);
-                const blob = await response.blob();
-                downloadBlob(blob, previewFileName || 'contract-file');
+                if (!previewAttachmentId) return;
+                const response = await downloadContractAttachment(previewAttachmentId);
+                downloadBlob(response.data as Blob, previewFileName || 'contract-file');
               }}
             >
-              Скачать
+              Скачать оригинал
             </Button>
           )}
           <Button onClick={closePreview}>Закрыть</Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={sheetModalOpen} onClose={closeSheetModal} fullWidth maxWidth="lg">
-        <DialogTitle>Лист согласования</DialogTitle>
-        <DialogContent dividers>
+      <Dialog
+        open={sheetModalOpen}
+        onClose={closeSheetModal}
+        fullWidth
+        maxWidth="lg"
+        PaperProps={isApprovalWorkRole ? { className: 'contract-card-dialog' } : undefined}
+      >
+        <DialogTitle className={isApprovalWorkRole ? 'contract-card-title' : undefined}>
+          {isApprovalWorkRole && sheet ? (
+            <Box className="contract-card-title-layout">
+              <Box>
+                <Typography variant="subtitle1" className="contract-card-heading">Договор № {sheet.contract.contractNumber}</Typography>
+                <Typography variant="body2" className="contract-card-subtitle">
+                  {sheet.contract.counterpartyShortName?.trim() || normalizeCounterpartyName(sheet.contract.counterpartyName)}
+                  {(sheet.contract.revisionNo ?? 1) > 1 ? ` · Редакция ${sheet.contract.revisionNo}` : ''}
+                </Typography>
+              </Box>
+              <Typography variant="caption" className="contract-overall-status">
+                <span />{STATUS_LABELS[sheet.contract.status]}
+              </Typography>
+            </Box>
+          ) : sheet ? `Договор № ${sheet.contract.contractNumber}` : 'Карточка договора'}
+        </DialogTitle>
+        <DialogContent dividers className={isApprovalWorkRole ? 'contract-card-content' : undefined}>
           {sheetModalLoading && (
             <Stack direction="row" alignItems="center" spacing={1}>
               <CircularProgress size={18} />
               <Typography variant="body2">Загрузка...</Typography>
             </Stack>
           )}
-          {!sheetModalLoading && sheet && (
+          {!sheetModalLoading && sheet && isApprovalWorkRole && (
+            <Stack spacing={1}>
+              <Box className="contract-card-details">
+                <Box className="contract-card-detail contract-card-detail--wide">
+                  <Typography variant="caption">Предмет договора</Typography>
+                  <Typography variant="body2">{sheet.contract.subject || '—'}</Typography>
+                </Box>
+                <Box className="contract-card-detail">
+                  <Typography variant="caption">Тип</Typography>
+                  <Typography variant="body2">{formatContractTypeLabel(sheet.contract.contractType, sheet.contract.incomeSubtype)}</Typography>
+                </Box>
+                <Box className="contract-card-detail">
+                  <Typography variant="caption">Дата договора</Typography>
+                  <Typography variant="body2">{sheet.contract.contractDate || '—'}</Typography>
+                </Box>
+                <Box className="contract-card-detail">
+                  <Typography variant="caption">ИНН</Typography>
+                  <Typography variant="body2">{sheet.contract.counterpartyInn || '—'}</Typography>
+                </Box>
+                <Box className="contract-card-detail">
+                  <Typography variant="caption">Инициатор</Typography>
+                  <Typography variant="body2">{approvalCardItem?.initiatorName || sheet.contract.initiator?.fullName || '—'}</Typography>
+                </Box>
+              </Box>
+
+              <Box className="contract-card-section contract-document-files">
+                <Typography variant="body2" className="contract-card-section-title">Документы договора</Typography>
+                <Box className="contract-file-list contract-file-list--compact">
+                  {sheet.contract.attachments.length ? sheet.contract.attachments.map((file) => (
+                    <Button
+                      key={file.id}
+                      size="small"
+                      variant="text"
+                      className="contract-file-button"
+                      onClick={() => onOpenAttachmentPreview(file.id, file.originalName)}
+                    >
+                      {file.originalName}
+                    </Button>
+                  )) : (
+                    <Typography variant="body2" color="text.secondary">Файлы договора не приложены.</Typography>
+                  )}
+                </Box>
+              </Box>
+
+              {renderMyApprovalAction()}
+
+              <Box className="contract-card-section contract-process">
+                <Typography variant="body2" className="contract-card-section-title">Ход согласования</Typography>
+                {approvalCardSecurityStep && (
+                  <Box className="contract-process-group">
+                    <Box className="contract-process-group-heading">
+                      <Typography variant="body2">Проверка СБ</Typography>
+                      <Typography variant="caption" className={`contract-process-group-status contract-step-status--${getStepDecisionTone(approvalCardSecurityStep)}`}>
+                        {approvalCardSecurityStep.decision ? 'Завершено' : 'В работе'}
+                      </Typography>
+                    </Box>
+                    {renderProcessStep(approvalCardSecurityStep, sheet.contract.id, true)}
+                  </Box>
+                )}
+                {!!approvalCardMainSteps.length && (
+                  <Box className="contract-process-group">
+                    <Box className="contract-process-group-heading">
+                      <Box>
+                        <Typography variant="body2">Основное согласование</Typography>
+                        <Typography variant="caption" className="contract-process-note">Участники согласуют договор параллельно</Typography>
+                      </Box>
+                      <Typography variant="caption" className="contract-process-progress">
+                        {approvalCardCompletedCount} из {approvalCardMainSteps.length} обработано
+                      </Typography>
+                    </Box>
+                    <Box className="contract-process-participants">
+                      {approvalCardMainSteps.map((step) => renderProcessStep(step, sheet.contract.id))}
+                    </Box>
+                  </Box>
+                )}
+                {approvalCardSecretaryStep?.assignedAt && (
+                  <Box className="contract-process-group">
+                    <Box className="contract-process-group-heading">
+                      <Typography variant="body2">Передача на подпись</Typography>
+                      <Typography variant="caption" className="contract-process-progress">
+                        {approvalCardSecretaryStep.decision ? 'Подписание подтверждено' : 'На подписи'}
+                      </Typography>
+                    </Box>
+                    {renderProcessStep(approvalCardSecretaryStep, sheet.contract.id, false, false)}
+                  </Box>
+                )}
+              </Box>
+              {renderPreviousRevisions()}
+            </Stack>
+          )}
+          {!sheetModalLoading && sheet && !isApprovalWorkRole && (
             <Box className="approval-sheet-print">
+              {renderMyApprovalAction()}
               <Typography variant="h6" align="center" sx={{ mb: 2 }}>Лист согласования ООО «Симпл Вэй»</Typography>
               <TableContainer sx={{ mb: 2 }}>
                 <Table size="small" className="approval-sheet-table">
@@ -1196,40 +2662,201 @@ export default function ContractApprovalPage() {
                 </Table>
               </TableContainer>
 
-              <Typography variant="subtitle1" align="center" sx={{ mb: 1 }}>Согласование сторон</Typography>
+              {sheet.steps.some((step) => step.roleCode === 'secretary' && step.attachments.length > 0) && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle1" sx={{ mb: 0.5 }}>Подписанный экземпляр</Typography>
+                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                    {sheet.steps
+                      .filter((step) => step.roleCode === 'secretary')
+                      .flatMap((step) => step.attachments)
+                      .map((file) => (
+                        <Button
+                          key={file.id}
+                          size="small"
+                          variant="text"
+                          onClick={() => onOpenAttachmentPreview(file.id, file.originalName)}
+                        >
+                          {file.originalName}
+                        </Button>
+                      ))}
+                  </Stack>
+                </Box>
+              )}
+
+              <Typography variant="subtitle1" align="center" sx={{ mb: 1 }}>Ход согласования</Typography>
               <TableContainer>
                 <Table size="small" className="approval-sheet-table">
                   <TableHead>
                     <TableRow>
                       <TableCell>Сторона</TableCell>
                       <TableCell>ФИО</TableCell>
+                      <TableCell>Статус</TableCell>
                       <TableCell>Дата принятия</TableCell>
                       <TableCell>Дата визирования</TableCell>
                       <TableCell>Комментарии</TableCell>
+                      <TableCell>Файлы</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {sheet.steps.map((step) => (
+                    <TableRow key="initiator">
+                      <TableCell>Инициатор</TableCell>
+                      <TableCell>{sheet.contract.initiator?.fullName || '—'}</TableCell>
+                      <TableCell>Согласован</TableCell>
+                      <TableCell>{formatDateTime(getApprovalStartDate(sheet))}</TableCell>
+                      <TableCell>{formatDateTime(getApprovalStartDate(sheet))}</TableCell>
+                      <TableCell>—</TableCell>
+                      <TableCell>—</TableCell>
+                    </TableRow>
+                    {sheet.steps.filter((step) => step.roleCode !== 'secretary').map((step) => (
                       <TableRow key={step.id}>
                         <TableCell>{step.roleLabel}</TableCell>
-                        <TableCell>{step.approverName}</TableCell>
+                        <TableCell>{step.approverName || '—'}</TableCell>
+                        <TableCell>{getStepDecisionLabel(step)}</TableCell>
                         <TableCell>{formatDateTime(step.acceptedAt || step.assignedAt || null)}</TableCell>
                         <TableCell>{formatDateTime(step.signedAt)}</TableCell>
                         <TableCell>{step.comment || '—'}</TableCell>
+                        <TableCell>{renderStepFiles(step, sheet.contract.id)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </TableContainer>
-
-              <Box sx={{ mt: 2 }}>
-                <Typography>Текущий статус: {STATUS_LABELS[sheet.contract.status]}</Typography>
-              </Box>
+              {renderPreviousRevisions()}
             </Box>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions className={isApprovalWorkRole ? 'contract-card-actions' : undefined}>
+          {isAdmin && sheet && (
+            <Button onClick={() => { void openDecisionHistory(); }}>
+              История решений
+            </Button>
+          )}
+          {canManageOpenDraft && selectedRegistryContract && (
+            <>
+              <Button
+                onClick={() => {
+                  closeSheetModal();
+                  void continueDraft(selectedRegistryContract);
+                }}
+              >
+                {selectedRegistryContract.status === 'rework' ? 'Продолжить редакцию' : 'Продолжить'}
+              </Button>
+              {selectedRegistryContract.status === 'draft' && (
+                <Button
+                  color="error"
+                  onClick={() => {
+                    closeSheetModal();
+                    setDraftDeleteTarget(selectedRegistryContract);
+                  }}
+                >
+                  Удалить
+                </Button>
+              )}
+            </>
+          )}
+          {canPrepareNewRevision && selectedRegistryContract && (
+            <Button
+              onClick={() => setRevisionTarget(selectedRegistryContract)}
+            >
+              Новая редакция
+            </Button>
+          )}
           <Button onClick={closeSheetModal}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={historyOpen} onClose={() => setHistoryOpen(false)} maxWidth="lg" fullWidth>
+        <DialogTitle>История решений по договору № {sheet?.contract.contractNumber || '—'}</DialogTitle>
+        <DialogContent dividers>
+          {historyLoading && (
+            <Stack direction="row" spacing={1} alignItems="center">
+              <CircularProgress size={18} />
+              <Typography variant="body2">Загрузка истории...</Typography>
+            </Stack>
+          )}
+          {!historyLoading && !decisionHistory.length && (
+            <Typography variant="body2" color="text.secondary">
+              История решений пока отсутствует. Визы, сохраненные до добавления журнала, здесь не отображаются.
+            </Typography>
+          )}
+          {!historyLoading && Boolean(decisionHistory.length) && (
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Дата изменения</TableCell>
+                    <TableCell>Редакция</TableCell>
+                    <TableCell>Сторона</TableCell>
+                    <TableCell>Кто изменил</TableCell>
+                    <TableCell>Было</TableCell>
+                    <TableCell>Стало</TableCell>
+                    <TableCell>Комментарий</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {decisionHistory.map((event) => (
+                    <TableRow key={event.id}>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDateTime(event.createdAt)}</TableCell>
+                      <TableCell>{event.revisionNo}</TableCell>
+                      <TableCell>{event.roleLabel}</TableCell>
+                      <TableCell>{event.actorName}</TableCell>
+                      <TableCell>{formatDecisionLabel(event.previousDecision, event.previousComment)}</TableCell>
+                      <TableCell>{formatDecisionLabel(event.newDecision, event.newComment)}</TableCell>
+                      <TableCell sx={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{event.newComment || '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setHistoryOpen(false)}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(draftDeleteTarget)} onClose={() => !draftDeleting && setDraftDeleteTarget(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Удалить черновик?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            Договор № {draftDeleteTarget?.contractNumber || '—'} и приложенные к нему файлы будут удалены без возможности восстановления.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDraftDeleteTarget(null)} disabled={draftDeleting}>Отменить</Button>
+          <Button color="error" variant="contained" onClick={() => { void removeDraft(); }} disabled={draftDeleting}>
+            {draftDeleting ? 'Удаление...' : 'Удалить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(revisionTarget)} onClose={() => !revisionPreparing && setRevisionTarget(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Начать новую редакцию?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            Текущий круг виз останется в истории. Приложите измененный договор, после чего он будет направлен на новый круг согласования.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRevisionTarget(null)} disabled={revisionPreparing}>Отменить</Button>
+          <Button variant="contained" onClick={() => { void beginNewRevision(); }} disabled={revisionPreparing}>
+            {revisionPreparing ? 'Подготовка...' : 'Продолжить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(attachmentDeleteTarget)} onClose={() => !attachmentDeleting && setAttachmentDeleteTarget(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Удалить файл?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            Файл «{attachmentDeleteTarget?.file.originalName || '—'}» будет удален из истории согласования без возможности восстановления.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAttachmentDeleteTarget(null)} disabled={attachmentDeleting}>Отменить</Button>
+          <Button color="error" variant="contained" onClick={() => { void removeAttachment(); }} disabled={attachmentDeleting}>
+            {attachmentDeleting ? 'Удаление...' : 'Удалить'}
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -1323,15 +2950,38 @@ export default function ContractApprovalPage() {
                       <TableCell>Дата</TableCell>
                       <TableCell>Предмет</TableCell>
                       <TableCell>Статус</TableCell>
+                      <TableCell />
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {wizardDuplicates.map((d) => (
-                      <TableRow key={d.id}>
+                      <TableRow
+                        key={d.id}
+                        hover
+                        className="contract-clickable-row"
+                        title="Двойной клик откроет лист согласования"
+                        onDoubleClick={() => {
+                          setResumeWizardAfterSheet(true);
+                          setWizardOpen(false);
+                          void openSheetModal(d.id);
+                        }}
+                      >
                         <TableCell>{d.contractNumber}</TableCell>
                         <TableCell>{d.contractDate ?? '—'}</TableCell>
                         <TableCell>{d.subject ?? '—'}</TableCell>
-                        <TableCell>{d.status}</TableCell>
+                        <TableCell>{STATUS_LABELS[d.status] ?? d.status}</TableCell>
+                        <TableCell align="right">
+                          <Button
+                            size="small"
+                            onClick={() => {
+                              setResumeWizardAfterSheet(true);
+                              setWizardOpen(false);
+                              void openSheetModal(d.id);
+                            }}
+                          >
+                            Лист
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -1393,7 +3043,7 @@ export default function ContractApprovalPage() {
                   e.preventDefault();
                   const dropped = Array.from(e.dataTransfer.files || []);
                   if (!dropped.length) return;
-                  setWizardFiles((prev) => [...prev, ...dropped]);
+                  appendWizardFiles(dropped);
                 }}
               >
                 <Button variant="outlined" component="label">
@@ -1405,7 +3055,8 @@ export default function ContractApprovalPage() {
                     onChange={(e) => {
                       const selected = Array.from(e.target.files || []);
                       if (!selected.length) return;
-                      setWizardFiles((prev) => [...prev, ...selected]);
+                      appendWizardFiles(selected);
+                      e.target.value = '';
                     }}
                   />
                 </Button>
@@ -1413,8 +3064,23 @@ export default function ContractApprovalPage() {
                   Перетащите файлы сюда
                 </Typography>
               </Box>
+              {wizardExistingFiles.length > 0 && (
+                <Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                    Уже прикреплены к черновику:
+                  </Typography>
+                  {wizardExistingFiles.map((file, idx) => (
+                    <Typography key={file.id} variant="body2">
+                      {idx + 1}. {file.originalName}
+                    </Typography>
+                  ))}
+                </Box>
+              )}
               {wizardFiles.length > 0 && (
                 <Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                    Новые файлы к отправке:
+                  </Typography>
                   {wizardFiles.map((file, idx) => (
                     <Typography key={`${file.name}-${idx}`} variant="body2">
                       {idx + 1}. {file.name}

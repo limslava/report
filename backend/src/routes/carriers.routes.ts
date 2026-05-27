@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { param, query } from 'express-validator';
 import { lookupSinokorBlTracking } from '../controllers/carriers.controller';
 import { authenticate } from '../middleware/authenticate';
+import { authorizeRole } from '../middleware/authorize';
 import { asyncHandler } from '../middleware/error-handler';
 import { handleValidationErrors } from '../middleware/express-validator.middleware';
 
@@ -11,6 +12,7 @@ router.use(authenticate);
 
 router.get(
   '/sinokor/bl/:blNo',
+  authorizeRole('admin'),
   [
     param('blNo').isString().trim().matches(/^[A-Z0-9-]{6,40}$/i),
     query('debug').optional().isIn(['0', '1']),

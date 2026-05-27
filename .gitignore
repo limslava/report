@@ -15,6 +15,10 @@ coverage/
 logs/
 *.log
 
+# Runtime uploads (contracts and generated previews live in persistent storage)
+backend/uploads/
+uploads/
+
 # Environment and secrets
 .env
 .env.*

@@ -20,6 +20,7 @@ export enum ContractApprovalDecision {
 @Entity('contract_approval_steps')
 @Index('idx_contract_steps_contract', ['contractId'])
 @Index('idx_contract_steps_contract_order', ['contractId', 'orderNo'])
+@Index('idx_contract_steps_contract_revision', ['contractId', 'revisionNo'])
 export class ContractApprovalStep {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -43,6 +44,9 @@ export class ContractApprovalStep {
 
   @Column({ name: 'order_no', type: 'int' })
   orderNo!: number;
+
+  @Column({ name: 'revision_no', type: 'int', default: 1 })
+  revisionNo!: number;
 
   @Column({ name: 'accepted_at', type: 'timestamp', nullable: true })
   acceptedAt!: Date | null;

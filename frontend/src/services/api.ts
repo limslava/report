@@ -121,21 +121,41 @@ export const createContract = (data: {
   allowDuplicate?: boolean;
   clientRequestId?: string | null;
 }) => api.post('/contracts', data);
+export const updateDraftContract = (
+  contractId: string,
+  data: Parameters<typeof createContract>[0]
+) => api.put(`/contracts/${contractId}/draft`, data);
+export const deleteDraftContract = (contractId: string) => api.delete(`/contracts/${contractId}/draft`);
+export const prepareContractRevision = (contractId: string) => api.post(`/contracts/${contractId}/new-revision`);
 export const uploadContractAttachments = (
   contractId: string,
   files: Array<{ name: string; mimeType?: string | null; size?: number; contentBase64: string }>
 ) => api.post(`/contracts/${contractId}/attachments`, { files });
+export const uploadContractStepAttachments = (
+  contractId: string,
+  stepId: string,
+  files: Array<{ name: string; mimeType?: string | null; size?: number; contentBase64: string }>
+) => api.post(`/contracts/${contractId}/steps/${stepId}/attachments`, { files });
 export const getContractAttachments = (contractId: string) => api.get(`/contracts/${contractId}/attachments`);
 export const downloadContractAttachment = (attachmentId: string) =>
   api.get(`/contracts/attachments/${attachmentId}/download`, { responseType: 'blob' });
-export const getSecurityContractInbox = (view: 'active' | 'processed' | 'all' = 'active') =>
+export const previewContractAttachment = (attachmentId: string) =>
+  api.get(`/contracts/attachments/${attachmentId}/preview`, { responseType: 'blob' });
+export const deleteContractAttachment = (attachmentId: string) =>
+  api.delete(`/contracts/attachments/${attachmentId}`);
+export const getSecurityContractInbox = (view: 'active' | 'processed' | 'completed_month' | 'all' = 'active') =>
   api.get('/contracts/security/inbox', { params: { view } });
+export const getMyContractApprovalInbox = (view: 'active' | 'processed' | 'completed_month' | 'all' = 'active') =>
+  api.get('/contracts/approval-inbox/my', { params: { view } });
 export const getMyApprovalDashboard = () => api.get('/contracts/approval-dashboard/my');
 export const submitSecurityVisa = (
   contractId: string,
   data: { visa: 'approved' | 'rejected' | 'approved_with_remarks'; comment?: string | null }
 ) => api.post(`/contracts/security/inbox/${contractId}/visa`, data);
 export const getContractApprovalSheet = (id: string) => api.get(`/contracts/${id}/approval-sheet`);
+export const getContractDecisionHistory = (id: string) => api.get(`/contracts/${id}/decision-history`);
+export const downloadContractPrintPackage = (id: string) =>
+  api.get(`/contracts/${id}/print-package`, { responseType: 'blob' });
 export const startContractApproval = (id: string) => api.post(`/contracts/${id}/start-approval`);
 export const decideContractApprovalStep = (
   contractId: string,
@@ -143,8 +163,6 @@ export const decideContractApprovalStep = (
   data: {
     decision: 'approve' | 'rework' | 'reject';
     comment?: string | null;
-    acceptedAt?: string | null;
-    signedAt?: string | null;
   }
 ) => api.post(`/contracts/${contractId}/steps/${stepId}/decision`, data);
 export const inviteUser = (data: any) => api.post('/admin/users/invite', data);

@@ -48,6 +48,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/auth-store';
 import {
+  canAccessBillOfLading,
   canAccessContractApproval,
   canAccessAdmin,
   canAccessOperationsPreview,
@@ -59,6 +60,7 @@ import {
   canViewTechDashboard,
   canViewTotalsInPlans,
   canViewBPDashboard,
+  canShowBPDashboardMenu,
 } from '../utils/rolePermissions';
 import { getHasUnsavedChanges, getUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import { getRuntimeAppSettings } from '../services/api';
@@ -146,6 +148,8 @@ const DashboardLayout = () => {
   const isKtkVvoManager = user?.role === 'manager_ktk_vvo' || user?.role === 'head_ktk_vvo';
   const isAdmin = canAccessAdmin(user?.role);
   const canOpenContractApproval = canAccessContractApproval(user?.role);
+  const canOpenBillOfLading = canAccessBillOfLading(user?.role);
+  const showBPDashboardMenu = canShowBPDashboardMenu(user?.role);
   const serviceHealth = useServiceHealth();
   const idleTimeoutRef = useRef<number | null>(null);
   const techPeriodDebounceRef = useRef<number | null>(null);
@@ -699,6 +703,17 @@ const DashboardLayout = () => {
             </ListItem>
             {isPinnedOpen && isBusinessProcessSubmenuOpen && (
               <>
+                {showBPDashboardMenu && (
+                  <ListItem disablePadding sx={{ pl: 4 }}>
+                    <ListItemButton
+                      selected={location.pathname === '/business-processes/dashboard'}
+                      onClick={() => handleNavigate('/business-processes/dashboard')}
+                      sx={{ py: 0.5, minHeight: 34 }}
+                    >
+                      <ListItemText primary="Дашборд" primaryTypographyProps={{ fontSize: 14 }} />
+                    </ListItemButton>
+                  </ListItem>
+                )}
                 <ListItem disablePadding sx={{ pl: 4 }}>
                   <ListItemButton
                     selected={location.pathname === '/business-processes/contract-approval'}
@@ -708,15 +723,17 @@ const DashboardLayout = () => {
                     <ListItemText primary="Согласование договоров" primaryTypographyProps={{ fontSize: 14 }} />
                   </ListItemButton>
                 </ListItem>
-                <ListItem disablePadding sx={{ pl: 4 }}>
-                  <ListItemButton
-                    selected={location.pathname === '/business-processes/bill-of-lading'}
-                    onClick={() => handleNavigate('/business-processes/bill-of-lading')}
-                    sx={{ py: 0.5, minHeight: 34 }}
-                  >
-                    <ListItemText primary="Коносамент" primaryTypographyProps={{ fontSize: 14 }} />
-                  </ListItemButton>
-                </ListItem>
+                {canOpenBillOfLading && (
+                  <ListItem disablePadding sx={{ pl: 4 }}>
+                    <ListItemButton
+                      selected={location.pathname === '/business-processes/bill-of-lading'}
+                      onClick={() => handleNavigate('/business-processes/bill-of-lading')}
+                      sx={{ py: 0.5, minHeight: 34 }}
+                    >
+                      <ListItemText primary="Коносамент" primaryTypographyProps={{ fontSize: 14 }} />
+                    </ListItemButton>
+                  </ListItem>
+                )}
               </>
             )}
           </>
@@ -783,7 +800,7 @@ const DashboardLayout = () => {
               {location.pathname.includes('/admin') && 'Администрирование'}
               {location.pathname.includes('/business-processes/contract-approval') && 'Согласование договоров'}
               {location.pathname.includes('/business-processes/bill-of-lading') && 'Коносамент'}
-              {location.pathname.includes('/business-processes/dashboard') && 'Дашборд БП'}
+              {location.pathname.includes('/business-processes/dashboard') && 'Согласование договоров'}
               {location.pathname.includes('/settings') && 'Настройки'}
             </Typography>
           )}

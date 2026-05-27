@@ -32,6 +32,7 @@ export class User {
     | 'chief_accountant'
     | 'lawyer'
     | 'security'
+    | 'secretary'
     | 'director'
     | 'general_director'
     | 'admin';

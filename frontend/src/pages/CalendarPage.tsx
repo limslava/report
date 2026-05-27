@@ -180,6 +180,7 @@ const ROLE_LABELS: Record<string, string> = {
   chief_accountant: 'Главный бухгалтер',
   lawyer: 'Юрист',
   security: 'СБ',
+  secretary: 'Офис-менеджер',
   manager_sales: 'Отдел продаж',
   head_sales: 'Руководитель отдела продаж',
   manager_ktk_vvo: 'Диспетчерский отдел Влд',

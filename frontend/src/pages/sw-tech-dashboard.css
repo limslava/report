@@ -366,12 +366,99 @@
   color: #b63b3b;
 }
 
+.sw-tech-approval-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.sw-tech-approval-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sw-tech-approval-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  color: #1976d2;
+  cursor: pointer;
+}
+
+.sw-tech-approval-link:hover {
+  text-decoration: underline;
+}
+
+.sw-tech-approval-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 8px;
+  row-gap: 12px;
+  margin-top: 5px;
+}
+
+.sw-tech-approval-metric {
+  min-height: 64px;
+  padding: 8px 10px;
+  border: 1px solid #dbe2ed;
+  border-radius: 6px;
+  background: #f8fafc;
+  display: grid;
+  align-content: space-between;
+  gap: 4px;
+  text-align: left;
+  color: #52627a;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.sw-tech-approval-metric:hover {
+  border-color: #a7c4e6;
+  background: #f1f7fd;
+}
+
+.sw-tech-approval-metric span {
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.sw-tech-approval-metric strong {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  color: #344054;
+}
+
+.sw-tech-approval-metric--info strong {
+  color: #1976d2;
+}
+
+.sw-tech-approval-metric--warn strong {
+  color: #b26b00;
+}
+
+.sw-tech-approval-metric--bad strong {
+  color: #c23d3d;
+}
+
+.sw-tech-approval-error {
+  font-size: 9px !important;
+  color: #c23d3d;
+}
+
 @media (max-width: 1120px) {
   .sw-tech-grid-4 { grid-template-columns: 1fr 1fr; }
   .sw-tech-grid-2 { grid-template-columns: 1fr; }
   .sw-tech-pills-row { grid-template-columns: 1fr; }
   .sw-tech-wait-grid { grid-template-columns: 1fr; }
   .sw-tech-wait-side { grid-template-columns: 1fr; gap: 10px; padding-right: 0; }
+  .sw-tech-approval-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-height: 760px) {

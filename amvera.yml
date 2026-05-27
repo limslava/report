@@ -1,13 +1,6 @@
 meta:
-  environment: node
-  toolchain:
-    name: npm
-    version: 20
-
-build:
-  additionalCommands: npm run amvera:build
+  environment: docker
 
 run:
-  command: npm run amvera:start
   containerPort: 3000
   persistenceMount: /data

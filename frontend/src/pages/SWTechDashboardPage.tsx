@@ -14,7 +14,10 @@ import {
   Typography,
 } from '@mui/material';
 import * as echarts from 'echarts';
+import { getMyApprovalDashboard } from '../services/api';
 import { planningV2Api } from '../services/planning-v2.api';
+import { subscribePlansRealtime } from '../services/plans-realtime';
+import { useAuthStore } from '../store/auth-store';
 import { PlanningTechDashboardResponse } from '../types/planning-v2.types';
 import './sw-tech-dashboard.css';
 
@@ -67,9 +70,29 @@ type ClassicKpiItem = {
   target?: 'totals';
 };
 
+type ApprovalTaskDashboard = {
+  inWork: number;
+  dueToday: number;
+  overdue: number;
+  newRequests: number;
+  completedMonth: number;
+  avgProcessingHours: number;
+};
+
+const EMPTY_APPROVAL_DASHBOARD: ApprovalTaskDashboard = {
+  inWork: 0,
+  dueToday: 0,
+  overdue: 0,
+  newRequests: 0,
+  completedMonth: 0,
+  avgProcessingHours: 0,
+};
+
 export default function SWTechDashboardPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const currentUser = useAuthStore((state) => state.user);
+  const isFinancer = currentUser?.role === 'financer';
   const now = new Date();
   const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const currentYear = now.getFullYear();
@@ -87,6 +110,8 @@ export default function SWTechDashboardPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<PlanningTechDashboardResponse | null>(null);
+  const [approvalDashboard, setApprovalDashboard] = useState<ApprovalTaskDashboard>(EMPTY_APPROVAL_DASHBOARD);
+  const [approvalDashboardError, setApprovalDashboardError] = useState<string | null>(null);
   const [chartsReady, setChartsReady] = useState<boolean>(false);
   const [layoutMode, setLayoutMode] = useState<'compact' | 'regular' | 'expanded'>('regular');
 
@@ -137,6 +162,39 @@ export default function SWTechDashboardPage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  const loadApprovalDashboard = useCallback(async () => {
+    if (!isFinancer) return;
+    try {
+      setApprovalDashboardError(null);
+      const response = await getMyApprovalDashboard();
+      setApprovalDashboard({ ...EMPTY_APPROVAL_DASHBOARD, ...(response.data || {}) });
+    } catch {
+      setApprovalDashboardError('Не удалось загрузить задачи согласования');
+    }
+  }, [isFinancer]);
+
+  useEffect(() => {
+    if (!isFinancer) return undefined;
+
+    void loadApprovalDashboard();
+    const unsubscribe = subscribePlansRealtime((payload) => {
+      const event = payload as { type?: string };
+      if (event.type === 'contract-approval:updated') {
+        void loadApprovalDashboard();
+      }
+    });
+    const refreshOnFocus = () => {
+      if (document.visibilityState === 'visible') {
+        void loadApprovalDashboard();
+      }
+    };
+    window.addEventListener('focus', refreshOnFocus);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', refreshOnFocus);
+    };
+  }, [isFinancer, loadApprovalDashboard]);
 
   useEffect(() => {
     if (!data) {
@@ -763,29 +821,73 @@ export default function SWTechDashboardPage() {
           </section>
 
           <section className="sw-tech-section sw-tech-grid-2">
-            <Paper className="sw-tech-card" variant="outlined">
-              <Typography className="sw-tech-chart-title">Контроль качества данных</Typography>
-              <Table className="sw-tech-table" size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Проверка</TableCell>
-                    <TableCell>Статус</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {Object.entries(data.checks).map(([name, ok]) => (
-                    <TableRow key={name}>
-                      <TableCell>{name}</TableCell>
-                      <TableCell>
-                        <span className={`sw-tech-badge ${ok ? 'sw-tech-badge-ok' : 'sw-tech-badge-bad'}`}>
-                          {ok ? 'OK' : 'Ошибка'}
-                        </span>
-                      </TableCell>
-                    </TableRow>
+            {isFinancer ? (
+              <Paper className="sw-tech-card sw-tech-approval-card" variant="outlined">
+                <div className="sw-tech-approval-header">
+                  <Typography className="sw-tech-chart-title">Договоры на согласование</Typography>
+                  <button
+                    className="sw-tech-approval-link"
+                    type="button"
+                    onClick={() => navigate('/business-processes/contract-approval')}
+                  >
+                    Открыть все
+                  </button>
+                </div>
+                {approvalDashboardError && (
+                  <Typography className="sw-tech-approval-error">{approvalDashboardError}</Typography>
+                )}
+                <div className="sw-tech-approval-grid">
+                  {[
+                    { key: 'new', label: 'Новые', value: approvalDashboard.newRequests, tone: 'info' },
+                    { key: 'in_work', label: 'В работе', value: approvalDashboard.inWork, tone: 'normal' },
+                    { key: 'due_today', label: 'Сегодня', value: approvalDashboard.dueToday, tone: 'warn' },
+                    { key: 'overdue', label: 'Просрочено', value: approvalDashboard.overdue, tone: 'bad' },
+                  ].map((metric) => (
+                    <button
+                      className={`sw-tech-approval-metric sw-tech-approval-metric--${metric.tone}`}
+                      key={metric.key}
+                      type="button"
+                      onClick={() => navigate(`/business-processes/contract-approval?kpi=${metric.key}`)}
+                    >
+                      <span>{metric.label}</span>
+                      <strong>{metric.value}</strong>
+                    </button>
                   ))}
-                </TableBody>
-              </Table>
-            </Paper>
+                  <div className="sw-tech-approval-metric sw-tech-approval-metric--static">
+                    <span>Завершено за месяц</span>
+                    <strong>{approvalDashboard.completedMonth}</strong>
+                  </div>
+                  <div className="sw-tech-approval-metric sw-tech-approval-metric--static">
+                    <span>Среднее время</span>
+                    <strong>{approvalDashboard.avgProcessingHours} ч</strong>
+                  </div>
+                </div>
+              </Paper>
+            ) : (
+              <Paper className="sw-tech-card" variant="outlined">
+                <Typography className="sw-tech-chart-title">Контроль качества данных</Typography>
+                <Table className="sw-tech-table" size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Проверка</TableCell>
+                      <TableCell>Статус</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {Object.entries(data.checks).map(([name, ok]) => (
+                      <TableRow key={name}>
+                        <TableCell>{name}</TableCell>
+                        <TableCell>
+                          <span className={`sw-tech-badge ${ok ? 'sw-tech-badge-ok' : 'sw-tech-badge-bad'}`}>
+                            {ok ? 'OK' : 'Ошибка'}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Paper>
+            )}
 
             <Paper className="sw-tech-card" variant="outlined">
               <Typography className="sw-tech-chart-title">Ключевые риски</Typography>

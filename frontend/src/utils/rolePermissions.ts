@@ -13,11 +13,11 @@ export function canAccessAdmin(role?: string | null): boolean {
 }
 
 export function canViewTotalsInPlans(role?: string | null): boolean {
-  return Boolean(role) && role !== 'security';
+  return Boolean(role) && role !== 'security' && role !== 'lawyer' && role !== 'chief_accountant' && role !== 'secretary';
 }
 
 export function canViewPlans(role?: string | null): boolean {
-  return Boolean(role) && role !== 'security';
+  return Boolean(role) && role !== 'security' && role !== 'lawyer' && role !== 'chief_accountant' && role !== 'secretary';
 }
 
 export function canEditTotalsPlan(role?: string | null): boolean {
@@ -32,16 +32,39 @@ export function canViewCalendar(role?: string | null): boolean {
   return role === 'admin'
     || role === 'director'
     || role === 'general_director'
-    || role === 'manager_auto'
-    || role === 'security';
+    || role === 'manager_auto';
 }
 
 export function canAccessContractApproval(role?: string | null): boolean {
-  return role === 'admin' || role === 'security' || role === 'lawyer' || role === 'chief_accountant';
+  return role === 'admin'
+    || role === 'general_director'
+    || role === 'security'
+    || role === 'lawyer'
+    || role === 'chief_accountant'
+    || role === 'financer'
+    || role === 'secretary'
+    || role === 'manager_sales'
+    || role === 'head_sales'
+    || role === 'manager_ktk_vvo'
+    || role === 'head_ktk_vvo'
+    || role === 'manager_ktk_mow'
+    || role === 'manager_auto'
+    || role === 'manager_rail'
+    || role === 'manager_extra'
+    || role === 'manager_to';
 }
 
 export function canViewBPDashboard(role?: string | null): boolean {
-  return role === 'security' || role === 'lawyer' || role === 'chief_accountant';
+  return role === 'security' || role === 'lawyer' || role === 'chief_accountant' || role === 'financer' || role === 'secretary';
+}
+
+export function canShowBPDashboardMenu(role?: string | null): boolean {
+  void role;
+  return false;
+}
+
+export function canAccessBillOfLading(role?: string | null): boolean {
+  return role === 'admin';
 }
 
 export function canAccessOperationsPreview(role?: string | null): boolean {

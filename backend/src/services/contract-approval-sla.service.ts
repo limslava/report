@@ -5,7 +5,7 @@ import { addWorkingDays } from './workday-calendar.service';
 
 const slaRepo = AppDataSource.getRepository(ContractSlaRule);
 
-const DEFAULT_ROLES = ['security', 'lawyer', 'chief_accountant', 'financer', 'general_director'] as const;
+const DEFAULT_ROLES = ['security', 'lawyer', 'chief_accountant', 'financer', 'secretary'] as const;
 
 type SlaSeedRule = {
   contractType: ContractType;
@@ -14,28 +14,32 @@ type SlaSeedRule = {
   slaWorkdays: number;
 };
 
+function defaultSlaWorkdays(roleCode: typeof DEFAULT_ROLES[number]): number {
+  return roleCode === 'secretary' ? 1 : 2;
+}
+
 function defaultRules(): SlaSeedRule[] {
   const expenseRoles = [...DEFAULT_ROLES];
-  const incomeStandardRoles = ['security', 'general_director'];
+  const incomeStandardRoles = [...DEFAULT_ROLES];
   const incomePsrRoles = [...DEFAULT_ROLES];
   return [
     ...expenseRoles.map((roleCode) => ({
       contractType: ContractType.EXPENSE,
       incomeSubtype: null,
       roleCode,
-      slaWorkdays: 1,
+      slaWorkdays: defaultSlaWorkdays(roleCode),
     })),
     ...incomeStandardRoles.map((roleCode) => ({
       contractType: ContractType.INCOME,
       incomeSubtype: ContractIncomeSubtype.STANDARD,
       roleCode,
-      slaWorkdays: 1,
+      slaWorkdays: defaultSlaWorkdays(roleCode),
     })),
     ...incomePsrRoles.map((roleCode) => ({
       contractType: ContractType.INCOME,
       incomeSubtype: ContractIncomeSubtype.WITH_PSR,
       roleCode,
-      slaWorkdays: 1,
+      slaWorkdays: defaultSlaWorkdays(roleCode),
     })),
   ];
 }
