@@ -440,6 +440,9 @@ export default function ContractApprovalPage() {
     contractDate: '',
     signingMethod: 'post' as 'edo' | 'post',
   });
+  const wizardInnInput = wizard.counterpartyInn.trim();
+  const isWizardInnValidLength = /^(\d{10}|\d{12})$/.test(wizardInnInput);
+  const isWizardInnInvalidLength = wizardInnInput.length > 0 && !isWizardInnValidLength;
 
   const [securityInbox, setSecurityInbox] = useState<SecurityInboxItem[]>([]);
   const [securityInboxView, setSecurityInboxView] = useState<InboxView>('active');
@@ -710,6 +713,10 @@ export default function ContractApprovalPage() {
     }
   };
 
+  const removeWizardFile = (indexToRemove: number) => {
+    setWizardFiles((files) => files.filter((_, index) => index !== indexToRemove));
+  };
+
   const runWizardChecks = async () => {
     try {
       setWizardChecking(true);
@@ -753,8 +760,8 @@ export default function ContractApprovalPage() {
     try {
       setWizardSubmitting(true);
       const typedId = wizard.counterpartyInn.trim();
-      if (!/^(\d{10}|\d{12}|\d{13}|\d{15})$/.test(typedId)) {
-        setError('Некорректный идентификатор: допустимо 10/12 (ИНН) или 13/15 (ОГРН/ОГРНИП)');
+      if (!/^(\d{10}|\d{12})$/.test(typedId)) {
+        setError('Некорректный ИНН: допустимо 10 или 12 цифр');
         return;
       }
 
@@ -844,7 +851,7 @@ export default function ContractApprovalPage() {
 
   const resolveWizardInn = async () => {
     const typedId = wizard.counterpartyInn.trim();
-    if (!/^(\d{10}|\d{12}|\d{13}|\d{15})$/.test(typedId)) return;
+    if (!/^(\d{10}|\d{12})$/.test(typedId)) return;
     if (wizardInnResolving || wizardResolvedInn === typedId) return;
     try {
       setWizardInnResolving(true);
@@ -864,7 +871,7 @@ export default function ContractApprovalPage() {
       setWizardResolvedInn(typedId);
     } catch {
       setWizardPrefill(null);
-      setError('Контрагент не найден по указанному идентификатору');
+      setError('Контрагент не найден по указанному ИНН');
     } finally {
       setWizardInnResolving(false);
     }
@@ -876,7 +883,7 @@ export default function ContractApprovalPage() {
 
   useEffect(() => {
     const typedId = wizard.counterpartyInn.trim();
-    if (!/^(\d{10}|\d{12}|\d{13}|\d{15})$/.test(typedId)) {
+    if (!/^(\d{10}|\d{12})$/.test(typedId)) {
       setWizardResolvedInn('');
       setWizardPrefill(null);
       return;
@@ -2902,10 +2909,12 @@ export default function ContractApprovalPage() {
           {wizardStep === 0 && (
             <Stack spacing={2} sx={{ mt: 1 }}>
               <TextField
-                label="ИНН/ОГРН контрагента"
+                label="ИНН контрагента"
                 value={wizard.counterpartyInn}
-                onChange={(e) => setWizard({ ...wizard, counterpartyInn: e.target.value.replace(/\D/g, '').slice(0, 15) })}
+                onChange={(e) => setWizard({ ...wizard, counterpartyInn: e.target.value.replace(/\D/g, '').slice(0, 12) })}
                 onBlur={onWizardInnBlur}
+                error={isWizardInnInvalidLength}
+                helperText={isWizardInnInvalidLength ? 'Введен неправильный ИНН: должно быть 10 или 12 цифр' : ' '}
               />
               <TextField
                 label="Наименование (контрагент)"
@@ -2918,7 +2927,7 @@ export default function ContractApprovalPage() {
               {wizardInnResolving && (
                 <Typography variant="body2" color="text.secondary">Поиск контрагента по ИНН...</Typography>
               )}
-              {!wizardInnResolving && wizard.counterpartyInn.trim().length > 0 && !wizardPrefill?.counterpartyName && (
+              {!wizardInnResolving && isWizardInnValidLength && !wizardPrefill?.counterpartyName && (
                 <Typography variant="body2" color="warning.main">
                   Контрагент пока не определен. Нажмите «Проверить» для повторной проверки.
                 </Typography>
@@ -3105,9 +3114,26 @@ export default function ContractApprovalPage() {
                     Новые файлы к отправке:
                   </Typography>
                   {wizardFiles.map((file, idx) => (
-                    <Typography key={`${file.name}-${idx}`} variant="body2">
-                      {idx + 1}. {file.name}
-                    </Typography>
+                    <Stack
+                      key={`${file.name}-${file.size}-${idx}`}
+                      direction="row"
+                      spacing={1}
+                      alignItems="center"
+                      justifyContent="space-between"
+                      sx={{ py: 0.25 }}
+                    >
+                      <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>
+                        {idx + 1}. {file.name}
+                      </Typography>
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={() => removeWizardFile(idx)}
+                        disabled={wizardSubmitting}
+                      >
+                        Удалить
+                      </Button>
+                    </Stack>
                   ))}
                 </Box>
               )}
@@ -3125,7 +3151,7 @@ export default function ContractApprovalPage() {
               variant="contained"
               onClick={async () => { setWizardStep(4); await runWizardChecks(); }}
               disabled={
-                !/^(\d{10}|\d{12}|\d{13}|\d{15})$/.test(wizard.counterpartyInn) ||
+                !isWizardInnValidLength ||
                 wizardInnResolving ||
                 wizardSubmitting
               }

@@ -89,6 +89,13 @@ const getDepartmentsForLocation = (location: PreviewLocation): Department[] =>
 const isPersonnelDepartment = (department: Department): boolean =>
   department === 'Диспетчера' || department === 'Курьеры' || department === 'Автослесари';
 
+const getPersonnelNameLabel = (department: Department, location: PreviewLocation): string => {
+  if (department === 'Диспетчера') return 'Диспетчер';
+  if (department === 'Курьеры') return location === 'ktk_mow' ? 'Механик' : 'Оперативник';
+  if (department === 'Автослесари') return 'Автослесарь';
+  return 'Первый водитель';
+};
+
 type PersonRow = {
   id: string;
   name: string;
@@ -3051,15 +3058,7 @@ export default function OperationsPreview() {
           <div className="ops-modal__content">
             <div className="ops-modal__title">Редактировать строку</div>
             <label className="ops-control">
-              <span>
-                {editPerson.department === 'Диспетчера'
-                  ? 'Диспетчер'
-                  : editPerson.department === 'Курьеры'
-                    ? 'Оперативник'
-                    : editPerson.department === 'Автослесари'
-                      ? 'Автослесарь'
-                    : 'Первый водитель'}
-              </span>
+              <span>{getPersonnelNameLabel(editPerson.department, activeLocation)}</span>
               <input
                 type="text"
                 value={editPerson.name}

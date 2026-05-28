@@ -617,7 +617,7 @@ const DashboardLayout = () => {
                         onClick={() => handleNavigate(`/operations-preview?location=${isKtkMowManager ? 'ktk_mow' : 'ktk_vvo'}&section=couriers`)}
                         sx={{ py: 0.5, minHeight: 32 }}
                       >
-                        <ListItemText primary="Оперативники" primaryTypographyProps={{ fontSize: 13 }} />
+                        <ListItemText primary={isKtkMowManager ? 'Механики' : 'Оперативники'} primaryTypographyProps={{ fontSize: 13 }} />
                       </ListItemButton>
                     </ListItem>
                     <ListItem disablePadding sx={{ pl: 6 }}>
@@ -850,7 +850,7 @@ const DashboardLayout = () => {
                                     onClick={() => handleNavigate('/operations-preview?location=ktk_mow&section=couriers')}
                                     sx={{ py: 0.5, minHeight: 30 }}
                                   >
-                                    <ListItemText primary="Оперативники" primaryTypographyProps={{ fontSize: 13 }} />
+                                    <ListItemText primary="Механики" primaryTypographyProps={{ fontSize: 13 }} />
                                   </ListItemButton>
                                 </ListItem>
                                 {isAdmin && (
@@ -1023,7 +1023,7 @@ const DashboardLayout = () => {
                       : location.pathname === '/operations-preview' && location.search.includes('section=dispatchers')
                       ? 'График работы - Диспетчера'
                       : location.pathname === '/operations-preview' && location.search.includes('section=couriers')
-                      ? 'График работы - Оперативники'
+                      ? location.search.includes('location=ktk_mow') ? 'График работы - Механики' : 'График работы - Оперативники'
                       : location.pathname === '/operations-preview' && location.search.includes('section=mechanics')
                       ? 'График работы - Автослесарь'
                       : location.pathname === '/operations-preview' && location.search.includes('section=efficiency')

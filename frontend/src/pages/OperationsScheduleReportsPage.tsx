@@ -95,7 +95,8 @@ export default function OperationsScheduleReportsPage() {
     .filter((department) => departments.includes(department.value))
     .flatMap((department) => sectionOptionsByDepartment[department.value])
     .filter((option, index, options) => options.findIndex((item) => item.value === option.value) === index)
-    .filter((option) => !(city === 'mow' && option.value === 'auto'));
+    .filter((option) => !(city === 'mow' && option.value === 'auto'))
+    .map((option) => (city === 'mow' && option.value === 'couriers' ? { ...option, label: 'Механики' } : option));
   const availableSectionValues = availableSections.map((item) => item.value);
 
   const effectiveDepartments = departments.filter((department) => availableDepartmentValues.includes(department));
