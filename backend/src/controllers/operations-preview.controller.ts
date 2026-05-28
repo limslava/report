@@ -84,6 +84,9 @@ const SECTION_LABEL: Record<PreviewSection, string> = {
   efficiency: 'Эффективность',
 };
 
+const getSectionLabel = (section: PreviewSection, location: PreviewLocation): string =>
+  location === 'ktk_mow' && section === 'couriers' ? 'Механики' : SECTION_LABEL[section];
+
 const WEEKDAY_LABELS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const DEFAULT_PREVIEW_PEOPLE: PersonRow[] = [];
 
@@ -791,7 +794,8 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
   sheet.getColumn(totalCol).width = isPersonnel ? 18 : 12;
 
   sheet.mergeCells(1, 1, 1, totalCol);
-  sheet.getCell(1, 1).value = `График работы - ${SECTION_LABEL[section]} (${mode === 'plan' ? 'План' : 'Факт'})`;
+  const sectionLabel = getSectionLabel(section, location);
+  sheet.getCell(1, 1).value = `График работы - ${sectionLabel} (${mode === 'plan' ? 'План' : 'Факт'})`;
   sheet.getCell(1, 1).font = { bold: true, size: 13, name: 'Arial', color: { argb: COLORS.textDark } };
   sheet.getCell(1, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.titleBg } };
   sheet.getCell(1, 1).alignment = { horizontal: 'left', vertical: 'middle' };
@@ -1026,7 +1030,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
   sheet.views = [{ state: 'frozen', ySplit: startRow + 1, xSplit: dayStartCol - 1 }];
 
   const buffer = await workbook.xlsx.writeBuffer();
-  const filename = `График работы - ${SECTION_LABEL[section]} - ${String(month).padStart(2, '0')}.${year}.xlsx`;
+  const filename = `График работы - ${sectionLabel} - ${String(month).padStart(2, '0')}.${year}.xlsx`;
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', buildContentDisposition(filename));
   res.send(Buffer.from(buffer));
@@ -1036,6 +1040,7 @@ type RenderScheduleWorksheetParams = {
   workbook: ExcelJS.Workbook;
   sheetName: string;
   tabColor: string;
+  titleLabel: string;
   section: Exclude<PreviewSection, 'efficiency'>;
   department: Department;
   year: number;
@@ -1050,6 +1055,7 @@ const renderOperationsScheduleWorksheet = ({
   workbook,
   sheetName,
   tabColor,
+  titleLabel,
   section,
   department,
   year,
@@ -1116,7 +1122,7 @@ const renderOperationsScheduleWorksheet = ({
   sheet.getColumn(totalCol).width = isPersonnel ? 18 : 12;
 
   sheet.mergeCells(1, 1, 1, totalCol);
-  sheet.getCell(1, 1).value = `График работы - ${SECTION_LABEL[section]} (${mode === 'plan' ? 'План' : 'Факт'})`;
+  sheet.getCell(1, 1).value = `График работы - ${titleLabel} (${mode === 'plan' ? 'План' : 'Факт'})`;
   sheet.getCell(1, 1).font = { bold: true, size: 13, name: 'Arial', color: { argb: COLORS.textDark } };
   sheet.getCell(1, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.titleBg } };
   sheet.getCell(1, 1).alignment = { horizontal: 'left', vertical: 'middle' };
@@ -1380,15 +1386,6 @@ const REPORT_MONTH_NAMES = [
   'декабрь',
 ];
 
-const REPORT_SECTION_SHEET_LABEL: Record<PreviewSection, string> = {
-  containers: 'Контейнеровозы',
-  auto: 'Автовозы',
-  dispatchers: 'Диспетчера',
-  couriers: 'Оперативники',
-  mechanics: 'Автослесарь',
-  efficiency: 'Эффективность',
-};
-
 const parseReportCity = (value: unknown, locations: PreviewLocation[]): 'vvo' | 'mow' => {
   if (value === 'mow') return 'mow';
   if (value === 'vvo') return 'vvo';
@@ -1453,11 +1450,13 @@ export const downloadOperationsPreviewReport = async (req: Request, res: Respons
 
       for (const mode of sectionModes) {
         const modeLabel = section === 'containers' || section === 'mechanics' ? ` (${mode === 'plan' ? 'план' : 'факт'})` : '';
-        const sheetTitle = `${REPORT_LOCATION_PREFIX[location]} - ${REPORT_SECTION_SHEET_LABEL[section]}${modeLabel}`;
+        const sectionLabel = getSectionLabel(section, location);
+        const sheetTitle = `${REPORT_LOCATION_PREFIX[location]} - ${sectionLabel}${modeLabel}`;
         renderOperationsScheduleWorksheet({
           workbook,
           sheetName: sheetTitle,
           tabColor: REPORT_SHEET_TAB_COLOR_BY_LOCATION[location],
+          titleLabel: sectionLabel,
           section: section as Exclude<PreviewSection, 'efficiency'>,
           department,
           year,
