@@ -171,9 +171,16 @@ export class PlanningV2ReportService {
   private readonly valuesRepo = AppDataSource.getRepository(PlanningDailyValue);
   private readonly monthlyPlanRepo = AppDataSource.getRepository(PlanningMonthlyPlan);
   private readonly operationsPreviewRepo = AppDataSource.getRepository(OperationsPreviewState);
-  private readonly operationsPreviewScopeKey = 'ktk_vvo_preview_v1';
+  private readonly operationsPreviewScopeBySegment: Partial<Record<PlanningSegmentCode, string>> = {
+    [PlanningSegmentCode.KTK_VVO]: 'ktk_vvo_preview_v1',
+    [PlanningSegmentCode.KTK_MOW]: 'ktk_mow_preview_v1',
+  };
 
-  private isKtkVvoTrucksOnLineAutoFromPreview(year: number, month: number): boolean {
+  private isKtkTrucksOnLineAutoFromPreview(segmentCode: PlanningSegmentCode, year: number, month: number): boolean {
+    if (segmentCode !== PlanningSegmentCode.KTK_VVO && segmentCode !== PlanningSegmentCode.KTK_MOW) {
+      return false;
+    }
+
     return year > 2026 || (year === 2026 && month >= 5);
   }
 
@@ -207,9 +214,12 @@ export class PlanningV2ReportService {
     return [];
   }
 
-  private async resolveKtkVvoTrucksOnLineFromPreview(year: number, month: number, daysInMonth: number): Promise<number[] | null> {
+  private async resolveKtkTrucksOnLineFromPreview(segmentCode: PlanningSegmentCode, year: number, month: number, daysInMonth: number): Promise<number[] | null> {
+    const scopeKey = this.operationsPreviewScopeBySegment[segmentCode];
+    if (!scopeKey) return null;
+
     const row = await this.operationsPreviewRepo.findOne({
-      where: { scopeKey: this.operationsPreviewScopeKey },
+      where: { scopeKey },
     });
     if (!row) return null;
 
@@ -322,11 +332,12 @@ export class PlanningV2ReportService {
       metricValues[day - 1] = row.value === null ? null : Number(row.value);
     }
 
-    if (segment.code === PlanningSegmentCode.KTK_VVO && this.isKtkVvoTrucksOnLineAutoFromPreview(params.year, params.month)) {
-      const previewTotals = await this.resolveKtkVvoTrucksOnLineFromPreview(params.year, params.month, daysInMonth);
+    if (this.isKtkTrucksOnLineAutoFromPreview(segment.code, params.year, params.month)) {
+      const prefix = segment.code === PlanningSegmentCode.KTK_MOW ? 'ktk_mow' : 'ktk_vvo';
+      const previewTotals = await this.resolveKtkTrucksOnLineFromPreview(segment.code, params.year, params.month, daysInMonth);
       if (previewTotals) {
         valuesByMetric.set(
-          'ktk_vvo_fact_trucks_on_line',
+          `${prefix}_fact_trucks_on_line`,
           previewTotals.map((value) => Number(value))
         );
       }
@@ -384,9 +395,11 @@ export class PlanningV2ReportService {
         isEditable:
           metric.isEditable
           && !(
-            segment.code === PlanningSegmentCode.KTK_VVO
-            && metric.code === 'ktk_vvo_fact_trucks_on_line'
-            && this.isKtkVvoTrucksOnLineAutoFromPreview(params.year, params.month)
+            this.isKtkTrucksOnLineAutoFromPreview(segment.code, params.year, params.month)
+            && (
+              metric.code === 'ktk_vvo_fact_trucks_on_line'
+              || metric.code === 'ktk_mow_fact_trucks_on_line'
+            )
           ),
         aggregation: metric.aggregation,
         dayValues,

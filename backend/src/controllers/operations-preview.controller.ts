@@ -997,6 +997,9 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
         { code: 'О', text: 'отпуск', bg: COLORS.cellVacation, color: 'FF4A2C8A' },
         { code: 'В', text: 'выходной', bg: COLORS.cellWeekend, color: 'FF7B2323' },
         { code: 'Б', text: 'больничный', bg: COLORS.cellSick, color: 'FF0F385E' },
+        ...(section === 'mechanics' && mode === 'fact'
+          ? [{ code: 'Н', text: 'нет сотрудника', bg: COLORS.cellNoDriver, color: 'FF1F2937' }]
+          : []),
       ]
     : [
         { code: '1', text: 'на линии', bg: COLORS.cellWork, color: 'FF0F172A' },
@@ -1323,6 +1326,9 @@ const renderOperationsScheduleWorksheet = ({
         { code: 'О', text: 'отпуск', bg: COLORS.cellVacation, color: 'FF4A2C8A' },
         { code: 'В', text: 'выходной', bg: COLORS.cellWeekend, color: 'FF7B2323' },
         { code: 'Б', text: 'больничный', bg: COLORS.cellSick, color: 'FF0F385E' },
+        ...(section === 'mechanics' && mode === 'fact'
+          ? [{ code: 'Н', text: 'нет сотрудника', bg: COLORS.cellNoDriver, color: 'FF1F2937' }]
+          : []),
       ]
     : [
         { code: '1', text: 'на линии', bg: COLORS.cellWork, color: 'FF0F172A' },

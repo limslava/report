@@ -81,6 +81,13 @@
   - Since **May 2026**, metric `ТС на линии (Факт)` in daily KTK VVO report is
     auto-filled from `График работы -> Контейнеровозы -> Факт` (daily `Итого`)
     and is no longer editable manually.
+  - Extended the same `ТС на линии (Факт)` auto-fill to daily KTK Moscow report:
+    `KTK_MOW` now uses `График работы -> КТК Москва -> Контейнеровозы -> Факт`
+    and blocks manual edits of `ktk_mow_fact_trucks_on_line`.
+  - Added fact-mode mechanic status `Н — нет сотрудника` for `Автослесарь`; it is
+    shown in the UI legend and in both single-section and multi-sheet Excel exports.
+  - Fixed KTK Moscow head permissions: `Руководитель КТК Москва` can edit the
+    `KTK_MOW` daily planning segment, matching the frontend edit access.
   - Calendar unread counter now updates without page reload:
     - WebSocket event `notes:unread-refresh`
     - global unread store (Zustand)

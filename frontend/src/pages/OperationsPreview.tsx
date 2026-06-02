@@ -516,7 +516,9 @@ export default function OperationsPreview() {
   const canEditRows = !isHrScheduleRole || canManageVvoMechanics;
   const canAddRows = canEditRows || (isHrScheduleRole && activeLocation === 'garage_vvo' && addDepartment === 'Автослесари');
   const visibleCellCodes: CellCode[] = isPersonnelSection
-    ? ['W', 'V', 'O', 'B']
+    ? filter === 'Автослесари' && effectiveMode === 'fact'
+      ? ['W', 'V', 'O', 'B', 'N']
+      : ['W', 'V', 'O', 'B']
     : filter === 'Авто'
       ? ['W', 'O', 'V', 'B', 'H', 'S', 'R', 'N']
       : ['W', 'O', 'V', 'B', 'H', 'R', 'N'];
@@ -2900,6 +2902,8 @@ export default function OperationsPreview() {
                     ? 'отпуск'
                     : CELL_META[code].code === 'Б'
                       ? 'больничный'
+                      : CELL_META[code].code === 'Н' && filter === 'Автослесари'
+                        ? 'нет сотрудника'
                       : 'выходной'
                 : code === 'H' && filter === 'Авто'
                   ? 'Погрузка'
