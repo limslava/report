@@ -20,7 +20,7 @@ import { downloadBlob } from '../utils/download';
 
 type ReportSection = Exclude<OperationsPreviewSection, 'efficiency'>;
 type ReportCity = 'vvo' | 'mow';
-type ReportDepartment = 'dispatch' | 'garage';
+type ReportDepartment = 'dispatch' | 'garage' | 'security';
 
 type SelectOption<T extends string> = {
   value: T;
@@ -31,6 +31,7 @@ const departmentOptionsByCity: Record<ReportCity, Array<SelectOption<ReportDepar
   vvo: [
     { value: 'dispatch', label: 'Диспетчерский отдел' },
     { value: 'garage', label: 'Гараж' },
+    { value: 'security', label: 'Служба Безопасности' },
   ],
   mow: [
     { value: 'dispatch', label: 'Диспетчерский отдел' },
@@ -46,6 +47,9 @@ const sectionOptionsByDepartment: Record<ReportDepartment, Array<SelectOption<Re
   ],
   garage: [
     { value: 'mechanics', label: 'Автослесарь' },
+  ],
+  security: [
+    { value: 'guards', label: 'Сотрудник охраны' },
   ],
 };
 
@@ -83,8 +87,8 @@ export default function OperationsScheduleReportsPage() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [city, setCity] = useState<ReportCity>('vvo');
-  const [departments, setDepartments] = useState<ReportDepartment[]>(['dispatch', 'garage']);
-  const [sections, setSections] = useState<ReportSection[]>(['containers', 'auto', 'dispatchers', 'couriers', 'mechanics']);
+  const [departments, setDepartments] = useState<ReportDepartment[]>(['dispatch', 'garage', 'security']);
+  const [sections, setSections] = useState<ReportSection[]>(['containers', 'auto', 'dispatchers', 'couriers', 'mechanics', 'guards']);
   const [modes, setModes] = useState<Array<'plan' | 'fact'>>(['fact', 'plan']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,15 +109,19 @@ export default function OperationsScheduleReportsPage() {
 
   const locations: OperationsPreviewLocation[] = effectiveDepartments.map((department) => {
     if (city === 'mow') return 'ktk_mow';
-    return department === 'garage' ? 'garage_vvo' : 'ktk_vvo';
+    if (department === 'garage') return 'garage_vvo';
+    if (department === 'security') return 'security_vvo';
+    return 'ktk_vvo';
   });
 
   const selectedSheetsCount = locations.reduce((count, locationValue) => {
     return count + effectiveSections.reduce((sectionCount, sectionValue) => {
       if (locationValue === 'ktk_mow' && (sectionValue === 'auto' || sectionValue === 'mechanics')) return sectionCount;
+      if (locationValue === 'ktk_mow' && sectionValue === 'guards') return sectionCount;
       if (locationValue === 'garage_vvo' && sectionValue !== 'mechanics') return sectionCount;
-      if (locationValue === 'ktk_vvo' && sectionValue === 'mechanics') return sectionCount;
-      return sectionCount + (sectionValue === 'containers' || sectionValue === 'mechanics' ? effectiveModes.length : 1);
+      if (locationValue === 'security_vvo' && sectionValue !== 'guards') return sectionCount;
+      if (locationValue === 'ktk_vvo' && (sectionValue === 'mechanics' || sectionValue === 'guards')) return sectionCount;
+      return sectionCount + (sectionValue === 'containers' || sectionValue === 'mechanics' || sectionValue === 'guards' ? effectiveModes.length : 1);
     }, 0);
   }, 0);
 
@@ -127,8 +135,8 @@ export default function OperationsScheduleReportsPage() {
       setDepartments(['dispatch']);
       setSections(['containers', 'dispatchers', 'couriers']);
     } else {
-      setDepartments(['dispatch', 'garage']);
-      setSections(['containers', 'auto', 'dispatchers', 'couriers', 'mechanics']);
+      setDepartments(['dispatch', 'garage', 'security']);
+      setSections(['containers', 'auto', 'dispatchers', 'couriers', 'mechanics', 'guards']);
     }
   };
 
@@ -147,6 +155,9 @@ export default function OperationsScheduleReportsPage() {
       const filtered = prev.filter((section) => nextAvailableSections.includes(section));
       if (department === 'garage' && !isSelected && !filtered.includes('mechanics')) {
         return [...filtered, 'mechanics'];
+      }
+      if (department === 'security' && !isSelected && !filtered.includes('guards')) {
+        return [...filtered, 'guards'];
       }
       return filtered;
     });
@@ -244,7 +255,7 @@ export default function OperationsScheduleReportsPage() {
             {departments.includes('dispatch') && (
               <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 4, rowGap: 0.5 }}>
                 {availableSections
-                  .filter((item) => item.value !== 'mechanics')
+                  .filter((item) => item.value !== 'mechanics' && item.value !== 'guards')
                   .map((item) => (
                     <FormControlLabel
                       key={item.value}
@@ -271,6 +282,16 @@ export default function OperationsScheduleReportsPage() {
                   )}
                   label="Автослесарь"
                   sx={{ minWidth: 190, opacity: departments.includes('garage') ? 1 : 0.55 }}
+                />
+                <FormControlLabel
+                  control={(
+                    <Checkbox
+                      checked={departments.includes('security')}
+                      disabled
+                    />
+                  )}
+                  label="Сотрудник охраны"
+                  sx={{ minWidth: 190, opacity: departments.includes('security') ? 1 : 0.55 }}
                 />
               </Box>
             )}

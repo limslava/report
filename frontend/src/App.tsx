@@ -30,6 +30,9 @@ function App() {
   const isAuthenticated = !!token;
   const defaultAuthenticatedRoute = (() => {
     if (canViewTechDashboard(user?.role)) return '/sw-tech-dashboard';
+    if (user?.role === 'security') {
+      return '/operations-preview?location=security_vvo&section=guards';
+    }
     if (user?.role === 'garage_head' || user?.role === 'garage_head_vvo') {
       return '/operations-preview?location=garage_vvo&section=mechanics';
     }

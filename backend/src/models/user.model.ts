@@ -34,6 +34,7 @@ export class User {
     | 'manager_extra'
     | 'manager_to'
     | 'financer'
+    | 'security'
     | 'director'
     | 'admin';
 

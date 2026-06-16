@@ -95,6 +95,7 @@ const DashboardLayout = () => {
   const [isMoscowDispatchSubmenuOpen, setIsMoscowDispatchSubmenuOpen] = useState(false);
   const [isWorkGarageSubmenuOpen, setIsWorkGarageSubmenuOpen] = useState(false);
   const [isMoscowGarageSubmenuOpen, setIsMoscowGarageSubmenuOpen] = useState(false);
+  const [isWorkSecuritySubmenuOpen, setIsWorkSecuritySubmenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
@@ -143,15 +144,19 @@ const DashboardLayout = () => {
   const isKtkDispatchRole = isKtkVvoManager || isKtkMowManager;
   const isHrScheduleRole = user?.role === 'head_hr' || user?.role === 'hr_specialist';
   const isGarageHead = user?.role === 'garage_head' || user?.role === 'garage_head_vvo';
+  const isSecurityHead = user?.role === 'security';
   const isAdmin = canAccessAdmin(user?.role);
   const canUseWorkSchedule = canAccessOperationsPreview(user?.role);
-  const canViewPlansMenu = !isHrScheduleRole && !isGarageHead;
+  const canViewPlansMenu = !isHrScheduleRole && !isGarageHead && !isSecurityHead;
   const canViewVvoSchedule = isAdmin || isHrScheduleRole || isKtkVvoManager;
   const canViewMoscowSchedule = isAdmin || isHrScheduleRole || isKtkMowManager;
   const canViewVvoGarageSchedule = isAdmin || isHrScheduleRole || isGarageHead;
+  const canViewVvoSecuritySchedule = isAdmin || isHrScheduleRole || isSecurityHead;
   const canViewMoscowGarageSchedule = false;
   const defaultScheduleRoute = isGarageHead
     ? '/operations-preview?location=garage_vvo&section=mechanics'
+    : isSecurityHead
+      ? '/operations-preview?location=security_vvo&section=guards'
     : isKtkMowManager
       ? '/operations-preview?location=ktk_mow&section=containers'
       : '/operations-preview?location=ktk_vvo&section=containers';
@@ -639,7 +644,7 @@ const DashboardLayout = () => {
             )}
           </>
         )}
-        {canUseWorkSchedule && (isAdmin || isHrScheduleRole || isGarageHead) && (
+        {canUseWorkSchedule && (isAdmin || isHrScheduleRole || isGarageHead || isSecurityHead) && (
           <>
             <ListItem disablePadding>
               <Tooltip title={!isPinnedOpen ? 'График работы' : ''} placement="right">
@@ -658,7 +663,7 @@ const DashboardLayout = () => {
 
             {isPinnedOpen && isAdminWorkSubmenuOpen && (
               <>
-                {(canViewVvoSchedule || canViewVvoGarageSchedule) && (
+                {(canViewVvoSchedule || canViewVvoGarageSchedule || canViewVvoSecuritySchedule) && (
                   <>
                     <ListItem disablePadding sx={{ pl: 4 }}>
                       <ListItemButton
@@ -764,6 +769,32 @@ const DashboardLayout = () => {
                                   sx={{ py: 0.5, minHeight: 30 }}
                                 >
                                   <ListItemText primary="Автослесарь" primaryTypographyProps={{ fontSize: 13 }} />
+                                </ListItemButton>
+                              </ListItem>
+                            )}
+                          </>
+                        )}
+
+                        {canViewVvoSecuritySchedule && (
+                          <>
+                            <ListItem disablePadding sx={{ pl: 6 }}>
+                              <ListItemButton
+                                selected={location.pathname === '/operations-preview' && location.search.includes('location=security_vvo')}
+                                onClick={() => setIsWorkSecuritySubmenuOpen((prev) => !prev)}
+                                sx={{ py: 0.5, minHeight: 32 }}
+                              >
+                                <ListItemText primary="Служба Безопасности" primaryTypographyProps={{ fontSize: 13 }} />
+                                {isWorkSecuritySubmenuOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+                              </ListItemButton>
+                            </ListItem>
+                            {isWorkSecuritySubmenuOpen && (
+                              <ListItem disablePadding sx={{ pl: 8 }}>
+                                <ListItemButton
+                                  selected={location.pathname === '/operations-preview' && location.search.includes('location=security_vvo') && location.search.includes('section=guards')}
+                                  onClick={() => handleNavigate('/operations-preview?location=security_vvo&section=guards')}
+                                  sx={{ py: 0.5, minHeight: 30 }}
+                                >
+                                  <ListItemText primary="Сотрудник охраны" primaryTypographyProps={{ fontSize: 13 }} />
                                 </ListItemButton>
                               </ListItem>
                             )}
@@ -944,6 +975,8 @@ const DashboardLayout = () => {
                       ? location.search.includes('location=ktk_mow') ? 'График работы - Механики' : 'График работы - Оперативники'
                       : location.pathname === '/operations-preview' && location.search.includes('section=mechanics')
                       ? 'График работы - Автослесарь'
+                      : location.pathname === '/operations-preview' && location.search.includes('section=guards')
+                      ? 'График работы - Сотрудник охраны'
                       : location.pathname === '/operations-preview' && location.search.includes('section=efficiency')
                       ? 'График работы - Эффективность'
                       : location.pathname === '/plans/totals'

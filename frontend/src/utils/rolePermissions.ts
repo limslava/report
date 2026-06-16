@@ -38,7 +38,8 @@ export function canAccessOperationsPreview(role?: string | null): boolean {
     role === 'head_hr' ||
     role === 'hr_specialist' ||
     role === 'garage_head_vvo' ||
-    role === 'garage_head'
+    role === 'garage_head' ||
+    role === 'security'
   );
 }
 
