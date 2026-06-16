@@ -198,8 +198,8 @@ export const getSmtpConfig = () => api.get('/smtp-config');
 export const saveSmtpConfig = (data: any) => api.post('/smtp-config', data);
 export const testSmtpConfig = () => api.post('/smtp-config/test');
 
-export type OperationsPreviewLocation = 'ktk_vvo' | 'ktk_mow' | 'garage_vvo' | 'garage_mow';
-export type OperationsPreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'mechanics' | 'efficiency';
+export type OperationsPreviewLocation = 'ktk_vvo' | 'ktk_mow' | 'garage_vvo' | 'garage_mow' | 'security_vvo';
+export type OperationsPreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'mechanics' | 'guards' | 'efficiency';
 
 export const getOperationsPreviewState = (params?: { location?: OperationsPreviewLocation; section?: OperationsPreviewSection }) =>
   api.get('/operations-preview/state', { params });

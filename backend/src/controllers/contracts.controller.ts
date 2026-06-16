@@ -43,7 +43,7 @@ const execFileAsync = promisify(execFile);
 
 const ROLE_LABELS: Record<string, string> = {
   initiator: 'Инициатор',
-  security: 'СБ',
+  security: 'Руководитель СБ',
   lawyer: 'Юрист',
   chief_accountant: 'Главный бухгалтер',
   financer: 'Финансовый директор',
@@ -1060,7 +1060,7 @@ export const listContracts = async (_req: Request, res: Response, next: NextFunc
         let statusDetail: string | null = null;
         if (contract.status === ContractStatus.IN_APPROVAL) {
           if (hasParallelRoute && !securityStep?.decision) {
-            statusDetail = 'Проверка СБ';
+            statusDetail = 'Проверка руководителя СБ';
             currentStageLabel = statusDetail;
           } else if (hasParallelRoute && secretaryStep?.assignedAt && !secretaryStep.decision) {
             statusDetail = hasParallelRemarks ? 'На подписи, есть замечания' : 'На подписи';
@@ -1073,7 +1073,7 @@ export const listContracts = async (_req: Request, res: Response, next: NextFunc
           }
         } else if (contract.status === ContractStatus.REJECTED && lastDecided?.decision === ContractApprovalDecision.REJECT) {
           if (lastDecided.roleCode === 'security') {
-            statusDetail = 'Отклонено СБ';
+            statusDetail = 'Отклонено руководителем СБ';
           } else {
             statusDetail = `Отклонено: ${ROLE_LABELS[lastDecided.roleCode] ?? lastDecided.roleCode}`;
           }
@@ -1952,7 +1952,7 @@ export const securityVisaDecision = async (req: Request, res: Response, next: Ne
       throw error;
     }
     if (contract.status !== ContractStatus.IN_APPROVAL) {
-      const error: any = new Error('Изменить визу СБ можно только пока договор находится на согласовании');
+      const error: any = new Error('Изменить визу руководителя СБ можно только пока договор находится на согласовании');
       error.statusCode = 400;
       throw error;
     }
@@ -1962,7 +1962,7 @@ export const securityVisaDecision = async (req: Request, res: Response, next: Ne
     const securityStep = steps.find((s) => s.roleCode === 'security') ?? null;
     const isCurrentSecurityStep = Boolean(currentStep && securityStep && currentStep.id === securityStep.id);
     if (!securityStep || (!securityStep.decision && !isCurrentSecurityStep)) {
-      const error: any = new Error('Сейчас нет активного шага СБ');
+      const error: any = new Error('Сейчас нет активного шага руководителя СБ');
       error.statusCode = 400;
       throw error;
     }

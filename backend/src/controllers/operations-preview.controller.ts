@@ -11,6 +11,7 @@ const OPERATIONS_PREVIEW_SCOPE_BY_LOCATION = {
   ktk_mow: 'ktk_mow_preview_v1',
   garage_vvo: 'garage_preview_v1',
   garage_mow: 'garage_mow_preview_v1',
+  security_vvo: 'security_preview_v1',
 } as const;
 
 const isValidFilter = (value: unknown): value is 'Все' | Department =>
@@ -19,12 +20,13 @@ const isValidFilter = (value: unknown): value is 'Все' | Department =>
   value === 'Авто' ||
   value === 'Диспетчера' ||
   value === 'Курьеры' ||
-  value === 'Автослесари';
+  value === 'Автослесари' ||
+  value === 'Сторожа';
 
 type PreviewLocation = keyof typeof OPERATIONS_PREVIEW_SCOPE_BY_LOCATION;
-type PreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'mechanics' | 'efficiency';
+type PreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'mechanics' | 'guards' | 'efficiency';
 type PreviewMode = 'plan' | 'fact';
-type Department = 'Контейнеры' | 'Авто' | 'Диспетчера' | 'Курьеры' | 'Автослесари';
+type Department = 'Контейнеры' | 'Авто' | 'Диспетчера' | 'Курьеры' | 'Автослесари' | 'Сторожа';
 type CellCode = 'W' | 'O' | 'B' | 'H' | 'S' | 'R' | 'N' | 'V' | 'E';
 type OverrideScopeKey = `${PreviewMode}|${string}`;
 type SortField = 'manual' | 'name' | 'plate';
@@ -72,6 +74,7 @@ const DEPARTMENT_BY_SECTION: Record<PreviewSection, Department> = {
   dispatchers: 'Диспетчера',
   couriers: 'Курьеры',
   mechanics: 'Автослесари',
+  guards: 'Сторожа',
   efficiency: 'Контейнеры',
 };
 
@@ -81,6 +84,7 @@ const SECTION_LABEL: Record<PreviewSection, string> = {
   dispatchers: 'Диспетчера',
   couriers: 'Оперативники',
   mechanics: 'Автослесарь',
+  guards: 'Сотрудник охраны',
   efficiency: 'Эффективность',
 };
 
@@ -161,7 +165,7 @@ const mergePreviewPayload = (
 };
 
 const isValidLocation = (value: unknown): value is PreviewLocation =>
-  value === 'ktk_vvo' || value === 'ktk_mow' || value === 'garage_vvo' || value === 'garage_mow';
+  value === 'ktk_vvo' || value === 'ktk_mow' || value === 'garage_vvo' || value === 'garage_mow' || value === 'security_vvo';
 
 const parseLocation = (value: unknown): PreviewLocation => {
   if (value === 'garage') return 'garage_vvo';
@@ -174,12 +178,14 @@ const isValidSection = (value: unknown): value is PreviewSection =>
   value === 'dispatchers' ||
   value === 'couriers' ||
   value === 'mechanics' ||
+  value === 'guards' ||
   value === 'efficiency';
 
 const isEfficiencyOnlyViewer = (role: unknown): boolean => role === 'director' || role === 'general_director' || role === 'financer';
 
 const isAllowedSectionForLocation = (location: PreviewLocation, section: PreviewSection): boolean => {
   if (location === 'garage_vvo' || location === 'garage_mow') return section === 'mechanics';
+  if (location === 'security_vvo') return section === 'guards';
   if (location === 'ktk_mow') return section === 'containers' || section === 'dispatchers' || section === 'couriers' || section === 'efficiency';
   return section === 'containers' || section === 'auto' || section === 'dispatchers' || section === 'couriers' || section === 'efficiency';
 };
@@ -189,6 +195,7 @@ const canAccessLocationSection = (role: unknown, location: PreviewLocation, sect
   if (role === 'admin') return true;
   if ((role === 'head_hr' || role === 'hr_specialist') && section !== 'efficiency') return true;
   if (role === 'garage_head' || role === 'garage_head_vvo') return location === 'garage_vvo' && section === 'mechanics';
+  if (role === 'security') return location === 'security_vvo' && section === 'guards';
   if (role === 'manager_ktk_vvo' || role === 'head_ktk_vvo') return location === 'ktk_vvo';
   if (role === 'manager_ktk_mow' || role === 'head_ktk_mow') return location === 'ktk_mow';
   if (isEfficiencyOnlyViewer(role)) return (location === 'ktk_vvo' || location === 'ktk_mow') && section === 'efficiency';
@@ -484,12 +491,12 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
   const monthValue = `${year}-${String(month).padStart(2, '0')}`;
 
   const requestedMode: PreviewMode = req.query.mode === 'plan' ? 'plan' : 'fact';
-  const canUseMechanicPlan = section === 'mechanics' && (
+  const canUsePersonnelPlan = (section === 'mechanics' || section === 'guards') && (
     req.user?.role === 'admin'
     || req.user?.role === 'head_hr'
     || req.user?.role === 'hr_specialist'
   );
-  const mode: PreviewMode = section === 'containers' || canUseMechanicPlan ? requestedMode : 'fact';
+  const mode: PreviewMode = section === 'containers' || canUsePersonnelPlan ? requestedMode : 'fact';
 
   const sortField: SortField = isValidSortField(req.query.sortField) ? req.query.sortField : 'manual';
   const sortDirection: SortDirection = isValidSortDirection(req.query.sortDirection) ? req.query.sortDirection : 'asc';
@@ -752,7 +759,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
     return normalizeCellCode(scopeOverrides[key] ?? getMonthlyCell(rowIndex, day, department));
   };
 
-  const isPersonnel = section === 'dispatchers' || section === 'couriers' || section === 'mechanics';
+  const isPersonnel = section === 'dispatchers' || section === 'couriers' || section === 'mechanics' || section === 'guards';
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('График работы');
 
@@ -997,6 +1004,9 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
         { code: 'О', text: 'отпуск', bg: COLORS.cellVacation, color: 'FF4A2C8A' },
         { code: 'В', text: 'выходной', bg: COLORS.cellWeekend, color: 'FF7B2323' },
         { code: 'Б', text: 'больничный', bg: COLORS.cellSick, color: 'FF0F385E' },
+        ...((section === 'mechanics' || section === 'guards')
+          ? [{ code: 'Н', text: 'нет сотрудника', bg: COLORS.cellNoDriver, color: 'FF1F2937' }]
+          : []),
       ]
     : [
         { code: '1', text: 'на линии', bg: COLORS.cellWork, color: 'FF0F172A' },
@@ -1075,7 +1085,7 @@ const renderOperationsScheduleWorksheet = ({
   const weekdays = monthDays.map((day) => WEEKDAY_LABELS[new Date(year, month - 1, day).getDay()]);
   const scopeKey = `${mode}|${monthValue}` as OverrideScopeKey;
   const scopeOverrides = overrides[scopeKey] ?? {};
-  const isPersonnel = section === 'dispatchers' || section === 'couriers' || section === 'mechanics';
+  const isPersonnel = section === 'dispatchers' || section === 'couriers' || section === 'mechanics' || section === 'guards';
   const sheet = workbook.addWorksheet(makeSheetName(workbook, sheetName));
   sheet.properties.tabColor = { argb: tabColor };
 
@@ -1323,6 +1333,9 @@ const renderOperationsScheduleWorksheet = ({
         { code: 'О', text: 'отпуск', bg: COLORS.cellVacation, color: 'FF4A2C8A' },
         { code: 'В', text: 'выходной', bg: COLORS.cellWeekend, color: 'FF7B2323' },
         { code: 'Б', text: 'больничный', bg: COLORS.cellSick, color: 'FF0F385E' },
+        ...((section === 'mechanics' || section === 'guards')
+          ? [{ code: 'Н', text: 'нет сотрудника', bg: COLORS.cellNoDriver, color: 'FF1F2937' }]
+          : []),
       ]
     : [
         { code: '1', text: 'на линии', bg: COLORS.cellWork, color: 'FF0F172A' },
@@ -1361,6 +1374,7 @@ const REPORT_LOCATION_PREFIX: Record<PreviewLocation, string> = {
   ktk_mow: 'МСК',
   garage_vvo: 'Влд',
   garage_mow: 'МСК',
+  security_vvo: 'Влд',
 };
 
 const REPORT_SHEET_TAB_COLOR_BY_LOCATION: Record<PreviewLocation, string> = {
@@ -1368,6 +1382,7 @@ const REPORT_SHEET_TAB_COLOR_BY_LOCATION: Record<PreviewLocation, string> = {
   ktk_mow: 'FFFFD6BA',
   garage_vvo: 'FFCFE8D6',
   garage_mow: 'FFE5E7EB',
+  security_vvo: 'FFE0E7FF',
 };
 
 const REPORT_MONTH_NAMES = [
@@ -1389,7 +1404,7 @@ const REPORT_MONTH_NAMES = [
 const parseReportCity = (value: unknown, locations: PreviewLocation[]): 'vvo' | 'mow' => {
   if (value === 'mow') return 'mow';
   if (value === 'vvo') return 'vvo';
-  return locations.includes('ktk_mow') && !locations.includes('ktk_vvo') && !locations.includes('garage_vvo') ? 'mow' : 'vvo';
+  return locations.includes('ktk_mow') && !locations.includes('ktk_vvo') && !locations.includes('garage_vvo') && !locations.includes('security_vvo') ? 'mow' : 'vvo';
 };
 
 const parseCsv = (value: unknown): string[] => {
@@ -1425,9 +1440,9 @@ export const downloadOperationsPreviewReport = async (req: Request, res: Respons
     .filter((location) => location !== 'garage_mow') as PreviewLocation[];
   const requestedSections = parseCsv(req.query.sections).filter(isValidSection) as PreviewSection[];
   const requestedModes = parseCsv(req.query.modes).filter((mode): mode is PreviewMode => mode === 'plan' || mode === 'fact');
-  const locations = requestedLocations.length > 0 ? requestedLocations : (['ktk_vvo', 'ktk_mow', 'garage_vvo'] as PreviewLocation[]);
+  const locations = requestedLocations.length > 0 ? requestedLocations : (['ktk_vvo', 'ktk_mow', 'garage_vvo', 'security_vvo'] as PreviewLocation[]);
   const reportCity = parseReportCity(req.query.city, locations);
-  const sections = requestedSections.length > 0 ? requestedSections : (['containers', 'auto', 'dispatchers', 'couriers', 'mechanics'] as PreviewSection[]);
+  const sections = requestedSections.length > 0 ? requestedSections : (['containers', 'auto', 'dispatchers', 'couriers', 'mechanics', 'guards'] as PreviewSection[]);
   const modes = requestedModes.length > 0 ? requestedModes : (['fact'] as PreviewMode[]);
 
   const workbook = new ExcelJS.Workbook();
@@ -1446,10 +1461,10 @@ export const downloadOperationsPreviewReport = async (req: Request, res: Respons
     for (const section of sections) {
       if (section === 'efficiency' || !canAccessLocationSection(req.user?.role, location, section)) continue;
       const department = DEPARTMENT_BY_SECTION[section];
-      const sectionModes = section === 'containers' || section === 'mechanics' ? modes : (['fact'] as PreviewMode[]);
+      const sectionModes = section === 'containers' || section === 'mechanics' || section === 'guards' ? modes : (['fact'] as PreviewMode[]);
 
       for (const mode of sectionModes) {
-        const modeLabel = section === 'containers' || section === 'mechanics' ? ` (${mode === 'plan' ? 'план' : 'факт'})` : '';
+        const modeLabel = section === 'containers' || section === 'mechanics' || section === 'guards' ? ` (${mode === 'plan' ? 'план' : 'факт'})` : '';
         const sectionLabel = getSectionLabel(section, location);
         const sheetTitle = `${REPORT_LOCATION_PREFIX[location]} - ${sectionLabel}${modeLabel}`;
         renderOperationsScheduleWorksheet({

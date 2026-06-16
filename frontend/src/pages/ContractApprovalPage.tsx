@@ -372,7 +372,7 @@ const SB_COLUMNS = [
   { key: 'inn', label: 'ИНН', width: 96 },
   { key: 'initiator', label: 'Инициатор', width: 190 },
   { key: 'deadline', label: 'Дедлайн', width: 104 },
-  { key: 'visa', label: 'Виза СБ', width: 160 },
+  { key: 'visa', label: 'Виза руководителя СБ', width: 180 },
 ] as const;
 
 const APPROVAL_INBOX_COLUMNS = [
@@ -519,7 +519,7 @@ export default function ContractApprovalPage() {
       const response = await getSecurityContractInbox(safeApiView);
       setSecurityInbox(Array.isArray(response.data) ? response.data : []);
     } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || 'Не удалось загрузить входящие СБ');
+      setError(e?.response?.data?.message || e?.message || 'Не удалось загрузить входящие руководителя СБ');
     }
   };
 
@@ -1030,7 +1030,7 @@ export default function ContractApprovalPage() {
   const onSecurityVisa = async (item: SecurityInboxItem) => {
     const form = securityVisa[item.contractId] ?? { visa: '' as const, comment: '' };
     if (!form.visa) {
-      setError('Выберите решение СБ');
+      setError('Выберите решение руководителя СБ');
       return;
     }
     if (form.visa === 'approved_with_remarks' && !form.comment.trim()) {
@@ -1044,13 +1044,13 @@ export default function ContractApprovalPage() {
         visa: form.visa,
         comment: form.comment.trim() || null,
       });
-      setSuccess('Виза СБ сохранена');
+      setSuccess('Виза руководителя СБ сохранена');
       await Promise.all([loadSecurityInbox(), loadRegistry(), loadSheet(selectedContractId)]);
       if (securityInboxView !== 'processed' && securityInboxView !== 'all') {
         closeSecurityCard();
       }
     } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || 'Не удалось сохранить визу СБ');
+      setError(e?.response?.data?.message || e?.message || 'Не удалось сохранить визу руководителя СБ');
     }
   };
 
@@ -2091,7 +2091,7 @@ export default function ContractApprovalPage() {
       {contractSection === 'inbox' && isSecurity && tab === 2 && (
         <Paper sx={{ px: 0.25, py: 0.5 }}>
           {!securityInbox.length && (
-            <Typography variant="body2" color="text.secondary">Сейчас нет договоров на проверке СБ.</Typography>
+            <Typography variant="body2" color="text.secondary">Сейчас нет договоров на проверке руководителя СБ.</Typography>
           )}
           {!!filteredSecurityInbox.length && (
             <TableContainer className="contract-registry-table-wrap">
@@ -2352,7 +2352,7 @@ export default function ContractApprovalPage() {
 
               <Box className="contract-card-section contract-visa-editor">
                 <Box className="contract-visa-header">
-                  <Typography variant="body2" className="contract-card-section-title">Ваша задача: Виза СБ</Typography>
+                  <Typography variant="body2" className="contract-card-section-title">Ваша задача: виза руководителя СБ</Typography>
                   {securityCardItem.securityDecision && (
                     <Typography
                       variant="caption"
@@ -2430,7 +2430,7 @@ export default function ContractApprovalPage() {
                   {securityApprovalStep && (
                     <Box className="contract-process-group">
                       <Box className="contract-process-group-heading">
-                        <Typography variant="body2">Проверка СБ</Typography>
+                        <Typography variant="body2">Проверка руководителя СБ</Typography>
                         <Typography
                           variant="caption"
                           className={`contract-process-group-status contract-step-status--${getStepDecisionTone(securityApprovalStep)}`}
@@ -2627,7 +2627,7 @@ export default function ContractApprovalPage() {
                 {approvalCardSecurityStep && (
                   <Box className="contract-process-group">
                     <Box className="contract-process-group-heading">
-                      <Typography variant="body2">Проверка СБ</Typography>
+                      <Typography variant="body2">Проверка руководителя СБ</Typography>
                       <Typography variant="caption" className={`contract-process-group-status contract-step-status--${getStepDecisionTone(approvalCardSecurityStep)}`}>
                         {approvalCardSecurityStep.decision ? 'Завершено' : 'В работе'}
                       </Typography>

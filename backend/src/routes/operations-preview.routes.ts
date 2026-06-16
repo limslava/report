@@ -25,6 +25,7 @@ router.get(
     'hr_specialist',
     'garage_head_vvo',
     'garage_head',
+    'security',
     'director',
     'general_director',
     'financer'
@@ -42,7 +43,8 @@ router.put(
     'head_hr',
     'hr_specialist',
     'garage_head_vvo',
-    'garage_head'
+    'garage_head',
+    'security'
   ),
   asyncHandler(saveOperationsPreviewState)
 );
@@ -58,6 +60,7 @@ router.get(
     'hr_specialist',
     'garage_head_vvo',
     'garage_head',
+    'security',
     'director',
     'general_director',
     'financer'

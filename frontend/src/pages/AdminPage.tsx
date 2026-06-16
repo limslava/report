@@ -203,7 +203,7 @@ const AdminPage = () => {
     financer: 'Финансист',
     chief_accountant: 'Главный бухгалтер',
     lawyer: 'Юрист',
-    security: 'СБ',
+    security: 'Руководитель СБ',
     secretary: 'Офис-менеджер',
   };
 
@@ -241,7 +241,7 @@ const AdminPage = () => {
     { value: 'financer', label: 'Финансист' },
     { value: 'chief_accountant', label: 'Главный бухгалтер' },
     { value: 'lawyer', label: 'Юрист' },
-    { value: 'security', label: 'СБ' },
+    { value: 'security', label: 'Руководитель СБ' },
     { value: 'secretary', label: 'Офис-менеджер' },
   ];
 

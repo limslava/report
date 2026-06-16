@@ -8,7 +8,7 @@ import { logger } from '../utils/logger';
 const userRepo = AppDataSource.getRepository(User);
 
 const ROLE_LABELS: Record<string, string> = {
-  security: 'СБ',
+  security: 'Руководитель СБ',
   lawyer: 'Юрист',
   chief_accountant: 'Главный бухгалтер',
   financer: 'Финансовый директор',

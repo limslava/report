@@ -110,6 +110,10 @@
     or replace confirmation.
   - Added `План/Факт` mode for `Автослесарь` for admin and HR roles; garage head
     keeps fact-only access.
+  - Added `Служба Безопасности -> Сотрудник охраны` work schedule for Vladivostok with a
+    separate `security_preview_v1` scope, `План/Факт` modes, `Н — нет сотрудника`
+    status, admin/HR edit access, and dedicated access for `security`.
+  - Added `Сотрудник охраны` to the HR/admin multi-sheet work schedule report builder.
   - Added auto schedule status `С — снятие груза`; it is counted as one shift in
     totals and efficiency calculations.
   - Updated work schedule menu order: `Контейнеровозы` before `Автовозы`.
