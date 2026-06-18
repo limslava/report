@@ -491,10 +491,18 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
   const monthValue = `${year}-${String(month).padStart(2, '0')}`;
 
   const requestedMode: PreviewMode = req.query.mode === 'plan' ? 'plan' : 'fact';
-  const canUsePersonnelPlan = (section === 'mechanics' || section === 'guards') && (
-    req.user?.role === 'admin'
-    || req.user?.role === 'head_hr'
-    || req.user?.role === 'hr_specialist'
+  const canUsePersonnelPlan = (
+    (section === 'mechanics' && (
+      req.user?.role === 'admin'
+      || req.user?.role === 'head_hr'
+      || req.user?.role === 'hr_specialist'
+    ))
+    || (section === 'guards' && (
+      req.user?.role === 'admin'
+      || req.user?.role === 'head_hr'
+      || req.user?.role === 'hr_specialist'
+      || req.user?.role === 'security'
+    ))
   );
   const mode: PreviewMode = section === 'containers' || canUsePersonnelPlan ? requestedMode : 'fact';
 
@@ -547,6 +555,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
         const totalAutoDays = uniquePlatesCount * daysInMonthForCalc;
 
         let workAutoDays = 0;
+        let cargoRemovalDays = 0;
         let offOrVacationDays = 0;
         let repairDays = 0;
         let noDriverDays = 0;
@@ -558,7 +567,11 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
             const lane2 = person.secondName
               ? factScope[`${person.id}-2-${day}`] ?? getMonthlyCell(rowIndex + 50, day, departmentName)
               : null;
-            const vehicleDay = toVehicleDayCode([lane1, lane2].filter(Boolean) as CellCode[]);
+            const dayCodes = [lane1, lane2].filter(Boolean) as CellCode[];
+            if (dayCodes.some((code) => code === 'S')) {
+              cargoRemovalDays += 1;
+            }
+            const vehicleDay = toVehicleDayCode(dayCodes);
             if (vehicleDay === 'WORK') {
               workAutoDays += 1;
             } else if (vehicleDay === 'OFF') {
@@ -577,8 +590,13 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
         const technicalReadyDays = totalAutoDays - repairDays;
         const loadFactor = totalAutoDays > 0 ? workAutoDays / totalAutoDays : 0;
         const techReadyFactor = totalAutoDays > 0 ? technicalReadyDays / totalAutoDays : 0;
+        const unloadFactor = uniquePlatesCount > 0 ? cargoRemovalDays / uniquePlatesCount : 0;
+        const avgTripDuration = cargoRemovalDays > 0 ? workAutoDays / cargoRemovalDays : 0;
 
         return {
+          cargoRemovalDays,
+          unloadFactor,
+          avgTripDuration,
           uniquePlatesCount,
           daysInMonth: daysInMonthForCalc,
           totalAutoDays,
@@ -608,11 +626,16 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
       const turquoiseFill = 'FFD4F3F1';
       const peachFill = 'FFFFE8D8';
       const isMetricRow = (label: string) =>
+        label === 'Коэффициент выгрузки автовозов' ||
+        label === 'Среднее время рейса' ||
         label === 'Коэффициент загрузки' ||
         label === 'Итого дни простоя' ||
         label === 'Коэффициент технической готовности';
       const isTurquoiseRow = (label: string) =>
-        label === 'Коэффициент загрузки' || label === 'Коэффициент технической готовности';
+        label === 'Коэффициент выгрузки автовозов'
+        || label === 'Среднее время рейса'
+        || label === 'Коэффициент загрузки'
+        || label === 'Коэффициент технической готовности';
       const isPeachRow = (label: string) =>
         label === 'Выходные, отпуск, автодни' ||
         label === 'Ремонт, автодни' ||
@@ -634,6 +657,12 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
       });
 
       const rows: Array<{ label: string; values: number[]; ratio?: boolean }> = [
+        ...(title.includes('автовозов')
+          ? [
+              { label: 'Коэффициент выгрузки автовозов', values: data.map((item) => item.unloadFactor), ratio: true },
+              { label: 'Среднее время рейса', values: data.map((item) => item.avgTripDuration), ratio: true },
+            ]
+          : []),
         { label: firstRowLabel, values: data.map((item) => item.uniquePlatesCount) },
         { label: 'Дней в месяце', values: data.map((item) => item.daysInMonth) },
         { label: 'Всего автодней в месяц', values: data.map((item) => item.totalAutoDays) },

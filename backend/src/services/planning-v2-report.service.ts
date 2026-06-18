@@ -15,12 +15,13 @@ interface SegmentReportParams {
 }
 
 type OpsPreviewDepartment = 'Контейнеры' | 'Авто' | 'Диспетчера' | 'Курьеры';
-type OpsPreviewCellCode = 'W' | 'O' | 'B' | 'H' | 'R' | 'N' | 'V' | 'E';
+type OpsPreviewCellCode = 'W' | 'O' | 'B' | 'H' | 'R' | 'N' | 'V' | 'E' | 'S';
 type OpsPreviewScopeKey = `${'plan' | 'fact'}|${string}`;
 type OpsPreviewPersonRow = {
   id: string;
   secondName?: string;
   department: OpsPreviewDepartment;
+  plate?: string;
 };
 type OpsPreviewPersistedState = {
   overrides?: Record<OpsPreviewScopeKey, Record<string, OpsPreviewCellCode>>;
@@ -33,6 +34,14 @@ interface DashboardBase {
   asOfDate: string;
   daysInMonth: number;
   completedDays: number;
+}
+
+interface AutoPreviewEfficiency {
+  uniquePlatesCount: number;
+  workAutoDays: number;
+  cargoRemovalDays: number;
+  unloadFactor: number;
+  avgTripDuration: number;
 }
 
 export interface PlanningGridRow {
@@ -251,6 +260,70 @@ export class PlanningV2ReportService {
     return totals;
   }
 
+  private async resolveAutoEfficiencyFromPreview(
+    year: number,
+    month: number,
+    daysInMonth: number,
+    dayLimit: number
+  ): Promise<AutoPreviewEfficiency | null> {
+    const scopeKey = this.operationsPreviewScopeBySegment[PlanningSegmentCode.KTK_VVO];
+    if (!scopeKey) return null;
+
+    const row = await this.operationsPreviewRepo.findOne({
+      where: { scopeKey },
+    });
+    if (!row) return null;
+
+    const payload = (row.payload ?? {}) as OpsPreviewPersistedState;
+    const overrides = (payload.overrides ?? {}) as Record<OpsPreviewScopeKey, Record<string, OpsPreviewCellCode>>;
+    const peopleByMonth = this.extractPeopleByMonth(payload);
+    const monthValue = `${year}-${String(month).padStart(2, '0')}`;
+    const factScopeKey = `fact|${monthValue}` as OpsPreviewScopeKey;
+    const factScope = overrides[factScopeKey] ?? {};
+    const monthPeople = this.resolveOpsPreviewPeopleForMonth(monthValue, peopleByMonth).filter(
+      (person) => person.department === 'Авто'
+    );
+
+    const uniquePlatesCount = new Set(
+      monthPeople.map((person) => (person.plate ?? '').trim().toUpperCase()).filter((plate) => plate.length > 0)
+    ).size;
+
+    if (uniquePlatesCount === 0) {
+      return {
+        uniquePlatesCount: 0,
+        workAutoDays: 0,
+        cargoRemovalDays: 0,
+        unloadFactor: 0,
+        avgTripDuration: 0,
+      };
+    }
+
+    let workAutoDays = 0;
+    let cargoRemovalDays = 0;
+
+    monthPeople.forEach((person) => {
+      for (let day = 1; day <= Math.min(daysInMonth, dayLimit); day += 1) {
+        const lane1 = factScope[`${person.id}-1-${day}`] ?? 'E';
+        const lane2 = person.secondName ? factScope[`${person.id}-2-${day}`] ?? 'E' : null;
+        const dayCodes = [lane1, lane2].filter(Boolean) as OpsPreviewCellCode[];
+        if (dayCodes.some((code) => code === 'S')) {
+          cargoRemovalDays += 1;
+        }
+        if (dayCodes.some((code) => code === 'W' || code === 'H' || code === 'S')) {
+          workAutoDays += 1;
+        }
+      }
+    });
+
+    return {
+      uniquePlatesCount,
+      workAutoDays,
+      cargoRemovalDays,
+      unloadFactor: cargoRemovalDays > 0 ? cargoRemovalDays / uniquePlatesCount : 0,
+      avgTripDuration: cargoRemovalDays > 0 ? workAutoDays / cargoRemovalDays : 0,
+    };
+  }
+
   async getSegmentReport(params: SegmentReportParams): Promise<{
     segment: { code: PlanningSegmentCode; name: string };
     year: number;
@@ -407,6 +480,10 @@ export class PlanningV2ReportService {
       };
     });
 
+    const autoPreviewEfficiency = segment.code === PlanningSegmentCode.AUTO
+      ? await this.resolveAutoEfficiencyFromPreview(params.year, params.month, daysInMonth, completedDays + 1)
+      : null;
+
     const dashboard = this.computeDashboard({
       segmentCode: segment.code,
       valuesByMetric,
@@ -415,6 +492,7 @@ export class PlanningV2ReportService {
       daysInMonth,
       completedDays,
       asOfDate: toIsoDate(effectiveAsOf),
+      autoPreviewEfficiency,
     });
 
     return {
@@ -902,8 +980,9 @@ export class PlanningV2ReportService {
     daysInMonth: number;
     completedDays: number;
     asOfDate: string;
+    autoPreviewEfficiency: AutoPreviewEfficiency | null;
   }): SegmentDashboard {
-    const { segmentCode, valuesByMetric, monthlyPlan, resolvedPlanByCode, daysInMonth, completedDays, asOfDate } = params;
+    const { segmentCode, valuesByMetric, monthlyPlan, resolvedPlanByCode, daysInMonth, completedDays, asOfDate, autoPreviewEfficiency } = params;
     const dataDays = Math.max(1, Math.min(daysInMonth, completedDays + 1));
 
     const planMetricMap = new Map<PlanningPlanMetricCode, PlanningMonthlyPlanMetric>();
@@ -998,6 +1077,8 @@ export class PlanningV2ReportService {
           completionMonthPct: pct(sum(truckSent) + sum(curtainSent), planTruckMonth),
           completionToDatePct: pct(truckFactToDate, planTruckToDate),
           avgPerDay: dataDays > 0 ? truckFactToDate / dataDays : 0,
+          unloadFactor: Number(autoPreviewEfficiency?.unloadFactor ?? 0),
+          avgTripDuration: Number(autoPreviewEfficiency?.avgTripDuration ?? 0),
         },
         ktk: {
           planMonth: planKtkMonth,

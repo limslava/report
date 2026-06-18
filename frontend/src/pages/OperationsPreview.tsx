@@ -408,6 +408,7 @@ export default function OperationsPreview() {
         const totalAutoDays = uniquePlatesCount * daysInMonth;
 
         let workAutoDays = 0;
+        let cargoRemovalDays = 0;
         let offOrVacationDays = 0;
         let repairDays = 0;
         let noDriverDays = 0;
@@ -421,6 +422,10 @@ export default function OperationsPreview() {
             const code1 = getCellCodeForMonth(rowIndex, day, person.id, '1');
             const code2 = person.secondName ? getCellCodeForMonth(rowIndex + 50, day, person.id, '2') : null;
             const dayCodes = [code1, code2].filter(Boolean) as CellCode[];
+
+            if (dayCodes.some((code) => code === 'S')) {
+              cargoRemovalDays += 1;
+            }
 
             const isWorked = dayCodes.some((code) => code === 'W' || code === 'H' || code === 'S');
             if (isWorked) {
@@ -449,10 +454,15 @@ export default function OperationsPreview() {
         const technicalReadyDays = totalAutoDays - repairDays;
         const loadFactor = totalAutoDays > 0 ? workAutoDays / totalAutoDays : null;
         const technicalReadyFactor = totalAutoDays > 0 ? technicalReadyDays / totalAutoDays : null;
+        const unloadFactor = uniquePlatesCount > 0 ? cargoRemovalDays / uniquePlatesCount : null;
+        const avgTripDuration = cargoRemovalDays > 0 ? workAutoDays / cargoRemovalDays : null;
 
         return {
           month,
           daysInMonth,
+          cargoRemovalDays,
+          unloadFactor,
+          avgTripDuration,
           uniquePlatesCount,
           totalAutoDays,
           workAutoDays,
@@ -512,7 +522,7 @@ export default function OperationsPreview() {
       : allowedDepartments[0] ?? 'Контейнеры';
   const isPersonnelSection = filter !== 'Все' && isPersonnelDepartment(filter);
   const canManageMechanicPlan = userRole === 'admin' || isHrScheduleRole;
-  const canManageGuardPlan = userRole === 'admin' || isHrScheduleRole;
+  const canManageGuardPlan = userRole === 'admin' || isHrScheduleRole || userRole === 'security';
   const canUsePlanMode = (
     (filter === 'Контейнеры' && canManagePlanFact)
     || (filter === 'Автослесари' && canManageMechanicPlan)
@@ -2862,6 +2872,14 @@ export default function OperationsPreview() {
                   </tr>
                 </thead>
                 <tbody>
+                  <tr className="eff-row--coef-load">
+                    <td>Коэффициент выгрузки автовозов</td>
+                    {efficiencyBySection.auto.map((item) => <td key={`auto-unload-factor-${item.month}`}>{item.unloadFactor == null ? '—' : item.unloadFactor.toFixed(2).replace('.', ',')}</td>)}
+                  </tr>
+                  <tr className="eff-row--coef-load">
+                    <td>Среднее время рейса</td>
+                    {efficiencyBySection.auto.map((item) => <td key={`auto-trip-avg-${item.month}`}>{item.avgTripDuration == null ? '—' : item.avgTripDuration.toFixed(2).replace('.', ',')}</td>)}
+                  </tr>
                   <tr>
                     <td>Количество автовозов</td>
                     {efficiencyBySection.auto.map((item) => <td key={`auto-cnt-${item.month}`}>{item.uniquePlatesCount}</td>)}
