@@ -905,13 +905,14 @@ function writeDashboardInline(
   if (segmentCode === PlanningSegmentCode.AUTO) {
     const truck = (dashboard.truck || {}) as Record<string, unknown>;
     const ktk = (dashboard.ktk || {}) as Record<string, unknown>;
-    const rows: Array<{ label: string; v1: number; v2: number; percent?: boolean }> = [
+    const rows: Array<{ label: string; v1: number | null; v2: number | null; percent?: boolean; decimal?: boolean }> = [
       { label: 'План на месяц', v1: Number(truck.planMonth ?? 0), v2: Number(ktk.planMonth ?? 0) },
       { label: 'План на дату', v1: Number(truck.planToDate ?? 0), v2: Number(ktk.planToDate ?? 0) },
       { label: 'Выполнение на дату', v1: Number(truck.factToDate ?? 0), v2: Number(ktk.factToDate ?? 0) },
       { label: 'Выполнение плана % по месяцу', v1: Number(truck.completionMonthPct ?? 0), v2: Number(ktk.completionMonthPct ?? 0), percent: true },
       { label: 'Выполнение плана % на дату', v1: Number(truck.completionToDatePct ?? 0), v2: Number(ktk.completionToDatePct ?? 0), percent: true },
       { label: 'Среднее кол-во в день', v1: Number(truck.avgPerDay ?? 0), v2: Number(ktk.avgPerDay ?? 0) },
+      { label: 'Коэффициент выгрузки автовозов', v1: Number(truck.unloadFactor ?? 0), v2: null, decimal: true },
     ];
 
     const header = sheet.getRow(startRow);
@@ -929,10 +930,14 @@ function writeDashboardInline(
     rows.forEach((item, index) => {
       const row = sheet.getRow(startRow + 1 + index);
       row.getCell(startCol).value = item.label;
-      row.getCell(startCol + 1).value = item.percent ? item.v1 / 100 : item.v1;
-      row.getCell(startCol + 2).value = item.percent ? item.v2 / 100 : item.v2;
-      row.getCell(startCol + 1).numFmt = item.percent ? '0.0%' : '#,##0';
-      row.getCell(startCol + 2).numFmt = item.percent ? '0.0%' : '#,##0';
+      row.getCell(startCol + 1).value = item.v1 == null ? null : (item.percent ? item.v1 / 100 : item.v1);
+      row.getCell(startCol + 2).value = item.v2 == null ? null : (item.percent ? item.v2 / 100 : item.v2);
+      if (item.v1 != null) {
+        row.getCell(startCol + 1).numFmt = item.percent ? '0.0%' : item.decimal ? '0.00' : '#,##0';
+      }
+      if (item.v2 != null) {
+        row.getCell(startCol + 2).numFmt = item.percent ? '0.0%' : item.decimal ? '0.00' : '#,##0';
+      }
       row.getCell(startCol + 1).alignment = { horizontal: 'center' };
       row.getCell(startCol + 2).alignment = { horizontal: 'center' };
       row.commit();
