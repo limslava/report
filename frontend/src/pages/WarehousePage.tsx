@@ -39,6 +39,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   createWarehouseVehicle,
   getWarehouseClients,
@@ -98,6 +99,8 @@ const errorMessage = (error: unknown, fallback: string): string => {
 };
 
 export default function WarehousePage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const user = useAuthStore((state) => state.user);
   const canOperateWarehouse = user?.role !== 'counterparty_user';
   const canManageClients = user?.role === 'admin' || user?.role === 'warehouse_manager';
@@ -157,6 +160,15 @@ export default function WarehousePage() {
     }, 250);
     return () => window.clearTimeout(timer);
   }, [loadVehicles]);
+
+  useEffect(() => {
+    if (!canOperateWarehouse || searchParams.get('receive') !== '1') return;
+    setEditingVehicle(null);
+    setForm(emptyForm());
+    setError(null);
+    setDialogOpen(true);
+    navigate('/warehouse', { replace: true });
+  }, [canOperateWarehouse, navigate, searchParams]);
 
   const selectedCounterparty = useMemo(
     () => counterparties.find((item) => item.id === form.counterpartyId) ?? null,

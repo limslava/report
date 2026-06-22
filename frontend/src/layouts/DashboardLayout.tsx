@@ -177,6 +177,8 @@ const DashboardLayout = () => {
     || user?.role === 'warehouse_keeper'
     || user?.role === 'counterparty_user'
     ? '/warehouse'
+    : user?.role === 'warehouse_receiver'
+      ? '/warehouse/operations'
     : canViewTechDashboard(user?.role)
     ? '/sw-tech-dashboard'
     : (canViewPlansMenu && canViewPlans(user?.role))
@@ -311,7 +313,13 @@ const DashboardLayout = () => {
 
   const menuItems = [
     canAccessWarehouse(user?.role)
-      ? { key: 'warehouse', label: 'Склад ТС', icon: <Warehouse />, onClick: () => handleNavigate('/warehouse'), active: location.pathname.startsWith('/warehouse') }
+      ? {
+          key: 'warehouse',
+          label: user?.role === 'warehouse_receiver' ? 'Рабочая станция' : 'Склад ТС',
+          icon: <Warehouse />,
+          onClick: () => handleNavigate(user?.role === 'warehouse_receiver' ? '/warehouse/operations' : '/warehouse'),
+          active: location.pathname.startsWith('/warehouse'),
+        }
       : null,
     canViewSummary(user?.role)
       ? { key: 'summary', label: 'Сводный отчет', icon: <Assignment />, onClick: () => handleNavigate('/summary-report'), active: location.pathname.includes('/summary') }

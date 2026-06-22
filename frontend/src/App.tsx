@@ -14,6 +14,7 @@ import ContractApprovalPage from './pages/ContractApprovalPage';
 import BPApprovalDashboardPage from './pages/BPApprovalDashboardPage';
 import SinokorTestPage from './pages/SinokorTestPage';
 import WarehousePage from './pages/WarehousePage';
+import WarehouseOperationsPage from './pages/WarehouseOperationsPage';
 import RouteAccessGuard from './components/auth/RouteAccessGuard';
 import {
   canAccessAdmin,
@@ -38,6 +39,7 @@ function App() {
   const { token, user } = useAuthStore();
   const isAuthenticated = !!token;
   const defaultAuthenticatedRoute = (() => {
+    if (user?.role === 'warehouse_receiver') return '/warehouse/operations';
     if (
       user?.role === 'warehouse_manager'
       || user?.role === 'warehouse_keeper'
@@ -178,7 +180,17 @@ function App() {
             path="warehouse"
             element={(
               <RouteAccessGuard allow={canAccessWarehouse(user?.role)}>
-                <WarehousePage />
+                {user?.role === 'warehouse_receiver'
+                  ? <Navigate to="/warehouse/operations" replace />
+                  : <WarehousePage />}
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="warehouse/operations"
+            element={(
+              <RouteAccessGuard allow={canAccessWarehouse(user?.role)}>
+                <WarehouseOperationsPage />
               </RouteAccessGuard>
             )}
           />

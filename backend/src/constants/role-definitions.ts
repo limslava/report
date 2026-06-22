@@ -23,6 +23,7 @@ export const ROLE_VALUES = [
   'manager_to',
   'warehouse_manager',
   'warehouse_keeper',
+  'warehouse_receiver',
   'counterparty_user',
 ] as const;
 

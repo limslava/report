@@ -44,6 +44,7 @@ export class User {
     | 'manager_to'
     | 'warehouse_manager'
     | 'warehouse_keeper'
+    | 'warehouse_receiver'
     | 'counterparty_user'
     | 'financer'
     | 'chief_accountant'

@@ -5,6 +5,7 @@ export const WAREHOUSE_ACCESS_ROLES = [
   'financer',
   'warehouse_manager',
   'warehouse_keeper',
+  'warehouse_receiver',
   'counterparty_user',
 ] as const;
 
@@ -15,6 +16,7 @@ export const WAREHOUSE_STAFF_ROLES = [
   'financer',
   'warehouse_manager',
   'warehouse_keeper',
+  'warehouse_receiver',
 ] as const;
 
 export const WAREHOUSE_CLIENT_MANAGEMENT_ROLES = [
