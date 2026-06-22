@@ -189,7 +189,11 @@ export class PlanWebSocketService {
         userId: user.id,
         role: user.role,
       };
-    } catch {
+    } catch (error) {
+      logger.warn('WebSocket authentication failed', {
+        error: error instanceof Error ? error.message : String(error),
+        path: request.url?.split('?')[0],
+      });
       return null;
     }
   }
