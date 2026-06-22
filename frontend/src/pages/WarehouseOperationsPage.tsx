@@ -2,6 +2,7 @@ import {
   AddCircleOutline,
   DirectionsCar,
   Logout,
+  MiscellaneousServices,
   PhotoCamera,
   Search,
 } from '@mui/icons-material';
@@ -31,6 +32,7 @@ import {
   WarehouseVehicle,
 } from '../services/warehouse.api';
 import WarehousePhotoDialog from '../components/warehouse/WarehousePhotoDialog';
+import WarehouseServicesDialog from '../components/warehouse/WarehouseServicesDialog';
 
 const today = (): string => {
   const date = new Date();
@@ -63,6 +65,7 @@ export default function WarehouseOperationsPage() {
   const [issueDate, setIssueDate] = useState(today());
   const [saving, setSaving] = useState(false);
   const [photoVehicle, setPhotoVehicle] = useState<WarehouseVehicle | null>(null);
+  const [servicesVehicle, setServicesVehicle] = useState<WarehouseVehicle | null>(null);
 
   const loadVehicles = useCallback(async () => {
     setLoading(true);
@@ -117,7 +120,7 @@ export default function WarehouseOperationsPage() {
         <Box>
           <Typography variant="h4" component="h1">Рабочая станция кладовщика</Typography>
           <Typography color="text.secondary">
-            Складская площадка · приём, фотофиксация и выдача ТС
+            Складская площадка · приём, фотофиксация, услуги и выдача ТС
           </Typography>
         </Box>
 
@@ -224,6 +227,13 @@ export default function WarehouseOperationsPage() {
                       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                         <Button
                           variant="outlined"
+                          startIcon={<MiscellaneousServices />}
+                          onClick={() => setServicesVehicle(vehicle)}
+                        >
+                          Услуги
+                        </Button>
+                        <Button
+                          variant="outlined"
                           startIcon={<PhotoCamera />}
                           onClick={() => setPhotoVehicle(vehicle)}
                         >
@@ -280,6 +290,11 @@ export default function WarehouseOperationsPage() {
         open={Boolean(photoVehicle)}
         vehicle={photoVehicle}
         onClose={() => setPhotoVehicle(null)}
+      />
+      <WarehouseServicesDialog
+        open={Boolean(servicesVehicle)}
+        vehicle={servicesVehicle}
+        onClose={() => setServicesVehicle(null)}
       />
     </Box>
   );

@@ -2,6 +2,7 @@ import api from './api';
 
 export type WarehouseVehicleType = 'passenger' | 'truck';
 export type WarehouseVehicleStatus = 'expected' | 'on_site' | 'issued';
+export type WarehouseServiceUnit = 'operation' | 'liter' | 'day';
 
 export interface WarehouseCounterparty {
   id: string;
@@ -73,6 +74,46 @@ export interface WarehouseVehiclePayload {
   receivedDate: string;
   fuelLevelPercent?: number | null;
   notes?: string | null;
+}
+
+export interface WarehouseTariff {
+  id: string;
+  vehicleType: WarehouseVehicleType;
+  price: number;
+  validFrom: string;
+  validTo: string | null;
+}
+
+export interface WarehouseServiceDefinition {
+  id: string;
+  code: string;
+  name: string;
+  unit: WarehouseServiceUnit;
+  defaultQuantity: number | null;
+  isRepeatable: boolean;
+  isOperational: boolean;
+  isActive: boolean;
+  currentTariffs: {
+    passenger: WarehouseTariff | null;
+    truck: WarehouseTariff | null;
+  };
+}
+
+export interface WarehousePerformedService {
+  id: string;
+  vehicleId: string;
+  serviceId: string;
+  serviceCode: string;
+  serviceName: string;
+  performedAt: string;
+  quantity: number;
+  unitPrice: number;
+  totalAmount: number;
+  unit: WarehouseServiceUnit;
+  performedByName: string;
+  comment: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface WarehousePhoto {
@@ -156,3 +197,35 @@ export const updateWarehouseClient = (
   clientId: string,
   payload: Partial<Omit<WarehouseClientPayload, 'inn' | 'nameFull' | 'nameShort'>>,
 ) => api.patch<WarehouseClient>(`/warehouse/clients/${clientId}`, payload);
+
+export const getWarehouseServices = (onDate?: string) =>
+  api.get<WarehouseServiceDefinition[]>('/warehouse/services', {
+    params: { onDate: onDate || undefined },
+  });
+
+export const updateWarehouseService = (
+  serviceId: string,
+  payload: { defaultQuantity?: number | null; isActive?: boolean },
+) => api.patch(`/warehouse/services/${serviceId}`, payload);
+
+export const createWarehouseTariff = (
+  serviceId: string,
+  payload: { vehicleType: WarehouseVehicleType; price: number; validFrom: string },
+) => api.post<WarehouseTariff>(`/warehouse/services/${serviceId}/tariffs`, payload);
+
+export const getWarehousePerformedServices = (vehicleId: string) =>
+  api.get<WarehousePerformedService[]>(`/warehouse/vehicles/${vehicleId}/services`);
+
+export const performWarehouseService = (
+  vehicleId: string,
+  payload: { serviceId: string; performedAt: string; quantity?: number; comment?: string | null },
+) => api.post<WarehousePerformedService>(`/warehouse/vehicles/${vehicleId}/services`, payload);
+
+export const correctWarehousePerformedService = (
+  vehicleId: string,
+  performedServiceId: string,
+  payload: { quantity?: number; comment?: string | null },
+) => api.patch<WarehousePerformedService>(
+  `/warehouse/vehicles/${vehicleId}/services/${performedServiceId}`,
+  payload,
+);

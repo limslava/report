@@ -22,4 +22,17 @@ export const WAREHOUSE_CLIENT_MANAGEMENT_ROLES = [
   'warehouse_manager',
 ] as const;
 
+export const WAREHOUSE_TARIFF_MANAGEMENT_ROLES = [
+  'admin',
+  'warehouse_manager',
+  'financer',
+] as const;
+
+export const WAREHOUSE_SERVICE_EXECUTION_ROLES = [
+  'admin',
+  'warehouse_manager',
+  'warehouse_keeper',
+  'financer',
+] as const;
+
 export type WarehouseAccessRole = typeof WAREHOUSE_ACCESS_ROLES[number];

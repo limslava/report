@@ -3,7 +3,9 @@ import { body, param, query } from 'express-validator';
 import {
   WAREHOUSE_ACCESS_ROLES,
   WAREHOUSE_CLIENT_MANAGEMENT_ROLES,
+  WAREHOUSE_SERVICE_EXECUTION_ROLES,
   WAREHOUSE_STAFF_ROLES,
+  WAREHOUSE_TARIFF_MANAGEMENT_ROLES,
 } from '../constants/warehouse';
 import {
   createWarehouseClient,
@@ -27,6 +29,14 @@ import {
 import { authenticate } from '../middleware/authenticate';
 import { authorizeRole } from '../middleware/authorize';
 import { handleValidationErrors } from '../middleware/express-validator.middleware';
+import {
+  correctWarehousePerformedService,
+  createWarehouseTariff,
+  listWarehousePerformedServices,
+  listWarehouseServices,
+  performWarehouseService,
+  updateWarehouseService,
+} from '../controllers/warehouse-service.controller';
 
 const router = Router();
 
@@ -114,6 +124,75 @@ router.post(
   [body('inn').isString().trim().matches(/^(\d{10}|\d{12})$/)],
   handleValidationErrors,
   importWarehouseCounterparty,
+);
+
+router.get(
+  '/services',
+  [query('onDate').optional().isISO8601({ strict: true })],
+  handleValidationErrors,
+  listWarehouseServices,
+);
+
+router.patch(
+  '/services/:serviceId',
+  authorizeRole(...WAREHOUSE_TARIFF_MANAGEMENT_ROLES),
+  [
+    param('serviceId').isUUID(),
+    body('defaultQuantity').optional().custom((value) => (
+      value === null
+      || (Number.isFinite(Number(value)) && Number(value) > 0 && Number(value) <= 1000000)
+    )),
+    body('isActive').optional().isBoolean(),
+  ],
+  handleValidationErrors,
+  updateWarehouseService,
+);
+
+router.post(
+  '/services/:serviceId/tariffs',
+  authorizeRole(...WAREHOUSE_TARIFF_MANAGEMENT_ROLES),
+  [
+    param('serviceId').isUUID(),
+    body('vehicleType').isIn(['passenger', 'truck']),
+    body('price').isFloat({ min: 0, max: 1000000000 }),
+    body('validFrom').isISO8601({ strict: true }),
+  ],
+  handleValidationErrors,
+  createWarehouseTariff,
+);
+
+router.get(
+  '/vehicles/:id/services',
+  [param('id').isUUID()],
+  handleValidationErrors,
+  listWarehousePerformedServices,
+);
+
+router.post(
+  '/vehicles/:id/services',
+  authorizeRole(...WAREHOUSE_SERVICE_EXECUTION_ROLES),
+  [
+    param('id').isUUID(),
+    body('serviceId').isUUID(),
+    body('performedAt').isISO8601(),
+    body('quantity').optional().isFloat({ gt: 0, max: 1000000 }),
+    body('comment').optional({ nullable: true }).isString().trim().isLength({ max: 2000 }),
+  ],
+  handleValidationErrors,
+  performWarehouseService,
+);
+
+router.patch(
+  '/vehicles/:id/services/:performedServiceId',
+  authorizeRole(...WAREHOUSE_SERVICE_EXECUTION_ROLES),
+  [
+    param('id').isUUID(),
+    param('performedServiceId').isUUID(),
+    body('quantity').optional().isFloat({ gt: 0, max: 1000000 }),
+    body('comment').optional({ nullable: true }).isString().trim().isLength({ max: 2000 }),
+  ],
+  handleValidationErrors,
+  correctWarehousePerformedService,
 );
 
 router.get(

@@ -8,6 +8,7 @@ import { ensureDefaultAdmin } from './services/bootstrap.service';
 import { planningV2Service } from './services/planning-v2.service';
 import { withRetry } from './utils/db-retry';
 import { createApp } from './app';
+import { ensureWarehouseServiceCatalog } from './services/warehouse-service-catalog.service';
 
 config();
 
@@ -25,6 +26,8 @@ async function startServer() {
     } catch (err) {
       logger.error('Failed to bootstrap planning catalog:', err);
     }
+    await ensureWarehouseServiceCatalog();
+    logger.info('Warehouse service catalog bootstrapped');
 
     const app = createApp();
 

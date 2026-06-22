@@ -4,6 +4,7 @@ import {
   Edit,
   LocalShipping,
   Logout,
+  MiscellaneousServices,
   PhotoCamera,
   Search,
 } from '@mui/icons-material';
@@ -54,6 +55,8 @@ import {
 } from '../services/warehouse.api';
 import WarehousePhotoDialog from '../components/warehouse/WarehousePhotoDialog';
 import WarehouseClientsPanel from '../components/warehouse/WarehouseClientsPanel';
+import WarehouseServicesDialog from '../components/warehouse/WarehouseServicesDialog';
+import WarehouseTariffsPanel from '../components/warehouse/WarehouseTariffsPanel';
 import { useAuthStore } from '../store/auth-store';
 
 const today = () => {
@@ -103,8 +106,12 @@ export default function WarehousePage() {
   const [searchParams] = useSearchParams();
   const user = useAuthStore((state) => state.user);
   const canOperateWarehouse = user?.role !== 'counterparty_user';
+  const canEditServices = ['admin', 'warehouse_manager', 'warehouse_keeper', 'financer']
+    .includes(user?.role ?? '');
   const canManageClients = user?.role === 'admin' || user?.role === 'warehouse_manager';
-  const [tab, setTab] = useState<'registry' | 'clients'>('registry');
+  const canManageTariffs = ['admin', 'warehouse_manager', 'financer'].includes(user?.role ?? '');
+  const showTabs = canManageClients || canManageTariffs;
+  const [tab, setTab] = useState<'registry' | 'clients' | 'tariffs'>('registry');
   const [vehicles, setVehicles] = useState<WarehouseVehicle[]>([]);
   const [counterparties, setCounterparties] = useState<WarehouseCounterparty[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,6 +127,7 @@ export default function WarehousePage() {
   const [issueVehicle, setIssueVehicle] = useState<WarehouseVehicle | null>(null);
   const [issueDate, setIssueDate] = useState(today());
   const [photoVehicle, setPhotoVehicle] = useState<WarehouseVehicle | null>(null);
+  const [servicesVehicle, setServicesVehicle] = useState<WarehouseVehicle | null>(null);
 
   const loadCounterparties = useCallback(async () => {
     const response = await getWarehouseClients(false);
@@ -277,15 +285,18 @@ export default function WarehousePage() {
         {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
         {success && <Alert severity="success" onClose={() => setSuccess(null)}>{success}</Alert>}
 
-        {canManageClients && (
+        {showTabs && (
           <Tabs value={tab} onChange={(_event, value) => setTab(value)}>
             <Tab value="registry" label="Реестр ТС" />
-            <Tab value="clients" label="Клиенты склада" />
+            {canManageClients && <Tab value="clients" label="Клиенты склада" />}
+            {canManageTariffs && <Tab value="tariffs" label="Услуги и тарифы" />}
           </Tabs>
         )}
 
         {tab === 'clients' && canManageClients ? (
           <WarehouseClientsPanel onClientsChanged={() => void loadCounterparties()} />
+        ) : tab === 'tariffs' && canManageTariffs ? (
+          <WarehouseTariffsPanel />
         ) : (
           <>
         <Paper variant="outlined" sx={{ p: 2 }}>
@@ -399,6 +410,14 @@ export default function WarehousePage() {
                     />
                   </TableCell>
                   <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                    <Tooltip title="Дополнительные услуги">
+                      <IconButton
+                        size="small"
+                        onClick={() => setServicesVehicle(vehicle)}
+                      >
+                        <MiscellaneousServices fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                     <Tooltip title="Фотографии">
                       <IconButton
                         size="small"
@@ -607,6 +626,12 @@ export default function WarehousePage() {
         vehicle={photoVehicle}
         readOnly={!canOperateWarehouse}
         onClose={() => setPhotoVehicle(null)}
+      />
+      <WarehouseServicesDialog
+        open={Boolean(servicesVehicle)}
+        vehicle={servicesVehicle}
+        readOnly={!canEditServices}
+        onClose={() => setServicesVehicle(null)}
       />
     </Box>
   );
