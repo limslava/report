@@ -302,14 +302,12 @@ export const performWarehouseService = async (
         error.statusCode = 409;
         throw error;
       }
-      if (service.code === 'refuel' && service.defaultQuantity === null) {
-        const error: any = new Error('Сначала задайте фиксированное количество литров для дозаправки');
+      if (service.code === 'refuel' && req.body.quantity === undefined) {
+        const error: any = new Error('Укажите фактическое количество залитых литров');
         error.statusCode = 409;
         throw error;
       }
-      const quantity = Number(service.code === 'refuel'
-        ? service.defaultQuantity
-        : (req.body.quantity ?? service.defaultQuantity ?? 1));
+      const quantity = Number(req.body.quantity ?? service.defaultQuantity ?? 1);
       const unitPrice = Number(tariff.price);
       const totalAmount = roundMoney(quantity * unitPrice);
       const repository = manager.getRepository(WarehousePerformedService);

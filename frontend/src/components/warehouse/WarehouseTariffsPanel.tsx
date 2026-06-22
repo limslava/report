@@ -162,22 +162,15 @@ export default function WarehouseTariffsPanel() {
                     </Typography>
                   )}
                 </TableCell>
-                <TableCell>
-                  {unitLabels[service.unit]}
-                  {service.unit === 'liter' && (
-                    service.defaultQuantity === null
-                      ? ' · количество не задано'
-                      : ` · ${service.defaultQuantity} л`
-                  )}
-                </TableCell>
+                <TableCell>{unitLabels[service.unit]}</TableCell>
                 <TableCell align="right">
                   {service.currentTariffs.passenger
-                    ? money.format(service.currentTariffs.passenger.price)
+                    ? `${money.format(service.currentTariffs.passenger.price)}${service.unit === 'liter' ? ' / л' : ''}`
                     : 'Не задан'}
                 </TableCell>
                 <TableCell align="right">
                   {service.currentTariffs.truck
-                    ? money.format(service.currentTariffs.truck.price)
+                    ? `${money.format(service.currentTariffs.truck.price)}${service.unit === 'liter' ? ' / л' : ''}`
                     : 'Не задан'}
                 </TableCell>
                 <TableCell>
@@ -204,13 +197,15 @@ export default function WarehouseTariffsPanel() {
         <DialogTitle>{editing?.name}</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2} sx={{ pt: 0.5 }}>
-            <TextField
-              type="number"
-              label={editing?.unit === 'liter' ? 'Количество литров по умолчанию' : 'Количество по умолчанию'}
-              value={defaultQuantity}
-              onChange={(event) => setDefaultQuantity(event.target.value)}
-              inputProps={{ min: 0.001, step: 0.001 }}
-            />
+            {editing?.unit !== 'liter' && (
+              <TextField
+                type="number"
+                label="Количество по умолчанию"
+                value={defaultQuantity}
+                onChange={(event) => setDefaultQuantity(event.target.value)}
+                inputProps={{ min: 0.001, step: 0.001 }}
+              />
+            )}
             <TextField
               type="date"
               label="Новые цены действуют с"
@@ -222,7 +217,7 @@ export default function WarehouseTariffsPanel() {
               <TextField
                 fullWidth
                 type="number"
-                label="Легковой, ₽"
+                label={editing?.unit === 'liter' ? 'Легковой, ₽/л' : 'Легковой, ₽'}
                 value={passengerPrice}
                 onChange={(event) => setPassengerPrice(event.target.value)}
                 inputProps={{ min: 0, step: 0.01 }}
@@ -230,7 +225,7 @@ export default function WarehouseTariffsPanel() {
               <TextField
                 fullWidth
                 type="number"
-                label="Грузовой, ₽"
+                label={editing?.unit === 'liter' ? 'Грузовой, ₽/л' : 'Грузовой, ₽'}
                 value={truckPrice}
                 onChange={(event) => setTruckPrice(event.target.value)}
                 inputProps={{ min: 0, step: 0.01 }}
@@ -241,8 +236,8 @@ export default function WarehouseTariffsPanel() {
               label="Услуга активна"
             />
             <Alert severity="info">
-              {editing?.unit === 'liter' && !defaultQuantity
-                ? 'Пока количество литров не задано, дозаправку нельзя начислить.'
+              {editing?.unit === 'liter'
+                ? 'Здесь задаётся стоимость одного литра. Фактическое количество вводит кладовщик.'
                 : 'Если цена не изменилась, новая версия тарифа не создаётся.'}
             </Alert>
           </Stack>

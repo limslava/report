@@ -160,14 +160,10 @@ export default function WarehouseServicesDialog({ open, vehicle, readOnly = fals
                       <MenuItem
                         key={service.id}
                         value={service.id}
-                        disabled={
-                          !service.currentTariffs[vehicle?.vehicleType ?? 'passenger']
-                          || (service.code === 'refuel' && service.defaultQuantity === null)
-                        }
+                        disabled={!service.currentTariffs[vehicle?.vehicleType ?? 'passenger']}
                       >
                         {service.name}
                         {!service.currentTariffs[vehicle?.vehicleType ?? 'passenger'] && ' · тариф не задан'}
-                        {service.code === 'refuel' && service.defaultQuantity === null && ' · литры не заданы'}
                       </MenuItem>
                     ))}
                   </Select>
@@ -192,7 +188,8 @@ export default function WarehouseServicesDialog({ open, vehicle, readOnly = fals
               {selected?.currentTariffs[vehicle?.vehicleType ?? 'passenger'] && (
                 <Alert severity="info">
                   Тариф: {money.format(selected.currentTariffs[vehicle?.vehicleType ?? 'passenger']!.price)}
-                  {' '}за {unitShort[selected.unit]}; сумма будет рассчитана автоматически.
+                  {' '}за {selected.unit === 'liter' ? '1 литр' : unitShort[selected.unit]};
+                  {' '}сумма будет рассчитана автоматически.
                 </Alert>
               )}
               <TextField
