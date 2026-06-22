@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { Suspense, lazy } from 'react';
 import { useAuthStore } from './store/auth-store';
 import DashboardLayout from './layouts/DashboardLayout';
@@ -38,7 +38,6 @@ const OperationsScheduleReportsPage = lazy(() => import('./pages/OperationsSched
 
 function App() {
   const { token, user } = useAuthStore();
-  const location = useLocation();
   const isAuthenticated = !!token;
   const defaultAuthenticatedRoute = (() => {
     if (user?.role === 'warehouse_keeper') return '/warehouse/operations';
@@ -182,11 +181,7 @@ function App() {
             element={(
               <RouteAccessGuard allow={canAccessWarehouse(user?.role)}>
                 {user?.role === 'warehouse_keeper'
-                  ? (
-                    new URLSearchParams(location.search).get('receive') === '1'
-                      ? <Navigate to="/warehouse/reception" replace />
-                      : <Navigate to="/warehouse/operations" replace />
-                  )
+                  ? <Navigate to="/warehouse/operations" replace />
                   : <WarehousePage />}
               </RouteAccessGuard>
             )}

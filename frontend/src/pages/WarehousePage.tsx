@@ -40,7 +40,6 @@ import {
   Typography,
 } from '@mui/material';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   createWarehouseVehicle,
   getWarehouseClients,
@@ -103,10 +102,7 @@ const errorMessage = (error: unknown, fallback: string): string => {
 };
 
 export default function WarehousePage() {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const user = useAuthStore((state) => state.user);
-  const isWarehouseKeeper = user?.role === 'warehouse_keeper';
   const canOperateWarehouse = user?.role !== 'counterparty_user';
   const canEditServices = ['admin', 'warehouse_manager', 'warehouse_keeper', 'financer']
     .includes(user?.role ?? '');
@@ -173,24 +169,6 @@ export default function WarehousePage() {
     return () => window.clearTimeout(timer);
   }, [loadVehicles]);
 
-  useEffect(() => {
-    if (!canOperateWarehouse || searchParams.get('receive') !== '1') return;
-    setEditingVehicle(null);
-    setForm(emptyForm());
-    setError(null);
-    setDialogOpen(true);
-    if (!isWarehouseKeeper) {
-      navigate('/warehouse', { replace: true });
-    }
-  }, [canOperateWarehouse, isWarehouseKeeper, navigate, searchParams]);
-
-  const closeVehicleDialog = () => {
-    setDialogOpen(false);
-    if (isWarehouseKeeper && !editingVehicle) {
-      navigate('/warehouse/operations', { replace: true });
-    }
-  };
-
   const selectedCounterparty = useMemo(
     () => counterparties.find((item) => item.id === form.counterpartyId) ?? null,
     [counterparties, form.counterpartyId],
@@ -249,10 +227,6 @@ export default function WarehousePage() {
         setSuccess(`Создана карточка ${response.data.warehouseNumber}.`);
       }
       setDialogOpen(false);
-      if (isWarehouseKeeper && !editingVehicle) {
-        navigate('/warehouse/operations', { replace: true });
-        return;
-      }
       await loadVehicles();
     } catch (saveError) {
       setError(errorMessage(saveError, 'Не удалось сохранить карточку ТС.'));
@@ -488,33 +462,17 @@ export default function WarehousePage() {
 
       <Dialog
         open={dialogOpen}
-        onClose={() => !saving && closeVehicleDialog()}
+        onClose={() => !saving && setDialogOpen(false)}
         fullWidth
-        fullScreen={isWarehouseKeeper}
         maxWidth="md"
-        PaperProps={isWarehouseKeeper ? {
-          sx: {
-            bgcolor: 'grey.50',
-          },
-        } : undefined}
       >
         <DialogTitle>
           {editingVehicle
             ? `Карточка ${editingVehicle.warehouseNumber}`
-            : isWarehouseKeeper
-              ? 'Приёмка транспортного средства'
-              : 'Приёмка ТС'}
+            : 'Приёмка ТС'}
         </DialogTitle>
         <DialogContent dividers>
-          <Stack
-            spacing={2.5}
-            sx={{
-              pt: 0.5,
-              width: '100%',
-              maxWidth: isWarehouseKeeper ? 900 : 'none',
-              mx: 'auto',
-            }}
-          >
+          <Stack spacing={2.5} sx={{ pt: 0.5 }}>
             <Autocomplete
               options={counterparties}
               value={selectedCounterparty}
@@ -637,7 +595,7 @@ export default function WarehousePage() {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeVehicleDialog} disabled={saving}>Отмена</Button>
+          <Button onClick={() => setDialogOpen(false)} disabled={saving}>Отмена</Button>
           <Button variant="contained" onClick={() => void handleSave()} disabled={saving}>
             {saving ? 'Сохранение…' : 'Сохранить'}
           </Button>
