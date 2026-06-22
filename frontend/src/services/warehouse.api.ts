@@ -174,6 +174,7 @@ export interface WarehousePhoto {
   originalName: string;
   mimeType: string;
   sizeBytes: number;
+  phase: 'reception' | 'issue';
   uploadedByName: string;
   createdAt: string;
 }
@@ -200,8 +201,14 @@ export const updateWarehouseVehicle = (
   payload: Partial<Omit<WarehouseVehiclePayload, 'counterpartyId' | 'requestNumber' | 'requestDate'>>,
 ) => api.patch<WarehouseVehicle>(`/warehouse/vehicles/${id}`, payload);
 
-export const issueWarehouseVehicle = (id: string, issuedDate?: string) =>
-  api.post<WarehouseVehicle>(`/warehouse/vehicles/${id}/issue`, issuedDate ? { issuedDate } : {});
+export const issueWarehouseVehicle = (
+  id: string,
+  issuePhotoIds: string[],
+  issuedDate?: string,
+) => api.post<WarehouseVehicle>(`/warehouse/vehicles/${id}/issue`, {
+  issuePhotoIds,
+  ...(issuedDate ? { issuedDate } : {}),
+});
 
 export const getWarehouseVehiclePhotos = (vehicleId: string) =>
   api.get<WarehousePhoto[]>(`/warehouse/vehicles/${vehicleId}/photos`);
@@ -210,10 +217,12 @@ export const uploadWarehouseVehiclePhoto = (
   vehicleId: string,
   file: Blob,
   originalName: string,
+  phase: 'reception' | 'issue' = 'reception',
 ) => api.post<WarehousePhoto>(`/warehouse/vehicles/${vehicleId}/photos`, file, {
   headers: {
     'Content-Type': file.type || 'image/jpeg',
     'X-File-Name': encodeURIComponent(originalName),
+    'X-Photo-Phase': phase,
   },
   timeout: 60_000,
 });

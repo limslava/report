@@ -109,6 +109,7 @@ const serializePhoto = (photo: WarehousePhoto) => ({
   originalName: photo.originalName,
   mimeType: photo.mimeType,
   sizeBytes: photo.sizeBytes,
+  phase: photo.phase,
   uploadedByName: photo.uploadedByName,
   createdAt: photo.createdAt,
 });
@@ -485,6 +486,9 @@ export const issueWarehouseVehicle = async (
     const issuedDate = req.user!.role === 'warehouse_keeper'
       ? todayDate()
       : String(req.body.issuedDate || todayDate());
+    const issuePhotoIds = Array.isArray(req.body.issuePhotoIds)
+      ? req.body.issuePhotoIds.map(String)
+      : [];
     const result = await AppDataSource.transaction(async (manager) => {
       const repository = manager.getRepository(WarehouseVehicle);
       const vehicle = await repository.findOne({
@@ -498,6 +502,22 @@ export const issueWarehouseVehicle = async (
       }
       if (vehicle.status === 'issued') {
         return { vehicle, newlyIssued: false };
+      }
+      if (issuePhotoIds.length === 0) {
+        const error: any = new Error('Перед выдачей добавьте фотографии состояния ТС');
+        error.statusCode = 400;
+        throw error;
+      }
+      const issuePhotoCount = await manager.getRepository(WarehousePhoto)
+        .createQueryBuilder('photo')
+        .where('photo.vehicleId = :vehicleId', { vehicleId: vehicle.id })
+        .andWhere('photo.phase = :phase', { phase: 'issue' })
+        .andWhere('photo.id IN (:...issuePhotoIds)', { issuePhotoIds })
+        .getCount();
+      if (issuePhotoCount !== issuePhotoIds.length) {
+        const error: any = new Error('Перед выдачей добавьте фотографии состояния ТС');
+        error.statusCode = 400;
+        throw error;
       }
       if (issuedDate < vehicle.receivedDate) {
         const error: any = new Error('Дата выдачи не может быть раньше даты приёмки');
@@ -514,6 +534,8 @@ export const issueWarehouseVehicle = async (
       await addOperation(manager, vehicle, req, 'issued', {
         issuedDate,
         issuedAt,
+        issuePhotoIds,
+        issuePhotoCount,
         storageDays: calendarDaysInclusive(vehicle.receivedDate, issuedDate),
       });
       return { vehicle, newlyIssued: true };
@@ -613,6 +635,7 @@ export const uploadWarehouseVehiclePhoto = async (
     const originalName = decodedOriginalName
       .replace(/[\u0000-\u001f\u007f]/g, '')
       .slice(0, 255);
+    const phase = req.headers['x-photo-phase'] === 'issue' ? 'issue' : 'reception';
     storedName = await storeWarehousePhoto(vehicle.id, mimeType, req.body);
     const saved = await photoRepository.save(photoRepository.create({
       vehicleId: vehicle.id,
@@ -620,6 +643,7 @@ export const uploadWarehouseVehiclePhoto = async (
       originalName,
       mimeType,
       sizeBytes: req.body.length,
+      phase,
       uploadedById: req.user!.id,
       uploadedByName: req.user!.fullName,
     }));
@@ -628,6 +652,7 @@ export const uploadWarehouseVehiclePhoto = async (
         photoId: saved.id,
         originalName: saved.originalName,
         sizeBytes: saved.sizeBytes,
+        phase: saved.phase,
       });
     });
     res.status(201).json(serializePhoto(saved));

@@ -15,10 +15,6 @@ import {
   CardContent,
   Chip,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   InputAdornment,
   Stack,
   TextField,
@@ -28,7 +24,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   getWarehouseVehicles,
-  issueWarehouseVehicle,
   WarehouseVehicle,
 } from '../services/warehouse.api';
 import WarehousePhotoDialog from '../components/warehouse/WarehousePhotoDialog';
@@ -57,10 +52,7 @@ export default function WarehouseOperationsPage() {
   const [vehicles, setVehicles] = useState<WarehouseVehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [issueVehicle, setIssueVehicle] = useState<WarehouseVehicle | null>(null);
-  const [saving, setSaving] = useState(false);
   const [photoVehicle, setPhotoVehicle] = useState<WarehouseVehicle | null>(null);
   const [servicesVehicle, setServicesVehicle] = useState<WarehouseVehicle | null>(null);
 
@@ -95,24 +87,6 @@ export default function WarehouseOperationsPage() {
     ].filter(Boolean).join(' ').toLowerCase().includes(term));
   }, [search, vehicles]);
 
-  const handleIssue = async () => {
-    if (!issueVehicle) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const response = await issueWarehouseVehicle(issueVehicle.id);
-      setSuccess(
-        `ТС ${issueVehicle.warehouseNumber} выдано ${formatOperationDateTime(response.data.issuedAt!)}.`,
-      );
-      setIssueVehicle(null);
-      await loadVehicles();
-    } catch (issueError) {
-      setError(messageFromError(issueError));
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
     <Box sx={{ p: { xs: 1.5, md: 3 }, maxWidth: 1280, mx: 'auto' }}>
       <Stack spacing={2.5}>
@@ -124,7 +98,6 @@ export default function WarehouseOperationsPage() {
         </Box>
 
         {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
-        {success && <Alert severity="success" onClose={() => setSuccess(null)}>{success}</Alert>}
 
         <Box
           sx={{
@@ -150,7 +123,7 @@ export default function WarehouseOperationsPage() {
 
           <Card variant="outlined">
             <CardActionArea
-              onClick={() => document.getElementById('warehouse-on-site')?.scrollIntoView({ behavior: 'smooth' })}
+              onClick={() => navigate('/warehouse/issue')}
               sx={{ height: '100%', minHeight: 150 }}
             >
               <CardContent>
@@ -262,7 +235,7 @@ export default function WarehouseOperationsPage() {
                         <Button
                           variant="contained"
                           startIcon={<Logout />}
-                          onClick={() => setIssueVehicle(vehicle)}
+                          onClick={() => navigate(`/warehouse/issue?vehicleId=${vehicle.id}`)}
                         >
                           Выдать
                         </Button>
@@ -275,30 +248,6 @@ export default function WarehouseOperationsPage() {
           )}
         </Box>
       </Stack>
-
-      <Dialog open={Boolean(issueVehicle)} onClose={() => !saving && setIssueVehicle(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Выдача ТС</DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={2}>
-            <Typography>
-              {issueVehicle?.warehouseNumber}: {issueVehicle?.brand} {issueVehicle?.model}
-            </Typography>
-            <Alert severity="info">
-              Дата и время выдачи будут автоматически зафиксированы сервером после подтверждения.
-              Кладовщик не может изменить их вручную.
-            </Alert>
-            <Alert severity="info">
-              После выдачи фотографии ТС будут удалены согласно регламенту.
-            </Alert>
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setIssueVehicle(null)} disabled={saving}>Отмена</Button>
-          <Button variant="contained" onClick={() => void handleIssue()} disabled={saving}>
-            Подтвердить выдачу
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       <WarehousePhotoDialog
         open={Boolean(photoVehicle)}

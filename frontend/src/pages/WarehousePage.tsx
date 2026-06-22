@@ -40,11 +40,11 @@ import {
   Typography,
 } from '@mui/material';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   createWarehouseVehicle,
   getWarehouseClients,
   getWarehouseVehicles,
-  issueWarehouseVehicle,
   updateWarehouseVehicle,
   WarehouseCounterparty,
   WarehouseVehicle,
@@ -111,6 +111,7 @@ const errorMessage = (error: unknown, fallback: string): string => {
 };
 
 export default function WarehousePage() {
+  const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const canOperateWarehouse = user?.role !== 'counterparty_user';
   const canEditServices = ['admin', 'warehouse_manager', 'warehouse_keeper', 'financer']
@@ -133,8 +134,6 @@ export default function WarehousePage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState<WarehouseVehicle | null>(null);
   const [form, setForm] = useState<WarehouseVehiclePayload>(emptyForm);
-  const [issueVehicle, setIssueVehicle] = useState<WarehouseVehicle | null>(null);
-  const [issueDate, setIssueDate] = useState(today());
   const [photoVehicle, setPhotoVehicle] = useState<WarehouseVehicle | null>(null);
   const [servicesVehicle, setServicesVehicle] = useState<WarehouseVehicle | null>(null);
 
@@ -239,22 +238,6 @@ export default function WarehousePage() {
       await loadVehicles();
     } catch (saveError) {
       setError(errorMessage(saveError, 'Не удалось сохранить карточку ТС.'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleIssue = async () => {
-    if (!issueVehicle) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await issueWarehouseVehicle(issueVehicle.id, issueDate);
-      setSuccess(`ТС ${issueVehicle.warehouseNumber} выдано.`);
-      setIssueVehicle(null);
-      await loadVehicles();
-    } catch (issueError) {
-      setError(errorMessage(issueError, 'Не удалось оформить выдачу.'));
     } finally {
       setSaving(false);
     }
@@ -453,10 +436,7 @@ export default function WarehousePage() {
                           <IconButton
                             size="small"
                             color="primary"
-                            onClick={() => {
-                              setIssueDate(today());
-                              setIssueVehicle(vehicle);
-                            }}
+                            onClick={() => navigate(`/warehouse/issue?vehicleId=${vehicle.id}`)}
                           >
                             <Logout fontSize="small" />
                           </IconButton>
@@ -611,35 +591,6 @@ export default function WarehousePage() {
           <Button onClick={() => setDialogOpen(false)} disabled={saving}>Отмена</Button>
           <Button variant="contained" onClick={() => void handleSave()} disabled={saving}>
             {saving ? 'Сохранение…' : 'Сохранить'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={Boolean(issueVehicle)} onClose={() => !saving && setIssueVehicle(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Выдача ТС</DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={2}>
-            <Typography>
-              {issueVehicle?.warehouseNumber}: {issueVehicle?.brand} {issueVehicle?.model}
-            </Typography>
-            <TextField
-              type="date"
-              label="Дата выдачи"
-              InputLabelProps={{ shrink: true }}
-              value={issueDate}
-              onChange={(event) => setIssueDate(event.target.value)}
-            />
-            {issueVehicle && (
-              <Alert severity="info">
-                День приёмки и день выдачи включаются в расчёт хранения.
-              </Alert>
-            )}
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setIssueVehicle(null)} disabled={saving}>Отмена</Button>
-          <Button variant="contained" onClick={() => void handleIssue()} disabled={saving}>
-            Подтвердить выдачу
           </Button>
         </DialogActions>
       </Dialog>

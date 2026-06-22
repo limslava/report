@@ -9,6 +9,8 @@ import {
 } from 'typeorm';
 import { WarehouseVehicle } from './warehouse-vehicle.model';
 
+export type WarehousePhotoPhase = 'reception' | 'issue';
+
 @Entity('warehouse_photos')
 @Index('idx_warehouse_photo_vehicle_date', ['vehicleId', 'createdAt'])
 export class WarehousePhoto {
@@ -36,6 +38,9 @@ export class WarehousePhoto {
 
   @Column({ name: 'size_bytes', type: 'integer' })
   sizeBytes!: number;
+
+  @Column({ type: 'varchar', length: 20, default: 'reception' })
+  phase!: WarehousePhotoPhase;
 
   @Column({ name: 'uploaded_by_id', type: 'uuid' })
   uploadedById!: string;

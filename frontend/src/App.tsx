@@ -16,6 +16,7 @@ import SinokorTestPage from './pages/SinokorTestPage';
 import WarehousePage from './pages/WarehousePage';
 import WarehouseOperationsPage from './pages/WarehouseOperationsPage';
 import WarehouseReceptionPage from './pages/WarehouseReceptionPage';
+import WarehouseIssuePage from './pages/WarehouseIssuePage';
 import RouteAccessGuard from './components/auth/RouteAccessGuard';
 import {
   canAccessAdmin,
@@ -207,6 +208,18 @@ function App() {
                 'warehouse_keeper',
               ].includes(user?.role ?? '')}>
                 <WarehouseReceptionPage />
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="warehouse/issue"
+            element={(
+              <RouteAccessGuard allow={[
+                'admin',
+                'warehouse_manager',
+                'warehouse_keeper',
+              ].includes(user?.role ?? '')}>
+                <WarehouseIssuePage />
               </RouteAccessGuard>
             )}
           />

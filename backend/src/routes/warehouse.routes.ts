@@ -367,6 +367,8 @@ router.post(
   [
     param('id').isUUID(),
     body('issuedDate').optional().isISO8601({ strict: true }),
+    body('issuePhotoIds').isArray({ min: 1, max: 60 }),
+    body('issuePhotoIds.*').isUUID(),
   ],
   handleValidationErrors,
   issueWarehouseVehicle,
