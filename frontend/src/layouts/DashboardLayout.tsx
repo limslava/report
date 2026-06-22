@@ -43,6 +43,7 @@ import {
   ExpandLess,
   ExpandMore,
   AccountTree,
+  Warehouse,
 } from '@mui/icons-material';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -61,6 +62,7 @@ import {
   canViewTotalsInPlans,
   canViewBPDashboard,
   canShowBPDashboardMenu,
+  canAccessWarehouse,
 } from '../utils/rolePermissions';
 import { getHasUnsavedChanges, getUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import { getRuntimeAppSettings } from '../services/api';
@@ -171,7 +173,9 @@ const DashboardLayout = () => {
   const canOpenContractApproval = canAccessContractApproval(user?.role);
   const canOpenBillOfLading = canAccessBillOfLading(user?.role);
   const showBPDashboardMenu = canShowBPDashboardMenu(user?.role);
-  const homeRoute = canViewTechDashboard(user?.role)
+  const homeRoute = user?.role === 'warehouse_manager' || user?.role === 'warehouse_keeper'
+    ? '/warehouse'
+    : canViewTechDashboard(user?.role)
     ? '/sw-tech-dashboard'
     : (canViewPlansMenu && canViewPlans(user?.role))
       ? '/plans'
@@ -304,6 +308,9 @@ const DashboardLayout = () => {
   );
 
   const menuItems = [
+    canAccessWarehouse(user?.role)
+      ? { key: 'warehouse', label: 'Склад ТС', icon: <Warehouse />, onClick: () => handleNavigate('/warehouse'), active: location.pathname.startsWith('/warehouse') }
+      : null,
     canViewSummary(user?.role)
       ? { key: 'summary', label: 'Сводный отчет', icon: <Assignment />, onClick: () => handleNavigate('/summary-report'), active: location.pathname.includes('/summary') }
       : null,
@@ -1073,6 +1080,7 @@ const DashboardLayout = () => {
               {location.pathname.includes('/business-processes/contract-approval') && 'Согласование договоров'}
               {location.pathname.includes('/business-processes/bill-of-lading') && 'Коносамент'}
               {location.pathname.includes('/business-processes/dashboard') && 'Согласование договоров'}
+              {location.pathname.startsWith('/warehouse') && 'Склад ТС'}
               {location.pathname.includes('/settings') && 'Настройки'}
             </Typography>
           )}

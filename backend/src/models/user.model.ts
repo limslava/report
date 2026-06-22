@@ -33,6 +33,8 @@ export class User {
     | 'manager_rail'
     | 'manager_extra'
     | 'manager_to'
+    | 'warehouse_manager'
+    | 'warehouse_keeper'
     | 'financer'
     | 'chief_accountant'
     | 'lawyer'

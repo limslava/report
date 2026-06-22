@@ -12,6 +12,15 @@ export function canAccessAdmin(role?: string | null): boolean {
   return role === 'admin';
 }
 
+export function canAccessWarehouse(role?: string | null): boolean {
+  return role === 'admin'
+    || role === 'director'
+    || role === 'general_director'
+    || role === 'financer'
+    || role === 'warehouse_manager'
+    || role === 'warehouse_keeper';
+}
+
 export function canViewTotalsInPlans(role?: string | null): boolean {
   return Boolean(role)
     && role !== 'security'
@@ -21,7 +30,9 @@ export function canViewTotalsInPlans(role?: string | null): boolean {
     && role !== 'head_hr'
     && role !== 'hr_specialist'
     && role !== 'garage_head'
-    && role !== 'garage_head_vvo';
+    && role !== 'garage_head_vvo'
+    && role !== 'warehouse_manager'
+    && role !== 'warehouse_keeper';
 }
 
 export function canViewPlans(role?: string | null): boolean {
@@ -33,7 +44,9 @@ export function canViewPlans(role?: string | null): boolean {
     && role !== 'head_hr'
     && role !== 'hr_specialist'
     && role !== 'garage_head'
-    && role !== 'garage_head_vvo';
+    && role !== 'garage_head_vvo'
+    && role !== 'warehouse_manager'
+    && role !== 'warehouse_keeper';
 }
 
 export function canEditTotalsPlan(role?: string | null): boolean {

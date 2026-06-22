@@ -13,6 +13,7 @@ import SWTechDashboardPage from './pages/SWTechDashboardPage';
 import ContractApprovalPage from './pages/ContractApprovalPage';
 import BPApprovalDashboardPage from './pages/BPApprovalDashboardPage';
 import SinokorTestPage from './pages/SinokorTestPage';
+import WarehousePage from './pages/WarehousePage';
 import RouteAccessGuard from './components/auth/RouteAccessGuard';
 import {
   canAccessAdmin,
@@ -26,6 +27,7 @@ import {
   canViewSummary,
   canViewTechDashboard,
   canViewBPDashboard,
+  canAccessWarehouse,
 } from './utils/rolePermissions';
 
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
@@ -36,6 +38,7 @@ function App() {
   const { token, user } = useAuthStore();
   const isAuthenticated = !!token;
   const defaultAuthenticatedRoute = (() => {
+    if (user?.role === 'warehouse_manager' || user?.role === 'warehouse_keeper') return '/warehouse';
     if (canViewTechDashboard(user?.role)) return '/sw-tech-dashboard';
     if (canViewPlans(user?.role)) return '/plans';
     if (canViewBPDashboard(user?.role)) return '/business-processes/dashboard';
@@ -164,6 +167,14 @@ function App() {
             element={(
               <RouteAccessGuard allow={canAccessBillOfLading(user?.role)}>
                 <SinokorTestPage />
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="warehouse"
+            element={(
+              <RouteAccessGuard allow={canAccessWarehouse(user?.role)}>
+                <WarehousePage />
               </RouteAccessGuard>
             )}
           />

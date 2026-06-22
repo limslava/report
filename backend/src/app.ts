@@ -16,6 +16,7 @@ import { operationsPreviewRouter } from './routes/operations-preview.routes';
 import { contractsRouter } from './routes/contracts.routes';
 import { counterpartiesRouter } from './routes/counterparties.routes';
 import { carriersRouter } from './routes/carriers.routes';
+import { warehouseRouter } from './routes/warehouse.routes';
 import { errorHandler } from './middleware/error-handler';
 import { logger } from './utils/logger';
 import { getAllowedCorsOrigins } from './config/env';
@@ -99,6 +100,7 @@ export function createApp() {
   app.use('/api/contracts', contractsRouter);
   app.use('/api/counterparties', counterpartiesRouter);
   app.use('/api/carriers', carriersRouter);
+  app.use('/api/warehouse', warehouseRouter);
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });
