@@ -1,16 +1,16 @@
 import { Edit } from '@mui/icons-material';
 import {
   Alert,
+  Box,
   Button,
+  Checkbox,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControl,
   IconButton,
-  InputLabel,
-  MenuItem,
-  Select,
+  Paper,
   Stack,
   Table,
   TableBody,
@@ -89,6 +89,17 @@ export default function WarehouseServicesDialog({ open, vehicle, readOnly = fals
     [catalog, serviceId],
   );
 
+  const serviceStats = useMemo(() => {
+    const today = new Date().toLocaleDateString('en-CA');
+    return new Map(catalog.map((service) => {
+      const performed = items.filter((item) => item.serviceId === service.id);
+      const performedToday = performed.filter(
+        (item) => new Date(item.performedAt).toLocaleDateString('en-CA') === today,
+      );
+      return [service.id, { total: performed.length, today: performedToday.length }];
+    }));
+  }, [catalog, items]);
+
   const selectService = (id: string) => {
     setServiceId(id);
     const service = catalog.find((item) => item.id === id);
@@ -147,67 +158,127 @@ export default function WarehouseServicesDialog({ open, vehicle, readOnly = fals
           {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
           {!readOnly && vehicle?.status === 'on_site' && !editing && (
             <Stack spacing={2}>
-              <Typography variant="subtitle1" fontWeight={600}>Зафиксировать выполнение</Typography>
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-                <FormControl fullWidth>
-                  <InputLabel>Услуга</InputLabel>
-                  <Select
-                    label="Услуга"
-                    value={serviceId}
-                    onChange={(event) => selectService(event.target.value)}
-                  >
-                    {catalog.map((service) => (
-                      <MenuItem
-                        key={service.id}
-                        value={service.id}
-                        disabled={!service.currentTariffs[vehicle?.vehicleType ?? 'passenger']}
+              <Box>
+                <Typography variant="subtitle1" fontWeight={600}>Быстрые услуги</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Нажмите на услугу, проверьте данные и подтвердите выполнение.
+                </Typography>
+              </Box>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
+                  gap: 1.25,
+                }}
+              >
+                {catalog.map((service) => {
+                  const tariff = service.currentTariffs[vehicle.vehicleType];
+                  const stats = serviceStats.get(service.id) ?? { total: 0, today: 0 };
+                  const isSelected = service.id === serviceId;
+                  return (
+                    <Paper
+                      key={service.id}
+                      variant="outlined"
+                      component="button"
+                      type="button"
+                      disabled={!tariff || saving}
+                      onClick={() => selectService(service.id)}
+                      sx={{
+                        p: 1.25,
+                        textAlign: 'left',
+                        cursor: tariff ? 'pointer' : 'not-allowed',
+                        borderColor: isSelected ? 'primary.main' : 'divider',
+                        bgcolor: isSelected ? 'action.selected' : 'background.paper',
+                        opacity: tariff ? 1 : 0.55,
+                        font: 'inherit',
+                      }}
+                    >
+                      <Stack direction="row" spacing={1} alignItems="flex-start">
+                        <Checkbox checked={isSelected} tabIndex={-1} disableRipple sx={{ p: 0.25 }} />
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography variant="body2" fontWeight={600}>{service.name}</Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            {tariff
+                              ? `${money.format(tariff.price)} за ${service.unit === 'liter' ? 'литр' : unitShort[service.unit]}`
+                              : 'Тариф не задан'}
+                          </Typography>
+                          {stats.total > 0 && (
+                            <Stack direction="row" spacing={0.75} mt={0.75} flexWrap="wrap">
+                              {stats.today > 0 && (
+                                <Chip size="small" color="success" label={`Сегодня × ${stats.today}`} />
+                              )}
+                              <Chip size="small" variant="outlined" label={`Всего × ${stats.total}`} />
+                            </Stack>
+                          )}
+                        </Box>
+                      </Stack>
+                    </Paper>
+                  );
+                })}
+              </Box>
+
+              {selected && (
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Stack spacing={2}>
+                    <Typography variant="subtitle1" fontWeight={600}>
+                      Подтверждение · {selected.name}
+                    </Typography>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                      <TextField
+                        type="number"
+                        label={selected.unit === 'liter'
+                          ? 'Фактически залито, л'
+                          : `Количество, ${unitShort[selected.unit]}`}
+                        value={quantity}
+                        onChange={(event) => setQuantity(event.target.value)}
+                        inputProps={{ min: 0.001, step: 0.001 }}
+                        fullWidth
+                      />
+                      <TextField
+                        type="datetime-local"
+                        label="Выполнено"
+                        InputLabelProps={{ shrink: true }}
+                        value={performedAt}
+                        onChange={(event) => setPerformedAt(event.target.value)}
+                        fullWidth
+                      />
+                    </Stack>
+                    <Alert severity="info">
+                      Тариф: {money.format(selected.currentTariffs[vehicle.vehicleType]!.price)}
+                      {' '}за {selected.unit === 'liter' ? '1 литр' : unitShort[selected.unit]}.
+                      {' '}Предварительная сумма: {money.format(
+                        selected.currentTariffs[vehicle.vehicleType]!.price * Number(quantity || 0),
+                      )}.
+                    </Alert>
+                    <TextField
+                      label="Комментарий"
+                      value={comment}
+                      onChange={(event) => setComment(event.target.value)}
+                      multiline
+                      minRows={2}
+                    />
+                    <Stack direction="row" justifyContent="flex-end" spacing={1}>
+                      <Button
+                        onClick={() => {
+                          setServiceId('');
+                          setQuantity('1');
+                          setComment('');
+                        }}
+                        disabled={saving}
                       >
-                        {service.name}
-                        {!service.currentTariffs[vehicle?.vehicleType ?? 'passenger'] && ' · тариф не задан'}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                <TextField
-                  type="number"
-                  label={`Количество${selected ? `, ${unitShort[selected.unit]}` : ''}`}
-                  value={quantity}
-                  onChange={(event) => setQuantity(event.target.value)}
-                  inputProps={{ min: 0.001, step: 0.001 }}
-                  sx={{ minWidth: 170 }}
-                />
-                <TextField
-                  type="datetime-local"
-                  label="Выполнено"
-                  InputLabelProps={{ shrink: true }}
-                  value={performedAt}
-                  onChange={(event) => setPerformedAt(event.target.value)}
-                  sx={{ minWidth: 220 }}
-                />
-              </Stack>
-              {selected?.currentTariffs[vehicle?.vehicleType ?? 'passenger'] && (
-                <Alert severity="info">
-                  Тариф: {money.format(selected.currentTariffs[vehicle?.vehicleType ?? 'passenger']!.price)}
-                  {' '}за {selected.unit === 'liter' ? '1 литр' : unitShort[selected.unit]};
-                  {' '}сумма будет рассчитана автоматически.
-                </Alert>
+                        Отмена
+                      </Button>
+                      <Button
+                        variant="contained"
+                        onClick={() => void saveNew()}
+                        disabled={saving || Number(quantity) <= 0}
+                      >
+                        Подтвердить выполнение
+                      </Button>
+                    </Stack>
+                  </Stack>
+                </Paper>
               )}
-              <TextField
-                label="Комментарий"
-                value={comment}
-                onChange={(event) => setComment(event.target.value)}
-                multiline
-                minRows={2}
-              />
-              <Stack direction="row" justifyContent="flex-end">
-                <Button
-                  variant="contained"
-                  onClick={() => void saveNew()}
-                  disabled={saving || !serviceId || Number(quantity) <= 0}
-                >
-                  Добавить услугу
-                </Button>
-              </Stack>
             </Stack>
           )}
 

@@ -187,13 +187,31 @@ export default function WarehouseOperationsPage() {
               placeholder="Складской номер, VIN, госномер"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && filteredVehicles.length === 1) {
+                  setServicesVehicle(filteredVehicles[0]);
+                }
+              }}
               sx={{ minWidth: { sm: 360 } }}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start"><Search fontSize="small" /></InputAdornment>
                 ),
               }}
+              helperText={
+                search.trim() && filteredVehicles.length === 1
+                  ? 'Нажмите Enter, чтобы открыть услуги найденного ТС'
+                  : 'Поиск по складскому номеру, VIN, госномеру, марке или контрагенту'
+              }
             />
+            <Button
+              variant="contained"
+              startIcon={<MiscellaneousServices />}
+              disabled={filteredVehicles.length !== 1}
+              onClick={() => setServicesVehicle(filteredVehicles[0])}
+            >
+              Открыть услуги
+            </Button>
           </Stack>
 
           {loading ? (
