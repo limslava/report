@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Alert,
+  Autocomplete,
   Collapse,
   Typography,
   Paper,
@@ -778,18 +779,27 @@ const AdminPage = () => {
               onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
               fullWidth
             />
-            <FormControl fullWidth>
-              <InputLabel>Роль</InputLabel>
-              <Select
-                label="Роль"
-                value={formData.role}
-                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-              >
-                {roles.map((role) => (
-                  <MenuItem key={role.value} value={role.value}>{role.label}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Autocomplete
+              options={roles}
+              value={roles.find((role) => role.value === formData.role) ?? null}
+              onChange={(_event, value) => setFormData({
+                ...formData,
+                role: value?.value ?? '',
+                warehouseClientId: value?.value === 'counterparty_user'
+                  ? formData.warehouseClientId
+                  : '',
+              })}
+              isOptionEqualToValue={(option, value) => option.value === value.value}
+              getOptionLabel={(option) => option.label}
+              noOptionsText="Роль не найдена"
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Роль"
+                  placeholder="Начните вводить название"
+                />
+              )}
+            />
             {formData.role === 'counterparty_user' && (
               <FormControl fullWidth>
                 <InputLabel>Клиент склада</InputLabel>
