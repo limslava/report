@@ -116,6 +116,57 @@ export interface WarehousePerformedService {
   updatedAt: string;
 }
 
+export interface WarehouseBillingServiceLine {
+  id: string;
+  name: string;
+  performedAt: string;
+  quantity: number;
+  unit: WarehouseServiceUnit;
+  unitPrice: number;
+  amount: number;
+  performedByName: string;
+  comment: string | null;
+}
+
+export interface WarehouseBillingVehicleLine {
+  vehicleId: string;
+  warehouseNumber: string;
+  counterpartyId: string;
+  counterpartyName: string;
+  counterpartyInn: string;
+  vehicleType: WarehouseVehicleType;
+  vehicleName: string;
+  vin: string | null;
+  registrationNumber: string | null;
+  storageFrom: string;
+  storageTo: string;
+  storageDays: number;
+  storageAmount: number;
+  storageRates: Array<{ price: number; days: number; amount: number }>;
+  services: WarehouseBillingServiceLine[];
+  servicesAmount: number;
+  totalAmount: number;
+}
+
+export interface WarehouseBillingReport {
+  periodFrom: string;
+  periodTo: string;
+  counterpartyId: string | null;
+  counterpartyName: string | null;
+  status: 'preview' | 'closed';
+  closedPeriodId: string | null;
+  closedAt: string | null;
+  lines: WarehouseBillingVehicleLine[];
+  totals: {
+    vehicleCount: number;
+    storageDays: number;
+    storageAmount: number;
+    servicesAmount: number;
+    totalAmount: number;
+  };
+  warnings: string[];
+}
+
 export interface WarehousePhoto {
   id: string;
   originalName: string;
@@ -229,3 +280,28 @@ export const correctWarehousePerformedService = (
   `/warehouse/vehicles/${vehicleId}/services/${performedServiceId}`,
   payload,
 );
+
+export interface WarehouseBillingFilters {
+  periodFrom: string;
+  periodTo: string;
+  counterpartyId?: string;
+  vehicleType?: WarehouseVehicleType | '';
+}
+
+export const getWarehouseBilling = (filters: WarehouseBillingFilters) =>
+  api.get<WarehouseBillingReport>('/warehouse/billing', { params: filters });
+
+export const closeWarehouseBilling = (payload: {
+  periodFrom: string;
+  periodTo: string;
+  counterpartyId: string;
+}) => api.post<WarehouseBillingReport>('/warehouse/billing/close', payload);
+
+export const exportWarehouseBilling = (
+  format: 'xlsx' | 'pdf',
+  filters: WarehouseBillingFilters,
+) => api.get<Blob>(`/warehouse/billing/export.${format}`, {
+  params: filters,
+  responseType: 'blob',
+  timeout: 60_000,
+});

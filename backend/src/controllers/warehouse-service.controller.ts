@@ -7,6 +7,7 @@ import { WarehousePerformedService } from '../models/warehouse-performed-service
 import { WarehouseServiceDefinition } from '../models/warehouse-service-definition.model';
 import { WarehouseTariff } from '../models/warehouse-tariff.model';
 import { WarehouseVehicle, WarehouseVehicleType } from '../models/warehouse-vehicle.model';
+import { assertWarehouseDateIsOpen } from '../services/warehouse-billing-lock.service';
 
 const normalizeNullable = (value: unknown): string | null => {
   const normalized = String(value ?? '').trim();
@@ -291,6 +292,7 @@ export const performWarehouseService = async (
       }
       const performedAt = new Date(req.body.performedAt);
       const onDate = dateOnly(performedAt);
+      await assertWarehouseDateIsOpen(vehicle.counterpartyId, onDate);
       if (onDate < vehicle.receivedDate) {
         const error: any = new Error('Услуга не может быть выполнена раньше приёмки ТС');
         error.statusCode = 400;
@@ -365,6 +367,7 @@ export const correctWarehousePerformedService = async (
         totalAmount: Number(item.totalAmount),
         comment: item.comment,
       };
+      await assertWarehouseDateIsOpen(vehicle.counterpartyId, dateOnly(item.performedAt));
       if (req.body.quantity !== undefined) item.quantity = String(req.body.quantity);
       if (req.body.comment !== undefined) item.comment = normalizeNullable(req.body.comment);
       item.totalAmount = String(roundMoney(Number(item.quantity) * Number(item.unitPrice)));

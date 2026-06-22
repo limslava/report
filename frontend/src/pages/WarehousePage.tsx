@@ -57,6 +57,7 @@ import WarehousePhotoDialog from '../components/warehouse/WarehousePhotoDialog';
 import WarehouseClientsPanel from '../components/warehouse/WarehouseClientsPanel';
 import WarehouseServicesDialog from '../components/warehouse/WarehouseServicesDialog';
 import WarehouseTariffsPanel from '../components/warehouse/WarehouseTariffsPanel';
+import WarehouseBillingPanel from '../components/warehouse/WarehouseBillingPanel';
 import { useAuthStore } from '../store/auth-store';
 
 const today = () => {
@@ -110,8 +111,10 @@ export default function WarehousePage() {
     .includes(user?.role ?? '');
   const canManageClients = user?.role === 'admin' || user?.role === 'warehouse_manager';
   const canManageTariffs = ['admin', 'warehouse_manager', 'financer'].includes(user?.role ?? '');
-  const showTabs = canManageClients || canManageTariffs;
-  const [tab, setTab] = useState<'registry' | 'clients' | 'tariffs'>('registry');
+  const canViewBilling = user?.role !== 'warehouse_keeper';
+  const canCloseBilling = ['admin', 'warehouse_manager', 'financer'].includes(user?.role ?? '');
+  const showTabs = canManageClients || canManageTariffs || canViewBilling;
+  const [tab, setTab] = useState<'registry' | 'clients' | 'tariffs' | 'billing'>('registry');
   const [vehicles, setVehicles] = useState<WarehouseVehicle[]>([]);
   const [counterparties, setCounterparties] = useState<WarehouseCounterparty[]>([]);
   const [loading, setLoading] = useState(true);
@@ -290,6 +293,7 @@ export default function WarehousePage() {
             <Tab value="registry" label="Реестр ТС" />
             {canManageClients && <Tab value="clients" label="Клиенты склада" />}
             {canManageTariffs && <Tab value="tariffs" label="Услуги и тарифы" />}
+            {canViewBilling && <Tab value="billing" label="Начисления и акты" />}
           </Tabs>
         )}
 
@@ -297,6 +301,11 @@ export default function WarehousePage() {
           <WarehouseClientsPanel onClientsChanged={() => void loadCounterparties()} />
         ) : tab === 'tariffs' && canManageTariffs ? (
           <WarehouseTariffsPanel />
+        ) : tab === 'billing' && canViewBilling ? (
+          <WarehouseBillingPanel
+            canClose={canCloseBilling}
+            ownCounterpartyOnly={user?.role === 'counterparty_user'}
+          />
         ) : (
           <>
         <Paper variant="outlined" sx={{ p: 2 }}>

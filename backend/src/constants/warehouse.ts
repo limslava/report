@@ -35,4 +35,19 @@ export const WAREHOUSE_SERVICE_EXECUTION_ROLES = [
   'financer',
 ] as const;
 
+export const WAREHOUSE_BILLING_MANAGEMENT_ROLES = [
+  'admin',
+  'warehouse_manager',
+  'financer',
+] as const;
+
+export const WAREHOUSE_BILLING_VIEW_ROLES = [
+  'admin',
+  'director',
+  'general_director',
+  'financer',
+  'warehouse_manager',
+  'counterparty_user',
+] as const;
+
 export type WarehouseAccessRole = typeof WAREHOUSE_ACCESS_ROLES[number];

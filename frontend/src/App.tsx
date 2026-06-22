@@ -188,7 +188,11 @@ function App() {
           <Route
             path="warehouse/operations"
             element={(
-              <RouteAccessGuard allow={canAccessWarehouse(user?.role)}>
+              <RouteAccessGuard allow={[
+                'admin',
+                'warehouse_manager',
+                'warehouse_keeper',
+              ].includes(user?.role ?? '')}>
                 <WarehouseOperationsPage />
               </RouteAccessGuard>
             )}

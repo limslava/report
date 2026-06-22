@@ -2,6 +2,8 @@ import express, { Router } from 'express';
 import { body, param, query } from 'express-validator';
 import {
   WAREHOUSE_ACCESS_ROLES,
+  WAREHOUSE_BILLING_MANAGEMENT_ROLES,
+  WAREHOUSE_BILLING_VIEW_ROLES,
   WAREHOUSE_CLIENT_MANAGEMENT_ROLES,
   WAREHOUSE_SERVICE_EXECUTION_ROLES,
   WAREHOUSE_STAFF_ROLES,
@@ -37,6 +39,12 @@ import {
   performWarehouseService,
   updateWarehouseService,
 } from '../controllers/warehouse-service.controller';
+import {
+  closeWarehouseBilling,
+  exportWarehouseBillingExcel,
+  exportWarehouseBillingPdf,
+  getWarehouseBillingReport,
+} from '../controllers/warehouse-billing.controller';
 
 const router = Router();
 
@@ -124,6 +132,61 @@ router.post(
   [body('inn').isString().trim().matches(/^(\d{10}|\d{12})$/)],
   handleValidationErrors,
   importWarehouseCounterparty,
+);
+
+router.get(
+  '/billing',
+  authorizeRole(...WAREHOUSE_BILLING_VIEW_ROLES),
+  [
+    query('periodFrom').isISO8601({ strict: true }),
+    query('periodTo').isISO8601({ strict: true }),
+    query('periodTo').custom((value, { req }) => value >= String(req.query?.periodFrom)),
+    query('counterpartyId').optional({ checkFalsy: true }).isUUID(),
+    query('vehicleType').optional({ checkFalsy: true }).isIn(['passenger', 'truck']),
+  ],
+  handleValidationErrors,
+  getWarehouseBillingReport,
+);
+
+router.post(
+  '/billing/close',
+  authorizeRole(...WAREHOUSE_BILLING_MANAGEMENT_ROLES),
+  [
+    body('periodFrom').isISO8601({ strict: true }),
+    body('periodTo').isISO8601({ strict: true }),
+    body('periodTo').custom((value, { req }) => value >= String(req.body?.periodFrom)),
+    body('counterpartyId').isUUID(),
+  ],
+  handleValidationErrors,
+  closeWarehouseBilling,
+);
+
+router.get(
+  '/billing/export.xlsx',
+  authorizeRole(...WAREHOUSE_BILLING_VIEW_ROLES),
+  [
+    query('periodFrom').isISO8601({ strict: true }),
+    query('periodTo').isISO8601({ strict: true }),
+    query('periodTo').custom((value, { req }) => value >= String(req.query?.periodFrom)),
+    query('counterpartyId').optional({ checkFalsy: true }).isUUID(),
+    query('vehicleType').optional({ checkFalsy: true }).isIn(['passenger', 'truck']),
+  ],
+  handleValidationErrors,
+  exportWarehouseBillingExcel,
+);
+
+router.get(
+  '/billing/export.pdf',
+  authorizeRole(...WAREHOUSE_BILLING_VIEW_ROLES),
+  [
+    query('periodFrom').isISO8601({ strict: true }),
+    query('periodTo').isISO8601({ strict: true }),
+    query('periodTo').custom((value, { req }) => value >= String(req.query?.periodFrom)),
+    query('counterpartyId').optional({ checkFalsy: true }).isUUID(),
+    query('vehicleType').optional({ checkFalsy: true }).isIn(['passenger', 'truck']),
+  ],
+  handleValidationErrors,
+  exportWarehouseBillingPdf,
 );
 
 router.get(

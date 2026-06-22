@@ -21,6 +21,7 @@ import {
   storeWarehousePhoto,
 } from '../services/warehouse-photo-storage.service';
 import fs from 'fs';
+import { assertWarehouseDateIsOpen } from '../services/warehouse-billing-lock.service';
 
 const normalizeNullable = (value: unknown): string | null => {
   const normalized = String(value ?? '').trim();
@@ -364,6 +365,7 @@ export const createWarehouseVehicle = async (
       }
 
       const receivedDate = req.body.receivedDate as string;
+      await assertWarehouseDateIsOpen(counterparty.id, receivedDate);
       const request = await resolveStorageRequest(manager, {
         counterpartyId: counterparty.id,
         requestNumber: req.body.requestNumber,
@@ -428,6 +430,10 @@ export const updateWarehouseVehicle = async (
       }
 
       const before = serializeVehicle(vehicle);
+      if (req.body.receivedDate !== undefined) {
+        await assertWarehouseDateIsOpen(vehicle.counterpartyId, vehicle.receivedDate);
+        await assertWarehouseDateIsOpen(vehicle.counterpartyId, req.body.receivedDate);
+      }
       if (req.body.vehicleType !== undefined) vehicle.vehicleType = req.body.vehicleType;
       if (req.body.vin !== undefined) vehicle.vin = normalizeNullable(req.body.vin)?.toUpperCase() ?? null;
       if (req.body.chassisNumber !== undefined) vehicle.chassisNumber = normalizeNullable(req.body.chassisNumber);
@@ -482,6 +488,7 @@ export const issueWarehouseVehicle = async (
         error.statusCode = 400;
         throw error;
       }
+      await assertWarehouseDateIsOpen(vehicle.counterpartyId, issuedDate);
 
       vehicle.issuedDate = issuedDate;
       vehicle.status = 'issued';
