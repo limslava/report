@@ -15,6 +15,7 @@ import BPApprovalDashboardPage from './pages/BPApprovalDashboardPage';
 import SinokorTestPage from './pages/SinokorTestPage';
 import WarehousePage from './pages/WarehousePage';
 import WarehouseOperationsPage from './pages/WarehouseOperationsPage';
+import WarehouseReceptionPage from './pages/WarehouseReceptionPage';
 import RouteAccessGuard from './components/auth/RouteAccessGuard';
 import {
   canAccessAdmin,
@@ -181,8 +182,11 @@ function App() {
             element={(
               <RouteAccessGuard allow={canAccessWarehouse(user?.role)}>
                 {user?.role === 'warehouse_keeper'
-                  && new URLSearchParams(location.search).get('receive') !== '1'
-                  ? <Navigate to="/warehouse/operations" replace />
+                  ? (
+                    new URLSearchParams(location.search).get('receive') === '1'
+                      ? <Navigate to="/warehouse/reception" replace />
+                      : <Navigate to="/warehouse/operations" replace />
+                  )
                   : <WarehousePage />}
               </RouteAccessGuard>
             )}
@@ -196,6 +200,18 @@ function App() {
                 'warehouse_keeper',
               ].includes(user?.role ?? '')}>
                 <WarehouseOperationsPage />
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="warehouse/reception"
+            element={(
+              <RouteAccessGuard allow={[
+                'admin',
+                'warehouse_manager',
+                'warehouse_keeper',
+              ].includes(user?.role ?? '')}>
+                <WarehouseReceptionPage />
               </RouteAccessGuard>
             )}
           />

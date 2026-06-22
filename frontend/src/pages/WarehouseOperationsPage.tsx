@@ -136,7 +136,7 @@ export default function WarehouseOperationsPage() {
         >
           <Card variant="outlined">
             <CardActionArea
-              onClick={() => navigate('/warehouse?receive=1')}
+              onClick={() => navigate('/warehouse/reception')}
               sx={{ height: '100%', minHeight: 150 }}
             >
               <CardContent>

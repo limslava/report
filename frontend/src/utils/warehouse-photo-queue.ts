@@ -67,3 +67,34 @@ export const removeWarehousePhotoQueueItem = async (id: number): Promise<void> =
     };
   });
 };
+
+export const reassignWarehousePhotoQueue = async (
+  fromVehicleId: string,
+  toVehicleId: string,
+): Promise<void> => {
+  const db = await openQueueDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.index('vehicleId').openCursor(IDBKeyRange.only(fromVehicleId));
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      cursor.update({ ...cursor.value, vehicleId: toVehicleId });
+      cursor.continue();
+    };
+    transaction.onerror = () => reject(transaction.error);
+    transaction.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+  });
+};
+
+export const clearWarehousePhotoQueue = async (vehicleId: string): Promise<void> => {
+  const items = await listWarehousePhotoQueue(vehicleId);
+  await Promise.all(items.map((item) => item.id
+    ? removeWarehousePhotoQueueItem(item.id)
+    : Promise.resolve()));
+};
