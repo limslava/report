@@ -70,7 +70,59 @@ const addDays = (date: string, days: number): string => {
 const maxDate = (a: string, b: string) => a > b ? a : b;
 const minDate = (a: string, b: string) => a < b ? a : b;
 
-const reportTotals = (lines: WarehouseBillingVehicleLine[]) => ({
+export interface WarehouseStorageCalculation {
+  storageFrom: string;
+  storageTo: string;
+  storageDays: number;
+  storageAmount: number;
+  storageRates: Array<{ price: number; days: number; amount: number }>;
+  missingTariffDates: string[];
+}
+
+export const calculateWarehouseStorage = (params: {
+  receivedDate: string;
+  issuedDate: string | null;
+  periodFrom: string;
+  periodTo: string;
+  vehicleType: WarehouseVehicleType;
+  tariffs: Array<Pick<WarehouseTariff, 'vehicleType' | 'validFrom' | 'validTo' | 'price'>>;
+}): WarehouseStorageCalculation => {
+  const storageFrom = maxDate(params.receivedDate, params.periodFrom);
+  const storageTo = minDate(params.issuedDate ?? params.periodTo, params.periodTo);
+  const rateGroups = new Map<number, number>();
+  const missingTariffDates: string[] = [];
+  let storageDays = 0;
+  let storageAmount = 0;
+  for (let date = storageFrom; date <= storageTo; date = addDays(date, 1)) {
+    storageDays += 1;
+    const tariff = params.tariffs
+      .filter((item) => item.vehicleType === params.vehicleType
+        && item.validFrom <= date
+        && (!item.validTo || item.validTo >= date))
+      .sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0];
+    if (!tariff) {
+      missingTariffDates.push(date);
+      continue;
+    }
+    const price = Number(tariff.price);
+    storageAmount += price;
+    rateGroups.set(price, (rateGroups.get(price) ?? 0) + 1);
+  }
+  return {
+    storageFrom,
+    storageTo,
+    storageDays,
+    storageAmount: roundMoney(storageAmount),
+    storageRates: Array.from(rateGroups.entries()).map(([price, days]) => ({
+      price,
+      days,
+      amount: roundMoney(price * days),
+    })),
+    missingTariffDates,
+  };
+};
+
+export const calculateWarehouseBillingTotals = (lines: WarehouseBillingVehicleLine[]) => ({
   vehicleCount: lines.length,
   storageDays: lines.reduce((sum, line) => sum + line.storageDays, 0),
   storageAmount: roundMoney(lines.reduce((sum, line) => sum + line.storageAmount, 0)),
@@ -84,7 +136,7 @@ const filterReportByVehicleType = (
 ): WarehouseBillingReport => {
   if (!vehicleType) return report;
   const lines = report.lines.filter((line) => line.vehicleType === vehicleType);
-  return { ...report, lines, totals: reportTotals(lines) };
+  return { ...report, lines, totals: calculateWarehouseBillingTotals(lines) };
 };
 
 const findClosedPeriod = async (
@@ -173,27 +225,17 @@ export const calculateWarehouseBilling = async (params: {
   const warnings: string[] = [];
   if (!storageService) warnings.push('Системная услуга хранения не найдена.');
   const lines: WarehouseBillingVehicleLine[] = vehicles.map((vehicle) => {
-    const storageFrom = maxDate(vehicle.receivedDate, periodFrom);
-    const storageTo = minDate(vehicle.issuedDate ?? periodTo, periodTo);
-    const rateGroups = new Map<number, number>();
-    let storageDays = 0;
-    let storageAmount = 0;
-    for (let date = storageFrom; date <= storageTo; date = addDays(date, 1)) {
-      storageDays += 1;
-      const tariff = tariffs
-        .filter((item) => item.vehicleType === vehicle.vehicleType
-          && item.validFrom <= date
-          && (!item.validTo || item.validTo >= date))
-        .sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0];
-      if (!tariff) {
-        warnings.push(`Нет тарифа хранения: ${vehicle.warehouseNumber}, ${date}.`);
-        continue;
-      }
-      const price = Number(tariff.price);
-      storageAmount += price;
-      rateGroups.set(price, (rateGroups.get(price) ?? 0) + 1);
-    }
-    storageAmount = roundMoney(storageAmount);
+    const storage = calculateWarehouseStorage({
+      receivedDate: vehicle.receivedDate,
+      issuedDate: vehicle.issuedDate,
+      periodFrom,
+      periodTo,
+      vehicleType: vehicle.vehicleType,
+      tariffs,
+    });
+    storage.missingTariffDates.forEach((date) => {
+      warnings.push(`Нет тарифа хранения: ${vehicle.warehouseNumber}, ${date}.`);
+    });
 
     const services: WarehouseBillingServiceLine[] = (servicesByVehicle.get(vehicle.id) ?? [])
       .sort((a, b) => a.performedAt.getTime() - b.performedAt.getTime())
@@ -220,18 +262,14 @@ export const calculateWarehouseBilling = async (params: {
       vehicleName: `${vehicle.brand} ${vehicle.model}`.trim(),
       vin: vehicle.vin,
       registrationNumber: vehicle.registrationNumber,
-      storageFrom,
-      storageTo,
-      storageDays,
-      storageAmount,
-      storageRates: Array.from(rateGroups.entries()).map(([price, days]) => ({
-        price,
-        days,
-        amount: roundMoney(price * days),
-      })),
+      storageFrom: storage.storageFrom,
+      storageTo: storage.storageTo,
+      storageDays: storage.storageDays,
+      storageAmount: storage.storageAmount,
+      storageRates: storage.storageRates,
       services,
       servicesAmount,
-      totalAmount: roundMoney(storageAmount + servicesAmount),
+      totalAmount: roundMoney(storage.storageAmount + servicesAmount),
     };
   });
 
@@ -244,7 +282,7 @@ export const calculateWarehouseBilling = async (params: {
     closedPeriodId: null,
     closedAt: null,
     lines,
-    totals: reportTotals(lines),
+    totals: calculateWarehouseBillingTotals(lines),
     warnings: Array.from(new Set(warnings)),
   };
 };

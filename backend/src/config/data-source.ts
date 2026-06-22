@@ -11,12 +11,11 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USERNAME || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
   database: process.env.DB_DATABASE || 'logistics_reporting',
-  synchronize: true,
+  synchronize: process.env.DB_SYNCHRONIZE === 'true',
+  migrationsRun: process.env.DB_MIGRATIONS_RUN === 'true',
   logging: process.env.NODE_ENV === 'development',
   entities: [path.join(__dirname, '..', 'models', '**', '*.{js,ts}')],
   migrations: [path.join(__dirname, '..', 'migrations', '**', '*.{js,ts}')],
   subscribers: [path.join(__dirname, '..', 'subscribers', '**', '*.{js,ts}')],
   migrationsTableName: 'typeorm_migrations',
 });
-
-export default AppDataSource;

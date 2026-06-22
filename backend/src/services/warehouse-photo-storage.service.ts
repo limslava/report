@@ -17,8 +17,28 @@ const storageRoot = path.resolve(
   process.env.WAREHOUSE_UPLOAD_PATH || path.join(process.cwd(), 'uploads', 'warehouse'),
 );
 
+const backupRoot = process.env.WAREHOUSE_PHOTO_BACKUP_PATH
+  ? path.resolve(process.env.WAREHOUSE_PHOTO_BACKUP_PATH)
+  : null;
+
 const resolveVehicleDirectory = (vehicleId: string): string =>
   path.join(storageRoot, vehicleId);
+
+const resolveBackupVehicleDirectory = (vehicleId: string): string | null =>
+  backupRoot ? path.join(backupRoot, vehicleId) : null;
+
+const resolveStoredFile = (
+  rootDirectory: string,
+  vehicleId: string,
+  storedName: string,
+): string | null => {
+  const directory = path.resolve(rootDirectory, vehicleId);
+  const filePath = path.resolve(directory, path.basename(storedName));
+  if (!filePath.startsWith(`${directory}${path.sep}`)) return null;
+  return filePath;
+};
+
+export const isWarehousePhotoBackupEnabled = (): boolean => backupRoot !== null;
 
 export const isAllowedWarehousePhotoMime = (mimeType: string): boolean =>
   Boolean(MIME_EXTENSIONS[mimeType]);
@@ -33,7 +53,18 @@ export const storeWarehousePhoto = async (
   const directory = resolveVehicleDirectory(vehicleId);
   await fs.mkdir(directory, { recursive: true });
   const storedName = `${Date.now()}-${crypto.randomBytes(16).toString('hex')}${extension}`;
-  await fs.writeFile(path.join(directory, storedName), bytes, { flag: 'wx' });
+  const filePath = path.join(directory, storedName);
+  await fs.writeFile(filePath, bytes, { flag: 'wx' });
+  const backupDirectory = resolveBackupVehicleDirectory(vehicleId);
+  if (backupDirectory) {
+    try {
+      await fs.mkdir(backupDirectory, { recursive: true });
+      await fs.copyFile(filePath, path.join(backupDirectory, storedName));
+    } catch (error) {
+      await fs.unlink(filePath).catch(() => undefined);
+      throw new Error(`Не удалось создать резервную копию фотографии: ${(error as Error).message}`);
+    }
+  }
   return storedName;
 };
 
@@ -41,10 +72,7 @@ export const resolveWarehousePhotoPath = (
   vehicleId: string,
   storedName: string,
 ): string | null => {
-  const directory = path.resolve(resolveVehicleDirectory(vehicleId));
-  const filePath = path.resolve(directory, path.basename(storedName));
-  if (!filePath.startsWith(`${directory}${path.sep}`)) return null;
-  return filePath;
+  return resolveStoredFile(storageRoot, vehicleId, storedName);
 };
 
 export const deleteWarehousePhotoFile = async (
@@ -56,6 +84,14 @@ export const deleteWarehousePhotoFile = async (
   await fs.unlink(filePath).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== 'ENOENT') throw error;
   });
+  if (backupRoot) {
+    const backupPath = resolveStoredFile(backupRoot, vehicleId, storedName);
+    if (backupPath) {
+      await fs.unlink(backupPath).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOENT') throw error;
+      });
+    }
+  }
 };
 
 export const purgeWarehouseVehiclePhotos = async (
@@ -68,5 +104,9 @@ export const purgeWarehouseVehiclePhotos = async (
     await repository.delete({ vehicleId });
   }
   await fs.rm(resolveVehicleDirectory(vehicleId), { recursive: true, force: true });
+  const backupDirectory = resolveBackupVehicleDirectory(vehicleId);
+  if (backupDirectory) {
+    await fs.rm(backupDirectory, { recursive: true, force: true });
+  }
   return photos.length;
 };

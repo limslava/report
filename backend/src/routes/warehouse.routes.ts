@@ -31,6 +31,7 @@ import {
 import { authenticate } from '../middleware/authenticate';
 import { authorizeRole } from '../middleware/authorize';
 import { handleValidationErrors } from '../middleware/express-validator.middleware';
+import { isWarehousePhotoBackupEnabled } from '../services/warehouse-photo-storage.service';
 import {
   correctWarehousePerformedService,
   createWarehouseTariff,
@@ -62,6 +63,7 @@ router.get('/status', (_req, res) => {
       'additional-services',
       'billing',
     ],
+    photoBackupEnabled: isWarehousePhotoBackupEnabled(),
   });
 });
 

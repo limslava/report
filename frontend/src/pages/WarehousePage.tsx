@@ -289,7 +289,13 @@ export default function WarehousePage() {
         {success && <Alert severity="success" onClose={() => setSuccess(null)}>{success}</Alert>}
 
         {showTabs && (
-          <Tabs value={tab} onChange={(_event, value) => setTab(value)}>
+          <Tabs
+            value={tab}
+            onChange={(_event, value) => setTab(value)}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+          >
             <Tab value="registry" label="Реестр ТС" />
             {canManageClients && <Tab value="clients" label="Клиенты склада" />}
             {canManageTariffs && <Tab value="tariffs" label="Услуги и тарифы" />}
