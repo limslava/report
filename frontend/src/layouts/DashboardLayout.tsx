@@ -174,10 +174,9 @@ const DashboardLayout = () => {
   const canOpenBillOfLading = canAccessBillOfLading(user?.role);
   const showBPDashboardMenu = canShowBPDashboardMenu(user?.role);
   const homeRoute = user?.role === 'warehouse_manager'
-    || user?.role === 'warehouse_keeper'
     || user?.role === 'counterparty_user'
     ? '/warehouse'
-    : user?.role === 'warehouse_receiver'
+    : user?.role === 'warehouse_keeper'
       ? '/warehouse/operations'
     : canViewTechDashboard(user?.role)
     ? '/sw-tech-dashboard'
@@ -315,9 +314,9 @@ const DashboardLayout = () => {
     canAccessWarehouse(user?.role)
       ? {
           key: 'warehouse',
-          label: user?.role === 'warehouse_receiver' ? 'Рабочая станция' : 'Склад ТС',
+          label: user?.role === 'warehouse_keeper' ? 'Рабочая станция' : 'Склад ТС',
           icon: <Warehouse />,
-          onClick: () => handleNavigate(user?.role === 'warehouse_receiver' ? '/warehouse/operations' : '/warehouse'),
+          onClick: () => handleNavigate(user?.role === 'warehouse_keeper' ? '/warehouse/operations' : '/warehouse'),
           active: location.pathname.startsWith('/warehouse'),
         }
       : null,

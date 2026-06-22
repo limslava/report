@@ -115,7 +115,7 @@ export default function WarehouseOperationsPage() {
     <Box sx={{ p: { xs: 1.5, md: 3 }, maxWidth: 1280, mx: 'auto' }}>
       <Stack spacing={2.5}>
         <Box>
-          <Typography variant="h4" component="h1">Рабочая станция приёмосдатчика</Typography>
+          <Typography variant="h4" component="h1">Рабочая станция кладовщика</Typography>
           <Typography color="text.secondary">
             Складская площадка · приём, фотофиксация и выдача ТС
           </Typography>

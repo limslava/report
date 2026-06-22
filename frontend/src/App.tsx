@@ -39,10 +39,9 @@ function App() {
   const { token, user } = useAuthStore();
   const isAuthenticated = !!token;
   const defaultAuthenticatedRoute = (() => {
-    if (user?.role === 'warehouse_receiver') return '/warehouse/operations';
+    if (user?.role === 'warehouse_keeper') return '/warehouse/operations';
     if (
       user?.role === 'warehouse_manager'
-      || user?.role === 'warehouse_keeper'
       || user?.role === 'counterparty_user'
     ) return '/warehouse';
     if (canViewTechDashboard(user?.role)) return '/sw-tech-dashboard';
@@ -180,7 +179,7 @@ function App() {
             path="warehouse"
             element={(
               <RouteAccessGuard allow={canAccessWarehouse(user?.role)}>
-                {user?.role === 'warehouse_receiver'
+                {user?.role === 'warehouse_keeper'
                   ? <Navigate to="/warehouse/operations" replace />
                   : <WarehousePage />}
               </RouteAccessGuard>
