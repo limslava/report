@@ -12,6 +12,7 @@ import {
 import { Counterparty } from './counterparty.model';
 import { WarehouseStorageRequest } from './warehouse-storage-request.model';
 import { WarehouseOperation } from './warehouse-operation.model';
+import { WarehousePhoto } from './warehouse-photo.model';
 
 export type WarehouseVehicleType = 'passenger' | 'truck';
 export type WarehouseVehicleStatus = 'expected' | 'on_site' | 'issued';
@@ -91,4 +92,7 @@ export class WarehouseVehicle {
 
   @OneToMany(() => WarehouseOperation, (operation) => operation.vehicle)
   operations!: WarehouseOperation[];
+
+  @OneToMany(() => WarehousePhoto, (photo) => photo.vehicle)
+  photos!: WarehousePhoto[];
 }

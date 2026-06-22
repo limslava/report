@@ -4,11 +4,22 @@ import { AppDataSource } from '../config/data-source';
 import { Counterparty } from '../models/counterparty.model';
 import { Contract } from '../models/contract.model';
 import { WarehouseOperation, WarehouseOperationType } from '../models/warehouse-operation.model';
+import { WarehousePhoto } from '../models/warehouse-photo.model';
 import { WarehouseStorageRequest } from '../models/warehouse-storage-request.model';
 import {
   WarehouseVehicle,
   WarehouseVehicleType,
 } from '../models/warehouse-vehicle.model';
+import {
+  deleteWarehousePhotoFile,
+  isAllowedWarehousePhotoMime,
+  MAX_WAREHOUSE_PHOTO_BYTES,
+  MAX_WAREHOUSE_PHOTOS_PER_VEHICLE,
+  purgeWarehouseVehiclePhotos,
+  resolveWarehousePhotoPath,
+  storeWarehousePhoto,
+} from '../services/warehouse-photo-storage.service';
+import fs from 'fs';
 
 const normalizeNullable = (value: unknown): string | null => {
   const normalized = String(value ?? '').trim();
@@ -60,6 +71,15 @@ const serializeVehicle = (vehicle: WarehouseVehicle) => ({
   storageDays: calendarDaysInclusive(vehicle.receivedDate, vehicle.issuedDate ?? todayDate()),
   createdAt: vehicle.createdAt,
   updatedAt: vehicle.updatedAt,
+});
+
+const serializePhoto = (photo: WarehousePhoto) => ({
+  id: photo.id,
+  originalName: photo.originalName,
+  mimeType: photo.mimeType,
+  sizeBytes: photo.sizeBytes,
+  uploadedByName: photo.uploadedByName,
+  createdAt: photo.createdAt,
 });
 
 const addOperation = async (
@@ -402,9 +422,7 @@ export const issueWarehouseVehicle = async (
         throw error;
       }
       if (vehicle.status === 'issued') {
-        const error: any = new Error('ТС уже выдано');
-        error.statusCode = 409;
-        throw error;
+        return { vehicle, newlyIssued: false };
       }
       if (issuedDate < vehicle.receivedDate) {
         const error: any = new Error('Дата выдачи не может быть раньше даты приёмки');
@@ -420,9 +438,195 @@ export const issueWarehouseVehicle = async (
         issuedDate,
         storageDays: calendarDaysInclusive(vehicle.receivedDate, issuedDate),
       });
-      return vehicle;
+      return { vehicle, newlyIssued: true };
     });
-    res.json(serializeVehicle(result));
+    const purgedPhotoCount = await purgeWarehouseVehiclePhotos(result.vehicle.id);
+    if (purgedPhotoCount > 0) {
+      await AppDataSource.transaction(async (manager) => {
+        await addOperation(manager, result.vehicle, req, 'photos_purged', {
+          count: purgedPhotoCount,
+          reason: 'vehicle_issued',
+        });
+      });
+    }
+    res.json({
+      ...serializeVehicle(result.vehicle),
+      purgedPhotoCount,
+      newlyIssued: result.newlyIssued,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const listWarehouseVehiclePhotos = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const vehicle = await AppDataSource.getRepository(WarehouseVehicle).findOne({
+      where: { id: req.params.id },
+    });
+    if (!vehicle) {
+      res.status(404).json({ message: 'Карточка ТС не найдена' });
+      return;
+    }
+    const photos = await AppDataSource.getRepository(WarehousePhoto).find({
+      where: { vehicleId: vehicle.id },
+      order: { createdAt: 'ASC' },
+    });
+    res.json(photos.map(serializePhoto));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const uploadWarehouseVehiclePhoto = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  let storedName: string | null = null;
+  try {
+    const vehicleRepository = AppDataSource.getRepository(WarehouseVehicle);
+    const photoRepository = AppDataSource.getRepository(WarehousePhoto);
+    const vehicle = await vehicleRepository.findOne({ where: { id: req.params.id } });
+    if (!vehicle) {
+      res.status(404).json({ message: 'Карточка ТС не найдена' });
+      return;
+    }
+    if (vehicle.status !== 'on_site') {
+      res.status(409).json({ message: 'Фотографии можно добавлять только для ТС на стоянке' });
+      return;
+    }
+
+    const mimeType = String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+    if (!isAllowedWarehousePhotoMime(mimeType)) {
+      res.status(415).json({ message: 'Разрешены только JPEG, PNG и WebP' });
+      return;
+    }
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      res.status(400).json({ message: 'Файл фотографии пуст' });
+      return;
+    }
+    if (req.body.length > MAX_WAREHOUSE_PHOTO_BYTES) {
+      res.status(413).json({ message: 'Фотография превышает лимит 12 МБ' });
+      return;
+    }
+
+    const photoCount = await photoRepository.count({ where: { vehicleId: vehicle.id } });
+    if (photoCount >= MAX_WAREHOUSE_PHOTOS_PER_VEHICLE) {
+      res.status(409).json({
+        message: `Для одного ТС разрешено не более ${MAX_WAREHOUSE_PHOTOS_PER_VEHICLE} фотографий`,
+      });
+      return;
+    }
+
+    const originalNameHeader = String(req.headers['x-file-name'] ?? '').trim();
+    let decodedOriginalName = `photo-${photoCount + 1}.jpg`;
+    try {
+      decodedOriginalName = decodeURIComponent(originalNameHeader || decodedOriginalName);
+    } catch {
+      decodedOriginalName = `photo-${photoCount + 1}.jpg`;
+    }
+    const originalName = decodedOriginalName
+      .replace(/[\u0000-\u001f\u007f]/g, '')
+      .slice(0, 255);
+    storedName = await storeWarehousePhoto(vehicle.id, mimeType, req.body);
+    const saved = await photoRepository.save(photoRepository.create({
+      vehicleId: vehicle.id,
+      storedName,
+      originalName,
+      mimeType,
+      sizeBytes: req.body.length,
+      uploadedById: req.user!.id,
+      uploadedByName: req.user!.fullName,
+    }));
+    await AppDataSource.transaction(async (manager) => {
+      await addOperation(manager, vehicle, req, 'photo_uploaded', {
+        photoId: saved.id,
+        originalName: saved.originalName,
+        sizeBytes: saved.sizeBytes,
+      });
+    });
+    res.status(201).json(serializePhoto(saved));
+  } catch (error) {
+    if (storedName) {
+      await deleteWarehousePhotoFile(req.params.id, storedName).catch(() => undefined);
+    }
+    next(error);
+  }
+};
+
+export const getWarehouseVehiclePhoto = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const photo = await AppDataSource.getRepository(WarehousePhoto).findOne({
+      where: {
+        id: req.params.photoId,
+        vehicleId: req.params.id,
+      },
+    });
+    if (!photo) {
+      res.status(404).json({ message: 'Фотография не найдена' });
+      return;
+    }
+    const filePath = resolveWarehousePhotoPath(photo.vehicleId, photo.storedName);
+    if (!filePath || !fs.existsSync(filePath)) {
+      res.status(404).json({ message: 'Файл фотографии не найден' });
+      return;
+    }
+    res.setHeader('Content-Type', photo.mimeType);
+    res.setHeader('Content-Length', String(photo.sizeBytes));
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.sendFile(filePath);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteWarehouseVehiclePhoto = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const vehicle = await AppDataSource.getRepository(WarehouseVehicle).findOne({
+      where: { id: req.params.id },
+    });
+    if (!vehicle) {
+      res.status(404).json({ message: 'Карточка ТС не найдена' });
+      return;
+    }
+    if (vehicle.status !== 'on_site') {
+      res.status(409).json({ message: 'Фотографии выданного ТС уже закрыты для изменений' });
+      return;
+    }
+    const repository = AppDataSource.getRepository(WarehousePhoto);
+    const photo = await repository.findOne({
+      where: {
+        id: req.params.photoId,
+        vehicleId: vehicle.id,
+      },
+    });
+    if (!photo) {
+      res.status(404).json({ message: 'Фотография не найдена' });
+      return;
+    }
+    await deleteWarehousePhotoFile(vehicle.id, photo.storedName);
+    await repository.delete(photo.id);
+    await AppDataSource.transaction(async (manager) => {
+      await addOperation(manager, vehicle, req, 'photo_deleted', {
+        photoId: photo.id,
+        originalName: photo.originalName,
+      });
+    });
+    res.status(204).send();
   } catch (error) {
     next(error);
   }

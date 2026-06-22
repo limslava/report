@@ -49,6 +49,15 @@ export interface WarehouseVehiclePayload {
   notes?: string | null;
 }
 
+export interface WarehousePhoto {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedByName: string;
+  createdAt: string;
+}
+
 export interface WarehouseVehicleFilters {
   q?: string;
   status?: WarehouseVehicleStatus | '';
@@ -73,6 +82,30 @@ export const updateWarehouseVehicle = (
 
 export const issueWarehouseVehicle = (id: string, issuedDate: string) =>
   api.post<WarehouseVehicle>(`/warehouse/vehicles/${id}/issue`, { issuedDate });
+
+export const getWarehouseVehiclePhotos = (vehicleId: string) =>
+  api.get<WarehousePhoto[]>(`/warehouse/vehicles/${vehicleId}/photos`);
+
+export const uploadWarehouseVehiclePhoto = (
+  vehicleId: string,
+  file: Blob,
+  originalName: string,
+) => api.post<WarehousePhoto>(`/warehouse/vehicles/${vehicleId}/photos`, file, {
+  headers: {
+    'Content-Type': file.type || 'image/jpeg',
+    'X-File-Name': encodeURIComponent(originalName),
+  },
+  timeout: 60_000,
+});
+
+export const downloadWarehouseVehiclePhoto = (vehicleId: string, photoId: string) =>
+  api.get<Blob>(`/warehouse/vehicles/${vehicleId}/photos/${photoId}`, {
+    responseType: 'blob',
+    timeout: 60_000,
+  });
+
+export const deleteWarehouseVehiclePhoto = (vehicleId: string, photoId: string) =>
+  api.delete(`/warehouse/vehicles/${vehicleId}/photos/${photoId}`);
 
 export const getWarehouseCounterparties = (q = '') =>
   api.get<WarehouseCounterparty[]>('/warehouse/counterparties', { params: { q, limit: 50 } });

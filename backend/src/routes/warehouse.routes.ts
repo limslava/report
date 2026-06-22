@@ -1,13 +1,17 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { body, param, query } from 'express-validator';
 import { WAREHOUSE_ACCESS_ROLES } from '../constants/warehouse';
 import {
   createWarehouseVehicle,
+  deleteWarehouseVehiclePhoto,
+  getWarehouseVehiclePhoto,
   getWarehouseVehicle,
   importWarehouseCounterparty,
   issueWarehouseVehicle,
   listWarehouseCounterparties,
   listWarehouseVehicles,
+  listWarehouseVehiclePhotos,
+  uploadWarehouseVehiclePhoto,
   updateWarehouseVehicle,
 } from '../controllers/warehouse.controller';
 import { authenticate } from '../middleware/authenticate';
@@ -60,6 +64,46 @@ router.get(
   ],
   handleValidationErrors,
   listWarehouseVehicles,
+);
+
+router.get(
+  '/vehicles/:id/photos',
+  [param('id').isUUID()],
+  handleValidationErrors,
+  listWarehouseVehiclePhotos,
+);
+
+router.post(
+  '/vehicles/:id/photos',
+  [
+    param('id').isUUID(),
+    express.raw({
+      type: ['image/jpeg', 'image/png', 'image/webp'],
+      limit: '12mb',
+    }),
+  ],
+  handleValidationErrors,
+  uploadWarehouseVehiclePhoto,
+);
+
+router.get(
+  '/vehicles/:id/photos/:photoId',
+  [
+    param('id').isUUID(),
+    param('photoId').isUUID(),
+  ],
+  handleValidationErrors,
+  getWarehouseVehiclePhoto,
+);
+
+router.delete(
+  '/vehicles/:id/photos/:photoId',
+  [
+    param('id').isUUID(),
+    param('photoId').isUUID(),
+  ],
+  handleValidationErrors,
+  deleteWarehouseVehiclePhoto,
 );
 
 router.get(

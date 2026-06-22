@@ -4,6 +4,7 @@ import {
   Edit,
   LocalShipping,
   Logout,
+  PhotoCamera,
   Search,
 } from '@mui/icons-material';
 import {
@@ -49,6 +50,7 @@ import {
   WarehouseVehicleStatus,
   WarehouseVehicleType,
 } from '../services/warehouse.api';
+import WarehousePhotoDialog from '../components/warehouse/WarehousePhotoDialog';
 
 const today = () => {
   const date = new Date();
@@ -109,6 +111,7 @@ export default function WarehousePage() {
   const [importingCounterparty, setImportingCounterparty] = useState(false);
   const [issueVehicle, setIssueVehicle] = useState<WarehouseVehicle | null>(null);
   const [issueDate, setIssueDate] = useState(today());
+  const [photoVehicle, setPhotoVehicle] = useState<WarehouseVehicle | null>(null);
 
   const loadCounterparties = useCallback(async () => {
     const response = await getWarehouseCounterparties();
@@ -385,6 +388,14 @@ export default function WarehousePage() {
                     />
                   </TableCell>
                   <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                    <Tooltip title="Фотографии">
+                      <IconButton
+                        size="small"
+                        onClick={() => setPhotoVehicle(vehicle)}
+                      >
+                        <PhotoCamera fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                     {vehicle.status !== 'issued' && (
                       <>
                         <Tooltip title="Редактировать карточку">
@@ -591,6 +602,12 @@ export default function WarehousePage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <WarehousePhotoDialog
+        open={Boolean(photoVehicle)}
+        vehicle={photoVehicle}
+        onClose={() => setPhotoVehicle(null)}
+      />
     </Box>
   );
 }

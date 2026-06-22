@@ -9,7 +9,14 @@ import {
 } from 'typeorm';
 import { WarehouseVehicle } from './warehouse-vehicle.model';
 
-export type WarehouseOperationType = 'created' | 'updated' | 'received' | 'issued';
+export type WarehouseOperationType =
+  | 'created'
+  | 'updated'
+  | 'received'
+  | 'issued'
+  | 'photo_uploaded'
+  | 'photo_deleted'
+  | 'photos_purged';
 
 @Entity('warehouse_operations')
 @Index('idx_warehouse_operation_vehicle_date', ['vehicleId', 'createdAt'])
