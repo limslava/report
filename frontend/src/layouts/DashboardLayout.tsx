@@ -173,7 +173,9 @@ const DashboardLayout = () => {
   const canOpenContractApproval = canAccessContractApproval(user?.role);
   const canOpenBillOfLading = canAccessBillOfLading(user?.role);
   const showBPDashboardMenu = canShowBPDashboardMenu(user?.role);
-  const homeRoute = user?.role === 'warehouse_manager' || user?.role === 'warehouse_keeper'
+  const homeRoute = user?.role === 'warehouse_manager'
+    || user?.role === 'warehouse_keeper'
+    || user?.role === 'counterparty_user'
     ? '/warehouse'
     : canViewTechDashboard(user?.role)
     ? '/sw-tech-dashboard'

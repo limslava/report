@@ -1,4 +1,13 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  JoinColumn,
+  ManyToOne,
+} from 'typeorm';
+import { WarehouseClient } from './warehouse-client.model';
 
 @Entity('users')
 export class User {
@@ -35,6 +44,7 @@ export class User {
     | 'manager_to'
     | 'warehouse_manager'
     | 'warehouse_keeper'
+    | 'counterparty_user'
     | 'financer'
     | 'chief_accountant'
     | 'lawyer'
@@ -58,6 +68,16 @@ export class User {
 
   @Column({ type: 'varchar', length: 32, nullable: true })
   workdays!: string | null;
+
+  @Column({ name: 'warehouse_client_id', type: 'uuid', nullable: true })
+  warehouseClientId!: string | null;
+
+  @ManyToOne(() => WarehouseClient, (client) => client.users, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'warehouse_client_id' })
+  warehouseClient!: WarehouseClient | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

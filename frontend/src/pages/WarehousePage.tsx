@@ -26,6 +26,7 @@ import {
   Paper,
   Select,
   Stack,
+  Tab,
   Table,
   TableBody,
   TableCell,
@@ -33,15 +34,15 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tabs,
   Tooltip,
   Typography,
 } from '@mui/material';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   createWarehouseVehicle,
-  getWarehouseCounterparties,
+  getWarehouseClients,
   getWarehouseVehicles,
-  importWarehouseCounterparty,
   issueWarehouseVehicle,
   updateWarehouseVehicle,
   WarehouseCounterparty,
@@ -51,6 +52,8 @@ import {
   WarehouseVehicleType,
 } from '../services/warehouse.api';
 import WarehousePhotoDialog from '../components/warehouse/WarehousePhotoDialog';
+import WarehouseClientsPanel from '../components/warehouse/WarehouseClientsPanel';
+import { useAuthStore } from '../store/auth-store';
 
 const today = () => {
   const date = new Date();
@@ -95,6 +98,10 @@ const errorMessage = (error: unknown, fallback: string): string => {
 };
 
 export default function WarehousePage() {
+  const user = useAuthStore((state) => state.user);
+  const canOperateWarehouse = user?.role !== 'counterparty_user';
+  const canManageClients = user?.role === 'admin' || user?.role === 'warehouse_manager';
+  const [tab, setTab] = useState<'registry' | 'clients'>('registry');
   const [vehicles, setVehicles] = useState<WarehouseVehicle[]>([]);
   const [counterparties, setCounterparties] = useState<WarehouseCounterparty[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,15 +114,18 @@ export default function WarehousePage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState<WarehouseVehicle | null>(null);
   const [form, setForm] = useState<WarehouseVehiclePayload>(emptyForm);
-  const [importInn, setImportInn] = useState('');
-  const [importingCounterparty, setImportingCounterparty] = useState(false);
   const [issueVehicle, setIssueVehicle] = useState<WarehouseVehicle | null>(null);
   const [issueDate, setIssueDate] = useState(today());
   const [photoVehicle, setPhotoVehicle] = useState<WarehouseVehicle | null>(null);
 
   const loadCounterparties = useCallback(async () => {
-    const response = await getWarehouseCounterparties();
-    setCounterparties(response.data);
+    const response = await getWarehouseClients(false);
+    setCounterparties(response.data.map((client) => ({
+      id: client.counterpartyId,
+      inn: client.inn,
+      nameFull: client.nameFull,
+      nameShort: client.nameShort,
+    })));
   }, []);
 
   const loadVehicles = useCallback(async () => {
@@ -156,7 +166,6 @@ export default function WarehousePage() {
   const openCreateDialog = () => {
     setEditingVehicle(null);
     setForm(emptyForm());
-    setImportInn('');
     setError(null);
     setDialogOpen(true);
   };
@@ -215,29 +224,6 @@ export default function WarehousePage() {
     }
   };
 
-  const handleImportCounterparty = async () => {
-    if (!/^(\d{10}|\d{12})$/.test(importInn)) {
-      setError('Введите ИНН из 10 или 12 цифр.');
-      return;
-    }
-    setImportingCounterparty(true);
-    setError(null);
-    try {
-      const response = await importWarehouseCounterparty(importInn);
-      setCounterparties((current) => {
-        const withoutDuplicate = current.filter((item) => item.id !== response.data.id);
-        return [response.data, ...withoutDuplicate];
-      });
-      setForm((current) => ({ ...current, counterpartyId: response.data.id }));
-      setImportInn('');
-      setSuccess('Контрагент добавлен из реестра договоров.');
-    } catch (importError) {
-      setError(errorMessage(importError, 'Не удалось добавить контрагента.'));
-    } finally {
-      setImportingCounterparty(false);
-    }
-  };
-
   const handleIssue = async () => {
     if (!issueVehicle) return;
     setSaving(true);
@@ -269,14 +255,27 @@ export default function WarehousePage() {
               Реестр техники на хранении и история складских операций
             </Typography>
           </Box>
-          <Button variant="contained" startIcon={<Add />} onClick={openCreateDialog}>
-            Принять ТС
-          </Button>
+          {canOperateWarehouse && tab === 'registry' && (
+            <Button variant="contained" startIcon={<Add />} onClick={openCreateDialog}>
+              Принять ТС
+            </Button>
+          )}
         </Stack>
 
         {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
         {success && <Alert severity="success" onClose={() => setSuccess(null)}>{success}</Alert>}
 
+        {canManageClients && (
+          <Tabs value={tab} onChange={(_event, value) => setTab(value)}>
+            <Tab value="registry" label="Реестр ТС" />
+            <Tab value="clients" label="Клиенты склада" />
+          </Tabs>
+        )}
+
+        {tab === 'clients' && canManageClients ? (
+          <WarehouseClientsPanel onClientsChanged={() => void loadCounterparties()} />
+        ) : (
+          <>
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
             <TextField
@@ -396,7 +395,7 @@ export default function WarehousePage() {
                         <PhotoCamera fontSize="small" />
                       </IconButton>
                     </Tooltip>
-                    {vehicle.status !== 'issued' && (
+                    {canOperateWarehouse && vehicle.status !== 'issued' && (
                       <>
                         <Tooltip title="Редактировать карточку">
                           <IconButton size="small" onClick={() => openEditDialog(vehicle)}>
@@ -423,6 +422,8 @@ export default function WarehousePage() {
             </TableBody>
           </Table>
         </TableContainer>
+          </>
+        )}
       </Stack>
 
       <Dialog open={dialogOpen} onClose={() => !saving && setDialogOpen(false)} fullWidth maxWidth="md">
@@ -443,24 +444,10 @@ export default function WarehousePage() {
               renderInput={(params) => <TextField {...params} label="Контрагент *" />}
             />
 
-            {!editingVehicle && (
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Нет в списке? ИНН контрагента из договоров"
-                  value={importInn}
-                  onChange={(event) => setImportInn(event.target.value.replace(/\D/g, '').slice(0, 12))}
-                />
-                <Button
-                  variant="outlined"
-                  disabled={importingCounterparty}
-                  onClick={() => void handleImportCounterparty()}
-                  sx={{ minWidth: 150 }}
-                >
-                  {importingCounterparty ? 'Добавление…' : 'Добавить'}
-                </Button>
-              </Stack>
+            {!editingVehicle && counterparties.length === 0 && (
+              <Alert severity="warning">
+                Нет активных клиентов склада. Сначала добавьте организацию на вкладке «Клиенты склада».
+              </Alert>
             )}
 
             {!editingVehicle && (
@@ -606,6 +593,7 @@ export default function WarehousePage() {
       <WarehousePhotoDialog
         open={Boolean(photoVehicle)}
         vehicle={photoVehicle}
+        readOnly={!canOperateWarehouse}
         onClose={() => setPhotoVehicle(null)}
       />
     </Box>

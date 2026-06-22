@@ -18,7 +18,8 @@ export function canAccessWarehouse(role?: string | null): boolean {
     || role === 'general_director'
     || role === 'financer'
     || role === 'warehouse_manager'
-    || role === 'warehouse_keeper';
+    || role === 'warehouse_keeper'
+    || role === 'counterparty_user';
 }
 
 export function canViewTotalsInPlans(role?: string | null): boolean {
@@ -32,7 +33,8 @@ export function canViewTotalsInPlans(role?: string | null): boolean {
     && role !== 'garage_head'
     && role !== 'garage_head_vvo'
     && role !== 'warehouse_manager'
-    && role !== 'warehouse_keeper';
+    && role !== 'warehouse_keeper'
+    && role !== 'counterparty_user';
 }
 
 export function canViewPlans(role?: string | null): boolean {
@@ -46,7 +48,8 @@ export function canViewPlans(role?: string | null): boolean {
     && role !== 'garage_head'
     && role !== 'garage_head_vvo'
     && role !== 'warehouse_manager'
-    && role !== 'warehouse_keeper';
+    && role !== 'warehouse_keeper'
+    && role !== 'counterparty_user';
 }
 
 export function canEditTotalsPlan(role?: string | null): boolean {

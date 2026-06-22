@@ -23,6 +23,7 @@ export const ROLE_VALUES = [
   'manager_to',
   'warehouse_manager',
   'warehouse_keeper',
+  'counterparty_user',
 ] as const;
 
 export type RoleValue = typeof ROLE_VALUES[number];

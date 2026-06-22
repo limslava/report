@@ -5,6 +5,7 @@ import { AppSetting } from '../models/app-setting.model';
 import { AuditLog } from '../models/audit-log.model';
 import { Report } from '../models/reports.model';
 import { ContractWorkSchedule } from '../models/contract-work-schedule.model';
+import { WarehouseClient } from '../models/warehouse-client.model';
 import { logger } from '../utils/logger';
 import { sendInvitationEmail } from '../services/email.service';
 import { planWebSocketService } from '../services/websocket.service';
@@ -18,6 +19,29 @@ const appSettingRepository = AppDataSource.getRepository(AppSetting);
 const auditLogRepository = AppDataSource.getRepository(AuditLog);
 const reportRepository = AppDataSource.getRepository(Report);
 const workScheduleRepository = AppDataSource.getRepository(ContractWorkSchedule);
+const warehouseClientRepository = AppDataSource.getRepository(WarehouseClient);
+
+const resolveWarehouseClientId = async (
+  role: string,
+  warehouseClientId: unknown,
+): Promise<string | null> => {
+  if (role !== 'counterparty_user') return null;
+  const normalized = String(warehouseClientId ?? '').trim();
+  if (!normalized) {
+    const error: any = new Error('Для представителя контрагента выберите клиента склада');
+    error.statusCode = 400;
+    throw error;
+  }
+  const client = await warehouseClientRepository.findOne({
+    where: { id: normalized, isActive: true },
+  });
+  if (!client) {
+    const error: any = new Error('Активный клиент склада не найден');
+    error.statusCode = 400;
+    throw error;
+  }
+  return client.id;
+};
 
 export const getUsers = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -42,6 +66,7 @@ export const getUsers = async (req: Request, res: Response, next: NextFunction) 
       workdayStart: user.workdayStart,
       workdayEnd: user.workdayEnd,
       workdays: user.workdays,
+      warehouseClientId: user.warehouseClientId,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     }));
@@ -54,7 +79,7 @@ export const getUsers = async (req: Request, res: Response, next: NextFunction) 
 
 export const inviteUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { email, fullName, role } = req.body;
+    const { email, fullName, role, warehouseClientId } = req.body;
 
     const existingUser = await userRepository.findOne({ where: { email } });
     if (existingUser) {
@@ -72,6 +97,7 @@ export const inviteUser = async (req: Request, res: Response, next: NextFunction
       passwordHash: hashedPassword,
       fullName,
       role,
+      warehouseClientId: await resolveWarehouseClientId(role, warehouseClientId),
       isActive: true,
     });
 
@@ -85,7 +111,7 @@ export const inviteUser = async (req: Request, res: Response, next: NextFunction
       userId: req.user?.id,
       entityType: 'user',
       entityId: user.id,
-      details: { email, role },
+      details: { email, role, warehouseClientId: user.warehouseClientId },
       req,
     });
 
@@ -109,7 +135,17 @@ export const inviteUser = async (req: Request, res: Response, next: NextFunction
 export const updateUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { email, fullName, role, isActive, timezone, workdayStart, workdayEnd, workdays } = req.body;
+    const {
+      email,
+      fullName,
+      role,
+      isActive,
+      timezone,
+      workdayStart,
+      workdayEnd,
+      workdays,
+      warehouseClientId,
+    } = req.body;
 
     const user = await userRepository.findOne({ where: { id } });
     if (!user) {
@@ -123,6 +159,12 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
     }
     if (fullName) user.fullName = fullName;
     if (role) user.role = role;
+    if (role !== undefined || warehouseClientId !== undefined) {
+      user.warehouseClientId = await resolveWarehouseClientId(
+        role || user.role,
+        warehouseClientId !== undefined ? warehouseClientId : user.warehouseClientId,
+      );
+    }
     if (typeof isActive === 'boolean') user.isActive = isActive;
     if (typeof timezone === 'string') user.timezone = timezone.trim() || null;
     if (typeof workdayStart === 'string') user.workdayStart = workdayStart.trim() || null;
@@ -136,7 +178,12 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
       userId: req.user?.id,
       entityType: 'user',
       entityId: user.id,
-      details: { email: user.email, role: user.role, isActive: user.isActive },
+      details: {
+        email: user.email,
+        role: user.role,
+        isActive: user.isActive,
+        warehouseClientId: user.warehouseClientId,
+      },
       req,
     });
 
@@ -155,6 +202,7 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
         workdayStart: user.workdayStart,
         workdayEnd: user.workdayEnd,
         workdays: user.workdays,
+        warehouseClientId: user.warehouseClientId,
       },
     });
   } catch (error) {

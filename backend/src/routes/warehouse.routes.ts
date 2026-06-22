@@ -1,6 +1,16 @@
 import express, { Router } from 'express';
 import { body, param, query } from 'express-validator';
-import { WAREHOUSE_ACCESS_ROLES } from '../constants/warehouse';
+import {
+  WAREHOUSE_ACCESS_ROLES,
+  WAREHOUSE_CLIENT_MANAGEMENT_ROLES,
+  WAREHOUSE_STAFF_ROLES,
+} from '../constants/warehouse';
+import {
+  createWarehouseClient,
+  listWarehouseClients,
+  searchAvailableCounterparties,
+  updateWarehouseClient,
+} from '../controllers/warehouse-client.controller';
 import {
   createWarehouseVehicle,
   deleteWarehouseVehiclePhoto,
@@ -38,7 +48,58 @@ router.get('/status', (_req, res) => {
 });
 
 router.get(
+  '/clients',
+  [
+    query('q').optional().isString().trim().isLength({ max: 255 }),
+    query('includeInactive').optional().isBoolean(),
+  ],
+  handleValidationErrors,
+  listWarehouseClients,
+);
+
+router.get(
+  '/clients/available-counterparties',
+  authorizeRole(...WAREHOUSE_CLIENT_MANAGEMENT_ROLES),
+  [query('q').optional().isString().trim().isLength({ max: 255 })],
+  handleValidationErrors,
+  searchAvailableCounterparties,
+);
+
+router.post(
+  '/clients',
+  authorizeRole(...WAREHOUSE_CLIENT_MANAGEMENT_ROLES),
+  [
+    body('inn').isString().trim().matches(/^(\d{10}|\d{12})$/),
+    body('nameFull').isString().trim().notEmpty().isLength({ max: 500 }),
+    body('nameShort').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
+    body('contractNumber').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
+    body('contractDate').optional({ nullable: true }).isISO8601({ strict: true }),
+    body('serviceStartDate').optional({ nullable: true }).isISO8601({ strict: true }),
+    body('isActive').optional().isBoolean(),
+    body('notes').optional({ nullable: true }).isString().trim().isLength({ max: 4000 }),
+  ],
+  handleValidationErrors,
+  createWarehouseClient,
+);
+
+router.patch(
+  '/clients/:clientId',
+  authorizeRole(...WAREHOUSE_CLIENT_MANAGEMENT_ROLES),
+  [
+    param('clientId').isUUID(),
+    body('contractNumber').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
+    body('contractDate').optional({ nullable: true }).isISO8601({ strict: true }),
+    body('serviceStartDate').optional({ nullable: true }).isISO8601({ strict: true }),
+    body('isActive').optional().isBoolean(),
+    body('notes').optional({ nullable: true }).isString().trim().isLength({ max: 4000 }),
+  ],
+  handleValidationErrors,
+  updateWarehouseClient,
+);
+
+router.get(
   '/counterparties',
+  authorizeRole(...WAREHOUSE_STAFF_ROLES),
   [
     query('q').optional().isString().trim().isLength({ max: 255 }),
     query('limit').optional().isInt({ min: 1, max: 50 }),
@@ -49,6 +110,7 @@ router.get(
 
 router.post(
   '/counterparties/import',
+  authorizeRole(...WAREHOUSE_STAFF_ROLES),
   [body('inn').isString().trim().matches(/^(\d{10}|\d{12})$/)],
   handleValidationErrors,
   importWarehouseCounterparty,
@@ -75,6 +137,7 @@ router.get(
 
 router.post(
   '/vehicles/:id/photos',
+  authorizeRole(...WAREHOUSE_STAFF_ROLES),
   [
     param('id').isUUID(),
     express.raw({
@@ -98,6 +161,7 @@ router.get(
 
 router.delete(
   '/vehicles/:id/photos/:photoId',
+  authorizeRole(...WAREHOUSE_STAFF_ROLES),
   [
     param('id').isUUID(),
     param('photoId').isUUID(),
@@ -115,6 +179,7 @@ router.get(
 
 router.post(
   '/vehicles',
+  authorizeRole(...WAREHOUSE_STAFF_ROLES),
   [
     body('counterpartyId').isUUID(),
     body('requestNumber').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
@@ -135,6 +200,7 @@ router.post(
 
 router.patch(
   '/vehicles/:id',
+  authorizeRole(...WAREHOUSE_STAFF_ROLES),
   [
     param('id').isUUID(),
     body('vehicleType').optional().isIn(['passenger', 'truck']),
@@ -153,6 +219,7 @@ router.patch(
 
 router.post(
   '/vehicles/:id/issue',
+  authorizeRole(...WAREHOUSE_STAFF_ROLES),
   [
     param('id').isUUID(),
     body('issuedDate').isISO8601({ strict: true }),

@@ -38,7 +38,11 @@ function App() {
   const { token, user } = useAuthStore();
   const isAuthenticated = !!token;
   const defaultAuthenticatedRoute = (() => {
-    if (user?.role === 'warehouse_manager' || user?.role === 'warehouse_keeper') return '/warehouse';
+    if (
+      user?.role === 'warehouse_manager'
+      || user?.role === 'warehouse_keeper'
+      || user?.role === 'counterparty_user'
+    ) return '/warehouse';
     if (canViewTechDashboard(user?.role)) return '/sw-tech-dashboard';
     if (canViewPlans(user?.role)) return '/plans';
     if (canViewBPDashboard(user?.role)) return '/business-processes/dashboard';

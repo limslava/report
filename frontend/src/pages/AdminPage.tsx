@@ -40,6 +40,7 @@ import {
   reassignAndDeleteUserByAdmin,
 } from '../services/api';
 import useNotesUnreadStore from '../store/notes-unread-store';
+import { getWarehouseClients, WarehouseClient } from '../services/warehouse.api';
 
 const AdminPage = () => {
   const wsConnected = useNotesUnreadStore((state) => state.wsConnected);
@@ -64,6 +65,7 @@ const AdminPage = () => {
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
+  const [warehouseClients, setWarehouseClients] = useState<WarehouseClient[]>([]);
   const [auditFilters, setAuditFilters] = useState({
     userId: '',
     action: '',
@@ -79,6 +81,7 @@ const AdminPage = () => {
     workdayStart: '10:00',
     workdayEnd: '19:00',
     workdays: [1, 2, 3, 4, 5] as number[],
+    warehouseClientId: '',
   });
 
   const weekdayLabels: Record<number, string> = {
@@ -108,6 +111,12 @@ const AdminPage = () => {
       }
     };
     loadData();
+  }, []);
+
+  useEffect(() => {
+    void getWarehouseClients(false)
+      .then((response) => setWarehouseClients(response.data))
+      .catch(() => setWarehouseClients([]));
   }, []);
 
   useEffect(() => {
@@ -197,6 +206,7 @@ const AdminPage = () => {
     manager_to: 'Менеджер ТО авто',
     warehouse_manager: 'Руководитель склада',
     warehouse_keeper: 'Кладовщик',
+    counterparty_user: 'Представитель контрагента',
     manager_sales: 'Менеджер по продажам',
     head_sales: 'Руководитель отдела продаж',
     director: 'Директор',
@@ -237,6 +247,7 @@ const AdminPage = () => {
     { value: 'manager_to', label: 'Менеджер ТО авто' },
     { value: 'warehouse_manager', label: 'Руководитель склада' },
     { value: 'warehouse_keeper', label: 'Кладовщик' },
+    { value: 'counterparty_user', label: 'Представитель контрагента' },
     { value: 'manager_sales', label: 'Менеджер по продажам' },
     { value: 'head_sales', label: 'Руководитель отдела продаж' },
     { value: 'director', label: 'Директор' },
@@ -337,6 +348,7 @@ const AdminPage = () => {
         workdayStart: user.workdayStart || '10:00',
         workdayEnd: user.workdayEnd || '19:00',
         workdays: userWorkdays.length > 0 ? userWorkdays : [1, 2, 3, 4, 5],
+        warehouseClientId: user.warehouseClientId || '',
       });
     } else {
       setFormData({
@@ -347,6 +359,7 @@ const AdminPage = () => {
         workdayStart: '10:00',
         workdayEnd: '19:00',
         workdays: [1, 2, 3, 4, 5],
+        warehouseClientId: '',
       });
     }
     setOpenDialog(true);
@@ -363,6 +376,7 @@ const AdminPage = () => {
       workdayStart: '10:00',
       workdayEnd: '19:00',
       workdays: [1, 2, 3, 4, 5],
+      warehouseClientId: '',
     });
   };
 
@@ -371,9 +385,22 @@ const AdminPage = () => {
       return;
     }
 
-    const { email, fullName, role, timezone, workdayStart, workdayEnd, workdays } = formData;
+    const {
+      email,
+      fullName,
+      role,
+      timezone,
+      workdayStart,
+      workdayEnd,
+      workdays,
+      warehouseClientId,
+    } = formData;
     if (!email || !fullName || !role) {
       alert('Заполните все поля');
+      return;
+    }
+    if (role === 'counterparty_user' && !warehouseClientId) {
+      alert('Выберите клиента склада для представителя контрагента');
       return;
     }
 
@@ -388,10 +415,16 @@ const AdminPage = () => {
           workdayStart,
           workdayEnd,
           workdays: workdays.join(','),
+          warehouseClientId: role === 'counterparty_user' ? warehouseClientId : null,
         });
         alert('Пользователь обновлен');
       } else {
-        await inviteUser({ email, fullName, role });
+        await inviteUser({
+          email,
+          fullName,
+          role,
+          warehouseClientId: role === 'counterparty_user' ? warehouseClientId : null,
+        });
         alert('Пользователь добавлен, приглашение отправлено');
       }
       
@@ -757,6 +790,25 @@ const AdminPage = () => {
                 ))}
               </Select>
             </FormControl>
+            {formData.role === 'counterparty_user' && (
+              <FormControl fullWidth>
+                <InputLabel>Клиент склада</InputLabel>
+                <Select
+                  label="Клиент склада"
+                  value={formData.warehouseClientId}
+                  onChange={(e) => setFormData({ ...formData, warehouseClientId: e.target.value })}
+                >
+                  {warehouseClients.map((client) => (
+                    <MenuItem key={client.id} value={client.id}>
+                      {client.nameShort || client.nameFull} — {client.inn}
+                    </MenuItem>
+                  ))}
+                </Select>
+                <FormHelperText>
+                  Пользователь увидит только ТС выбранной организации.
+                </FormHelperText>
+              </FormControl>
+            )}
             <TextField
               label="Часовой пояс"
               value={formData.timezone}

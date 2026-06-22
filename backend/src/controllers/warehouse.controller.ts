@@ -5,6 +5,7 @@ import { Counterparty } from '../models/counterparty.model';
 import { Contract } from '../models/contract.model';
 import { WarehouseOperation, WarehouseOperationType } from '../models/warehouse-operation.model';
 import { WarehousePhoto } from '../models/warehouse-photo.model';
+import { WarehouseClient } from '../models/warehouse-client.model';
 import { WarehouseStorageRequest } from '../models/warehouse-storage-request.model';
 import {
   WarehouseVehicle,
@@ -40,6 +41,33 @@ const todayDate = (): string => {
     day: '2-digit',
   });
   return formatter.format(new Date());
+};
+
+const getScopedCounterpartyId = async (req: Request): Promise<string | null> => {
+  if (req.user?.role !== 'counterparty_user') return null;
+  if (!req.user.warehouseClientId) {
+    const error: any = new Error('Пользователь не привязан к клиенту склада');
+    error.statusCode = 403;
+    throw error;
+  }
+  const client = await AppDataSource.getRepository(WarehouseClient).findOne({
+    where: { id: req.user.warehouseClientId, isActive: true },
+  });
+  if (!client) {
+    const error: any = new Error('Клиент склада неактивен или не найден');
+    error.statusCode = 403;
+    throw error;
+  }
+  return client.counterpartyId;
+};
+
+const assertVehicleScope = async (req: Request, vehicle: WarehouseVehicle): Promise<void> => {
+  const scopedCounterpartyId = await getScopedCounterpartyId(req);
+  if (scopedCounterpartyId && vehicle.counterpartyId !== scopedCounterpartyId) {
+    const error: any = new Error('Карточка ТС не найдена');
+    error.statusCode = 404;
+    throw error;
+  }
 };
 
 const serializeVehicle = (vehicle: WarehouseVehicle) => ({
@@ -252,9 +280,18 @@ export const listWarehouseVehicles = async (
     if (status) query.andWhere('vehicle.status = :status', { status });
     if (vehicleType) query.andWhere('vehicle.vehicleType = :vehicleType', { vehicleType });
     if (counterpartyId) query.andWhere('vehicle.counterpartyId = :counterpartyId', { counterpartyId });
+    const scopedCounterpartyId = await getScopedCounterpartyId(req);
+    if (scopedCounterpartyId) {
+      query.andWhere('vehicle.counterpartyId = :scopedCounterpartyId', { scopedCounterpartyId });
+    }
 
     const items = await query.getMany();
-    res.json(items.map(serializeVehicle));
+    res.json(items.map((vehicle) => {
+      const serialized = serializeVehicle(vehicle);
+      return req.user?.role === 'counterparty_user'
+        ? { ...serialized, notes: null }
+        : serialized;
+    }));
   } catch (error) {
     next(error);
   }
@@ -279,16 +316,24 @@ export const getWarehouseVehicle = async (
       res.status(404).json({ message: 'Карточка ТС не найдена' });
       return;
     }
-    res.json({
-      ...serializeVehicle(vehicle),
-      operations: vehicle.operations.map((operation) => ({
-        id: operation.id,
-        type: operation.type,
-        actorName: operation.actorName,
-        details: operation.details,
-        createdAt: operation.createdAt,
-      })),
-    });
+    await assertVehicleScope(req, vehicle);
+    const serialized = serializeVehicle(vehicle);
+    res.json(req.user?.role === 'counterparty_user'
+      ? {
+          ...serialized,
+          notes: null,
+          operations: [],
+        }
+      : {
+          ...serialized,
+          operations: vehicle.operations.map((operation) => ({
+            id: operation.id,
+            type: operation.type,
+            actorName: operation.actorName,
+            details: operation.details,
+            createdAt: operation.createdAt,
+          })),
+        });
   } catch (error) {
     next(error);
   }
@@ -306,6 +351,14 @@ export const createWarehouseVehicle = async (
       });
       if (!counterparty) {
         const error: any = new Error('Контрагент не найден');
+        error.statusCode = 400;
+        throw error;
+      }
+      const warehouseClient = await manager.getRepository(WarehouseClient).findOne({
+        where: { counterpartyId: counterparty.id, isActive: true },
+      });
+      if (!warehouseClient) {
+        const error: any = new Error('Организация не является активным клиентом склада');
         error.statusCode = 400;
         throw error;
       }
@@ -472,6 +525,7 @@ export const listWarehouseVehiclePhotos = async (
       res.status(404).json({ message: 'Карточка ТС не найдена' });
       return;
     }
+    await assertVehicleScope(req, vehicle);
     const photos = await AppDataSource.getRepository(WarehousePhoto).find({
       where: { vehicleId: vehicle.id },
       order: { createdAt: 'ASC' },
@@ -496,6 +550,7 @@ export const uploadWarehouseVehiclePhoto = async (
       res.status(404).json({ message: 'Карточка ТС не найдена' });
       return;
     }
+    await assertVehicleScope(req, vehicle);
     if (vehicle.status !== 'on_site') {
       res.status(409).json({ message: 'Фотографии можно добавлять только для ТС на стоянке' });
       return;
@@ -575,6 +630,14 @@ export const getWarehouseVehiclePhoto = async (
       res.status(404).json({ message: 'Фотография не найдена' });
       return;
     }
+    const vehicle = await AppDataSource.getRepository(WarehouseVehicle).findOne({
+      where: { id: photo.vehicleId },
+    });
+    if (!vehicle) {
+      res.status(404).json({ message: 'Карточка ТС не найдена' });
+      return;
+    }
+    await assertVehicleScope(req, vehicle);
     const filePath = resolveWarehousePhotoPath(photo.vehicleId, photo.storedName);
     if (!filePath || !fs.existsSync(filePath)) {
       res.status(404).json({ message: 'Файл фотографии не найден' });

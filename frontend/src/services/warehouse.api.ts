@@ -10,6 +10,32 @@ export interface WarehouseCounterparty {
   nameShort: string | null;
 }
 
+export interface WarehouseClient {
+  id: string;
+  counterpartyId: string;
+  inn: string;
+  nameFull: string;
+  nameShort: string | null;
+  contractNumber: string | null;
+  contractDate: string | null;
+  serviceStartDate: string | null;
+  isActive: boolean;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WarehouseClientPayload {
+  inn: string;
+  nameFull: string;
+  nameShort?: string | null;
+  contractNumber?: string | null;
+  contractDate?: string | null;
+  serviceStartDate?: string | null;
+  isActive?: boolean;
+  notes?: string | null;
+}
+
 export interface WarehouseVehicle {
   id: string;
   warehouseNumber: string;
@@ -112,3 +138,21 @@ export const getWarehouseCounterparties = (q = '') =>
 
 export const importWarehouseCounterparty = (inn: string) =>
   api.post<WarehouseCounterparty>('/warehouse/counterparties/import', { inn });
+
+export const getWarehouseClients = (includeInactive = false, q = '') =>
+  api.get<WarehouseClient[]>('/warehouse/clients', {
+    params: { includeInactive, q: q || undefined },
+  });
+
+export const getAvailableWarehouseCounterparties = (q = '') =>
+  api.get<WarehouseCounterparty[]>('/warehouse/clients/available-counterparties', {
+    params: { q: q || undefined },
+  });
+
+export const createWarehouseClient = (payload: WarehouseClientPayload) =>
+  api.post<WarehouseClient>('/warehouse/clients', payload);
+
+export const updateWarehouseClient = (
+  clientId: string,
+  payload: Partial<Omit<WarehouseClientPayload, 'inn' | 'nameFull' | 'nameShort'>>,
+) => api.patch<WarehouseClient>(`/warehouse/clients/${clientId}`, payload);

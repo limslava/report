@@ -16,6 +16,7 @@ import {
   DialogTitle,
   IconButton,
   LinearProgress,
+  Modal,
   Stack,
   Tooltip,
   Typography,
@@ -38,6 +39,7 @@ import {
 interface WarehousePhotoDialogProps {
   open: boolean;
   vehicle: WarehouseVehicle | null;
+  readOnly?: boolean;
   onClose: () => void;
 }
 
@@ -45,8 +47,8 @@ interface PhotoPreview extends WarehousePhoto {
   url: string;
 }
 
-const MAX_IMAGE_SIDE = 1920;
-const JPEG_QUALITY = 0.82;
+const MAX_IMAGE_SIDE = 3072;
+const JPEG_QUALITY = 0.9;
 
 const loadImage = (file: File): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
   const url = URL.createObjectURL(file);
@@ -92,6 +94,7 @@ const formatBytes = (bytes: number): string =>
 export default function WarehousePhotoDialog({
   open,
   vehicle,
+  readOnly = false,
   onClose,
 }: WarehousePhotoDialogProps) {
   const [photos, setPhotos] = useState<PhotoPreview[]>([]);
@@ -100,6 +103,7 @@ export default function WarehousePhotoDialog({
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<PhotoPreview | null>(null);
   const objectUrls = useRef<string[]>([]);
   const processingRef = useRef(false);
 
@@ -220,7 +224,7 @@ export default function WarehousePhotoDialog({
     }
   };
 
-  const canUpload = vehicle?.status === 'on_site';
+  const canUpload = vehicle?.status === 'on_site' && !readOnly;
   const busy = processing || uploading;
 
   return (
@@ -239,7 +243,7 @@ export default function WarehousePhotoDialog({
       <DialogContent dividers>
         <Stack spacing={2}>
           {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
-          {!canUpload && (
+          {vehicle?.status !== 'on_site' && (
             <Alert severity="info">
               ТС выдано. Фотографии удалены согласно сроку хранения.
             </Alert>
@@ -290,7 +294,8 @@ export default function WarehousePhotoDialog({
           )}
 
           <Typography variant="body2" color="text.secondary">
-            Фотографий: {photos.length}. Перед загрузкой изображения уменьшаются до 1920 px и сохраняются в JPEG.
+            Фотографий: {photos.length}. Перед загрузкой изображения уменьшаются максимум до 3072 px
+            и сохраняются в JPEG высокого качества.
           </Typography>
 
           {loading ? (
@@ -328,7 +333,14 @@ export default function WarehousePhotoDialog({
                     src={photo.url}
                     alt={`Фото ${index + 1}`}
                     loading="lazy"
-                    sx={{ display: 'block', width: '100%', aspectRatio: '4 / 3', objectFit: 'cover' }}
+                    onClick={() => setSelectedPhoto(photo)}
+                    sx={{
+                      display: 'block',
+                      width: '100%',
+                      aspectRatio: '4 / 3',
+                      objectFit: 'cover',
+                      cursor: 'zoom-in',
+                    }}
                   />
                   <Box sx={{ px: 1, py: 0.75 }}>
                     <Typography variant="caption" noWrap display="block">{photo.originalName}</Typography>
@@ -361,6 +373,35 @@ export default function WarehousePhotoDialog({
       <DialogActions>
         <Button onClick={onClose} disabled={busy}>Закрыть</Button>
       </DialogActions>
+
+      <Modal open={Boolean(selectedPhoto)} onClose={() => setSelectedPhoto(null)}>
+        <Box
+          onClick={() => setSelectedPhoto(null)}
+          sx={{
+            position: 'fixed',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            bgcolor: 'rgba(0, 0, 0, 0.9)',
+            p: { xs: 1, md: 3 },
+            cursor: 'zoom-out',
+          }}
+        >
+          {selectedPhoto && (
+            <Box
+              component="img"
+              src={selectedPhoto.url}
+              alt={selectedPhoto.originalName}
+              sx={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'contain',
+              }}
+            />
+          )}
+        </Box>
+      </Modal>
     </Dialog>
   );
 }

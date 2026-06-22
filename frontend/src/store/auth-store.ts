@@ -7,6 +7,7 @@ export interface User {
   fullName: string;
   department: string;
   role: string;
+  warehouseClientId?: string | null;
 }
 
 const LAST_ACTIVITY_KEY = 'last-activity-at';

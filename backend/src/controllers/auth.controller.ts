@@ -67,6 +67,7 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
         fullName: user.fullName,
         department: user.role,
         role: user.role,
+        warehouseClientId: user.warehouseClientId,
       },
     });
   } catch (error) {
@@ -115,6 +116,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
         fullName: user.fullName,
         department: user.role, // for backward compatibility
         role: user.role,
+        warehouseClientId: user.warehouseClientId,
       },
     });
   } catch (error) {
