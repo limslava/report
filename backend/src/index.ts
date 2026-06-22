@@ -9,6 +9,7 @@ import { planningV2Service } from './services/planning-v2.service';
 import { withRetry } from './utils/db-retry';
 import { createApp } from './app';
 import { ensureWarehouseServiceCatalog } from './services/warehouse-service-catalog.service';
+import { ensureWarehousePhotoStorageReady } from './services/warehouse-photo-storage.service';
 
 config();
 
@@ -27,6 +28,7 @@ async function startServer() {
       logger.error('Failed to bootstrap planning catalog:', err);
     }
     await ensureWarehouseServiceCatalog();
+    await ensureWarehousePhotoStorageReady();
     logger.info('Warehouse service catalog bootstrapped');
 
     const app = createApp();

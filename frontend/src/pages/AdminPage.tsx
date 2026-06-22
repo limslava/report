@@ -232,6 +232,7 @@ const AdminPage = () => {
     { value: 'USER_PASSWORD_RESET', label: 'USER_PASSWORD_RESET' },
     { value: 'USER_REASSIGN_DELETE', label: 'USER_REASSIGN_DELETE' },
     { value: 'USER_DELETED', label: 'USER_DELETED' },
+    { value: 'WAREHOUSE_DATES_CORRECTED', label: 'WAREHOUSE_DATES_CORRECTED' },
   ];
 
   const roles = [

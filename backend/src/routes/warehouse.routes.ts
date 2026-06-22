@@ -5,6 +5,7 @@ import {
   WAREHOUSE_BILLING_MANAGEMENT_ROLES,
   WAREHOUSE_BILLING_VIEW_ROLES,
   WAREHOUSE_CLIENT_MANAGEMENT_ROLES,
+  WAREHOUSE_DATE_CORRECTION_ROLES,
   WAREHOUSE_SERVICE_EXECUTION_ROLES,
   WAREHOUSE_STAFF_ROLES,
   WAREHOUSE_TARIFF_MANAGEMENT_ROLES,
@@ -17,6 +18,7 @@ import {
 } from '../controllers/warehouse-client.controller';
 import {
   createWarehouseVehicle,
+  correctWarehouseVehicleDates,
   deleteWarehouseVehiclePhoto,
   getWarehouseVehiclePhoto,
   getWarehouseVehicle,
@@ -59,9 +61,12 @@ router.get('/status', (_req, res) => {
     capabilities: [
       'vehicle-registry',
       'vehicle-reception',
+      'vehicle-issue-wizard',
       'storage-periods',
       'additional-services',
       'billing',
+      'controlled-date-correction',
+      'photo-backup',
     ],
     photoBackupEnabled: isWarehousePhotoBackupEnabled(),
   });
@@ -359,6 +364,19 @@ router.patch(
   ],
   handleValidationErrors,
   updateWarehouseVehicle,
+);
+
+router.patch(
+  '/vehicles/:id/operation-times',
+  authorizeRole(...WAREHOUSE_DATE_CORRECTION_ROLES),
+  [
+    param('id').isUUID(),
+    body('receivedAt').isISO8601(),
+    body('issuedAt').optional({ nullable: true }).isISO8601(),
+    body('reason').isString().trim().isLength({ min: 10, max: 1000 }),
+  ],
+  handleValidationErrors,
+  correctWarehouseVehicleDates,
 );
 
 router.post(

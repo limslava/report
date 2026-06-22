@@ -201,6 +201,11 @@ export const updateWarehouseVehicle = (
   payload: Partial<Omit<WarehouseVehiclePayload, 'counterpartyId' | 'requestNumber' | 'requestDate'>>,
 ) => api.patch<WarehouseVehicle>(`/warehouse/vehicles/${id}`, payload);
 
+export const correctWarehouseVehicleDates = (
+  id: string,
+  payload: { receivedAt: string; issuedAt?: string | null; reason: string },
+) => api.patch<WarehouseVehicle>(`/warehouse/vehicles/${id}/operation-times`, payload);
+
 export const issueWarehouseVehicle = (
   id: string,
   issuePhotoIds: string[],

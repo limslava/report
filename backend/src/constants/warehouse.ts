@@ -10,11 +10,13 @@ export const WAREHOUSE_ACCESS_ROLES = [
 
 export const WAREHOUSE_STAFF_ROLES = [
   'admin',
-  'director',
-  'general_director',
-  'financer',
   'warehouse_manager',
   'warehouse_keeper',
+] as const;
+
+export const WAREHOUSE_DATE_CORRECTION_ROLES = [
+  'admin',
+  'warehouse_manager',
 ] as const;
 
 export const WAREHOUSE_CLIENT_MANAGEMENT_ROLES = [

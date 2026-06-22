@@ -18,7 +18,8 @@ export type WarehouseOperationType =
   | 'photo_deleted'
   | 'photos_purged'
   | 'service_performed'
-  | 'service_corrected';
+  | 'service_corrected'
+  | 'dates_corrected';
 
 @Entity('warehouse_operations')
 @Index('idx_warehouse_operation_vehicle_date', ['vehicleId', 'createdAt'])

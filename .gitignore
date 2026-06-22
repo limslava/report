@@ -20,6 +20,8 @@ logs/
 # Runtime uploads (contracts and generated previews live in persistent storage)
 backend/uploads/
 uploads/
+backend/backups/
+backups/
 
 # Environment and secrets
 .env

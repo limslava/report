@@ -22,6 +22,7 @@ import {
 } from '../services/warehouse-photo-storage.service';
 import fs from 'fs';
 import { assertWarehouseDateIsOpen } from '../services/warehouse-billing-lock.service';
+import { recordAuditLog } from '../services/audit-log.service';
 
 const normalizeNullable = (value: unknown): string | null => {
   const normalized = String(value ?? '').trim();
@@ -42,6 +43,16 @@ const todayDate = (): string => {
     day: '2-digit',
   });
   return formatter.format(new Date());
+};
+
+const dateInVladivostok = (value: Date): string => {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Vladivostok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return formatter.format(value);
 };
 
 const getScopedCounterpartyId = async (req: Request): Promise<string | null> => {
@@ -439,14 +450,12 @@ export const updateWarehouseVehicle = async (
       }
 
       const before = serializeVehicle(vehicle);
-      if (req.user!.role === 'warehouse_keeper' && req.body.receivedDate !== undefined) {
-        const error: any = new Error('Дата и время приёмки фиксируются автоматически');
-        error.statusCode = 403;
-        throw error;
-      }
       if (req.body.receivedDate !== undefined) {
-        await assertWarehouseDateIsOpen(vehicle.counterpartyId, vehicle.receivedDate);
-        await assertWarehouseDateIsOpen(vehicle.counterpartyId, req.body.receivedDate);
+        const error: any = new Error(
+          'Дата и время изменяются только через контролируемую корректировку с указанием причины',
+        );
+        error.statusCode = 400;
+        throw error;
       }
       if (req.body.vehicleType !== undefined) vehicle.vehicleType = req.body.vehicleType;
       if (req.body.vin !== undefined) vehicle.vin = normalizeNullable(req.body.vin)?.toUpperCase() ?? null;
@@ -456,7 +465,6 @@ export const updateWarehouseVehicle = async (
       if (req.body.registrationNumber !== undefined) {
         vehicle.registrationNumber = normalizeNullable(req.body.registrationNumber)?.toUpperCase() ?? null;
       }
-      if (req.body.receivedDate !== undefined) vehicle.receivedDate = req.body.receivedDate;
       if (req.body.fuelLevelPercent !== undefined) vehicle.fuelLevelPercent = req.body.fuelLevelPercent;
       if (req.body.notes !== undefined) vehicle.notes = normalizeNullable(req.body.notes);
       vehicle.updatedById = req.user!.id;
@@ -471,6 +479,107 @@ export const updateWarehouseVehicle = async (
       });
     });
     res.json(serializeVehicle(result));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const correctWarehouseVehicleDates = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const receivedAt = new Date(req.body.receivedAt);
+    const issuedAt = req.body.issuedAt ? new Date(req.body.issuedAt) : null;
+    const reason = String(req.body.reason).trim();
+    const result = await AppDataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(WarehouseVehicle);
+      const vehicle = await repository.findOne({
+        where: { id: req.params.id },
+        relations: { counterparty: true, storageRequest: true },
+      });
+      if (!vehicle) {
+        const error: any = new Error('Карточка ТС не найдена');
+        error.statusCode = 404;
+        throw error;
+      }
+      if (Number.isNaN(receivedAt.getTime()) || (issuedAt && Number.isNaN(issuedAt.getTime()))) {
+        const error: any = new Error('Некорректная дата или время');
+        error.statusCode = 400;
+        throw error;
+      }
+      const latestAllowedTime = Date.now() + 5 * 60_000;
+      if (receivedAt.getTime() > latestAllowedTime || (issuedAt && issuedAt.getTime() > latestAllowedTime)) {
+        const error: any = new Error('Дата и время операции не могут находиться в будущем');
+        error.statusCode = 400;
+        throw error;
+      }
+      if (vehicle.status === 'issued' && !issuedAt) {
+        const error: any = new Error('Для выданного ТС необходимо указать время выдачи');
+        error.statusCode = 400;
+        throw error;
+      }
+      if (vehicle.status !== 'issued' && issuedAt) {
+        const error: any = new Error('Время выдачи можно корректировать только у выданного ТС');
+        error.statusCode = 400;
+        throw error;
+      }
+      if (issuedAt && issuedAt < receivedAt) {
+        const error: any = new Error('Время выдачи не может быть раньше времени приёмки');
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const nextReceivedDate = dateInVladivostok(receivedAt);
+      const nextIssuedDate = issuedAt ? dateInVladivostok(issuedAt) : null;
+      const datesToCheck = new Set([
+        vehicle.receivedDate,
+        vehicle.issuedDate,
+        nextReceivedDate,
+        nextIssuedDate,
+      ].filter((value): value is string => Boolean(value)));
+      for (const date of datesToCheck) {
+        await assertWarehouseDateIsOpen(vehicle.counterpartyId, date);
+      }
+
+      const before = {
+        receivedDate: vehicle.receivedDate,
+        receivedAt: vehicle.receivedAt,
+        issuedDate: vehicle.issuedDate,
+        issuedAt: vehicle.issuedAt,
+      };
+      vehicle.receivedDate = nextReceivedDate;
+      vehicle.receivedAt = receivedAt;
+      vehicle.issuedDate = nextIssuedDate;
+      vehicle.issuedAt = issuedAt;
+      vehicle.updatedById = req.user!.id;
+      await repository.save(vehicle);
+      const after = {
+        receivedDate: vehicle.receivedDate,
+        receivedAt: vehicle.receivedAt,
+        issuedDate: vehicle.issuedDate,
+        issuedAt: vehicle.issuedAt,
+      };
+      await addOperation(manager, vehicle, req, 'dates_corrected', { before, after, reason });
+      return {
+        vehicle: await repository.findOneOrFail({
+          where: { id: vehicle.id },
+          relations: { counterparty: true, storageRequest: true },
+        }),
+        before,
+        after,
+      };
+    });
+    await recordAuditLog({
+      action: 'WAREHOUSE_DATES_CORRECTED',
+      userId: req.user!.id,
+      entityType: 'warehouse_vehicle',
+      entityId: result.vehicle.id,
+      details: { before: result.before, after: result.after, reason },
+      req,
+    });
+    res.json(serializeVehicle(result.vehicle));
   } catch (error) {
     next(error);
   }

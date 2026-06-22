@@ -17,15 +17,16 @@ const storageRoot = path.resolve(
   process.env.WAREHOUSE_UPLOAD_PATH || path.join(process.cwd(), 'uploads', 'warehouse'),
 );
 
-const backupRoot = process.env.WAREHOUSE_PHOTO_BACKUP_PATH
-  ? path.resolve(process.env.WAREHOUSE_PHOTO_BACKUP_PATH)
-  : null;
+const backupRoot = path.resolve(
+  process.env.WAREHOUSE_PHOTO_BACKUP_PATH
+    || path.join(process.cwd(), 'backups', 'warehouse-photos'),
+);
 
 const resolveVehicleDirectory = (vehicleId: string): string =>
   path.join(storageRoot, vehicleId);
 
-const resolveBackupVehicleDirectory = (vehicleId: string): string | null =>
-  backupRoot ? path.join(backupRoot, vehicleId) : null;
+const resolveBackupVehicleDirectory = (vehicleId: string): string =>
+  path.join(backupRoot, vehicleId);
 
 const resolveStoredFile = (
   rootDirectory: string,
@@ -38,7 +39,21 @@ const resolveStoredFile = (
   return filePath;
 };
 
-export const isWarehousePhotoBackupEnabled = (): boolean => backupRoot !== null;
+export const isWarehousePhotoBackupEnabled = (): boolean => true;
+
+export const ensureWarehousePhotoStorageReady = async (): Promise<void> => {
+  if (storageRoot === backupRoot) {
+    throw new Error('Основное хранилище и резервная копия фотографий должны находиться в разных каталогах');
+  }
+  await Promise.all([
+    fs.mkdir(storageRoot, { recursive: true }),
+    fs.mkdir(backupRoot, { recursive: true }),
+  ]);
+  await Promise.all([
+    fs.access(storageRoot),
+    fs.access(backupRoot),
+  ]);
+};
 
 export const isAllowedWarehousePhotoMime = (mimeType: string): boolean =>
   Boolean(MIME_EXTENSIONS[mimeType]);
@@ -56,14 +71,12 @@ export const storeWarehousePhoto = async (
   const filePath = path.join(directory, storedName);
   await fs.writeFile(filePath, bytes, { flag: 'wx' });
   const backupDirectory = resolveBackupVehicleDirectory(vehicleId);
-  if (backupDirectory) {
-    try {
-      await fs.mkdir(backupDirectory, { recursive: true });
-      await fs.copyFile(filePath, path.join(backupDirectory, storedName));
-    } catch (error) {
-      await fs.unlink(filePath).catch(() => undefined);
-      throw new Error(`Не удалось создать резервную копию фотографии: ${(error as Error).message}`);
-    }
+  try {
+    await fs.mkdir(backupDirectory, { recursive: true });
+    await fs.copyFile(filePath, path.join(backupDirectory, storedName));
+  } catch (error) {
+    await fs.unlink(filePath).catch(() => undefined);
+    throw new Error(`Не удалось создать резервную копию фотографии: ${(error as Error).message}`);
   }
   return storedName;
 };
@@ -84,13 +97,11 @@ export const deleteWarehousePhotoFile = async (
   await fs.unlink(filePath).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== 'ENOENT') throw error;
   });
-  if (backupRoot) {
-    const backupPath = resolveStoredFile(backupRoot, vehicleId, storedName);
-    if (backupPath) {
-      await fs.unlink(backupPath).catch((error: NodeJS.ErrnoException) => {
-        if (error.code !== 'ENOENT') throw error;
-      });
-    }
+  const backupPath = resolveStoredFile(backupRoot, vehicleId, storedName);
+  if (backupPath) {
+    await fs.unlink(backupPath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error;
+    });
   }
 };
 
@@ -105,8 +116,6 @@ export const purgeWarehouseVehiclePhotos = async (
   }
   await fs.rm(resolveVehicleDirectory(vehicleId), { recursive: true, force: true });
   const backupDirectory = resolveBackupVehicleDirectory(vehicleId);
-  if (backupDirectory) {
-    await fs.rm(backupDirectory, { recursive: true, force: true });
-  }
+  await fs.rm(backupDirectory, { recursive: true, force: true });
   return photos.length;
 };

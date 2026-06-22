@@ -2,6 +2,7 @@ import {
   Add,
   DirectionsCar,
   Edit,
+  EventRepeat,
   LocalShipping,
   Logout,
   MiscellaneousServices,
@@ -43,6 +44,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   createWarehouseVehicle,
+  correctWarehouseVehicleDates,
   getWarehouseClients,
   getWarehouseVehicles,
   updateWarehouseVehicle,
@@ -75,6 +77,25 @@ const formatOperationDateTime = (value: string | null) => {
     timeStyle: 'short',
   }).format(new Date(value));
 };
+
+const toVladivostokDateTimeInput = (value: string | null): string => {
+  if (!value) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Vladivostok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(value));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
+};
+
+const vladivostokInputToIso = (value: string): string =>
+  new Date(`${value}:00+10:00`).toISOString();
 
 const emptyForm = (): WarehouseVehiclePayload => ({
   counterpartyId: '',
@@ -113,13 +134,15 @@ const errorMessage = (error: unknown, fallback: string): string => {
 export default function WarehousePage() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
-  const canOperateWarehouse = user?.role !== 'counterparty_user';
+  const canOperateWarehouse = ['admin', 'warehouse_manager', 'warehouse_keeper']
+    .includes(user?.role ?? '');
   const canEditServices = ['admin', 'warehouse_manager', 'warehouse_keeper', 'financer']
     .includes(user?.role ?? '');
   const canManageClients = user?.role === 'admin' || user?.role === 'warehouse_manager';
   const canManageTariffs = ['admin', 'warehouse_manager', 'financer'].includes(user?.role ?? '');
   const canViewBilling = user?.role !== 'warehouse_keeper';
   const canCloseBilling = ['admin', 'warehouse_manager', 'financer'].includes(user?.role ?? '');
+  const canCorrectDates = user?.role === 'admin' || user?.role === 'warehouse_manager';
   const showTabs = canManageClients || canManageTariffs || canViewBilling;
   const [tab, setTab] = useState<'registry' | 'clients' | 'tariffs' | 'billing'>('registry');
   const [vehicles, setVehicles] = useState<WarehouseVehicle[]>([]);
@@ -136,6 +159,12 @@ export default function WarehousePage() {
   const [form, setForm] = useState<WarehouseVehiclePayload>(emptyForm);
   const [photoVehicle, setPhotoVehicle] = useState<WarehouseVehicle | null>(null);
   const [servicesVehicle, setServicesVehicle] = useState<WarehouseVehicle | null>(null);
+  const [dateCorrectionVehicle, setDateCorrectionVehicle] = useState<WarehouseVehicle | null>(null);
+  const [dateCorrection, setDateCorrection] = useState({
+    receivedAt: '',
+    issuedAt: '',
+    reason: '',
+  });
 
   const loadCounterparties = useCallback(async () => {
     const response = await getWarehouseClients(false);
@@ -209,6 +238,46 @@ export default function WarehousePage() {
     setDialogOpen(true);
   };
 
+  const openDateCorrectionDialog = (vehicle: WarehouseVehicle) => {
+    setDateCorrectionVehicle(vehicle);
+    setDateCorrection({
+      receivedAt: toVladivostokDateTimeInput(vehicle.receivedAt),
+      issuedAt: toVladivostokDateTimeInput(vehicle.issuedAt),
+      reason: '',
+    });
+    setError(null);
+  };
+
+  const saveDateCorrection = async () => {
+    if (!dateCorrectionVehicle) return;
+    if (!dateCorrection.receivedAt || dateCorrection.reason.trim().length < 10) {
+      setError('Укажите дату и время приёмки, а также причину не короче 10 символов.');
+      return;
+    }
+    if (dateCorrectionVehicle.status === 'issued' && !dateCorrection.issuedAt) {
+      setError('Для выданного ТС укажите дату и время выдачи.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await correctWarehouseVehicleDates(dateCorrectionVehicle.id, {
+        receivedAt: vladivostokInputToIso(dateCorrection.receivedAt),
+        issuedAt: dateCorrection.issuedAt
+          ? vladivostokInputToIso(dateCorrection.issuedAt)
+          : null,
+        reason: dateCorrection.reason.trim(),
+      });
+      setSuccess(`Даты ${dateCorrectionVehicle.warehouseNumber} скорректированы с записью в аудит.`);
+      setDateCorrectionVehicle(null);
+      await loadVehicles();
+    } catch (saveError) {
+      setError(errorMessage(saveError, 'Не удалось скорректировать дату и время.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!form.counterpartyId || !form.brand.trim() || !form.model.trim() || !form.receivedDate) {
       setError('Заполните контрагента, марку, модель и дату приёмки.');
@@ -225,7 +294,6 @@ export default function WarehousePage() {
           brand: form.brand,
           model: form.model,
           registrationNumber: form.registrationNumber,
-          receivedDate: form.receivedDate,
           fuelLevelPercent: form.fuelLevelPercent,
           notes: form.notes,
         });
@@ -443,6 +511,17 @@ export default function WarehousePage() {
                         </Tooltip>
                       </>
                     )}
+                    {canCorrectDates && (
+                      <Tooltip title="Скорректировать дату и время">
+                        <IconButton
+                          size="small"
+                          color="warning"
+                          onClick={() => openDateCorrectionDialog(vehicle)}
+                        >
+                          <EventRepeat fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -524,7 +603,11 @@ export default function WarehousePage() {
                 label="Дата приёмки *"
                 InputLabelProps={{ shrink: true }}
                 value={form.receivedDate}
+                disabled={Boolean(editingVehicle)}
                 onChange={(event) => setForm((current) => ({ ...current, receivedDate: event.target.value }))}
+                helperText={editingVehicle
+                  ? 'Изменяется только через контролируемую корректировку с указанием причины'
+                  : undefined}
               />
             </Stack>
 
@@ -591,6 +674,72 @@ export default function WarehousePage() {
           <Button onClick={() => setDialogOpen(false)} disabled={saving}>Отмена</Button>
           <Button variant="contained" onClick={() => void handleSave()} disabled={saving}>
             {saving ? 'Сохранение…' : 'Сохранить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(dateCorrectionVehicle)}
+        onClose={() => !saving && setDateCorrectionVehicle(null)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>
+          Корректировка дат · {dateCorrectionVehicle?.warehouseNumber}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            <Alert severity="warning">
+              Изменение влияет на расчёт хранения. Старые и новые значения, причина и исполнитель
+              будут записаны в аудит. Даты внутри закрытого периода изменить нельзя.
+            </Alert>
+            <TextField
+              type="datetime-local"
+              label="Принято"
+              InputLabelProps={{ shrink: true }}
+              value={dateCorrection.receivedAt}
+              onChange={(event) => setDateCorrection((current) => ({
+                ...current,
+                receivedAt: event.target.value,
+              }))}
+              fullWidth
+            />
+            {dateCorrectionVehicle?.status === 'issued' && (
+              <TextField
+                type="datetime-local"
+                label="Выдано"
+                InputLabelProps={{ shrink: true }}
+                value={dateCorrection.issuedAt}
+                onChange={(event) => setDateCorrection((current) => ({
+                  ...current,
+                  issuedAt: event.target.value,
+                }))}
+                fullWidth
+              />
+            )}
+            <TextField
+              label="Причина корректировки *"
+              value={dateCorrection.reason}
+              onChange={(event) => setDateCorrection((current) => ({
+                ...current,
+                reason: event.target.value,
+              }))}
+              helperText="Не менее 10 символов"
+              multiline
+              minRows={3}
+              fullWidth
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDateCorrectionVehicle(null)} disabled={saving}>Отмена</Button>
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={() => void saveDateCorrection()}
+            disabled={saving}
+          >
+            Сохранить корректировку
           </Button>
         </DialogActions>
       </Dialog>
