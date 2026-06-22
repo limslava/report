@@ -34,13 +34,11 @@ import {
 import WarehousePhotoDialog from '../components/warehouse/WarehousePhotoDialog';
 import WarehouseServicesDialog from '../components/warehouse/WarehouseServicesDialog';
 
-const today = (): string => {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
+const formatOperationDateTime = (value: string) => new Intl.DateTimeFormat('ru-RU', {
+  timeZone: 'Asia/Vladivostok',
+  dateStyle: 'short',
+  timeStyle: 'short',
+}).format(new Date(value));
 
 const messageFromError = (error: unknown): string => {
   if (
@@ -62,7 +60,6 @@ export default function WarehouseOperationsPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [issueVehicle, setIssueVehicle] = useState<WarehouseVehicle | null>(null);
-  const [issueDate, setIssueDate] = useState(today());
   const [saving, setSaving] = useState(false);
   const [photoVehicle, setPhotoVehicle] = useState<WarehouseVehicle | null>(null);
   const [servicesVehicle, setServicesVehicle] = useState<WarehouseVehicle | null>(null);
@@ -103,8 +100,10 @@ export default function WarehouseOperationsPage() {
     setSaving(true);
     setError(null);
     try {
-      await issueWarehouseVehicle(issueVehicle.id, issueDate);
-      setSuccess(`ТС ${issueVehicle.warehouseNumber} выдано.`);
+      const response = await issueWarehouseVehicle(issueVehicle.id);
+      setSuccess(
+        `ТС ${issueVehicle.warehouseNumber} выдано ${formatOperationDateTime(response.data.issuedAt!)}.`,
+      );
       setIssueVehicle(null);
       await loadVehicles();
     } catch (issueError) {
@@ -158,7 +157,7 @@ export default function WarehouseOperationsPage() {
                 <Logout color="primary" sx={{ fontSize: 42, mb: 1 }} />
                 <Typography variant="h6">Выдать ТС</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Найти технику на стоянке и подтвердить дату выдачи
+                  Найти технику на стоянке и подтвердить выдачу
                 </Typography>
               </CardContent>
             </CardActionArea>
@@ -241,6 +240,9 @@ export default function WarehouseOperationsPage() {
                         <Typography variant="body2" color="text.secondary">
                           {vehicle.counterparty.nameShort || vehicle.counterparty.nameFull}
                         </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Принято: {formatOperationDateTime(vehicle.receivedAt)}
+                        </Typography>
                       </Box>
                       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                         <Button
@@ -260,10 +262,7 @@ export default function WarehouseOperationsPage() {
                         <Button
                           variant="contained"
                           startIcon={<Logout />}
-                          onClick={() => {
-                            setIssueDate(today());
-                            setIssueVehicle(vehicle);
-                          }}
+                          onClick={() => setIssueVehicle(vehicle)}
                         >
                           Выдать
                         </Button>
@@ -284,13 +283,10 @@ export default function WarehouseOperationsPage() {
             <Typography>
               {issueVehicle?.warehouseNumber}: {issueVehicle?.brand} {issueVehicle?.model}
             </Typography>
-            <TextField
-              type="date"
-              label="Дата выдачи"
-              InputLabelProps={{ shrink: true }}
-              value={issueDate}
-              onChange={(event) => setIssueDate(event.target.value)}
-            />
+            <Alert severity="info">
+              Дата и время выдачи будут автоматически зафиксированы сервером после подтверждения.
+              Кладовщик не может изменить их вручную.
+            </Alert>
             <Alert severity="info">
               После выдачи фотографии ТС будут удалены согласно регламенту.
             </Alert>

@@ -66,6 +66,12 @@ const today = () => {
   }).format(new Date());
 };
 
+const formatOperationDateTime = (value: string) => new Intl.DateTimeFormat('ru-RU', {
+  timeZone: 'Asia/Vladivostok',
+  dateStyle: 'short',
+  timeStyle: 'short',
+}).format(new Date(value));
+
 const emptyForm = (): WarehouseVehiclePayload => ({
   counterpartyId: '',
   requestNumber: '',
@@ -179,7 +185,7 @@ export default function WarehouseReceptionPage() {
 
   const stepErrors = useMemo(() => [
     !form.counterpartyId,
-    !form.brand.trim() || !form.model.trim() || !form.receivedDate,
+    !form.brand.trim() || !form.model.trim(),
     form.fuelLevelPercent != null
       && (form.fuelLevelPercent < 0 || form.fuelLevelPercent > 100),
     photos.length === 0,
@@ -188,8 +194,8 @@ export default function WarehouseReceptionPage() {
 
   const validateStep = (step: number): string | null => {
     if (step === 0 && !form.counterpartyId) return 'Выберите контрагента.';
-    if (step === 1 && (!form.brand.trim() || !form.model.trim() || !form.receivedDate)) {
-      return 'Заполните марку, модель и дату приёмки.';
+    if (step === 1 && (!form.brand.trim() || !form.model.trim())) {
+      return 'Заполните марку и модель.';
     }
     if (
       step === 2
@@ -275,7 +281,8 @@ export default function WarehouseReceptionPage() {
     setUploadWarning(null);
     try {
       setProgress({ done: 0, total: 1, label: 'Создание карточки ТС' });
-      const vehicleResponse = await createWarehouseVehicle(form);
+      const { receivedDate: _ignoredReceivedDate, ...automaticReceptionPayload } = form;
+      const vehicleResponse = await createWarehouseVehicle(automaticReceptionPayload);
       const vehicle = vehicleResponse.data;
       await reassignWarehousePhotoQueue(DRAFT_PHOTO_KEY, vehicle.id);
       const queue = await listWarehousePhotoQueue(vehicle.id);
@@ -321,7 +328,7 @@ export default function WarehouseReceptionPage() {
               </Typography>
               {uploadWarning && <Alert severity="warning">{uploadWarning}</Alert>}
               <Alert severity="success">
-                Карточка создана, дата приёмки и уровень топлива зафиксированы.
+                Приёмка зафиксирована автоматически: {formatOperationDateTime(completedVehicle.receivedAt)}.
               </Alert>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
                 <Button
@@ -453,14 +460,10 @@ export default function WarehouseReceptionPage() {
                       <MenuItem value="truck">Грузовой</MenuItem>
                     </Select>
                   </FormControl>
-                  <TextField
-                    fullWidth
-                    type="date"
-                    label="Дата приёмки *"
-                    InputLabelProps={{ shrink: true }}
-                    value={form.receivedDate}
-                    onChange={(event) => setForm((current) => ({ ...current, receivedDate: event.target.value }))}
-                  />
+                  <Alert severity="info" sx={{ width: '100%', alignItems: 'center' }}>
+                    Дата и время приёмки будут зафиксированы сервером при подтверждении.
+                    Изменить их в рабочей станции кладовщика нельзя.
+                  </Alert>
                 </Stack>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                   <TextField
@@ -593,7 +596,7 @@ export default function WarehouseReceptionPage() {
                   ['ТС', `${form.brand} ${form.model}`],
                   ['VIN / шасси', form.vin || form.chassisNumber || '—'],
                   ['Госномер', form.registrationNumber || '—'],
-                  ['Дата приёмки', form.receivedDate],
+                  ['Дата и время приёмки', 'Автоматически при подтверждении'],
                   ['Топливо', form.fuelLevelPercent === null ? 'Не указано' : `${form.fuelLevelPercent}%`],
                   ['Фотографии', String(photos.length)],
                 ].map(([label, value]) => (

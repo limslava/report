@@ -67,8 +67,14 @@ export class WarehouseVehicle {
   @Column({ name: 'received_date', type: 'date' })
   receivedDate!: string;
 
+  @Column({ name: 'received_at', type: 'timestamptz' })
+  receivedAt!: Date;
+
   @Column({ name: 'issued_date', type: 'date', nullable: true })
   issuedDate!: string | null;
+
+  @Column({ name: 'issued_at', type: 'timestamptz', nullable: true })
+  issuedAt!: Date | null;
 
   @Column({ name: 'fuel_level_percent', type: 'smallint', nullable: true })
   fuelLevelPercent!: number | null;

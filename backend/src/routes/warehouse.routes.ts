@@ -334,7 +334,7 @@ router.post(
     body('brand').isString().trim().notEmpty().isLength({ max: 100 }),
     body('model').isString().trim().notEmpty().isLength({ max: 100 }),
     body('registrationNumber').optional({ nullable: true }).isString().trim().isLength({ max: 32 }),
-    body('receivedDate').isISO8601({ strict: true }),
+    body('receivedDate').optional().isISO8601({ strict: true }),
     body('fuelLevelPercent').optional({ nullable: true }).isInt({ min: 0, max: 100 }),
     body('notes').optional({ nullable: true }).isString().trim().isLength({ max: 4000 }),
   ],
@@ -366,7 +366,7 @@ router.post(
   authorizeRole(...WAREHOUSE_STAFF_ROLES),
   [
     param('id').isUUID(),
-    body('issuedDate').isISO8601({ strict: true }),
+    body('issuedDate').optional().isISO8601({ strict: true }),
   ],
   handleValidationErrors,
   issueWarehouseVehicle,

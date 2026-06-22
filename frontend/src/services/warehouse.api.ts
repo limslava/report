@@ -52,7 +52,9 @@ export interface WarehouseVehicle {
   model: string;
   registrationNumber: string | null;
   receivedDate: string;
+  receivedAt: string;
   issuedDate: string | null;
+  issuedAt: string | null;
   fuelLevelPercent: number | null;
   status: WarehouseVehicleStatus;
   notes: string | null;
@@ -71,7 +73,7 @@ export interface WarehouseVehiclePayload {
   brand: string;
   model: string;
   registrationNumber?: string | null;
-  receivedDate: string;
+  receivedDate?: string;
   fuelLevelPercent?: number | null;
   notes?: string | null;
 }
@@ -198,8 +200,8 @@ export const updateWarehouseVehicle = (
   payload: Partial<Omit<WarehouseVehiclePayload, 'counterpartyId' | 'requestNumber' | 'requestDate'>>,
 ) => api.patch<WarehouseVehicle>(`/warehouse/vehicles/${id}`, payload);
 
-export const issueWarehouseVehicle = (id: string, issuedDate: string) =>
-  api.post<WarehouseVehicle>(`/warehouse/vehicles/${id}/issue`, { issuedDate });
+export const issueWarehouseVehicle = (id: string, issuedDate?: string) =>
+  api.post<WarehouseVehicle>(`/warehouse/vehicles/${id}/issue`, issuedDate ? { issuedDate } : {});
 
 export const getWarehouseVehiclePhotos = (vehicleId: string) =>
   api.get<WarehousePhoto[]>(`/warehouse/vehicles/${vehicleId}/photos`);

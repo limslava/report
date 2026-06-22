@@ -93,7 +93,9 @@ const serializeVehicle = (vehicle: WarehouseVehicle) => ({
   model: vehicle.model,
   registrationNumber: vehicle.registrationNumber,
   receivedDate: vehicle.receivedDate,
+  receivedAt: vehicle.receivedAt,
   issuedDate: vehicle.issuedDate,
+  issuedAt: vehicle.issuedAt,
   fuelLevelPercent: vehicle.fuelLevelPercent,
   status: vehicle.status,
   notes: vehicle.notes,
@@ -364,7 +366,10 @@ export const createWarehouseVehicle = async (
         throw error;
       }
 
-      const receivedDate = req.body.receivedDate as string;
+      const receivedAt = new Date();
+      const receivedDate = req.user!.role === 'warehouse_keeper'
+        ? todayDate()
+        : String(req.body.receivedDate || todayDate());
       await assertWarehouseDateIsOpen(counterparty.id, receivedDate);
       const request = await resolveStorageRequest(manager, {
         counterpartyId: counterparty.id,
@@ -383,7 +388,9 @@ export const createWarehouseVehicle = async (
         model: String(req.body.model).trim(),
         registrationNumber: normalizeNullable(req.body.registrationNumber)?.toUpperCase() ?? null,
         receivedDate,
+        receivedAt,
         issuedDate: null,
+        issuedAt: null,
         fuelLevelPercent: req.body.fuelLevelPercent ?? null,
         status: 'on_site',
         notes: normalizeNullable(req.body.notes),
@@ -394,6 +401,7 @@ export const createWarehouseVehicle = async (
       await addOperation(manager, saved, req, 'created', {
         status: saved.status,
         receivedDate: saved.receivedDate,
+        receivedAt: saved.receivedAt,
       });
       return repository.findOneOrFail({
         where: { id: saved.id },
@@ -430,6 +438,11 @@ export const updateWarehouseVehicle = async (
       }
 
       const before = serializeVehicle(vehicle);
+      if (req.user!.role === 'warehouse_keeper' && req.body.receivedDate !== undefined) {
+        const error: any = new Error('Дата и время приёмки фиксируются автоматически');
+        error.statusCode = 403;
+        throw error;
+      }
       if (req.body.receivedDate !== undefined) {
         await assertWarehouseDateIsOpen(vehicle.counterpartyId, vehicle.receivedDate);
         await assertWarehouseDateIsOpen(vehicle.counterpartyId, req.body.receivedDate);
@@ -468,7 +481,10 @@ export const issueWarehouseVehicle = async (
   next: NextFunction,
 ) => {
   try {
-    const issuedDate = req.body.issuedDate as string;
+    const issuedAt = new Date();
+    const issuedDate = req.user!.role === 'warehouse_keeper'
+      ? todayDate()
+      : String(req.body.issuedDate || todayDate());
     const result = await AppDataSource.transaction(async (manager) => {
       const repository = manager.getRepository(WarehouseVehicle);
       const vehicle = await repository.findOne({
@@ -491,11 +507,13 @@ export const issueWarehouseVehicle = async (
       await assertWarehouseDateIsOpen(vehicle.counterpartyId, issuedDate);
 
       vehicle.issuedDate = issuedDate;
+      vehicle.issuedAt = issuedAt;
       vehicle.status = 'issued';
       vehicle.updatedById = req.user!.id;
       await repository.save(vehicle);
       await addOperation(manager, vehicle, req, 'issued', {
         issuedDate,
+        issuedAt,
         storageDays: calendarDaysInclusive(vehicle.receivedDate, issuedDate),
       });
       return { vehicle, newlyIssued: true };

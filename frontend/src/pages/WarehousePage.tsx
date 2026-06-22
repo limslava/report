@@ -67,6 +67,15 @@ const today = () => {
   return `${year}-${month}-${day}`;
 };
 
+const formatOperationDateTime = (value: string | null) => {
+  if (!value) return '—';
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'Asia/Vladivostok',
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value));
+};
+
 const emptyForm = (): WarehouseVehiclePayload => ({
   counterpartyId: '',
   requestNumber: '',
@@ -402,8 +411,12 @@ export default function WarehousePage() {
                       {vehicle.registrationNumber || 'Без госномера'}
                     </Typography>
                   </TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{vehicle.receivedDate}</TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{vehicle.issuedDate || '—'}</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    {formatOperationDateTime(vehicle.receivedAt)}
+                  </TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    {formatOperationDateTime(vehicle.issuedAt)}
+                  </TableCell>
                   <TableCell align="right">{vehicle.storageDays}</TableCell>
                   <TableCell>
                     <Chip
