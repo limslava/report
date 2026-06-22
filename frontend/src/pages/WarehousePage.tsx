@@ -486,12 +486,35 @@ export default function WarehousePage() {
         )}
       </Stack>
 
-      <Dialog open={dialogOpen} onClose={() => !saving && closeVehicleDialog()} fullWidth maxWidth="md">
+      <Dialog
+        open={dialogOpen}
+        onClose={() => !saving && closeVehicleDialog()}
+        fullWidth
+        fullScreen={isWarehouseKeeper}
+        maxWidth="md"
+        PaperProps={isWarehouseKeeper ? {
+          sx: {
+            bgcolor: 'grey.50',
+          },
+        } : undefined}
+      >
         <DialogTitle>
-          {editingVehicle ? `Карточка ${editingVehicle.warehouseNumber}` : 'Приёмка ТС'}
+          {editingVehicle
+            ? `Карточка ${editingVehicle.warehouseNumber}`
+            : isWarehouseKeeper
+              ? 'Приёмка транспортного средства'
+              : 'Приёмка ТС'}
         </DialogTitle>
         <DialogContent dividers>
-          <Stack spacing={2.5} sx={{ pt: 0.5 }}>
+          <Stack
+            spacing={2.5}
+            sx={{
+              pt: 0.5,
+              width: '100%',
+              maxWidth: isWarehouseKeeper ? 900 : 'none',
+              mx: 'auto',
+            }}
+          >
             <Autocomplete
               options={counterparties}
               value={selectedCounterparty}
