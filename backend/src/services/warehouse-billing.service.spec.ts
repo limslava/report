@@ -5,12 +5,24 @@ jest.mock('../config/data-source', () => ({
 }));
 
 import {
+  assertWarehouseBillingPeriodCompleted,
   calculateWarehouseBillingTotals,
   calculateWarehouseStorage,
   WarehouseBillingVehicleLine,
 } from './warehouse-billing.service';
 
 describe('warehouse billing calculations', () => {
+  it('does not allow closing the current or a future Vladivostok date', () => {
+    const now = new Date('2026-06-23T02:00:00.000Z');
+    expect(() => assertWarehouseBillingPeriodCompleted('2026-06-22', now)).not.toThrow();
+    expect(() => assertWarehouseBillingPeriodCompleted('2026-06-23', now)).toThrow(
+      'Можно закрыть только завершившийся период',
+    );
+    expect(() => assertWarehouseBillingPeriodCompleted('2026-06-24', now)).toThrow(
+      'Можно закрыть только завершившийся период',
+    );
+  });
+
   it('includes both reception and issue dates', () => {
     const result = calculateWarehouseStorage({
       receivedDate: '2026-06-01',

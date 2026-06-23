@@ -32,7 +32,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   createWarehouseVehicle,
@@ -122,6 +122,14 @@ export default function WarehouseReceptionPage() {
   const [error, setError] = useState<string | null>(null);
   const [completedVehicle, setCompletedVehicle] = useState<WarehouseVehicle | null>(null);
   const [uploadWarning, setUploadWarning] = useState<string | null>(null);
+  const errorRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!error) return;
+    window.requestAnimationFrame(() => {
+      errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, [error]);
 
   const loadDraftPhotos = useCallback(async () => {
     const queued = await listWarehousePhotoQueue(DRAFT_PHOTO_KEY);
@@ -389,7 +397,11 @@ export default function WarehouseReceptionPage() {
           </Stack>
         </Paper>
 
-        {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
+        {error && (
+          <Box ref={errorRef}>
+            <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>
+          </Box>
+        )}
 
         <Paper variant="outlined" sx={{ px: { xs: 1, md: 2 }, py: 2, overflowX: 'auto' }}>
           <Stepper nonLinear activeStep={activeStep} alternativeLabel sx={{ minWidth: { xs: 600, md: 0 } }}>
@@ -648,7 +660,13 @@ export default function WarehouseReceptionPage() {
 
         <Paper
           variant="outlined"
-          sx={{ p: 1.5, position: 'sticky', bottom: 0, zIndex: 2 }}
+          sx={{
+            p: 1.5,
+            pb: 'calc(12px + env(safe-area-inset-bottom))',
+            position: 'sticky',
+            bottom: 0,
+            zIndex: 2,
+          }}
         >
           <Stack direction="row" justifyContent="space-between" spacing={1}>
             <Button

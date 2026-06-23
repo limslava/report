@@ -59,6 +59,25 @@ export interface WarehouseBillingReport {
   warnings: string[];
 }
 
+export const assertWarehouseBillingPeriodCompleted = (
+  periodTo: string,
+  now = new Date(),
+): void => {
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Vladivostok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+  if (periodTo >= today) {
+    const error: any = new Error(
+      `Можно закрыть только завершившийся период. Дата окончания должна быть раньше ${today}`,
+    );
+    error.statusCode = 409;
+    throw error;
+  }
+};
+
 const roundMoney = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100;
 
 const addDays = (date: string, days: number): string => {
@@ -294,6 +313,7 @@ export const closeWarehouseBillingPeriod = async (params: {
   userId: string;
   userName: string;
 }): Promise<WarehouseBillingReport> => {
+  assertWarehouseBillingPeriodCompleted(params.periodTo);
   const existingOverlap = await AppDataSource.getRepository(WarehouseBillingPeriod)
     .createQueryBuilder('period')
     .where('period.counterpartyId = :counterpartyId', { counterpartyId: params.counterpartyId })

@@ -42,6 +42,13 @@ import {
 
 const money = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' });
 
+const todayVladivostok = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Vladivostok',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date());
+
 const monthPeriod = () => {
   const now = new Date();
   const year = now.getFullYear();
@@ -79,6 +86,7 @@ export default function WarehouseBillingPanel({ canClose, ownCounterpartyOnly = 
   const [closeDialog, setCloseDialog] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const canCloseSelectedPeriod = periodTo < todayVladivostok();
 
   useEffect(() => {
     void getWarehouseClients(false).then((response) => {
@@ -321,7 +329,7 @@ export default function WarehouseBillingPanel({ canClose, ownCounterpartyOnly = 
                 variant="contained"
                 color="warning"
                 startIcon={<Lock />}
-                disabled={!counterpartyId || report.warnings.length > 0}
+                disabled={!counterpartyId || report.warnings.length > 0 || !canCloseSelectedPeriod}
                 onClick={() => setCloseDialog(true)}
               >
                 Закрыть период
@@ -332,6 +340,11 @@ export default function WarehouseBillingPanel({ canClose, ownCounterpartyOnly = 
             <Alert severity="info">
               Для формирования PDF-акта и закрытия периода выберите одного контрагента.
               Excel можно выгрузить по всем контрагентам.
+            </Alert>
+          )}
+          {canClose && counterpartyId && !canCloseSelectedPeriod && report.status !== 'closed' && (
+            <Alert severity="warning">
+              Закрывать можно только завершившийся период. Текущий день и будущие даты должны оставаться открытыми для операций склада.
             </Alert>
           )}
         </>
