@@ -122,6 +122,7 @@ export default function WarehouseReceptionPage() {
   const [error, setError] = useState<string | null>(null);
   const [completedVehicle, setCompletedVehicle] = useState<WarehouseVehicle | null>(null);
   const [uploadWarning, setUploadWarning] = useState<string | null>(null);
+  const [photoLimitWarning, setPhotoLimitWarning] = useState<string | null>(null);
   const [basisOpen, setBasisOpen] = useState(false);
   const errorRef = useRef<HTMLDivElement | null>(null);
 
@@ -232,12 +233,20 @@ export default function WarehouseReceptionPage() {
     const files = Array.from(event.target.files ?? []);
     event.target.value = '';
     if (files.length === 0) return;
-    if (photos.length + files.length > 60) {
-      setError('Для одного ТС разрешено не более 60 фотографий.');
+    const availableSlots = Math.max(0, 60 - photos.length);
+    if (availableSlots === 0) {
+      setPhotoLimitWarning('Достигнут лимит: для одного ТС можно добавить не более 60 фотографий.');
+      return;
+    }
+    if (files.length > availableSlots) {
+      setPhotoLimitWarning(
+        `Выбрано ${files.length} фотографий. Сейчас можно добавить ещё не более ${availableSlots}.`,
+      );
       return;
     }
     setProcessingPhotos(true);
     setError(null);
+    setPhotoLimitWarning(null);
     setProgress({ done: 0, total: files.length, label: 'Подготовка фотографий' });
     try {
       let done = 0;
@@ -262,6 +271,7 @@ export default function WarehouseReceptionPage() {
   const removePhoto = async (photo: DraftPhoto) => {
     if (!photo.id) return;
     await removeWarehousePhotoQueueItem(photo.id);
+    setPhotoLimitWarning(null);
     await loadDraftPhotos();
   };
 
@@ -670,17 +680,32 @@ export default function WarehouseReceptionPage() {
             {activeStep === 3 && (
               <>
                 <Chip
-                  label={`Фото: ${photos.length} · ориентир 30–40`}
+                  label={`Количество фотографий — ${photos.length} из 60`}
                   color={photos.length > 0 ? 'success' : 'default'}
                   variant="outlined"
                   sx={{ alignSelf: 'flex-start' }}
                 />
+                {photoLimitWarning && (
+                  <Alert severity="warning" onClose={() => setPhotoLimitWarning(null)}>
+                    {photoLimitWarning}
+                  </Alert>
+                )}
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-                  <Button component="label" variant="contained" startIcon={<CameraAlt />} disabled={processingPhotos}>
+                  <Button
+                    component="label"
+                    variant="contained"
+                    startIcon={<CameraAlt />}
+                    disabled={processingPhotos || photos.length >= 60}
+                  >
                     Сделать фото
                     <input hidden type="file" accept="image/*" capture="environment" onChange={(event) => void handleFiles(event)} />
                   </Button>
-                  <Button component="label" variant="outlined" startIcon={<AddPhotoAlternate />} disabled={processingPhotos}>
+                  <Button
+                    component="label"
+                    variant="outlined"
+                    startIcon={<AddPhotoAlternate />}
+                    disabled={processingPhotos || photos.length >= 60}
+                  >
                     Выбрать из галереи
                     <input hidden type="file" accept="image/*" multiple onChange={(event) => void handleFiles(event)} />
                   </Button>

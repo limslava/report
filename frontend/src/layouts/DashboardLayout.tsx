@@ -115,6 +115,7 @@ const DashboardLayout = () => {
   const canViewEfficiency = canViewOperationsEfficiency(user?.role);
   const isTechDashboardRoute = location.pathname.includes('/sw-tech-dashboard');
   const isOperationsPreviewRoute = location.pathname === '/operations-preview';
+  const isWarehouseReceptionRoute = location.pathname === '/warehouse/reception';
   const currentDate = new Date();
   const currentYear = currentDate.getFullYear();
   const swQuery = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -1207,8 +1208,16 @@ const DashboardLayout = () => {
           p: isTechDashboardRoute ? { xs: 0, sm: 0 } : { xs: 0.75, sm: 1 },
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           boxSizing: 'border-box',
-          overflowX: isTechDashboardRoute ? 'hidden' : 'auto',
-          overflowY: isTechDashboardRoute ? 'hidden' : 'auto',
+          overflowX: isTechDashboardRoute
+            ? 'hidden'
+            : isWarehouseReceptionRoute
+              ? 'visible'
+              : 'auto',
+          overflowY: isTechDashboardRoute
+            ? 'hidden'
+            : isWarehouseReceptionRoute
+              ? 'visible'
+              : 'auto',
         }}
       >
         <Toolbar />
