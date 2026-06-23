@@ -312,6 +312,7 @@ export default function WarehouseReceptionPage() {
   };
 
   const uploadQueuedPhotos = async (vehicleId: string, total: number) => {
+    await reassignWarehousePhotoQueue(DRAFT_PHOTO_KEY, vehicleId);
     const queue = await reconcilePhotoQueue(vehicleId);
     let uploaded = total - queue.length;
     setPhotoUploadStatus({ uploaded, total, pending: queue.length });
@@ -333,7 +334,11 @@ export default function WarehouseReceptionPage() {
     try {
       await uploadQueuedPhotos(completedVehicle.id, photoUploadStatus.total);
     } catch {
-      const pending = (await listWarehousePhotoQueue(completedVehicle.id)).length;
+      const [vehicleQueue, draftQueue] = await Promise.all([
+        listWarehousePhotoQueue(completedVehicle.id).catch(() => []),
+        listWarehousePhotoQueue(DRAFT_PHOTO_KEY).catch(() => []),
+      ]);
+      const pending = vehicleQueue.length + draftQueue.length;
       setPhotoUploadStatus((current) => ({
         ...current,
         uploaded: current.total - pending,
@@ -357,29 +362,36 @@ export default function WarehouseReceptionPage() {
     setSaving(true);
     setError(null);
     setUploadWarning(null);
+    let vehicle: WarehouseVehicle | null = null;
     try {
       setProgress({ done: 0, total: 1, label: 'Создание карточки ТС' });
       const { receivedDate: _ignoredReceivedDate, ...automaticReceptionPayload } = form;
       const vehicleResponse = await createWarehouseVehicle(automaticReceptionPayload);
-      const vehicle = vehicleResponse.data;
-      await reassignWarehousePhotoQueue(DRAFT_PHOTO_KEY, vehicle.id);
-      const queue = await listWarehousePhotoQueue(vehicle.id);
-      setPhotoUploadStatus({ uploaded: 0, total: queue.length, pending: queue.length });
+      vehicle = vehicleResponse.data;
+      const totalPhotos = photos.length;
+      localStorage.removeItem(DRAFT_KEY);
+      setCompletedVehicle(vehicle);
+      setPhotoUploadStatus({ uploaded: 0, total: totalPhotos, pending: totalPhotos });
+
       try {
-        await uploadQueuedPhotos(vehicle.id, queue.length);
+        await uploadQueuedPhotos(vehicle.id, totalPhotos);
       } catch {
-        const pending = (await listWarehousePhotoQueue(vehicle.id)).length;
+        const [vehicleQueue, draftQueue] = await Promise.all([
+          listWarehousePhotoQueue(vehicle.id).catch(() => []),
+          listWarehousePhotoQueue(DRAFT_PHOTO_KEY).catch(() => []),
+        ]);
+        const pending = vehicleQueue.length + draftQueue.length;
         setPhotoUploadStatus({
-          uploaded: queue.length - pending,
-          total: queue.length,
+          uploaded: Math.max(0, totalPhotos - pending),
+          total: totalPhotos,
           pending,
         });
         setUploadWarning('Не все фотографии загружены. Проверьте интернет и повторите загрузку.');
       }
-      localStorage.removeItem(DRAFT_KEY);
-      setCompletedVehicle(vehicle);
     } catch (submitError) {
-      setError(messageFromError(submitError));
+      if (!vehicle) {
+        setError(messageFromError(submitError));
+      }
     } finally {
       setSaving(false);
     }
