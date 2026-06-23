@@ -7,6 +7,7 @@ import {
   Delete,
   DirectionsCar,
   ExpandMore,
+  Refresh,
   Save,
 } from '@mui/icons-material';
 import {
@@ -38,6 +39,7 @@ import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from '
 import { useNavigate } from 'react-router-dom';
 import {
   createWarehouseVehicle,
+  getWarehouseVehiclePhotos,
   getWarehouseClients,
   uploadWarehouseVehiclePhoto,
   WarehouseCounterparty,
@@ -122,6 +124,7 @@ export default function WarehouseReceptionPage() {
   const [error, setError] = useState<string | null>(null);
   const [completedVehicle, setCompletedVehicle] = useState<WarehouseVehicle | null>(null);
   const [uploadWarning, setUploadWarning] = useState<string | null>(null);
+  const [photoUploadStatus, setPhotoUploadStatus] = useState({ uploaded: 0, total: 0, pending: 0 });
   const [photoLimitWarning, setPhotoLimitWarning] = useState<string | null>(null);
   const [basisOpen, setBasisOpen] = useState(false);
   const errorRef = useRef<HTMLDivElement | null>(null);
@@ -287,6 +290,61 @@ export default function WarehouseReceptionPage() {
     navigate('/warehouse/operations', { replace: true });
   };
 
+  const reconcilePhotoQueue = async (vehicleId: string) => {
+    const [queue, serverResponse] = await Promise.all([
+      listWarehousePhotoQueue(vehicleId),
+      getWarehouseVehiclePhotos(vehicleId),
+    ]);
+    const availableServerPhotos = serverResponse.data
+      .filter((photo) => photo.phase === 'reception')
+      .map((photo) => ({ name: photo.originalName, size: photo.sizeBytes, matched: false }));
+
+    for (const item of queue) {
+      if (!item.id) continue;
+      const serverPhoto = availableServerPhotos.find(
+        (photo) => !photo.matched && photo.name === item.name && photo.size === item.blob.size,
+      );
+      if (!serverPhoto) continue;
+      serverPhoto.matched = true;
+      await removeWarehousePhotoQueueItem(item.id);
+    }
+    return listWarehousePhotoQueue(vehicleId);
+  };
+
+  const uploadQueuedPhotos = async (vehicleId: string, total: number) => {
+    const queue = await reconcilePhotoQueue(vehicleId);
+    let uploaded = total - queue.length;
+    setPhotoUploadStatus({ uploaded, total, pending: queue.length });
+    setProgress({ done: uploaded, total, label: 'Загрузка фотографий' });
+    for (const item of queue) {
+      if (!item.id) continue;
+      await uploadWarehouseVehiclePhoto(vehicleId, item.blob, item.name);
+      await removeWarehousePhotoQueueItem(item.id);
+      uploaded += 1;
+      setPhotoUploadStatus({ uploaded, total, pending: total - uploaded });
+      setProgress({ done: uploaded, total, label: 'Загрузка фотографий' });
+    }
+  };
+
+  const retryPhotoUpload = async () => {
+    if (!completedVehicle || saving) return;
+    setSaving(true);
+    setUploadWarning(null);
+    try {
+      await uploadQueuedPhotos(completedVehicle.id, photoUploadStatus.total);
+    } catch {
+      const pending = (await listWarehousePhotoQueue(completedVehicle.id)).length;
+      setPhotoUploadStatus((current) => ({
+        ...current,
+        uploaded: current.total - pending,
+        pending,
+      }));
+      setUploadWarning('Не удалось догрузить все фотографии. Проверьте интернет и повторите попытку.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const submit = async () => {
     for (let index = 0; index < STEPS.length - 1; index += 1) {
       const validationError = validateStep(index);
@@ -306,20 +364,17 @@ export default function WarehouseReceptionPage() {
       const vehicle = vehicleResponse.data;
       await reassignWarehousePhotoQueue(DRAFT_PHOTO_KEY, vehicle.id);
       const queue = await listWarehousePhotoQueue(vehicle.id);
-      setProgress({ done: 0, total: queue.length, label: 'Загрузка фотографий' });
-      let uploaded = 0;
+      setPhotoUploadStatus({ uploaded: 0, total: queue.length, pending: queue.length });
       try {
-        for (const item of queue) {
-          if (!item.id) continue;
-          await uploadWarehouseVehiclePhoto(vehicle.id, item.blob, item.name);
-          await removeWarehousePhotoQueueItem(item.id);
-          uploaded += 1;
-          setProgress({ done: uploaded, total: queue.length, label: 'Загрузка фотографий' });
-        }
-      } catch (uploadError) {
-        setUploadWarning(
-          `Карточка создана, но часть фото осталась в очереди: ${messageFromError(uploadError)}`,
-        );
+        await uploadQueuedPhotos(vehicle.id, queue.length);
+      } catch {
+        const pending = (await listWarehousePhotoQueue(vehicle.id)).length;
+        setPhotoUploadStatus({
+          uploaded: queue.length - pending,
+          total: queue.length,
+          pending,
+        });
+        setUploadWarning('Не все фотографии загружены. Проверьте интернет и повторите загрузку.');
       }
       localStorage.removeItem(DRAFT_KEY);
       setCompletedVehicle(vehicle);
@@ -346,7 +401,28 @@ export default function WarehouseReceptionPage() {
               <Typography>
                 {completedVehicle.brand} {completedVehicle.model}
               </Typography>
-              {uploadWarning && <Alert severity="warning">{uploadWarning}</Alert>}
+              {photoUploadStatus.total > 0 && (
+                <Alert
+                  severity={photoUploadStatus.pending === 0 ? 'success' : 'warning'}
+                  sx={{ width: '100%' }}
+                >
+                  Фотографии: загружено {photoUploadStatus.uploaded} из {photoUploadStatus.total}.
+                  {photoUploadStatus.pending > 0 && ` Осталось: ${photoUploadStatus.pending}.`}
+                </Alert>
+              )}
+              {uploadWarning && <Alert severity="warning" sx={{ width: '100%' }}>{uploadWarning}</Alert>}
+              {photoUploadStatus.pending > 0 && (
+                <Button
+                  fullWidth
+                  variant="contained"
+                  color="warning"
+                  startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <Refresh />}
+                  disabled={saving}
+                  onClick={() => void retryPhotoUpload()}
+                >
+                  {saving ? 'Загрузка фотографий…' : 'Повторить загрузку фото'}
+                </Button>
+              )}
               <Alert severity="success">
                 Приёмка зафиксирована автоматически: {formatOperationDateTime(completedVehicle.receivedAt)}.
               </Alert>
@@ -358,6 +434,8 @@ export default function WarehouseReceptionPage() {
                     setForm(emptyForm());
                     setActiveStep(0);
                     setPhotos([]);
+                    setPhotoUploadStatus({ uploaded: 0, total: 0, pending: 0 });
+                    setUploadWarning(null);
                   }}
                 >
                   Принять ещё одно ТС
