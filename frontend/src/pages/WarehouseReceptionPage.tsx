@@ -374,13 +374,40 @@ export default function WarehouseReceptionPage() {
   return (
     <Box
       sx={{
-        minHeight: '100%',
+        minHeight: { xs: 'calc(100dvh - 56px)', sm: '100%' },
         bgcolor: 'grey.50',
-        p: { xs: 1, md: 3 },
+        p: { xs: 0.5, sm: 1, md: 3 },
+        pb: { xs: 'calc(68px + env(safe-area-inset-bottom))', sm: 1, md: 3 },
         overflowX: 'hidden',
       }}
     >
-      <Stack spacing={{ xs: 1, md: 2.5 }} sx={{ maxWidth: 980, mx: 'auto' }}>
+      <Stack
+        spacing={{ xs: 0.75, sm: 1, md: 2.5 }}
+        sx={{
+          maxWidth: 980,
+          mx: 'auto',
+          '& .MuiAlert-root': {
+            px: { xs: 1.25, sm: 2 },
+            py: { xs: 0.5, sm: 0.75 },
+            alignItems: 'center',
+          },
+          '& .MuiAlert-icon': {
+            mr: { xs: 1, sm: 1.5 },
+            py: { xs: 0.25, sm: 0.5 },
+          },
+          '& .MuiAlert-message': {
+            py: { xs: 0.5, sm: 0.75 },
+            fontSize: { xs: 14, sm: 15, md: 16 },
+            lineHeight: { xs: 1.35, sm: 1.45 },
+          },
+          '& .MuiInputBase-root:not(.MuiInputBase-multiline)': {
+            minHeight: { xs: 50, sm: 56 },
+          },
+          '& .MuiInputBase-input, & .MuiSelect-select': {
+            fontSize: { xs: 16, sm: 16 },
+          },
+        }}
+      >
         <Paper
           variant="outlined"
           sx={{
@@ -439,16 +466,20 @@ export default function WarehouseReceptionPage() {
           </Stepper>
         </Paper>
 
-        <Paper variant="outlined" sx={{ p: { xs: 1.5, md: 3 } }}>
-          <Stack spacing={{ xs: 1.5, md: 2.5 }}>
+        <Paper variant="outlined" sx={{ p: { xs: 1.25, sm: 1.5, md: 3 } }}>
+          <Stack spacing={{ xs: 1.25, sm: 1.5, md: 2.5 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Box>
-                <Typography variant="overline" color="primary">
+                <Typography
+                  variant="overline"
+                  color="primary"
+                  sx={{ fontSize: { xs: 12, sm: 13 }, lineHeight: 1.2 }}
+                >
                   Шаг {activeStep + 1} из {STEPS.length}
                 </Typography>
                 <Typography
                   variant="h5"
-                  sx={{ fontSize: { xs: 26, md: 30 }, lineHeight: 1.15 }}
+                  sx={{ fontSize: { xs: 24, sm: 26, md: 30 }, lineHeight: 1.1 }}
                 >
                   {STEPS[activeStep]}
                 </Typography>
@@ -541,19 +572,20 @@ export default function WarehouseReceptionPage() {
                     onClick={() => setBasisOpen((current) => !current)}
                     sx={{
                       justifyContent: 'space-between',
-                      px: { xs: 1.5, sm: 2 },
-                      py: { xs: 1.25, sm: 1.5 },
+                      px: { xs: 1.25, sm: 2 },
+                      py: { xs: 1, sm: 1.5 },
                       textAlign: 'left',
                       lineHeight: 1.25,
+                      fontSize: { xs: 14, sm: 15 },
                     }}
                   >
                     Основание приёмки — необязательно
                   </Button>
                   <Collapse in={basisOpen}>
-                    <Stack spacing={2} sx={{ px: 2, pb: 2 }}>
+                    <Stack spacing={{ xs: 1.25, sm: 2 }} sx={{ px: { xs: 1.25, sm: 2 }, pb: { xs: 1.25, sm: 2 } }}>
                       <Alert severity="info">
-                        Заполняйте только при наличии бумажной или входящей заявки контрагента.
-                        Складской номер и время приёмки система сформирует автоматически.
+                        Только при наличии заявки клиента. Складской номер и время приёмки
+                        система сформирует автоматически.
                       </Alert>
                       <TextField
                         fullWidth
@@ -577,7 +609,7 @@ export default function WarehouseReceptionPage() {
 
             {activeStep === 1 && (
               <>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 1.25, sm: 2 }}>
                   <FormControl fullWidth>
                     <InputLabel>Тип ТС *</InputLabel>
                     <Select
@@ -592,12 +624,11 @@ export default function WarehouseReceptionPage() {
                       <MenuItem value="truck">Грузовой</MenuItem>
                     </Select>
                   </FormControl>
-                  <Alert severity="info" sx={{ width: '100%', alignItems: 'center' }}>
-                    Дата и время приёмки будут зафиксированы сервером при подтверждении.
-                    Изменить их в рабочей станции кладовщика нельзя.
+                  <Alert severity="info" sx={{ width: '100%' }}>
+                    Дата и время зафиксируются автоматически при подтверждении.
                   </Alert>
                 </Stack>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 1.25, sm: 2 }}>
                   <TextField
                     fullWidth
                     label="Марка *"
@@ -611,7 +642,7 @@ export default function WarehouseReceptionPage() {
                     onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))}
                   />
                 </Stack>
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 1.25, sm: 2 }}>
                   <TextField
                     fullWidth
                     label="VIN"
@@ -660,7 +691,7 @@ export default function WarehouseReceptionPage() {
                 />
                 <TextField
                   multiline
-                  minRows={4}
+                  minRows={3}
                   label="Комментарий к осмотру"
                   placeholder="Царапины, вмятины, состояние салона, комплектность и другие замечания"
                   value={form.notes || ''}
@@ -759,16 +790,19 @@ export default function WarehouseReceptionPage() {
         <Paper
           variant="outlined"
           sx={{
-            p: { xs: 1, sm: 1.5 },
-            pb: { xs: 'calc(8px + env(safe-area-inset-bottom))', sm: 1.5 },
-            position: 'sticky',
-            bottom: 0,
+            p: { xs: 0.75, sm: 1.5 },
+            pb: { xs: 'calc(6px + env(safe-area-inset-bottom))', sm: 1.5 },
+            position: { xs: 'fixed', sm: 'sticky' },
+            left: { xs: 4, sm: 'auto' },
+            right: { xs: 4, sm: 'auto' },
+            bottom: { xs: 0, sm: 0 },
             zIndex: 2,
             boxShadow: { xs: 3, md: 0 },
           }}
         >
           <Stack direction="row" justifyContent="space-between" spacing={1}>
             <Button
+              size="small"
               startIcon={<ArrowBack />}
               disabled={activeStep === 0 || saving}
               onClick={() => setActiveStep((current) => Math.max(0, current - 1))}
@@ -791,11 +825,12 @@ export default function WarehouseReceptionPage() {
                 Сохранить черновик
               </Button>
               {activeStep < STEPS.length - 1 ? (
-                <Button variant="contained" endIcon={<ArrowForward />} onClick={goNext}>
+                <Button size="small" variant="contained" endIcon={<ArrowForward />} onClick={goNext}>
                   Далее
                 </Button>
               ) : (
                 <Button
+                  size="small"
                   variant="contained"
                   startIcon={<DirectionsCar />}
                   disabled={saving}
