@@ -6,6 +6,7 @@ import {
   CheckCircle,
   Delete,
   DirectionsCar,
+  ExpandMore,
   Save,
 } from '@mui/icons-material';
 import {
@@ -16,6 +17,7 @@ import {
   Card,
   CardContent,
   Chip,
+  Collapse,
   CircularProgress,
   FormControl,
   IconButton,
@@ -76,7 +78,7 @@ const formatOperationDateTime = (value: string) => new Intl.DateTimeFormat('ru-R
 const emptyForm = (): WarehouseVehiclePayload => ({
   counterpartyId: '',
   requestNumber: '',
-  requestDate: today(),
+  requestDate: '',
   vehicleType: 'passenger',
   vin: '',
   chassisNumber: '',
@@ -122,6 +124,7 @@ export default function WarehouseReceptionPage() {
   const [error, setError] = useState<string | null>(null);
   const [completedVehicle, setCompletedVehicle] = useState<WarehouseVehicle | null>(null);
   const [uploadWarning, setUploadWarning] = useState<string | null>(null);
+  const [basisOpen, setBasisOpen] = useState(false);
   const errorRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -460,22 +463,46 @@ export default function WarehouseReceptionPage() {
                     Для клиента не указана дата окончания договора хранения.
                   </Alert>
                 )}
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                  <TextField
+                <Paper variant="outlined">
+                  <Button
                     fullWidth
-                    label="Номер заявки"
-                    value={form.requestNumber || ''}
-                    onChange={(event) => setForm((current) => ({ ...current, requestNumber: event.target.value }))}
-                  />
-                  <TextField
-                    fullWidth
-                    type="date"
-                    label="Дата заявки"
-                    InputLabelProps={{ shrink: true }}
-                    value={form.requestDate || ''}
-                    onChange={(event) => setForm((current) => ({ ...current, requestDate: event.target.value }))}
-                  />
-                </Stack>
+                    color="inherit"
+                    endIcon={(
+                      <ExpandMore
+                        sx={{
+                          transform: basisOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                          transition: 'transform 150ms',
+                        }}
+                      />
+                    )}
+                    onClick={() => setBasisOpen((current) => !current)}
+                    sx={{ justifyContent: 'space-between', px: 2, py: 1.5 }}
+                  >
+                    Основание приёмки — необязательно
+                  </Button>
+                  <Collapse in={basisOpen}>
+                    <Stack spacing={2} sx={{ px: 2, pb: 2 }}>
+                      <Alert severity="info">
+                        Заполняйте только при наличии бумажной или входящей заявки контрагента.
+                        Складской номер и время приёмки система сформирует автоматически.
+                      </Alert>
+                      <TextField
+                        fullWidth
+                        label="Входящий номер заявки клиента"
+                        value={form.requestNumber || ''}
+                        onChange={(event) => setForm((current) => ({ ...current, requestNumber: event.target.value }))}
+                      />
+                      <TextField
+                        fullWidth
+                        type="date"
+                        label="Дата заявки клиента"
+                        InputLabelProps={{ shrink: true }}
+                        value={form.requestDate || ''}
+                        onChange={(event) => setForm((current) => ({ ...current, requestDate: event.target.value }))}
+                      />
+                    </Stack>
+                  </Collapse>
+                </Paper>
               </>
             )}
 
@@ -627,7 +654,9 @@ export default function WarehouseReceptionPage() {
                 <Alert severity="info">Проверьте данные перед созданием складской карточки.</Alert>
                 {[
                   ['Контрагент', selectedCounterparty?.nameShort || selectedCounterparty?.nameFull || '—'],
-                  ['Заявка', form.requestNumber || 'Без номера'],
+                  ['Входящая заявка клиента', form.requestNumber
+                    ? `${form.requestNumber}${form.requestDate ? ` от ${form.requestDate}` : ''}`
+                    : 'Не указана'],
                   ['Тип ТС', form.vehicleType === 'truck' ? 'Грузовой' : 'Легковой'],
                   ['ТС', `${form.brand} ${form.model}`],
                   ['VIN / шасси', form.vin || form.chassisNumber || '—'],

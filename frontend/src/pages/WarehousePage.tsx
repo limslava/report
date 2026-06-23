@@ -101,7 +101,7 @@ const vladivostokInputToIso = (value: string): string =>
 const emptyForm = (): WarehouseVehiclePayload => ({
   counterpartyId: '',
   requestNumber: '',
-  requestDate: today(),
+  requestDate: '',
   vehicleType: 'passenger',
   vin: '',
   chassisNumber: '',
@@ -591,14 +591,14 @@ export default function WarehousePage() {
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                 <TextField
                   fullWidth
-                  label="Номер заявки"
+                  label="Входящий номер заявки клиента"
                   value={form.requestNumber || ''}
                   onChange={(event) => setForm((current) => ({ ...current, requestNumber: event.target.value }))}
                 />
                 <TextField
                   fullWidth
                   type="date"
-                  label="Дата заявки"
+                  label="Дата заявки клиента"
                   InputLabelProps={{ shrink: true }}
                   value={form.requestDate || ''}
                   onChange={(event) => setForm((current) => ({ ...current, requestDate: event.target.value }))}
