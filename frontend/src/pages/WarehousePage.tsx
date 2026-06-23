@@ -466,11 +466,18 @@ export default function WarehousePage() {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      {vehicle.vehicleType === 'truck'
-                        ? <LocalShipping fontSize="small" color="action" />
-                        : <DirectionsCar fontSize="small" color="action" />}
-                      <span>{vehicle.brand} {vehicle.model}</span>
+                    <Stack spacing={0.5} alignItems="flex-start">
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        {vehicle.vehicleType === 'truck'
+                          ? <LocalShipping fontSize="small" color="action" />
+                          : <DirectionsCar fontSize="small" color="action" />}
+                        <span>{vehicle.brand} {vehicle.model}</span>
+                      </Stack>
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={vehicle.vehicleType === 'truck' ? 'Грузовой' : 'Легковой'}
+                      />
                     </Stack>
                   </TableCell>
                   <TableCell>

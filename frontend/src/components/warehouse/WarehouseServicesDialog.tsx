@@ -34,6 +34,7 @@ import {
 
 const money = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' });
 const unitShort = { operation: 'оп.', liter: 'л', day: 'сут.' };
+const AUTOMATIC_OPERATION_CODES = new Set(['vehicle_acceptance', 'vehicle_issue']);
 const nowLocal = () => {
   const date = new Date();
   date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
@@ -73,7 +74,11 @@ export default function WarehouseServicesDialog({ open, vehicle, readOnly = fals
         getWarehouseServices(performedAt.slice(0, 10)),
         getWarehousePerformedServices(vehicle.id),
       ]);
-      setCatalog(catalogResponse.data.filter((service) => service.isOperational && service.isActive));
+      setCatalog(catalogResponse.data.filter(
+        (service) => service.isOperational
+          && service.isActive
+          && !AUTOMATIC_OPERATION_CODES.has(service.code),
+      ));
       setItems(itemsResponse.data);
     } catch (loadError) {
       setError(messageFromError(loadError));
@@ -151,7 +156,16 @@ export default function WarehouseServicesDialog({ open, vehicle, readOnly = fals
   return (
     <Dialog open={open} onClose={() => !saving && onClose()} fullWidth maxWidth="md">
       <DialogTitle>
-        Дополнительные услуги · {vehicle?.warehouseNumber}
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+          <span>Дополнительные услуги · {vehicle?.warehouseNumber}</span>
+          {vehicle && (
+            <Chip
+              size="small"
+              variant="outlined"
+              label={vehicle.vehicleType === 'truck' ? 'Грузовой' : 'Легковой'}
+            />
+          )}
+        </Stack>
       </DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2.5}>

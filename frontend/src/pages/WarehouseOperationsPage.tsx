@@ -204,6 +204,11 @@ export default function WarehouseOperationsPage() {
                       <Box>
                         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                           <Typography variant="h6">{vehicle.warehouseNumber}</Typography>
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            label={vehicle.vehicleType === 'truck' ? 'Грузовой' : 'Легковой'}
+                          />
                           <Chip size="small" color="success" label={`${vehicle.storageDays} сут.`} />
                         </Stack>
                         <Typography>{vehicle.brand} {vehicle.model}</Typography>

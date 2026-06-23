@@ -8,6 +8,7 @@ import {
   assertWarehouseBillingPeriodCompleted,
   calculateWarehouseBillingTotals,
   calculateWarehouseStorage,
+  findWarehouseTariffForDate,
   WarehouseBillingVehicleLine,
 } from './warehouse-billing.service';
 
@@ -21,6 +22,37 @@ describe('warehouse billing calculations', () => {
     expect(() => assertWarehouseBillingPeriodCompleted('2026-06-24', now)).toThrow(
       'Можно закрыть только завершившийся период',
     );
+  });
+
+  it('selects an operation tariff by vehicle type and event date', () => {
+    const tariffs = [
+      {
+        serviceId: 'acceptance',
+        vehicleType: 'passenger',
+        validFrom: '2026-01-01',
+        validTo: '2026-06-30',
+        price: '1000.00',
+      },
+      {
+        serviceId: 'acceptance',
+        vehicleType: 'passenger',
+        validFrom: '2026-07-01',
+        validTo: null,
+        price: '1200.00',
+      },
+      {
+        serviceId: 'acceptance',
+        vehicleType: 'truck',
+        validFrom: '2026-01-01',
+        validTo: null,
+        price: '2000.00',
+      },
+    ] as any;
+
+    expect(findWarehouseTariffForDate(tariffs, 'acceptance', 'passenger', '2026-06-23')?.price)
+      .toBe('1000.00');
+    expect(findWarehouseTariffForDate(tariffs, 'acceptance', 'truck', '2026-06-23')?.price)
+      .toBe('2000.00');
   });
 
   it('includes both reception and issue dates', () => {

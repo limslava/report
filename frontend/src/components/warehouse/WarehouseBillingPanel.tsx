@@ -163,7 +163,7 @@ export default function WarehouseBillingPanel({ canClose, ownCounterpartyOnly = 
     ['ТС', String(report.totals.vehicleCount)],
     ['Суток хранения', String(report.totals.storageDays)],
     ['Хранение', money.format(report.totals.storageAmount)],
-    ['Доп. услуги', money.format(report.totals.servicesAmount)],
+    ['Операции и услуги', money.format(report.totals.servicesAmount)],
     ['Итого', money.format(report.totals.totalAmount)],
   ] : [];
 
@@ -264,7 +264,7 @@ export default function WarehouseBillingPanel({ canClose, ownCounterpartyOnly = 
                   <TableCell>ТС</TableCell>
                   <TableCell>Контрагент</TableCell>
                   <TableCell>Хранение</TableCell>
-                  <TableCell>Дополнительные услуги</TableCell>
+                      <TableCell>Операции и дополнительные услуги</TableCell>
                   <TableCell align="right">Итого</TableCell>
                 </TableRow>
               </TableHead>

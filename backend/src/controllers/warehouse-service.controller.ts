@@ -25,6 +25,7 @@ const dateOnly = (value: Date | string): string => {
 };
 
 const roundMoney = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100;
+const AUTOMATIC_OPERATION_CODES = new Set(['vehicle_acceptance', 'vehicle_issue']);
 
 const getScopedCounterpartyId = async (req: Request): Promise<string | null> => {
   if (req.user?.role !== 'counterparty_user') return null;
@@ -288,6 +289,13 @@ export const performWarehouseService = async (
       if (!service) {
         const error: any = new Error('Доступная услуга не найдена');
         error.statusCode = 404;
+        throw error;
+      }
+      if (AUTOMATIC_OPERATION_CODES.has(service.code)) {
+        const error: any = new Error(
+          `Услуга «${service.name}» начисляется автоматически по факту складской операции`,
+        );
+        error.statusCode = 409;
         throw error;
       }
       const performedAt = new Date(req.body.performedAt);

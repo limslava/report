@@ -161,6 +161,11 @@ export default function WarehouseTariffsPanel() {
                       Рассчитывается автоматически по календарным суткам
                     </Typography>
                   )}
+                  {(service.code === 'vehicle_acceptance' || service.code === 'vehicle_issue') && (
+                    <Typography variant="caption" color="text.secondary" display="block">
+                      Начисляется автоматически по факту складской операции
+                    </Typography>
+                  )}
                 </TableCell>
                 <TableCell>{unitLabels[service.unit]}</TableCell>
                 <TableCell align="right">
