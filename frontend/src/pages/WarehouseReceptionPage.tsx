@@ -372,9 +372,22 @@ export default function WarehouseReceptionPage() {
   }
 
   return (
-    <Box sx={{ minHeight: '100%', bgcolor: 'grey.50', p: { xs: 1.5, md: 3 } }}>
-      <Stack spacing={2.5} sx={{ maxWidth: 980, mx: 'auto' }}>
-        <Paper variant="outlined" sx={{ p: { xs: 2, md: 2.5 } }}>
+    <Box
+      sx={{
+        minHeight: '100%',
+        bgcolor: 'grey.50',
+        p: { xs: 1, md: 3 },
+        overflowX: 'hidden',
+      }}
+    >
+      <Stack spacing={{ xs: 1, md: 2.5 }} sx={{ maxWidth: 980, mx: 'auto' }}>
+        <Paper
+          variant="outlined"
+          sx={{
+            p: { xs: 1.25, md: 2.5 },
+            display: { xs: 'none', md: 'block' },
+          }}
+        >
           <Stack
             direction={{ xs: 'column', md: 'row' }}
             justifyContent="space-between"
@@ -406,8 +419,11 @@ export default function WarehouseReceptionPage() {
           </Box>
         )}
 
-        <Paper variant="outlined" sx={{ px: { xs: 1, md: 2 }, py: 2, overflowX: 'auto' }}>
-          <Stepper nonLinear activeStep={activeStep} alternativeLabel sx={{ minWidth: { xs: 600, md: 0 } }}>
+        <Paper
+          variant="outlined"
+          sx={{ px: 2, py: 2, display: { xs: 'none', md: 'block' } }}
+        >
+          <Stepper nonLinear activeStep={activeStep} alternativeLabel>
             {STEPS.map((label, index) => (
               <Step key={label} completed={index < activeStep}>
                 <StepButton onClick={() => {
@@ -423,29 +439,76 @@ export default function WarehouseReceptionPage() {
           </Stepper>
         </Paper>
 
-        <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
-          <Stack spacing={2.5}>
+        <Paper variant="outlined" sx={{ p: { xs: 1.5, md: 3 } }}>
+          <Stack spacing={{ xs: 1.5, md: 2.5 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Box>
-                <Typography variant="overline" color="primary">Шаг {activeStep + 1} из {STEPS.length}</Typography>
-                <Typography variant="h5">{STEPS[activeStep]}</Typography>
+                <Typography variant="overline" color="primary">
+                  Шаг {activeStep + 1} из {STEPS.length}
+                </Typography>
+                <Typography
+                  variant="h5"
+                  sx={{ fontSize: { xs: 26, md: 30 }, lineHeight: 1.15 }}
+                >
+                  {STEPS[activeStep]}
+                </Typography>
               </Box>
-              <Chip label="Складская площадка" variant="outlined" />
+              <Stack
+                direction="row"
+                spacing={0.5}
+                sx={{ display: { xs: 'flex', md: 'none' } }}
+              >
+                <IconButton
+                  size="small"
+                  aria-label="Очистить черновик"
+                  onClick={() => void clearDraft()}
+                >
+                  <Delete fontSize="small" />
+                </IconButton>
+                <IconButton size="small" aria-label="Выйти из приёмки" onClick={exitReception}>
+                  <ArrowBack fontSize="small" />
+                </IconButton>
+              </Stack>
+              <Chip
+                label="Складская площадка"
+                variant="outlined"
+                size="small"
+                sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+              />
             </Stack>
 
             {activeStep === 0 && (
               <>
-                <Autocomplete
-                  options={counterparties}
-                  value={selectedCounterparty}
-                  onChange={(_event, value) => setForm((current) => ({
-                    ...current,
-                    counterpartyId: value?.id ?? '',
-                  }))}
-                  getOptionLabel={(option) => `${option.nameShort || option.nameFull} — ${option.inn}`}
-                  isOptionEqualToValue={(option, value) => option.id === value.id}
-                  renderInput={(params) => <TextField {...params} label="Контрагент *" />}
-                />
+                <Stack spacing={0.75}>
+                  <Typography
+                    component="label"
+                    variant="body2"
+                    fontWeight={600}
+                    color="text.secondary"
+                  >
+                    Контрагент *
+                  </Typography>
+                  <Autocomplete
+                    options={counterparties}
+                    value={selectedCounterparty}
+                    onChange={(_event, value) => setForm((current) => ({
+                      ...current,
+                      counterpartyId: value?.id ?? '',
+                    }))}
+                    getOptionLabel={(option) => `${option.nameShort || option.nameFull} — ${option.inn}`}
+                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        placeholder="Выберите клиента склада"
+                        inputProps={{
+                          ...params.inputProps,
+                          'aria-label': 'Контрагент',
+                        }}
+                      />
+                    )}
+                  />
+                </Stack>
                 {selectedClient?.contractStatus === 'expired' && (
                   <Alert severity="error">
                     Договор хранения истёк {selectedClient.contractEndDate}.
@@ -476,7 +539,13 @@ export default function WarehouseReceptionPage() {
                       />
                     )}
                     onClick={() => setBasisOpen((current) => !current)}
-                    sx={{ justifyContent: 'space-between', px: 2, py: 1.5 }}
+                    sx={{
+                      justifyContent: 'space-between',
+                      px: { xs: 1.5, sm: 2 },
+                      py: { xs: 1.25, sm: 1.5 },
+                      textAlign: 'left',
+                      lineHeight: 1.25,
+                    }}
                   >
                     Основание приёмки — необязательно
                   </Button>
@@ -591,7 +660,7 @@ export default function WarehouseReceptionPage() {
                 />
                 <TextField
                   multiline
-                  minRows={6}
+                  minRows={4}
                   label="Комментарий к осмотру"
                   placeholder="Царапины, вмятины, состояние салона, комплектность и другие замечания"
                   value={form.notes || ''}
@@ -690,11 +759,12 @@ export default function WarehouseReceptionPage() {
         <Paper
           variant="outlined"
           sx={{
-            p: 1.5,
-            pb: 'calc(12px + env(safe-area-inset-bottom))',
+            p: { xs: 1, sm: 1.5 },
+            pb: { xs: 'calc(8px + env(safe-area-inset-bottom))', sm: 1.5 },
             position: 'sticky',
             bottom: 0,
             zIndex: 2,
+            boxShadow: { xs: 3, md: 0 },
           }}
         >
           <Stack direction="row" justifyContent="space-between" spacing={1}>
