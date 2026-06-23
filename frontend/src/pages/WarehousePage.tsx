@@ -48,6 +48,7 @@ import {
   getWarehouseClients,
   getWarehouseVehicles,
   updateWarehouseVehicle,
+  WarehouseClient,
   WarehouseCounterparty,
   WarehouseVehicle,
   WarehouseVehiclePayload,
@@ -146,6 +147,7 @@ export default function WarehousePage() {
   const showTabs = canManageClients || canManageTariffs || canViewBilling;
   const [tab, setTab] = useState<'registry' | 'clients' | 'tariffs' | 'billing'>('registry');
   const [vehicles, setVehicles] = useState<WarehouseVehicle[]>([]);
+  const [warehouseClients, setWarehouseClients] = useState<WarehouseClient[]>([]);
   const [counterparties, setCounterparties] = useState<WarehouseCounterparty[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -168,6 +170,7 @@ export default function WarehousePage() {
 
   const loadCounterparties = useCallback(async () => {
     const response = await getWarehouseClients(false);
+    setWarehouseClients(response.data);
     setCounterparties(response.data.map((client) => ({
       id: client.counterpartyId,
       inn: client.inn,
@@ -335,6 +338,20 @@ export default function WarehousePage() {
 
         {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
         {success && <Alert severity="success" onClose={() => setSuccess(null)}>{success}</Alert>}
+        {user?.role === 'counterparty_user'
+          && warehouseClients[0]?.contractStatus === 'expired' && (
+            <Alert severity="error">
+              Срок договора хранения истёк {warehouseClients[0].contractEndDate}.
+              Обратитесь к ответственному сотруднику для продления.
+            </Alert>
+        )}
+        {user?.role === 'counterparty_user'
+          && warehouseClients[0]?.contractStatus === 'expiring' && (
+            <Alert severity="warning">
+              До окончания договора хранения осталось {warehouseClients[0].contractDaysRemaining} дн.
+              Дата окончания: {warehouseClients[0].contractEndDate}.
+            </Alert>
+        )}
 
         {showTabs && (
           <Tabs

@@ -38,6 +38,7 @@ import {
   createWarehouseVehicle,
   getWarehouseClients,
   uploadWarehouseVehiclePhoto,
+  WarehouseClient,
   WarehouseCounterparty,
   WarehouseVehicle,
   WarehouseVehiclePayload,
@@ -112,6 +113,7 @@ export default function WarehouseReceptionPage() {
   const [activeStep, setActiveStep] = useState(0);
   const [form, setForm] = useState<WarehouseVehiclePayload>(emptyForm);
   const [counterparties, setCounterparties] = useState<WarehouseCounterparty[]>([]);
+  const [clients, setClients] = useState<WarehouseClient[]>([]);
   const [photos, setPhotos] = useState<DraftPhoto[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingPhotos, setProcessingPhotos] = useState(false);
@@ -137,6 +139,7 @@ export default function WarehouseReceptionPage() {
       setLoading(true);
       try {
         const clientsResponse = await getWarehouseClients(false);
+        setClients(clientsResponse.data);
         setCounterparties(clientsResponse.data.map((client) => ({
           id: client.counterpartyId,
           inn: client.inn,
@@ -181,6 +184,10 @@ export default function WarehouseReceptionPage() {
   const selectedCounterparty = useMemo(
     () => counterparties.find((item) => item.id === form.counterpartyId) ?? null,
     [counterparties, form.counterpartyId],
+  );
+  const selectedClient = useMemo(
+    () => clients.find((item) => item.counterpartyId === form.counterpartyId) ?? null,
+    [clients, form.counterpartyId],
   );
 
   const stepErrors = useMemo(() => [
@@ -424,6 +431,23 @@ export default function WarehouseReceptionPage() {
                   isOptionEqualToValue={(option, value) => option.id === value.id}
                   renderInput={(params) => <TextField {...params} label="Контрагент *" />}
                 />
+                {selectedClient?.contractStatus === 'expired' && (
+                  <Alert severity="error">
+                    Договор хранения истёк {selectedClient.contractEndDate}.
+                    Приёмка не заблокирована системой, но требует подтверждения руководителя склада.
+                  </Alert>
+                )}
+                {selectedClient?.contractStatus === 'expiring' && (
+                  <Alert severity="warning">
+                    До окончания договора хранения осталось {selectedClient.contractDaysRemaining} дн.
+                    Дата окончания: {selectedClient.contractEndDate}.
+                  </Alert>
+                )}
+                {selectedClient?.contractStatus === 'not_set' && (
+                  <Alert severity="warning">
+                    Для клиента не указана дата окончания договора хранения.
+                  </Alert>
+                )}
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                   <TextField
                     fullWidth

@@ -45,6 +45,7 @@ const emptyForm = (): WarehouseClientPayload => ({
   nameShort: '',
   contractNumber: '',
   contractDate: '',
+  contractEndDate: '',
   serviceStartDate: '',
   isActive: true,
   notes: '',
@@ -106,6 +107,7 @@ export default function WarehouseClientsPanel({
       nameShort: client.nameShort,
       contractNumber: client.contractNumber,
       contractDate: client.contractDate,
+      contractEndDate: client.contractEndDate,
       serviceStartDate: client.serviceStartDate,
       isActive: client.isActive,
       notes: client.notes,
@@ -137,6 +139,7 @@ export default function WarehouseClientsPanel({
         await updateWarehouseClient(editing.id, {
           contractNumber: form.contractNumber,
           contractDate: form.contractDate,
+          contractEndDate: form.contractEndDate,
           serviceStartDate: form.serviceStartDate,
           isActive: form.isActive,
           notes: form.notes,
@@ -169,6 +172,17 @@ export default function WarehouseClientsPanel({
       </Stack>
 
       {error && !dialogOpen && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
+      {clients.some((client) => client.contractStatus === 'expired') && (
+        <Alert severity="error">
+          У одного или нескольких активных клиентов истёк договор хранения. Проверьте сроки до следующей приёмки ТС.
+        </Alert>
+      )}
+      {!clients.some((client) => client.contractStatus === 'expired')
+        && clients.some((client) => client.contractStatus === 'expiring') && (
+          <Alert severity="warning">
+            У одного или нескольких клиентов договор хранения закончится в течение 30 дней.
+          </Alert>
+      )}
 
       <TableContainer component={Paper} variant="outlined">
         <Table size="small">
@@ -177,6 +191,7 @@ export default function WarehouseClientsPanel({
               <TableCell>Организация</TableCell>
               <TableCell>ИНН</TableCell>
               <TableCell>Договор хранения</TableCell>
+              <TableCell>Срок действия</TableCell>
               <TableCell>Начало работы</TableCell>
               <TableCell>Статус</TableCell>
               <TableCell align="right">Действия</TableCell>
@@ -191,6 +206,32 @@ export default function WarehouseClientsPanel({
                   {client.contractNumber
                     ? `${client.contractNumber}${client.contractDate ? ` от ${client.contractDate}` : ''}`
                     : '—'}
+                </TableCell>
+                <TableCell>
+                  <Stack spacing={0.5} alignItems="flex-start">
+                    <Typography variant="body2">{client.contractEndDate || 'Не указан'}</Typography>
+                    <Chip
+                      size="small"
+                      color={
+                        client.contractStatus === 'expired'
+                          ? 'error'
+                          : client.contractStatus === 'expiring'
+                            ? 'warning'
+                            : client.contractStatus === 'active'
+                              ? 'success'
+                              : 'default'
+                      }
+                      label={
+                        client.contractStatus === 'expired'
+                          ? 'Истёк'
+                          : client.contractStatus === 'expiring'
+                            ? `Истекает через ${client.contractDaysRemaining} дн.`
+                            : client.contractStatus === 'active'
+                              ? 'Действует'
+                              : 'Срок не указан'
+                      }
+                    />
+                  </Stack>
                 </TableCell>
                 <TableCell>{client.serviceStartDate || '—'}</TableCell>
                 <TableCell>
@@ -211,7 +252,7 @@ export default function WarehouseClientsPanel({
             ))}
             {clients.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 5, color: 'text.secondary' }}>
+                <TableCell colSpan={7} align="center" sx={{ py: 5, color: 'text.secondary' }}>
                   Клиенты склада ещё не добавлены
                 </TableCell>
               </TableRow>
@@ -278,6 +319,14 @@ export default function WarehouseClientsPanel({
                 onChange={(event) => setForm((current) => ({ ...current, contractDate: event.target.value }))}
               />
             </Stack>
+            <TextField
+              type="date"
+              label="Дата окончания договора"
+              InputLabelProps={{ shrink: true }}
+              value={form.contractEndDate || ''}
+              onChange={(event) => setForm((current) => ({ ...current, contractEndDate: event.target.value }))}
+              helperText="За 30 дней до этой даты система покажет предупреждение."
+            />
             <TextField
               type="date"
               label="Дата начала обслуживания"

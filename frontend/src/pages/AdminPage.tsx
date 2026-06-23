@@ -421,13 +421,23 @@ const AdminPage = () => {
         });
         alert('Пользователь обновлен');
       } else {
-        await inviteUser({
+        const invitation = await inviteUser({
           email,
           fullName,
           role,
           warehouseClientId: role === 'counterparty_user' ? warehouseClientId : null,
         });
-        alert('Пользователь добавлен, приглашение отправлено');
+        if (invitation.data.emailSent) {
+          alert('Пользователь добавлен, приглашение отправлено');
+        } else {
+          alert(
+            `Пользователь создан, но письмо отправить не удалось.${
+              invitation.data.temporaryPassword
+                ? ` Временный пароль: ${invitation.data.temporaryPassword}`
+                : ''
+            }`,
+          );
+        }
       }
       
       // Перезагружаем список
@@ -544,6 +554,7 @@ const AdminPage = () => {
                     <TableCell>ФИО</TableCell>
                     <TableCell>Email</TableCell>
                     <TableCell>Роль</TableCell>
+                    <TableCell>Организация</TableCell>
                     <TableCell>Статус</TableCell>
                     <TableCell>Действия</TableCell>
                   </TableRow>
@@ -559,6 +570,24 @@ const AdminPage = () => {
                           size="small"
                           color={user.role === 'admin' ? 'error' : (user.role === 'director' || user.role === 'general_director') ? 'warning' : 'default'}
                         />
+                      </TableCell>
+                      <TableCell>
+                        {user.role === 'counterparty_user'
+                          ? (
+                            <>
+                              <Typography variant="body2">
+                                {user.warehouseClient?.nameShort
+                                  || user.warehouseClient?.nameFull
+                                  || 'Не привязан'}
+                              </Typography>
+                              {user.warehouseClient?.inn && (
+                                <Typography variant="caption" color="text.secondary">
+                                  ИНН {user.warehouseClient.inn}
+                                </Typography>
+                              )}
+                            </>
+                          )
+                          : '—'}
                       </TableCell>
                       <TableCell>
                         <Chip
@@ -802,23 +831,47 @@ const AdminPage = () => {
               )}
             />
             {formData.role === 'counterparty_user' && (
-              <FormControl fullWidth>
-                <InputLabel>Клиент склада</InputLabel>
-                <Select
-                  label="Клиент склада"
-                  value={formData.warehouseClientId}
-                  onChange={(e) => setFormData({ ...formData, warehouseClientId: e.target.value })}
-                >
-                  {warehouseClients.map((client) => (
-                    <MenuItem key={client.id} value={client.id}>
-                      {client.nameShort || client.nameFull} — {client.inn}
-                    </MenuItem>
-                  ))}
-                </Select>
-                <FormHelperText>
-                  Пользователь увидит только ТС выбранной организации.
-                </FormHelperText>
-              </FormControl>
+              <>
+                <Alert severity="info">
+                  Представитель сможет только просматривать ТС, услуги, начисления и акты выбранной организации.
+                  Приёмка, выдача и редактирование ему недоступны.
+                </Alert>
+                <FormControl fullWidth>
+                  <InputLabel>Клиент склада</InputLabel>
+                  <Select
+                    label="Клиент склада"
+                    value={formData.warehouseClientId}
+                    onChange={(e) => setFormData({ ...formData, warehouseClientId: e.target.value })}
+                  >
+                    {warehouseClients.map((client) => (
+                      <MenuItem key={client.id} value={client.id}>
+                        {client.nameShort || client.nameFull} — {client.inn}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  <FormHelperText>
+                    Привязка обязательна и ограничивает данные на сервере.
+                  </FormHelperText>
+                </FormControl>
+                {(() => {
+                  const client = warehouseClients.find((item) => item.id === formData.warehouseClientId);
+                  if (!client) return null;
+                  const label = client.contractNumber
+                    ? `Договор № ${client.contractNumber}${client.contractEndDate ? ` до ${client.contractEndDate}` : ''}`
+                    : 'Номер договора хранения не указан';
+                  if (client.contractStatus === 'expired') {
+                    return <Alert severity="error">{label}. Срок договора истёк.</Alert>;
+                  }
+                  if (client.contractStatus === 'expiring') {
+                    return (
+                      <Alert severity="warning">
+                        {label}. До окончания осталось {client.contractDaysRemaining} дн.
+                      </Alert>
+                    );
+                  }
+                  return <Alert severity="success">{label}.</Alert>;
+                })()}
+              </>
             )}
             <TextField
               label="Часовой пояс"

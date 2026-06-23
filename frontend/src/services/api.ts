@@ -165,7 +165,12 @@ export const decideContractApprovalStep = (
     comment?: string | null;
   }
 ) => api.post(`/contracts/${contractId}/steps/${stepId}/decision`, data);
-export const inviteUser = (data: any) => api.post('/admin/users/invite', data);
+export const inviteUser = (data: any) => api.post<{
+  message: string;
+  userId: string;
+  emailSent: boolean;
+  temporaryPassword?: string;
+}>('/admin/users/invite', data);
 export const updateUser = (id: string, data: any) => api.put(`/admin/users/${id}`, data);
 export const resetUserPasswordByAdmin = (id: string) => api.post(`/admin/users/${id}/reset-password`);
 export const reassignAndDeleteUserByAdmin = (id: string, targetUserId: string) =>

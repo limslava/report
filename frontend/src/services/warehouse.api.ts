@@ -19,6 +19,9 @@ export interface WarehouseClient {
   nameShort: string | null;
   contractNumber: string | null;
   contractDate: string | null;
+  contractEndDate: string | null;
+  contractStatus: 'not_set' | 'active' | 'expiring' | 'expired';
+  contractDaysRemaining: number | null;
   serviceStartDate: string | null;
   isActive: boolean;
   notes: string | null;
@@ -32,6 +35,7 @@ export interface WarehouseClientPayload {
   nameShort?: string | null;
   contractNumber?: string | null;
   contractDate?: string | null;
+  contractEndDate?: string | null;
   serviceStartDate?: string | null;
   isActive?: boolean;
   notes?: string | null;

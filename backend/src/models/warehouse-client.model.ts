@@ -31,6 +31,9 @@ export class WarehouseClient {
   @Column({ name: 'contract_date', type: 'date', nullable: true })
   contractDate!: string | null;
 
+  @Column({ name: 'contract_end_date', type: 'date', nullable: true })
+  contractEndDate!: string | null;
+
   @Column({ name: 'service_start_date', type: 'date', nullable: true })
   serviceStartDate!: string | null;
 

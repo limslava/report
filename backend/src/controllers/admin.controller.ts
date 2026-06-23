@@ -10,6 +10,7 @@ import { logger } from '../utils/logger';
 import { sendInvitationEmail } from '../services/email.service';
 import { planWebSocketService } from '../services/websocket.service';
 import { recordAuditLog } from '../services/audit-log.service';
+import { getWarehouseContractState } from '../utils/warehouse-contract';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { Between, IsNull, LessThanOrEqual, MoreThanOrEqual, QueryFailedError } from 'typeorm';
@@ -20,6 +21,21 @@ const auditLogRepository = AppDataSource.getRepository(AuditLog);
 const reportRepository = AppDataSource.getRepository(Report);
 const workScheduleRepository = AppDataSource.getRepository(ContractWorkSchedule);
 const warehouseClientRepository = AppDataSource.getRepository(WarehouseClient);
+
+const serializeWarehouseClient = (client: WarehouseClient | null | undefined) => {
+  if (!client) return null;
+  return {
+    id: client.id,
+    nameFull: client.counterparty?.nameFull ?? null,
+    nameShort: client.counterparty?.nameShort ?? null,
+    inn: client.counterparty?.inn ?? null,
+    contractNumber: client.contractNumber,
+    contractDate: client.contractDate,
+    contractEndDate: client.contractEndDate,
+    ...getWarehouseContractState(client.contractEndDate),
+    isActive: client.isActive,
+  };
+};
 
 const resolveWarehouseClientId = async (
   role: string,
@@ -51,6 +67,7 @@ export const getUsers = async (req: Request, res: Response, next: NextFunction) 
 
     const users = await userRepository.find({
       where,
+      relations: { warehouseClient: { counterparty: true } },
       order: { createdAt: 'DESC' },
     });
 
@@ -67,6 +84,7 @@ export const getUsers = async (req: Request, res: Response, next: NextFunction) 
       workdayEnd: user.workdayEnd,
       workdays: user.workdays,
       warehouseClientId: user.warehouseClientId,
+      warehouseClient: serializeWarehouseClient(user.warehouseClient),
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     }));
@@ -103,15 +121,25 @@ export const inviteUser = async (req: Request, res: Response, next: NextFunction
 
     await userRepository.save(user);
 
-    // Send invitation email (department is now role)
-    await sendInvitationEmail(email, fullName, role, temporaryPassword);
+    let emailSent = true;
+    try {
+      await sendInvitationEmail(email, fullName, role, temporaryPassword);
+    } catch (emailError) {
+      emailSent = false;
+      logger.warn(`Invitation email failed for ${email}: ${emailError instanceof Error ? emailError.message : emailError}`);
+    }
 
     await recordAuditLog({
       action: 'USER_INVITED',
       userId: req.user?.id,
       entityType: 'user',
       entityId: user.id,
-      details: { email, role, warehouseClientId: user.warehouseClientId },
+      details: {
+        email,
+        role,
+        warehouseClientId: user.warehouseClientId,
+        emailSent,
+      },
       req,
     });
 
@@ -120,7 +148,8 @@ export const inviteUser = async (req: Request, res: Response, next: NextFunction
     res.status(201).json({
       message: 'User invited successfully',
       userId: user.id,
-      emailSent: true,
+      emailSent,
+      temporaryPassword: emailSent ? undefined : temporaryPassword,
     });
   } catch (error) {
     if (error instanceof QueryFailedError && (error as any).code === '23505') {
@@ -172,6 +201,12 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
     if (typeof workdays === 'string') user.workdays = workdays.trim() || null;
 
     await userRepository.save(user);
+    const linkedWarehouseClient = user.warehouseClientId
+      ? await warehouseClientRepository.findOne({
+        where: { id: user.warehouseClientId },
+        relations: { counterparty: true },
+      })
+      : null;
 
     await recordAuditLog({
       action: 'USER_UPDATED',
@@ -183,6 +218,7 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
         role: user.role,
         isActive: user.isActive,
         warehouseClientId: user.warehouseClientId,
+        warehouseClient: serializeWarehouseClient(linkedWarehouseClient),
       },
       req,
     });
@@ -203,6 +239,7 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
         workdayEnd: user.workdayEnd,
         workdays: user.workdays,
         warehouseClientId: user.warehouseClientId,
+        warehouseClient: serializeWarehouseClient(linkedWarehouseClient),
       },
     });
   } catch (error) {

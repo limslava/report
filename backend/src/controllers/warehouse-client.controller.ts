@@ -4,26 +4,40 @@ import { AppDataSource } from '../config/data-source';
 import { Counterparty } from '../models/counterparty.model';
 import { WarehouseClient } from '../models/warehouse-client.model';
 import { recordAuditLog } from '../services/audit-log.service';
+import { getWarehouseContractState } from '../utils/warehouse-contract';
 
 const normalizeNullable = (value: unknown): string | null => {
   const normalized = String(value ?? '').trim();
   return normalized || null;
 };
 
-const serializeClient = (client: WarehouseClient) => ({
-  id: client.id,
-  counterpartyId: client.counterpartyId,
-  inn: client.counterparty.inn,
-  nameFull: client.counterparty.nameFull,
-  nameShort: client.counterparty.nameShort,
-  contractNumber: client.contractNumber,
-  contractDate: client.contractDate,
-  serviceStartDate: client.serviceStartDate,
-  isActive: client.isActive,
-  notes: client.notes,
-  createdAt: client.createdAt,
-  updatedAt: client.updatedAt,
-});
+const validateContractPeriod = (contractDate: string | null, contractEndDate: string | null) => {
+  if (contractDate && contractEndDate && contractEndDate < contractDate) {
+    const error: any = new Error('Дата окончания договора не может быть раньше даты договора');
+    error.statusCode = 400;
+    throw error;
+  }
+};
+
+const serializeClient = (client: WarehouseClient) => {
+  const contractState = getWarehouseContractState(client.contractEndDate);
+  return {
+    id: client.id,
+    counterpartyId: client.counterpartyId,
+    inn: client.counterparty.inn,
+    nameFull: client.counterparty.nameFull,
+    nameShort: client.counterparty.nameShort,
+    contractNumber: client.contractNumber,
+    contractDate: client.contractDate,
+    contractEndDate: client.contractEndDate,
+    ...contractState,
+    serviceStartDate: client.serviceStartDate,
+    isActive: client.isActive,
+    notes: client.notes,
+    createdAt: client.createdAt,
+    updatedAt: client.updatedAt,
+  };
+};
 
 export const listWarehouseClients = async (
   req: Request,
@@ -73,6 +87,9 @@ export const createWarehouseClient = async (
   next: NextFunction,
 ) => {
   try {
+    const contractDate = normalizeNullable(req.body.contractDate);
+    const contractEndDate = normalizeNullable(req.body.contractEndDate);
+    validateContractPeriod(contractDate, contractEndDate);
     const saved = await AppDataSource.transaction(async (manager) => {
       const counterpartyRepository = manager.getRepository(Counterparty);
       const clientRepository = manager.getRepository(WarehouseClient);
@@ -108,7 +125,8 @@ export const createWarehouseClient = async (
       const client = await clientRepository.save(clientRepository.create({
         counterpartyId: counterparty.id,
         contractNumber: normalizeNullable(req.body.contractNumber),
-        contractDate: normalizeNullable(req.body.contractDate),
+        contractDate,
+        contractEndDate,
         serviceStartDate: normalizeNullable(req.body.serviceStartDate),
         isActive: req.body.isActive !== false,
         notes: normalizeNullable(req.body.notes),
@@ -148,8 +166,18 @@ export const updateWarehouseClient = async (
       return;
     }
     const before = serializeClient(client);
+    const nextContractDate = req.body.contractDate !== undefined
+      ? normalizeNullable(req.body.contractDate)
+      : client.contractDate;
+    const nextContractEndDate = req.body.contractEndDate !== undefined
+      ? normalizeNullable(req.body.contractEndDate)
+      : client.contractEndDate;
+    validateContractPeriod(nextContractDate, nextContractEndDate);
     if (req.body.contractNumber !== undefined) client.contractNumber = normalizeNullable(req.body.contractNumber);
-    if (req.body.contractDate !== undefined) client.contractDate = normalizeNullable(req.body.contractDate);
+    if (req.body.contractDate !== undefined) client.contractDate = nextContractDate;
+    if (req.body.contractEndDate !== undefined) {
+      client.contractEndDate = nextContractEndDate;
+    }
     if (req.body.serviceStartDate !== undefined) {
       client.serviceStartDate = normalizeNullable(req.body.serviceStartDate);
     }
