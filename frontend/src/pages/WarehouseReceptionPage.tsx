@@ -380,7 +380,8 @@ export default function WarehouseReceptionPage() {
         bgcolor: 'grey.50',
         p: { xs: 0.5, sm: 1, md: 3 },
         pb: { xs: 'calc(68px + env(safe-area-inset-bottom))', sm: 1, md: 3 },
-        overflowX: 'hidden',
+        overflowX: 'clip',
+        overflowY: 'visible',
       }}
     >
       <Stack
