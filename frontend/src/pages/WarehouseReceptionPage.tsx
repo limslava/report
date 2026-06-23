@@ -683,7 +683,14 @@ export default function WarehouseReceptionPage() {
                   label={`Количество фотографий — ${photos.length} из 60`}
                   color={photos.length > 0 ? 'success' : 'default'}
                   variant="outlined"
-                  sx={{ alignSelf: 'flex-start' }}
+                  sx={{
+                    width: '100%',
+                    justifyContent: 'center',
+                    '& .MuiChip-label': {
+                      width: '100%',
+                      textAlign: 'center',
+                    },
+                  }}
                 />
                 {photoLimitWarning && (
                   <Alert severity="warning" onClose={() => setPhotoLimitWarning(null)}>
