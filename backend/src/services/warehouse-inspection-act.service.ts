@@ -7,12 +7,22 @@ import { WAREHOUSE_VEHICLE_TYPE_LABELS } from '../constants/warehouse';
 
 const PAGE_BOTTOM = 770;
 type DamageSchemeType = 'passenger' | 'truck' | 'trailer' | 'special' | 'full';
+
+const resolveAssetPath = (fileName: string): string => {
+  const candidates = [
+    path.resolve(process.cwd(), 'assets', fileName),
+    path.resolve(process.cwd(), 'backend', 'assets', fileName),
+    path.resolve(__dirname, '..', '..', 'assets', fileName),
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) || candidates[0];
+};
+
 const DAMAGE_SCHEME_PATHS: Record<DamageSchemeType, string> = {
-  passenger: path.resolve(process.cwd(), 'assets', 'warehouse-damage-scheme-passenger.png'),
-  truck: path.resolve(process.cwd(), 'assets', 'warehouse-damage-scheme-truck.png'),
-  trailer: path.resolve(process.cwd(), 'assets', 'warehouse-damage-scheme-trailer.png'),
-  special: path.resolve(process.cwd(), 'assets', 'warehouse-damage-scheme-special.png'),
-  full: path.resolve(process.cwd(), 'assets', 'warehouse-damage-scheme-full.png'),
+  passenger: resolveAssetPath('warehouse-damage-scheme-passenger.png'),
+  truck: resolveAssetPath('warehouse-damage-scheme-truck.png'),
+  trailer: resolveAssetPath('warehouse-damage-scheme-trailer.png'),
+  special: resolveAssetPath('warehouse-damage-scheme-special.png'),
+  full: resolveAssetPath('warehouse-damage-scheme-full.png'),
 };
 
 type DamageMark = {

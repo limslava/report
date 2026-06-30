@@ -76,6 +76,8 @@ export default function WarehousePhotoChecklist({
                 borderColor: completed ? 'success.main' : 'divider',
                 borderRadius: 1,
                 p: 1.25,
+                minWidth: 0,
+                overflow: 'hidden',
                 bgcolor: completed ? 'success.50' : 'background.paper',
               }}
             >
@@ -98,17 +100,39 @@ export default function WarehousePhotoChecklist({
                   </Button>
                 </Stack>
                 {slotPhotos.some((photo) => photo.previewUrl) && (
-                  <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0.75 }}>
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: {
+                        xs: 'repeat(2, minmax(0, 1fr))',
+                        sm: 'repeat(3, minmax(0, 1fr))',
+                      },
+                      gap: 0.75,
+                      minWidth: 0,
+                      overflow: 'hidden',
+                    }}
+                  >
                     {slotPhotos.filter((photo) => photo.previewUrl).slice(0, 6).map((photo, index) => (
                       <Box
                         key={photo.id ?? `${key}-${index}`}
-                        sx={{ position: 'relative', aspectRatio: '4 / 3' }}
+                        sx={{
+                          position: 'relative',
+                          aspectRatio: '4 / 3',
+                          minWidth: 0,
+                          overflow: 'hidden',
+                          borderRadius: 1,
+                        }}
                       >
                         <Box
                           component="img"
                           src={photo.previewUrl}
                           alt={`${label} ${index + 1}`}
-                          sx={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 1 }}
+                          sx={{
+                            display: 'block',
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                          }}
                         />
                         {onRemove && (
                           <IconButton

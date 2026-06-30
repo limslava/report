@@ -24,6 +24,7 @@ COPY backend/package*.json ./backend/
 RUN npm --prefix backend ci --omit=dev --no-audit --no-fund
 
 COPY --from=build /app/backend/dist ./backend/dist
+COPY --from=build /app/backend/assets ./backend/assets
 COPY --from=build /app/frontend/dist ./frontend/dist
 
 ENV NODE_ENV=production
