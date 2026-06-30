@@ -603,7 +603,7 @@ export default function WarehouseReceptionPage() {
       let done = 0;
       for (const file of files) {
         const prepared = await prepareWarehousePhoto(file);
-        const previewDataUrl = await blobToDataUrl(prepared.blob);
+        const previewDataUrl = await blobToDataUrl(prepared.blob).catch(() => null);
         const queueId = await enqueueWarehousePhoto({
           vehicleId: DRAFT_PHOTO_KEY,
           name: prepared.name,
