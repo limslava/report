@@ -79,6 +79,7 @@ const DRAFT_KEY = 'warehouse-reception-draft-v1';
 const DRAFT_PHOTO_KEY = 'draft:warehouse-reception';
 const STEPS = ['Основа', 'ТС', 'Осмотр', 'Повреждения', 'Фото', 'Проверка'];
 const MAX_PARALLEL_PENDING_UPLOADS = 2;
+const STALE_PHOTO_UPLOAD_MS = 90_000;
 
 const createUploadSessionId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -460,12 +461,14 @@ export default function WarehouseReceptionPage() {
     if (activeUploadsRef.current.has(photo.id)) return;
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     const clientHash = photo.clientHash || createClientHash();
+    const uploadStartedAt = Date.now();
     activeUploadsRef.current.add(photo.id);
-    activeUploadStartedAtRef.current.set(photo.id, Date.now());
+    activeUploadStartedAtRef.current.set(photo.id, uploadStartedAt);
     await updateWarehousePhotoQueueItem(photo.id, {
       uploadSessionId,
       clientHash,
       uploadStatus: 'uploading',
+      uploadStartedAt,
       errorMessage: null,
     });
     await loadDraftPhotos();
@@ -497,6 +500,7 @@ export default function WarehouseReceptionPage() {
         clientHash,
         uploadStatus: 'uploaded',
         shouldResumeUpload: false,
+        uploadStartedAt: null,
         uploadedAt: Date.now(),
         errorMessage: null,
       });
@@ -507,6 +511,7 @@ export default function WarehouseReceptionPage() {
         clientHash,
         uploadStatus: retriable ? 'pending' : 'error',
         shouldResumeUpload: retriable,
+        uploadStartedAt: null,
         errorMessage: messageFromError(uploadError),
       });
     } finally {
@@ -527,10 +532,18 @@ export default function WarehouseReceptionPage() {
     );
     activeUploadsRef.current.forEach((photoId) => {
       const startedAt = activeUploadStartedAtRef.current.get(photoId) ?? 0;
-      const isStaleActiveSlot = startedAt > 0 && now - startedAt > 150_000;
+      const isStaleActiveSlot = startedAt > 0 && now - startedAt > STALE_PHOTO_UPLOAD_MS;
       if (!uploadingPhotoIds.has(photoId) || isStaleActiveSlot) {
         activeUploadsRef.current.delete(photoId);
         activeUploadStartedAtRef.current.delete(photoId);
+        if (isStaleActiveSlot && uploadingPhotoIds.has(photoId)) {
+          void updateWarehousePhotoQueueItem(photoId, {
+            uploadStatus: 'pending',
+            shouldResumeUpload: true,
+            uploadStartedAt: null,
+            errorMessage: 'Загрузка фото зависла и будет повторена автоматически.',
+          }).then(() => loadDraftPhotos()).catch(() => undefined);
+        }
       }
     });
     const freeSlots = Math.max(0, MAX_PARALLEL_PENDING_UPLOADS - activeUploadsRef.current.size);

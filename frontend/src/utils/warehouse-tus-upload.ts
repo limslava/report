@@ -2,9 +2,9 @@ import * as tus from 'tus-js-client';
 import { useAuthStore } from '../store/auth-store';
 
 const apiBaseUrl = import.meta.env.VITE_API_URL || '/api';
-const CHUNK_SIZE_BYTES = 5 * 1024 * 1024;
-const UPLOAD_INACTIVITY_TIMEOUT_MS = 120_000;
-const UPLOAD_TOTAL_TIMEOUT_MS = 900_000;
+const CHUNK_SIZE_BYTES = 1 * 1024 * 1024;
+const UPLOAD_INACTIVITY_TIMEOUT_MS = 60_000;
+const UPLOAD_TOTAL_TIMEOUT_MS = 600_000;
 
 const resolveTusEndpoint = (): string => {
   const normalizedBase = apiBaseUrl.replace(/\/+$/, '');

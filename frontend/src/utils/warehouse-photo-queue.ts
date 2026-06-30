@@ -13,6 +13,7 @@ export interface WarehousePhotoQueueItem {
   clientHash?: string | null;
   uploadStatus?: 'pending' | 'uploading' | 'uploaded' | 'error';
   shouldResumeUpload?: boolean | null;
+  uploadStartedAt?: number | null;
   uploadedAt?: number | null;
   errorMessage?: string | null;
   createdAt: number;
@@ -152,6 +153,7 @@ export const recoverWarehousePhotoQueue = async (vehicleId: string): Promise<voi
     return updateWarehousePhotoQueueItem(item.id, {
       uploadStatus: 'pending',
       shouldResumeUpload: true,
+      uploadStartedAt: null,
       errorMessage: null,
     });
   }));
