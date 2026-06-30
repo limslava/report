@@ -61,6 +61,10 @@ import WarehouseServicesDialog from '../components/warehouse/WarehouseServicesDi
 import WarehouseTariffsPanel from '../components/warehouse/WarehouseTariffsPanel';
 import WarehouseBillingPanel from '../components/warehouse/WarehouseBillingPanel';
 import { useAuthStore } from '../store/auth-store';
+import {
+  WAREHOUSE_VEHICLE_TYPES,
+  warehouseVehicleTypeLabel,
+} from '../constants/warehouse';
 
 const today = () => {
   const date = new Date();
@@ -179,8 +183,8 @@ export default function WarehousePage() {
     })));
   }, []);
 
-  const loadVehicles = useCallback(async () => {
-    setLoading(true);
+  const loadVehicles = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const response = await getWarehouseVehicles({
@@ -192,7 +196,7 @@ export default function WarehousePage() {
     } catch (loadError) {
       setError(errorMessage(loadError, 'Не удалось загрузить реестр ТС.'));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [search, statusFilter, typeFilter]);
 
@@ -208,6 +212,23 @@ export default function WarehousePage() {
     }, 250);
     return () => window.clearTimeout(timer);
   }, [loadVehicles]);
+
+  useEffect(() => {
+    if (tab !== 'registry') return undefined;
+    const timer = window.setInterval(() => {
+      void loadVehicles(true);
+    }, 5000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void loadVehicles(true);
+    };
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    window.addEventListener('focus', refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      window.removeEventListener('focus', refreshWhenVisible);
+    };
+  }, [loadVehicles, tab]);
 
   const selectedCounterparty = useMemo(
     () => counterparties.find((item) => item.id === form.counterpartyId) ?? null,
@@ -415,8 +436,11 @@ export default function WarehousePage() {
                 onChange={(event) => setTypeFilter(event.target.value as WarehouseVehicleType | '')}
               >
                 <MenuItem value="">Все</MenuItem>
-                <MenuItem value="passenger">Легковой</MenuItem>
-                <MenuItem value="truck">Грузовой</MenuItem>
+                {WAREHOUSE_VEHICLE_TYPES.map((vehicleType) => (
+                  <MenuItem key={vehicleType} value={vehicleType}>
+                    {warehouseVehicleTypeLabel(vehicleType)}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
           </Stack>
@@ -468,7 +492,7 @@ export default function WarehousePage() {
                   <TableCell>
                     <Stack spacing={0.5} alignItems="flex-start">
                       <Stack direction="row" spacing={1} alignItems="center">
-                        {vehicle.vehicleType === 'truck'
+                        {['truck', 'trailer', 'special'].includes(vehicle.vehicleType)
                           ? <LocalShipping fontSize="small" color="action" />
                           : <DirectionsCar fontSize="small" color="action" />}
                         <span>{vehicle.brand} {vehicle.model}</span>
@@ -476,7 +500,7 @@ export default function WarehousePage() {
                       <Chip
                         size="small"
                         variant="outlined"
-                        label={vehicle.vehicleType === 'truck' ? 'Грузовой' : 'Легковой'}
+                        label={warehouseVehicleTypeLabel(vehicle.vehicleType)}
                       />
                     </Stack>
                   </TableCell>
@@ -617,8 +641,11 @@ export default function WarehousePage() {
                     vehicleType: event.target.value as WarehouseVehicleType,
                   }))}
                 >
-                  <MenuItem value="passenger">Легковой</MenuItem>
-                  <MenuItem value="truck">Грузовой</MenuItem>
+                  {WAREHOUSE_VEHICLE_TYPES.map((vehicleType) => (
+                    <MenuItem key={vehicleType} value={vehicleType}>
+                      {warehouseVehicleTypeLabel(vehicleType)}
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
               <TextField

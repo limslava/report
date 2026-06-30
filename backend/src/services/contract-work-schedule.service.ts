@@ -201,7 +201,6 @@ export async function calculateDeadlineBySchedule(
     if (!schedule.workdays.includes(weekday)) {
       continue;
     }
-    // eslint-disable-next-line no-await-in-loop
     const isWorkday = await isWorkdayByYmd(cursorYmd);
     if (!isWorkday) {
       continue;

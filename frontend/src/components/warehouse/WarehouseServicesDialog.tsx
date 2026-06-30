@@ -31,9 +31,15 @@ import {
   WarehouseServiceDefinition,
   WarehouseVehicle,
 } from '../../services/warehouse.api';
+import { warehouseVehicleTypeLabel } from '../../constants/warehouse';
 
-const money = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' });
-const unitShort = { operation: 'оп.', liter: 'л', day: 'сут.' };
+const unitShort = { operation: 'оп.', liter: 'л', day: 'сут.', wheel: 'кол.' };
+const unitLabel = {
+  operation: 'операция',
+  liter: 'литр',
+  day: 'сутки',
+  wheel: 'колесо',
+};
 const AUTOMATIC_OPERATION_CODES = new Set(['vehicle_acceptance', 'vehicle_issue']);
 const nowLocal = () => {
   const date = new Date();
@@ -162,7 +168,7 @@ export default function WarehouseServicesDialog({ open, vehicle, readOnly = fals
             <Chip
               size="small"
               variant="outlined"
-              label={vehicle.vehicleType === 'truck' ? 'Грузовой' : 'Легковой'}
+              label={warehouseVehicleTypeLabel(vehicle.vehicleType)}
             />
           )}
         </Stack>
@@ -186,7 +192,6 @@ export default function WarehouseServicesDialog({ open, vehicle, readOnly = fals
                 }}
               >
                 {catalog.map((service) => {
-                  const tariff = service.currentTariffs[vehicle.vehicleType];
                   const stats = serviceStats.get(service.id) ?? { total: 0, today: 0 };
                   const isSelected = service.id === serviceId;
                   return (
@@ -195,15 +200,14 @@ export default function WarehouseServicesDialog({ open, vehicle, readOnly = fals
                       variant="outlined"
                       component="button"
                       type="button"
-                      disabled={!tariff || saving}
+                      disabled={saving}
                       onClick={() => selectService(service.id)}
                       sx={{
                         p: 1.25,
                         textAlign: 'left',
-                        cursor: tariff ? 'pointer' : 'not-allowed',
+                        cursor: saving ? 'wait' : 'pointer',
                         borderColor: isSelected ? 'primary.main' : 'divider',
                         bgcolor: isSelected ? 'action.selected' : 'background.paper',
-                        opacity: tariff ? 1 : 0.55,
                         font: 'inherit',
                       }}
                     >
@@ -212,9 +216,7 @@ export default function WarehouseServicesDialog({ open, vehicle, readOnly = fals
                         <Box sx={{ minWidth: 0, flex: 1 }}>
                           <Typography variant="body2" fontWeight={600}>{service.name}</Typography>
                           <Typography variant="caption" color="text.secondary" display="block">
-                            {tariff
-                              ? `${money.format(tariff.price)} за ${service.unit === 'liter' ? 'литр' : unitShort[service.unit]}`
-                              : 'Тариф не задан'}
+                            Единица учёта: {unitLabel[service.unit]}
                           </Typography>
                           {stats.total > 0 && (
                             <Stack direction="row" spacing={0.75} mt={0.75} flexWrap="wrap">
@@ -241,7 +243,7 @@ export default function WarehouseServicesDialog({ open, vehicle, readOnly = fals
                       <TextField
                         type="number"
                         label={selected.unit === 'liter'
-                          ? 'Фактически залито, л'
+                        ? 'Фактически залито, л'
                           : `Количество, ${unitShort[selected.unit]}`}
                         value={quantity}
                         onChange={(event) => setQuantity(event.target.value)}
@@ -258,11 +260,7 @@ export default function WarehouseServicesDialog({ open, vehicle, readOnly = fals
                       />
                     </Stack>
                     <Alert severity="info">
-                      Тариф: {money.format(selected.currentTariffs[vehicle.vehicleType]!.price)}
-                      {' '}за {selected.unit === 'liter' ? '1 литр' : unitShort[selected.unit]}.
-                      {' '}Предварительная сумма: {money.format(
-                        selected.currentTariffs[vehicle.vehicleType]!.price * Number(quantity || 0),
-                      )}.
+                      Будет зафиксирован факт выполнения услуги. Стоимость рассчитает финансовый блок по действующим тарифам.
                     </Alert>
                     <TextField
                       label="Комментарий"
@@ -334,8 +332,6 @@ export default function WarehouseServicesDialog({ open, vehicle, readOnly = fals
                   <TableCell>Дата</TableCell>
                   <TableCell>Услуга</TableCell>
                   <TableCell align="right">Количество</TableCell>
-                  <TableCell align="right">Тариф</TableCell>
-                  <TableCell align="right">Сумма</TableCell>
                   <TableCell>Исполнитель</TableCell>
                   {!readOnly && <TableCell />}
                 </TableRow>
@@ -353,8 +349,6 @@ export default function WarehouseServicesDialog({ open, vehicle, readOnly = fals
                       )}
                     </TableCell>
                     <TableCell align="right">{item.quantity} {unitShort[item.unit]}</TableCell>
-                    <TableCell align="right">{money.format(item.unitPrice)}</TableCell>
-                    <TableCell align="right">{money.format(item.totalAmount)}</TableCell>
                     <TableCell>{item.performedByName}</TableCell>
                     {!readOnly && (
                       <TableCell align="right">

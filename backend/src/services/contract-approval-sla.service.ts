@@ -63,10 +63,8 @@ async function findRule(contractType: ContractType, incomeSubtype: ContractIncom
 export async function ensureDefaultSlaRules(): Promise<void> {
   const rules = defaultRules();
   for (const rule of rules) {
-    // eslint-disable-next-line no-await-in-loop
     const exists = await findRule(rule.contractType, rule.incomeSubtype, rule.roleCode);
     if (!exists) {
-      // eslint-disable-next-line no-await-in-loop
       await slaRepo.save(slaRepo.create({ ...rule, isActive: true }));
     }
   }
@@ -106,10 +104,8 @@ export async function upsertSlaRules(
     if (existing) {
       existing.slaWorkdays = Math.max(1, item.slaWorkdays);
       existing.isActive = item.isActive ?? true;
-      // eslint-disable-next-line no-await-in-loop
       await slaRepo.save(existing);
     } else {
-      // eslint-disable-next-line no-await-in-loop
       await slaRepo.save(
         slaRepo.create({
           contractType: item.contractType,

@@ -21,11 +21,15 @@ import { errorHandler } from './middleware/error-handler';
 import { logger } from './utils/logger';
 import { getAllowedCorsOrigins } from './config/env';
 import { createRateLimiter } from './middleware/rate-limit';
+import { authenticate } from './middleware/authenticate';
+import { authorizeRole } from './middleware/authorize';
 import { withRetry } from './utils/db-retry';
 import { dbCircuit } from './utils/db-circuit';
 import { AppDataSource } from './config/data-source';
 import { dbMetrics } from './utils/db-metrics';
 import { canConnectRedis, getSchedulerStatus, isRedisRequiredForScheduler } from './services/scheduler';
+import { createWarehouseTusServer } from './services/warehouse-tus.service';
+import { WAREHOUSE_STAFF_ROLES } from './constants/warehouse';
 
 export function createApp() {
   const app = express();
@@ -49,9 +53,22 @@ export function createApp() {
     credentials: true,
   }));
   app.use(compression());
+  let warehouseTusServerPromise: ReturnType<typeof createWarehouseTusServer> | null = null;
+  const handleWarehouseTusUpload = async (req: express.Request, res: express.Response) => {
+    warehouseTusServerPromise ??= createWarehouseTusServer();
+    const warehouseTusServer = await warehouseTusServerPromise;
+    warehouseTusServer.handle(req, res);
+  };
+  app.all('/api/warehouse/uploads', authenticate, authorizeRole(...WAREHOUSE_STAFF_ROLES), handleWarehouseTusUpload);
+  app.all('/api/warehouse/uploads/*', authenticate, authorizeRole(...WAREHOUSE_STAFF_ROLES), handleWarehouseTusUpload);
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
-  app.use('/api', apiRateLimiter);
+  app.use('/api', (req, res, next) => {
+    if (req.path.startsWith('/warehouse/uploads')) {
+      return next();
+    }
+    return apiRateLimiter(req, res, next);
+  });
 
   app.use((req, _res, next) => {
     if (process.env.NODE_ENV === 'test') {

@@ -10,6 +10,7 @@ import { PLANNING_FULL_ACCESS_ROLES } from '../constants/roles';
 import { sendError } from '../utils/http';
 import { recordAuditLog } from '../services/audit-log.service';
 import { cache } from '../utils/cache';
+import { buildContentDisposition } from '../utils/content-disposition';
 
 function parseSegmentCode(raw: string): PlanningSegmentCode {
   if (!Object.values(PlanningSegmentCode).includes(raw as PlanningSegmentCode)) {
@@ -35,21 +36,6 @@ function formatDdMmYyyy(isoDate: string): string {
     throw new Error('Invalid date format');
   }
   return `${day.padStart(2, '0')}.${month.padStart(2, '0')}.${year}`;
-}
-
-function buildContentDisposition(filename: string): string {
-  const sanitized = filename.replace(/"/g, '');
-  const asciiFallback = sanitized
-    .normalize('NFKD')
-    .replace(/[^\x20-\x7E]+/g, '_')
-    .replace(/[\\"]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const safeFallback = asciiFallback || 'report.xlsx';
-  const encoded = encodeURIComponent(filename)
-    .replace(/['()]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)
-    .replace(/\*/g, '%2A');
-  return `attachment; filename="${safeFallback}"; filename*=UTF-8''${encoded}`;
 }
 
 function isFullAccessRole(role: string): boolean {

@@ -83,7 +83,6 @@ export async function addWorkingDays(start: Date, workdaysToAdd: number): Promis
     if (cursor.getUTCFullYear() !== start.getUTCFullYear()) {
       await ensureCalendarYear(cursor.getUTCFullYear());
     }
-    // eslint-disable-next-line no-await-in-loop
     if (await isWorkday(cursor)) counted += 1;
   }
   return cursor;
@@ -96,7 +95,6 @@ export async function countWorkingDaysBetween(fromInclusive: Date, toInclusive: 
   let cursor = new Date(fromInclusive);
   let count = 0;
   while (cursor <= toInclusive) {
-    // eslint-disable-next-line no-await-in-loop
     if (await isWorkday(cursor)) count += 1;
     cursor.setUTCDate(cursor.getUTCDate() + 1);
   }

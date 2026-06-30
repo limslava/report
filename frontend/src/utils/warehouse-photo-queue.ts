@@ -7,6 +7,14 @@ export interface WarehousePhotoQueueItem {
   vehicleId: string;
   name: string;
   blob: Blob;
+  previewDataUrl?: string | null;
+  checklistItem?: string | null;
+  uploadSessionId?: string | null;
+  clientHash?: string | null;
+  uploadStatus?: 'pending' | 'uploading' | 'uploaded' | 'error';
+  shouldResumeUpload?: boolean | null;
+  uploadedAt?: number | null;
+  errorMessage?: string | null;
   createdAt: number;
 }
 
@@ -55,11 +63,48 @@ export const listWarehousePhotoQueue = async (
   });
 };
 
+export const listAllWarehousePhotoQueue = async (): Promise<WarehousePhotoQueueItem[]> => {
+  const db = await openQueueDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readonly');
+    const request = transaction.objectStore(STORE_NAME).getAll();
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result as WarehousePhotoQueueItem[]);
+    transaction.oncomplete = () => db.close();
+  });
+};
+
 export const removeWarehousePhotoQueueItem = async (id: number): Promise<void> => {
   const db = await openQueueDb();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, 'readwrite');
     transaction.objectStore(STORE_NAME).delete(id);
+    transaction.onerror = () => reject(transaction.error);
+    transaction.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+  });
+};
+
+export const updateWarehousePhotoQueueItem = async (
+  id: number,
+  patch: Partial<WarehousePhotoQueueItem>,
+): Promise<void> => {
+  const db = await openQueueDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.get(id);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const current = request.result as WarehousePhotoQueueItem | undefined;
+      if (!current) {
+        resolve();
+        return;
+      }
+      store.put({ ...current, ...patch });
+    };
     transaction.onerror = () => reject(transaction.error);
     transaction.oncomplete = () => {
       db.close();
@@ -97,4 +142,17 @@ export const clearWarehousePhotoQueue = async (vehicleId: string): Promise<void>
   await Promise.all(items.map((item) => item.id
     ? removeWarehousePhotoQueueItem(item.id)
     : Promise.resolve()));
+};
+
+export const recoverWarehousePhotoQueue = async (vehicleId: string): Promise<void> => {
+  const items = await listWarehousePhotoQueue(vehicleId);
+  await Promise.all(items.map((item) => {
+    if (!item.id) return Promise.resolve();
+    if (item.uploadStatus !== 'uploading' && item.uploadStatus !== 'error') return Promise.resolve();
+    return updateWarehousePhotoQueueItem(item.id, {
+      uploadStatus: 'pending',
+      shouldResumeUpload: true,
+      errorMessage: null,
+    });
+  }));
 };

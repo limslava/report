@@ -94,6 +94,34 @@ describe('warehouse billing calculations', () => {
     expect(result.storageAmount).toBe(250);
   });
 
+  it('calculates storage with a dedicated trailer tariff', () => {
+    const result = calculateWarehouseStorage({
+      receivedDate: '2026-06-10',
+      issuedDate: '2026-06-12',
+      periodFrom: '2026-06-01',
+      periodTo: '2026-06-30',
+      vehicleType: 'trailer',
+      tariffs: [
+        {
+          vehicleType: 'passenger',
+          validFrom: '2026-01-01',
+          validTo: null,
+          price: '100.00',
+        },
+        {
+          vehicleType: 'trailer',
+          validFrom: '2026-01-01',
+          validTo: null,
+          price: '300.00',
+        },
+      ],
+    });
+
+    expect(result.storageDays).toBe(3);
+    expect(result.storageAmount).toBe(900);
+    expect(result.storageRates).toEqual([{ price: 300, days: 3, amount: 900 }]);
+  });
+
   it('applies tariff versions by each calendar date', () => {
     const result = calculateWarehouseStorage({
       receivedDate: '2026-06-01',
@@ -123,6 +151,76 @@ describe('warehouse billing calculations', () => {
       { price: 100, days: 2, amount: 200 },
       { price: 150, days: 2, amount: 300 },
     ]);
+  });
+
+  it('clips storage to the selected billing period when vehicle spans outside it', () => {
+    const result = calculateWarehouseStorage({
+      receivedDate: '2026-05-20',
+      issuedDate: '2026-07-10',
+      periodFrom: '2026-06-01',
+      periodTo: '2026-06-30',
+      vehicleType: 'passenger',
+      tariffs: [{
+        vehicleType: 'passenger',
+        validFrom: '2026-01-01',
+        validTo: null,
+        price: '100.00',
+      }],
+    });
+
+    expect(result.storageFrom).toBe('2026-06-01');
+    expect(result.storageTo).toBe('2026-06-30');
+    expect(result.storageDays).toBe(30);
+    expect(result.storageAmount).toBe(3000);
+  });
+
+  it('charges an open on-site vehicle through the selected period end', () => {
+    const result = calculateWarehouseStorage({
+      receivedDate: '2026-06-15',
+      issuedDate: null,
+      periodFrom: '2026-06-01',
+      periodTo: '2026-06-30',
+      vehicleType: 'truck',
+      tariffs: [{
+        vehicleType: 'truck',
+        validFrom: '2026-01-01',
+        validTo: null,
+        price: '250.00',
+      }],
+    });
+
+    expect(result.storageFrom).toBe('2026-06-15');
+    expect(result.storageTo).toBe('2026-06-30');
+    expect(result.storageDays).toBe(16);
+    expect(result.storageAmount).toBe(4000);
+  });
+
+  it('reports all storage dates that fall into a tariff gap', () => {
+    const result = calculateWarehouseStorage({
+      receivedDate: '2026-06-01',
+      issuedDate: '2026-06-05',
+      periodFrom: '2026-06-01',
+      periodTo: '2026-06-30',
+      vehicleType: 'passenger',
+      tariffs: [
+        {
+          vehicleType: 'passenger',
+          validFrom: '2026-06-01',
+          validTo: '2026-06-02',
+          price: '100.00',
+        },
+        {
+          vehicleType: 'passenger',
+          validFrom: '2026-06-05',
+          validTo: null,
+          price: '150.00',
+        },
+      ],
+    });
+
+    expect(result.storageDays).toBe(5);
+    expect(result.storageAmount).toBe(350);
+    expect(result.missingTariffDates).toEqual(['2026-06-03', '2026-06-04']);
   });
 
   it('reports dates without a tariff but preserves calendar day count', () => {

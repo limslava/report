@@ -13,6 +13,11 @@ export type WarehousePhotoPhase = 'reception' | 'issue';
 
 @Entity('warehouse_photos')
 @Index('idx_warehouse_photo_vehicle_date', ['vehicleId', 'createdAt'])
+@Index('idx_warehouse_photo_vehicle_hash', ['vehicleId', 'clientHash'])
+@Index('uq_warehouse_photo_vehicle_hash', ['vehicleId', 'clientHash'], {
+  unique: true,
+  where: 'client_hash IS NOT NULL',
+})
 export class WarehousePhoto {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -39,8 +44,14 @@ export class WarehousePhoto {
   @Column({ name: 'size_bytes', type: 'integer' })
   sizeBytes!: number;
 
+  @Column({ name: 'client_hash', type: 'varchar', length: 80, nullable: true })
+  clientHash!: string | null;
+
   @Column({ type: 'varchar', length: 20, default: 'reception' })
   phase!: WarehousePhotoPhase;
+
+  @Column({ name: 'checklist_item', type: 'varchar', length: 64, nullable: true })
+  checklistItem!: string | null;
 
   @Column({ name: 'uploaded_by_id', type: 'uuid' })
   uploadedById!: string;

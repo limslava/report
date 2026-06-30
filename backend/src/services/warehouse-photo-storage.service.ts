@@ -25,6 +25,9 @@ const backupRoot = path.resolve(
 const resolveVehicleDirectory = (vehicleId: string): string =>
   path.join(storageRoot, vehicleId);
 
+const resolvePendingDirectory = (uploadSessionId: string): string =>
+  path.join(storageRoot, '_pending', uploadSessionId);
+
 const resolveBackupVehicleDirectory = (vehicleId: string): string =>
   path.join(backupRoot, vehicleId);
 
@@ -79,6 +82,76 @@ export const storeWarehousePhoto = async (
     throw new Error(`Не удалось создать резервную копию фотографии: ${(error as Error).message}`);
   }
   return storedName;
+};
+
+export const storeWarehousePendingPhoto = async (
+  uploadSessionId: string,
+  mimeType: string,
+  bytes: Buffer,
+): Promise<string> => {
+  const extension = MIME_EXTENSIONS[mimeType];
+  if (!extension) throw new Error('Unsupported warehouse photo type');
+  const directory = resolvePendingDirectory(uploadSessionId);
+  await fs.mkdir(directory, { recursive: true });
+  const storedName = `${Date.now()}-${crypto.randomBytes(16).toString('hex')}${extension}`;
+  await fs.writeFile(path.join(directory, storedName), bytes, { flag: 'wx' });
+  return storedName;
+};
+
+export const moveWarehouseTusTempToPending = async (
+  uploadSessionId: string,
+  mimeType: string,
+  tempFilePath: string,
+  clientHash?: string | null,
+): Promise<string> => {
+  const extension = MIME_EXTENSIONS[mimeType];
+  if (!extension) throw new Error('Unsupported warehouse photo type');
+  const directory = resolvePendingDirectory(uploadSessionId);
+  await fs.mkdir(directory, { recursive: true });
+  const normalizedHash = String(clientHash ?? '').trim().replace(/[^a-zA-Z0-9._:-]/g, '').slice(0, 80);
+  const storedName = normalizedHash
+    ? `${Date.now()}-${normalizedHash}-${crypto.randomBytes(16).toString('hex')}${extension}`
+    : `${Date.now()}-${crypto.randomBytes(16).toString('hex')}${extension}`;
+  await fs.rename(tempFilePath, path.join(directory, storedName));
+  return storedName;
+};
+
+export const attachWarehousePendingPhotoFile = async (
+  uploadSessionId: string,
+  vehicleId: string,
+  storedName: string,
+): Promise<string> => {
+  const pendingDirectory = path.resolve(resolvePendingDirectory(uploadSessionId));
+  const sourcePath = path.resolve(pendingDirectory, path.basename(storedName));
+  if (!sourcePath.startsWith(`${pendingDirectory}${path.sep}`)) {
+    throw new Error('Invalid pending photo path');
+  }
+  const targetDirectory = resolveVehicleDirectory(vehicleId);
+  await fs.mkdir(targetDirectory, { recursive: true });
+  const targetName = `${Date.now()}-${crypto.randomBytes(16).toString('hex')}${path.extname(storedName)}`;
+  const targetPath = path.join(targetDirectory, targetName);
+  await fs.rename(sourcePath, targetPath);
+  const backupDirectory = resolveBackupVehicleDirectory(vehicleId);
+  try {
+    await fs.mkdir(backupDirectory, { recursive: true });
+    await fs.copyFile(targetPath, path.join(backupDirectory, targetName));
+  } catch (error) {
+    await fs.unlink(targetPath).catch(() => undefined);
+    throw new Error(`Не удалось создать резервную копию фотографии: ${(error as Error).message}`);
+  }
+  return targetName;
+};
+
+export const deleteWarehousePendingPhotoFile = async (
+  uploadSessionId: string,
+  storedName: string,
+): Promise<void> => {
+  const pendingDirectory = path.resolve(resolvePendingDirectory(uploadSessionId));
+  const filePath = path.resolve(pendingDirectory, path.basename(storedName));
+  if (!filePath.startsWith(`${pendingDirectory}${path.sep}`)) return;
+  await fs.unlink(filePath).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== 'ENOENT') throw error;
+  });
 };
 
 export const resolveWarehousePhotoPath = (

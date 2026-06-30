@@ -1,8 +1,14 @@
 import api from './api';
 
-export type WarehouseVehicleType = 'passenger' | 'truck';
+export type WarehouseVehicleType =
+  | 'passenger'
+  | 'light_commercial'
+  | 'truck'
+  | 'trailer'
+  | 'special'
+  | 'motorcycle';
 export type WarehouseVehicleStatus = 'expected' | 'on_site' | 'issued';
-export type WarehouseServiceUnit = 'operation' | 'liter' | 'day';
+export type WarehouseServiceUnit = 'operation' | 'liter' | 'day' | 'wheel';
 
 export interface WarehouseCounterparty {
   id: string;
@@ -99,10 +105,7 @@ export interface WarehouseServiceDefinition {
   isRepeatable: boolean;
   isOperational: boolean;
   isActive: boolean;
-  currentTariffs: {
-    passenger: WarehouseTariff | null;
-    truck: WarehouseTariff | null;
-  };
+  currentTariffs: Record<WarehouseVehicleType, WarehouseTariff | null>;
 }
 
 export interface WarehousePerformedService {
@@ -178,9 +181,46 @@ export interface WarehousePhoto {
   originalName: string;
   mimeType: string;
   sizeBytes: number;
+  clientHash?: string | null;
   phase: 'reception' | 'issue';
+  checklistItem: string | null;
   uploadedByName: string;
   createdAt: string;
+}
+
+export interface WarehousePendingPhotoUpload {
+  id: string;
+  uploadSessionId: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  clientHash: string;
+  phase: 'reception' | 'issue';
+  checklistItem: string | null;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export type WarehouseInspectionPhase = 'reception' | 'issue';
+
+export interface WarehouseVehicleInspectionPayload {
+  vehicleDetails?: Record<string, unknown>;
+  documentsAndKeys?: Record<string, unknown>;
+  equipment?: Record<string, unknown>;
+  technicalCondition?: Record<string, unknown>;
+  photoChecklist?: Record<string, unknown>;
+  damageNotes?: string | null;
+  personalItemsNotes?: string | null;
+  responsibilityAmount?: number | null;
+}
+
+export interface WarehouseVehicleInspection extends Required<WarehouseVehicleInspectionPayload> {
+  id: string;
+  vehicleId: string;
+  phase: WarehouseInspectionPhase;
+  inspectedByName: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface WarehouseVehicleFilters {
@@ -227,14 +267,54 @@ export const uploadWarehouseVehiclePhoto = (
   file: Blob,
   originalName: string,
   phase: 'reception' | 'issue' = 'reception',
+  checklistItem?: string | null,
 ) => api.post<WarehousePhoto>(`/warehouse/vehicles/${vehicleId}/photos`, file, {
   headers: {
     'Content-Type': file.type || 'image/jpeg',
     'X-File-Name': encodeURIComponent(originalName),
     'X-Photo-Phase': phase,
+    ...(checklistItem ? { 'X-Photo-Checklist-Item': checklistItem } : {}),
   },
-  timeout: 60_000,
+  timeout: 120_000,
 });
+
+export const uploadWarehousePendingPhoto = (
+  uploadSessionId: string,
+  clientHash: string,
+  file: Blob,
+  originalName: string,
+  phase: 'reception' | 'issue' = 'reception',
+  checklistItem?: string | null,
+) => api.post<WarehousePendingPhotoUpload>('/warehouse/photo-uploads', file, {
+  headers: {
+    'Content-Type': file.type || 'image/jpeg',
+    'X-Upload-Session-Id': uploadSessionId,
+    'X-Photo-Client-Hash': clientHash,
+    'X-File-Name': encodeURIComponent(originalName),
+    'X-Photo-Phase': phase,
+    ...(checklistItem ? { 'X-Photo-Checklist-Item': checklistItem } : {}),
+  },
+  timeout: 120_000,
+});
+
+export const getWarehousePendingPhotos = (
+  uploadSessionId: string,
+  phase?: 'reception' | 'issue',
+) => api.get<WarehousePendingPhotoUpload[]>('/warehouse/photo-uploads', {
+  params: {
+    uploadSessionId,
+    ...(phase ? { phase } : {}),
+  },
+});
+
+export const attachWarehousePendingPhotos = (
+  vehicleId: string,
+  uploadSessionId: string,
+  clientHashes: string[],
+) => api.post<{ attached: number; alreadyAttached?: number; missing?: number; photos?: WarehousePhoto[] }>(
+  `/warehouse/vehicles/${vehicleId}/attach-pending-photos`,
+  { uploadSessionId, clientHashes },
+);
 
 export const downloadWarehouseVehiclePhoto = (vehicleId: string, photoId: string) =>
   api.get<Blob>(`/warehouse/vehicles/${vehicleId}/photos/${photoId}`, {
@@ -244,6 +324,25 @@ export const downloadWarehouseVehiclePhoto = (vehicleId: string, photoId: string
 
 export const deleteWarehouseVehiclePhoto = (vehicleId: string, photoId: string) =>
   api.delete(`/warehouse/vehicles/${vehicleId}/photos/${photoId}`);
+
+export const getWarehouseVehicleInspection = (
+  vehicleId: string,
+  phase: WarehouseInspectionPhase,
+) => api.get<WarehouseVehicleInspection | null>(`/warehouse/vehicles/${vehicleId}/inspections/${phase}`);
+
+export const saveWarehouseVehicleInspection = (
+  vehicleId: string,
+  phase: WarehouseInspectionPhase,
+  payload: WarehouseVehicleInspectionPayload,
+) => api.put<WarehouseVehicleInspection>(`/warehouse/vehicles/${vehicleId}/inspections/${phase}`, payload);
+
+export const downloadWarehouseVehicleInspectionAct = (
+  vehicleId: string,
+  phase: WarehouseInspectionPhase,
+) => api.get<Blob>(`/warehouse/vehicles/${vehicleId}/inspections/${phase}/act.pdf`, {
+  responseType: 'blob',
+  timeout: 60_000,
+});
 
 export const getWarehouseCounterparties = (q = '') =>
   api.get<WarehouseCounterparty[]>('/warehouse/counterparties', { params: { q, limit: 50 } });

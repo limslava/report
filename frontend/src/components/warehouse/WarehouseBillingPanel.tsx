@@ -39,6 +39,10 @@ import {
   WarehouseClient,
   WarehouseVehicleType,
 } from '../../services/warehouse.api';
+import {
+  WAREHOUSE_VEHICLE_TYPES,
+  warehouseVehicleTypeLabel,
+} from '../../constants/warehouse';
 
 const money = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' });
 
@@ -231,8 +235,11 @@ export default function WarehouseBillingPanel({ canClose, ownCounterpartyOnly = 
                 onChange={(event) => setVehicleType(event.target.value as WarehouseVehicleType | '')}
               >
                 <MenuItem value="">Все</MenuItem>
-                <MenuItem value="passenger">Легковой</MenuItem>
-                <MenuItem value="truck">Грузовой</MenuItem>
+                {WAREHOUSE_VEHICLE_TYPES.map((type) => (
+                  <MenuItem key={type} value={type}>
+                    {warehouseVehicleTypeLabel(type)}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
             <Button variant="contained" startIcon={<Refresh />} onClick={() => void load()}>

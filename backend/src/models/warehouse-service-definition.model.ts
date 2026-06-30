@@ -10,7 +10,7 @@ import {
 import { WarehousePerformedService } from './warehouse-performed-service.model';
 import { WarehouseTariff } from './warehouse-tariff.model';
 
-export type WarehouseServiceUnit = 'operation' | 'liter' | 'day';
+export type WarehouseServiceUnit = 'operation' | 'liter' | 'day' | 'wheel';
 
 @Entity('warehouse_service_definitions')
 @Index('uq_warehouse_service_code', ['code'], { unique: true })

@@ -14,8 +14,9 @@ import { WarehouseStorageRequest } from './warehouse-storage-request.model';
 import { WarehouseOperation } from './warehouse-operation.model';
 import { WarehousePhoto } from './warehouse-photo.model';
 import { WarehousePerformedService } from './warehouse-performed-service.model';
+import { WarehouseVehicleTypeCode } from '../constants/warehouse';
 
-export type WarehouseVehicleType = 'passenger' | 'truck';
+export type WarehouseVehicleType = WarehouseVehicleTypeCode;
 export type WarehouseVehicleStatus = 'expected' | 'on_site' | 'issued';
 
 @Entity('warehouse_vehicles')

@@ -36,6 +36,8 @@ backups/
 # Local temp files
 *.tmp
 *.swp
+tmp/
+backend/tmp/
 
 # Local spreadsheets
 *.xlsx

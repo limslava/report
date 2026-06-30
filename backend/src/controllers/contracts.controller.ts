@@ -33,6 +33,7 @@ import { listCalendarByYear, syncCalendarBySource, upsertCalendarDay } from '../
 import { notifyDecisionChanged, notifyStepAssigned } from '../services/contract-approval-notification.service';
 import { planWebSocketService } from '../services/websocket.service';
 import { logger } from '../utils/logger';
+import { buildContentDisposition } from '../utils/content-disposition';
 
 const contractRepository = AppDataSource.getRepository(Contract);
 const stepRepository = AppDataSource.getRepository(ContractApprovalStep);
@@ -79,15 +80,7 @@ function toYmdOrNull(value: Date | string | null | undefined): string | null {
 }
 
 function buildAttachmentDisposition(filename: string, disposition: 'attachment' | 'inline' = 'attachment'): string {
-  // RFC-friendly dual filename:
-  // - filename="<ascii>" for legacy clients / strict Node header validation
-  // - filename*=UTF-8''<percent-encoded> for proper UTF-8 names
-  const asciiFallback = filename
-    .replace(/[\r\n"]/g, '')
-    .replace(/[^\x20-\x7E]/g, '_')
-    .trim() || 'attachment';
-  const encoded = encodeURIComponent(filename.replace(/[\r\n]/g, '')).replace(/%20/g, '+');
-  return `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
+  return buildContentDisposition(filename, disposition, 'attachment');
 }
 
 function normalizeFilename(name: string): string {
@@ -155,10 +148,8 @@ async function hasIdenticalAttachment(
   const incomingHash = crypto.createHash('sha256').update(buffer).digest('hex');
   for (const candidate of candidates) {
     // Avoid dropping a corrected file solely because its name and byte count match.
-    // eslint-disable-next-line no-await-in-loop
     const readablePath = await resolveAttachmentPath(candidate);
     if (!readablePath) continue;
-    // eslint-disable-next-line no-await-in-loop
     const existingBuffer = await fs.readFile(readablePath);
     const existingHash = crypto.createHash('sha256').update(existingBuffer).digest('hex');
     if (existingHash === incomingHash) return true;
@@ -193,13 +184,11 @@ async function persistContractAttachments(params: {
 
     const buffer = Buffer.from(contentBase64, 'base64');
     assertAllowedContractFile(file, originalName, buffer);
-    // eslint-disable-next-line no-await-in-loop
     if (await hasIdenticalAttachment(contractId, approvalStepId, context, originalName, revisionNo, buffer)) continue;
 
     const ext = path.extname(originalName);
     const storedName = `${Date.now()}-${crypto.randomUUID()}${ext}`;
     const fullPath = path.join(uploadsRoot, storedName);
-    // eslint-disable-next-line no-await-in-loop
     await fs.writeFile(fullPath, buffer);
 
     const attachment = attachmentRepository.create({
@@ -213,7 +202,6 @@ async function persistContractAttachments(params: {
       sizeBytes: buffer.length,
       storagePath: fullPath,
     });
-    // eslint-disable-next-line no-await-in-loop
     await attachmentRepository.save(attachment);
     uploaded += 1;
   }
@@ -238,19 +226,16 @@ async function resolveAttachmentPath(item: ContractAttachment): Promise<string |
 
   for (const candidate of candidates) {
     try {
-      // eslint-disable-next-line no-await-in-loop
       const stat = await fs.stat(candidate);
       if (stat.isFile()) {
         return candidate;
       }
       if (stat.isDirectory()) {
         // Legacy fallback: if DB path points to directory, try to find the exact file inside.
-        // eslint-disable-next-line no-await-in-loop
         const entries = await fs.readdir(candidate);
         const preferred = entries.find((name) => name === item.originalName) ?? entries[0];
         if (preferred) {
           const nested = path.join(candidate, preferred);
-          // eslint-disable-next-line no-await-in-loop
           const nestedStat = await fs.stat(nested);
           if (nestedStat.isFile()) {
             return nested;
@@ -321,7 +306,6 @@ async function getDocxPdfPreviewPath(readablePath: string): Promise<string> {
   try {
     for (const libreOfficeBin of libreOfficeBins) {
       try {
-        // eslint-disable-next-line no-await-in-loop
         await execFileAsync(
           libreOfficeBin,
           ['--headless', '--convert-to', 'pdf', '--outdir', outputDirectory, readablePath],
@@ -545,7 +529,6 @@ async function loadPdfFonts(pdf: PDFDocument): Promise<PdfFonts> {
   let boldBytes: Uint8Array | null = null;
   for (const candidate of candidates) {
     try {
-      // eslint-disable-next-line no-await-in-loop
       const data = await fs.readFile(candidate);
       if (candidate.toLowerCase().includes('bold')) {
         boldBytes = data;
@@ -2252,11 +2235,9 @@ export const downloadContractPrintPackage = async (req: Request, res: Response, 
       .flatMap((step) => filesByStep.get(step.id) ?? []);
 
     for (const attachment of approvalAttachments) {
-      // eslint-disable-next-line no-await-in-loop
       await appendAttachmentToPdf(pdf, attachment);
     }
     for (const attachment of contractFiles) {
-      // eslint-disable-next-line no-await-in-loop
       await appendAttachmentToPdf(pdf, attachment);
     }
 

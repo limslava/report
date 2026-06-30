@@ -19,3 +19,25 @@ export const assertWarehouseDateIsOpen = async (
     throw error;
   }
 };
+
+export const assertWarehouseStorageRangeIsOpen = async (
+  counterpartyId: string,
+  storageFrom: string,
+  storageTo: string,
+): Promise<void> => {
+  const from = storageFrom <= storageTo ? storageFrom : storageTo;
+  const to = storageFrom <= storageTo ? storageTo : storageFrom;
+  const period = await AppDataSource.getRepository(WarehouseBillingPeriod)
+    .createQueryBuilder('period')
+    .where('period.counterpartyId = :counterpartyId', { counterpartyId })
+    .andWhere('period.periodFrom <= :to', { to })
+    .andWhere('period.periodTo >= :from', { from })
+    .getOne();
+  if (period) {
+    const error: any = new Error(
+      `Период ${period.periodFrom}–${period.periodTo} закрыт. Изменение начислений запрещено`,
+    );
+    error.statusCode = 409;
+    throw error;
+  }
+};

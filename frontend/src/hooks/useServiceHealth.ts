@@ -8,6 +8,14 @@ type HealthResult = {
 
 const DEFAULT_MESSAGE = 'Сервис временно недоступен. Повторите попытку позже.';
 
+const resolveHealthUrl = (): string => {
+  const apiBaseUrl = import.meta.env.VITE_API_URL || '/api';
+  if (apiBaseUrl.startsWith('http://') || apiBaseUrl.startsWith('https://')) {
+    return new URL('../health/db', apiBaseUrl.endsWith('/') ? apiBaseUrl : `${apiBaseUrl}/`).toString();
+  }
+  return '/health/db';
+};
+
 export function useServiceHealth(pollIntervalMs: number = 60000) {
   const [isUnavailable, setIsUnavailable] = useState(false);
   const [message, setMessage] = useState(DEFAULT_MESSAGE);
@@ -21,13 +29,14 @@ export function useServiceHealth(pollIntervalMs: number = 60000) {
   }, []);
 
   const applyOk = useCallback(() => {
+    setMessage(DEFAULT_MESSAGE);
     setIsUnavailable(false);
   }, []);
 
   const checkNow = useCallback(async (): Promise<HealthResult> => {
     try {
       const startedAt = Date.now();
-      const response = await fetch('/health/db', { cache: 'no-store' });
+      const response = await fetch(resolveHealthUrl(), { cache: 'no-store' });
       const latencyMs = Date.now() - startedAt;
 
       if (!response.ok) {

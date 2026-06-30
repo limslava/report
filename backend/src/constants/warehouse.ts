@@ -52,4 +52,24 @@ export const WAREHOUSE_BILLING_VIEW_ROLES = [
   'counterparty_user',
 ] as const;
 
+export const WAREHOUSE_VEHICLE_TYPES = [
+  'passenger',
+  'light_commercial',
+  'truck',
+  'trailer',
+  'special',
+  'motorcycle',
+] as const;
+
+export type WarehouseVehicleTypeCode = typeof WAREHOUSE_VEHICLE_TYPES[number];
+
+export const WAREHOUSE_VEHICLE_TYPE_LABELS: Record<WarehouseVehicleTypeCode, string> = {
+  passenger: 'Легковой автомобиль',
+  light_commercial: 'Легковой коммерческий автомобиль',
+  truck: 'Грузовая техника',
+  trailer: 'Прицеп / полуприцеп',
+  special: 'Спецтехника',
+  motorcycle: 'Мото-техника',
+};
+
 export type WarehouseAccessRole = typeof WAREHOUSE_ACCESS_ROLES[number];

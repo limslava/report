@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
+import { WAREHOUSE_VEHICLE_TYPE_LABELS } from '../constants/warehouse';
 import { AppDataSource } from '../config/data-source';
 import { WarehouseBillingPeriod } from '../models/warehouse-billing-period.model';
 import { WarehouseOperation } from '../models/warehouse-operation.model';
@@ -80,6 +81,12 @@ export const assertWarehouseBillingPeriodCompleted = (
 };
 
 const roundMoney = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100;
+const operationDateOnly = (value: Date): string => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Vladivostok',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(value);
 
 export const findWarehouseTariffForDate = (
   tariffs: WarehouseTariff[],
@@ -332,9 +339,7 @@ export const calculateWarehouseBilling = async (params: {
         .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
       if (!tariff) {
         warnings.push(
-          `Нет тарифа «${definition.name}» для ${
-            vehicle.vehicleType === 'truck' ? 'грузового' : 'легкового'
-          } ТС: ${vehicle.warehouseNumber}, ${eventDate}.`,
+          `Нет тарифа «${definition.name}» для типа «${WAREHOUSE_VEHICLE_TYPE_LABELS[vehicle.vehicleType]}»: ${vehicle.warehouseNumber}, ${eventDate}.`,
         );
       }
       const unitPrice = tariff ? Number(tariff.price) : 0;
@@ -355,17 +360,26 @@ export const calculateWarehouseBilling = async (params: {
 
     const manualServices: WarehouseBillingServiceLine[] = (servicesByVehicle.get(vehicle.id) ?? [])
       .sort((a, b) => a.performedAt.getTime() - b.performedAt.getTime())
-      .map((item) => ({
-        id: item.id,
-        name: item.service.name,
-        performedAt: item.performedAt.toISOString(),
-        quantity: Number(item.quantity),
-        unit: item.unit,
-        unitPrice: Number(item.unitPrice),
-        amount: Number(item.totalAmount),
-        performedByName: item.performedByName,
-        comment: item.comment,
-      }));
+      .map((item) => {
+        const unitPrice = Number(item.unitPrice);
+        const amount = Number(item.totalAmount);
+        if (unitPrice <= 0) {
+          warnings.push(
+            `Нет тарифа «${item.service.name}» для типа «${WAREHOUSE_VEHICLE_TYPE_LABELS[vehicle.vehicleType]}»: ${vehicle.warehouseNumber}, ${operationDateOnly(item.performedAt)}.`,
+          );
+        }
+        return {
+          id: item.id,
+          name: item.service.name,
+          performedAt: item.performedAt.toISOString(),
+          quantity: Number(item.quantity),
+          unit: item.unit,
+          unitPrice,
+          amount,
+          performedByName: item.performedByName,
+          comment: item.comment,
+        };
+      });
     const services = [...automaticServices, ...manualServices]
       .sort((a, b) => a.performedAt.localeCompare(b.performedAt));
     const servicesAmount = roundMoney(services.reduce((sum, item) => sum + item.amount, 0));
@@ -541,7 +555,7 @@ export const buildWarehouseBillingExcel = async (report: WarehouseBillingReport)
 
 export const buildWarehouseBillingPdf = async (report: WarehouseBillingReport): Promise<Buffer> =>
   new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 42 });
+    const doc = new PDFDocument({ size: 'A4', margin: 36 });
     const chunks: Buffer[] = [];
     doc.on('data', (chunk) => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -552,25 +566,79 @@ export const buildWarehouseBillingPdf = async (report: WarehouseBillingReport): 
       '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
     ].find((candidate) => fs.existsSync(candidate));
     if (fontPath) doc.font(fontPath);
-    doc.fontSize(16).text('Акт оказанных услуг', { align: 'center' });
-    doc.fontSize(10).text(`Период: ${report.periodFrom}–${report.periodTo}`, { align: 'center' });
-    doc.text(`Контрагент: ${report.counterpartyName || 'Все контрагенты'}`, { align: 'center' });
+    const ensurePage = (height = 40) => {
+      if (doc.y + height > 780) doc.addPage();
+    };
+    const rub = (amount: number) => amount.toLocaleString('ru-RU', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+    doc.fontSize(9).text('Приложение № 4 к Договору хранения', { align: 'right' });
+    doc.moveDown(0.8);
+    doc.fontSize(15).text('Акт оказанных услуг', { align: 'center' });
+    doc.moveDown(0.8);
+    doc.fontSize(10)
+      .text('ООО «Симпл Вэй», именуемое в дальнейшем «Хранитель», и ООО «Газпромбанк Автолизинг», именуемое в дальнейшем «Поклажедатель», составили настоящий Акт о нижеследующем.');
+    doc.moveDown(0.6);
+    doc.text('Во исполнение Договора хранения Хранитель оказал услуги по хранению Техники, находящейся на территории Хранителя.');
+    doc.text(`За период с ${report.periodFrom} по ${report.periodTo}.`);
+    doc.text(`Поклажедатель: ${report.counterpartyName || 'Все контрагенты'}.`);
     doc.moveDown();
+
+    doc.fontSize(11).text('1. Хранение техники', { underline: true });
+    doc.moveDown(0.4);
+    doc.fontSize(8);
+    doc.text('Тип | Марка (модель) | Госномер | VIN / заводской номер | Дата передачи | Дата возврата | Тариф / стоимость');
+    doc.moveDown(0.2);
     report.lines.forEach((line, index) => {
-      if (doc.y > 720) doc.addPage();
-      doc.fontSize(11).text(`${index + 1}. ${line.warehouseNumber} — ${line.vehicleName}`, { continued: false });
-      doc.fontSize(9).text(
-        `Хранение ${line.storageFrom}–${line.storageTo}: ${line.storageDays} сут., ${line.storageAmount.toFixed(2)} ₽`,
-      );
-      line.services.forEach((service) => {
-        doc.text(`   • ${service.name}: ${service.quantity} × ${service.unitPrice.toFixed(2)} = ${service.amount.toFixed(2)} ₽`);
-      });
-      doc.fontSize(10).text(`Итого по ТС: ${line.totalAmount.toFixed(2)} ₽`, { align: 'right' });
-      doc.moveDown(0.5);
+      ensurePage(36);
+      const rates = line.storageRates
+        .map((rate) => `${rub(rate.price)} x ${rate.days} сут. = ${rub(rate.amount)}`)
+        .join('; ');
+      doc.text([
+        `${index + 1}. ${WAREHOUSE_VEHICLE_TYPE_LABELS[line.vehicleType]}`,
+        line.vehicleName,
+        line.registrationNumber || '-',
+        line.vin || '-',
+        line.storageFrom,
+        line.storageTo,
+        rates || rub(line.storageAmount),
+      ].join(' | '));
     });
     doc.moveDown();
-    doc.fontSize(12).text(`Хранение: ${report.totals.storageAmount.toFixed(2)} ₽`, { align: 'right' });
-    doc.text(`Дополнительные услуги: ${report.totals.servicesAmount.toFixed(2)} ₽`, { align: 'right' });
-    doc.fontSize(14).text(`ИТОГО: ${report.totals.totalAmount.toFixed(2)} ₽`, { align: 'right' });
+
+    const serviceLines = report.lines.flatMap((line) => line.services.map((service) => ({
+      line,
+      service,
+    })));
+    if (serviceLines.length > 0) {
+      ensurePage(80);
+      doc.fontSize(11).text('2. Дополнительные услуги', { underline: true });
+      doc.moveDown(0.4);
+      doc.fontSize(8).text('№ | Наименование услуги | ТС | Кол-во | Цена | Стоимость');
+      serviceLines.forEach(({ line, service }, index) => {
+        ensurePage(24);
+        doc.text([
+          String(index + 1),
+          service.name,
+          `${line.warehouseNumber} ${line.vehicleName}`,
+          String(service.quantity),
+          rub(service.unitPrice),
+          rub(service.amount),
+        ].join(' | '));
+      });
+      doc.moveDown();
+    }
+
+    ensurePage(90);
+    doc.fontSize(11).text(`Итого хранение: ${rub(report.totals.storageAmount)} руб.`, { align: 'right' });
+    doc.text(`Итого дополнительные услуги: ${rub(report.totals.servicesAmount)} руб.`, { align: 'right' });
+    doc.fontSize(13).text(`ИТОГО: ${rub(report.totals.totalAmount)} руб.`, { align: 'right' });
+    doc.fontSize(9).text('Сумма НДС указывается согласно применимому налоговому режиму и закрывающим документам.', { align: 'right' });
+    doc.moveDown(1.5);
+    doc.fontSize(10).text('Хранитель: ____________________ / ООО «Симпл Вэй» /');
+    doc.moveDown(0.8);
+    doc.text('Поклажедатель: ____________________ / ООО «Газпромбанк Автолизинг» /');
     doc.end();
   });

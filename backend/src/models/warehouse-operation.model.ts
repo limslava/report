@@ -17,6 +17,8 @@ export type WarehouseOperationType =
   | 'photo_uploaded'
   | 'photo_deleted'
   | 'photos_purged'
+  | 'inspection_saved'
+  | 'issue_inspection_saved'
   | 'service_performed'
   | 'service_corrected'
   | 'dates_corrected';

@@ -13,13 +13,20 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
-import * as echarts from 'echarts';
+import { BarChart, LineChart, PieChart } from 'echarts/charts';
+import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
+import * as echarts from 'echarts/core';
+import type { EChartsType } from 'echarts/core';
+import { CanvasRenderer } from 'echarts/renderers';
+import type { EChartsOption } from 'echarts';
 import { getMyApprovalDashboard } from '../services/api';
 import { planningV2Api } from '../services/planning-v2.api';
 import { subscribePlansRealtime } from '../services/plans-realtime';
 import { useAuthStore } from '../store/auth-store';
 import { PlanningTechDashboardResponse } from '../types/planning-v2.types';
 import './sw-tech-dashboard.css';
+
+echarts.use([BarChart, LineChart, PieChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
 type StatusTone = 'ok' | 'warn' | 'bad';
 
@@ -240,7 +247,7 @@ export default function SWTechDashboardPage() {
   useEffect(() => {
     if (!data || !chartsReady) return;
 
-    const instances: echarts.ECharts[] = [];
+    const instances: EChartsType[] = [];
     const observers: ResizeObserver[] = [];
     const resizeTimers: number[] = [];
 
@@ -258,7 +265,7 @@ export default function SWTechDashboardPage() {
     const monthlyAxisMax = Math.ceil(monthlyMax / 500) * 500;
     const monthlyAxisStep = Math.max(100, Math.round(monthlyAxisMax / 6 / 100) * 100);
 
-    const buildMonthly = (width: number): echarts.EChartsOption => {
+    const buildMonthly = (width: number): EChartsOption => {
       const scale = Math.max(0.72, Math.min(1.08, width / 880));
       const axisFont = Math.max(9, Math.round(12 * scale));
       const labelFont = Math.max(8, Math.round(10 * scale));
@@ -368,7 +375,7 @@ export default function SWTechDashboardPage() {
       ],
     })};
 
-    const buildApril = (width: number): echarts.EChartsOption => {
+    const buildApril = (width: number): EChartsOption => {
       const scale = Math.max(0.72, Math.min(1.05, width / 900));
       const axisFont = Math.max(9, Math.round(12 * scale));
       const labelFont = Math.max(8, Math.round(10 * scale));
@@ -449,7 +456,7 @@ export default function SWTechDashboardPage() {
       ],
     })};
 
-    const buildWait = (width: number): echarts.EChartsOption => {
+    const buildWait = (width: number): EChartsOption => {
       const scale = Math.max(0.72, Math.min(1.08, width / 760));
       const labelFont = Math.max(9, Math.round(12 * scale));
       const isNarrow = width < 520;

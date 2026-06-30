@@ -292,10 +292,8 @@ export const upsertContractWorkSchedules = async (req: Request, res: Response, n
         existing.workdayEnd = workdayEnd;
         existing.workdays = workdays.join(',');
         existing.isActive = isActive;
-        // eslint-disable-next-line no-await-in-loop
         await workScheduleRepository.save(existing);
       } else {
-        // eslint-disable-next-line no-await-in-loop
         await workScheduleRepository.save(workScheduleRepository.create({
           scope,
           roleCode,

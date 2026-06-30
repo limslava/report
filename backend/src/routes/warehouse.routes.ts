@@ -9,6 +9,7 @@ import {
   WAREHOUSE_SERVICE_EXECUTION_ROLES,
   WAREHOUSE_STAFF_ROLES,
   WAREHOUSE_TARIFF_MANAGEMENT_ROLES,
+  WAREHOUSE_VEHICLE_TYPES,
 } from '../constants/warehouse';
 import {
   createWarehouseClient,
@@ -17,23 +18,32 @@ import {
   updateWarehouseClient,
 } from '../controllers/warehouse-client.controller';
 import {
+  attachWarehousePendingPhotos,
   createWarehouseVehicle,
   correctWarehouseVehicleDates,
   deleteWarehouseVehiclePhoto,
+  exportWarehouseVehicleInspectionAct,
+  getWarehouseVehicleInspection,
   getWarehouseVehiclePhoto,
   getWarehouseVehicle,
   importWarehouseCounterparty,
   issueWarehouseVehicle,
+  listWarehousePendingPhotos,
   listWarehouseCounterparties,
   listWarehouseVehicles,
   listWarehouseVehiclePhotos,
+  uploadWarehousePendingPhoto,
+  upsertWarehouseVehicleInspection,
   uploadWarehouseVehiclePhoto,
   updateWarehouseVehicle,
 } from '../controllers/warehouse.controller';
 import { authenticate } from '../middleware/authenticate';
 import { authorizeRole } from '../middleware/authorize';
 import { handleValidationErrors } from '../middleware/express-validator.middleware';
-import { isWarehousePhotoBackupEnabled } from '../services/warehouse-photo-storage.service';
+import {
+  isWarehousePhotoBackupEnabled,
+  MAX_WAREHOUSE_PHOTOS_PER_VEHICLE,
+} from '../services/warehouse-photo-storage.service';
 import {
   correctWarehousePerformedService,
   createWarehouseTariff,
@@ -71,6 +81,27 @@ router.get('/status', (_req, res) => {
     photoBackupEnabled: isWarehousePhotoBackupEnabled(),
   });
 });
+
+router.post(
+  '/photo-uploads',
+  authorizeRole(...WAREHOUSE_STAFF_ROLES),
+  express.raw({
+    type: ['image/jpeg', 'image/png', 'image/webp'],
+    limit: '12mb',
+  }),
+  uploadWarehousePendingPhoto,
+);
+
+router.get(
+  '/photo-uploads',
+  authorizeRole(...WAREHOUSE_STAFF_ROLES),
+  [
+    query('uploadSessionId').isString().trim().notEmpty().isLength({ max: 120 }),
+    query('phase').optional({ checkFalsy: true }).isIn(['reception', 'issue']),
+  ],
+  handleValidationErrors,
+  listWarehousePendingPhotos,
+);
 
 router.get(
   '/clients',
@@ -151,7 +182,7 @@ router.get(
     query('periodTo').isISO8601({ strict: true }),
     query('periodTo').custom((value, { req }) => value >= String(req.query?.periodFrom)),
     query('counterpartyId').optional({ checkFalsy: true }).isUUID(),
-    query('vehicleType').optional({ checkFalsy: true }).isIn(['passenger', 'truck']),
+    query('vehicleType').optional({ checkFalsy: true }).isIn(WAREHOUSE_VEHICLE_TYPES),
   ],
   handleValidationErrors,
   getWarehouseBillingReport,
@@ -178,7 +209,7 @@ router.get(
     query('periodTo').isISO8601({ strict: true }),
     query('periodTo').custom((value, { req }) => value >= String(req.query?.periodFrom)),
     query('counterpartyId').optional({ checkFalsy: true }).isUUID(),
-    query('vehicleType').optional({ checkFalsy: true }).isIn(['passenger', 'truck']),
+    query('vehicleType').optional({ checkFalsy: true }).isIn(WAREHOUSE_VEHICLE_TYPES),
   ],
   handleValidationErrors,
   exportWarehouseBillingExcel,
@@ -192,7 +223,7 @@ router.get(
     query('periodTo').isISO8601({ strict: true }),
     query('periodTo').custom((value, { req }) => value >= String(req.query?.periodFrom)),
     query('counterpartyId').optional({ checkFalsy: true }).isUUID(),
-    query('vehicleType').optional({ checkFalsy: true }).isIn(['passenger', 'truck']),
+    query('vehicleType').optional({ checkFalsy: true }).isIn(WAREHOUSE_VEHICLE_TYPES),
   ],
   handleValidationErrors,
   exportWarehouseBillingPdf,
@@ -225,7 +256,7 @@ router.post(
   authorizeRole(...WAREHOUSE_TARIFF_MANAGEMENT_ROLES),
   [
     param('serviceId').isUUID(),
-    body('vehicleType').isIn(['passenger', 'truck']),
+    body('vehicleType').isIn(WAREHOUSE_VEHICLE_TYPES),
     body('price').isFloat({ min: 0, max: 1000000000 }),
     body('validFrom').isISO8601({ strict: true }),
   ],
@@ -272,7 +303,7 @@ router.get(
   [
     query('q').optional().isString().trim().isLength({ max: 100 }),
     query('status').optional({ checkFalsy: true }).isIn(['expected', 'on_site', 'issued']),
-    query('vehicleType').optional({ checkFalsy: true }).isIn(['passenger', 'truck']),
+    query('vehicleType').optional({ checkFalsy: true }).isIn(WAREHOUSE_VEHICLE_TYPES),
     query('counterpartyId').optional({ checkFalsy: true }).isUUID(),
   ],
   handleValidationErrors,
@@ -284,6 +315,19 @@ router.get(
   [param('id').isUUID()],
   handleValidationErrors,
   listWarehouseVehiclePhotos,
+);
+
+router.post(
+  '/vehicles/:id/attach-pending-photos',
+  authorizeRole(...WAREHOUSE_STAFF_ROLES),
+  [
+    param('id').isUUID(),
+    body('uploadSessionId').isString().trim().notEmpty().isLength({ max: 120 }),
+    body('clientHashes').isArray({ min: 0, max: MAX_WAREHOUSE_PHOTOS_PER_VEHICLE }),
+    body('clientHashes.*').isString().trim().notEmpty().isLength({ max: 80 }),
+  ],
+  handleValidationErrors,
+  attachWarehousePendingPhotos,
 );
 
 router.post(
@@ -322,6 +366,45 @@ router.delete(
 );
 
 router.get(
+  '/vehicles/:id/inspections/:phase',
+  [
+    param('id').isUUID(),
+    param('phase').isIn(['reception', 'issue']),
+  ],
+  handleValidationErrors,
+  getWarehouseVehicleInspection,
+);
+
+router.put(
+  '/vehicles/:id/inspections/:phase',
+  authorizeRole(...WAREHOUSE_STAFF_ROLES),
+  [
+    param('id').isUUID(),
+    param('phase').isIn(['reception', 'issue']),
+    body('vehicleDetails').optional().isObject(),
+    body('documentsAndKeys').optional().isObject(),
+    body('equipment').optional().isObject(),
+    body('technicalCondition').optional().isObject(),
+    body('photoChecklist').optional().isObject(),
+    body('damageNotes').optional({ nullable: true }).isString().trim().isLength({ max: 10000 }),
+    body('personalItemsNotes').optional({ nullable: true }).isString().trim().isLength({ max: 5000 }),
+    body('responsibilityAmount').optional({ nullable: true }).isFloat({ min: 0, max: 100000000000 }),
+  ],
+  handleValidationErrors,
+  upsertWarehouseVehicleInspection,
+);
+
+router.get(
+  '/vehicles/:id/inspections/:phase/act.pdf',
+  [
+    param('id').isUUID(),
+    param('phase').isIn(['reception', 'issue']),
+  ],
+  handleValidationErrors,
+  exportWarehouseVehicleInspectionAct,
+);
+
+router.get(
   '/vehicles/:id',
   [param('id').isUUID()],
   handleValidationErrors,
@@ -333,9 +416,9 @@ router.post(
   authorizeRole(...WAREHOUSE_STAFF_ROLES),
   [
     body('counterpartyId').isUUID(),
-    body('requestNumber').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
-    body('requestDate').optional({ nullable: true }).isISO8601({ strict: true }),
-    body('vehicleType').isIn(['passenger', 'truck']),
+    body('requestNumber').optional({ nullable: true, checkFalsy: true }).isString().trim().isLength({ max: 100 }),
+    body('requestDate').optional({ nullable: true, checkFalsy: true }).isISO8601({ strict: true }),
+    body('vehicleType').isIn(WAREHOUSE_VEHICLE_TYPES),
     body('vin').optional({ nullable: true }).isString().trim().isLength({ max: 32 }),
     body('chassisNumber').optional({ nullable: true }).isString().trim().isLength({ max: 64 }),
     body('brand').isString().trim().notEmpty().isLength({ max: 100 }),
@@ -354,7 +437,7 @@ router.patch(
   authorizeRole(...WAREHOUSE_STAFF_ROLES),
   [
     param('id').isUUID(),
-    body('vehicleType').optional().isIn(['passenger', 'truck']),
+    body('vehicleType').optional().isIn(WAREHOUSE_VEHICLE_TYPES),
     body('vin').optional({ nullable: true }).isString().trim().isLength({ max: 32 }),
     body('chassisNumber').optional({ nullable: true }).isString().trim().isLength({ max: 64 }),
     body('brand').optional().isString().trim().notEmpty().isLength({ max: 100 }),

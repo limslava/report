@@ -1221,7 +1221,7 @@ const DashboardLayout = () => {
         }}
       >
         <Toolbar />
-        <Collapse in={serviceHealth.isUnavailable}>
+        <Collapse in={serviceHealth.isUnavailable} unmountOnExit>
           <Alert
             severity="warning"
             sx={{ mb: 2 }}

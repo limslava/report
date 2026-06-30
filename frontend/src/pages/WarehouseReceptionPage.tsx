@@ -1,8 +1,6 @@
 import {
-  AddPhotoAlternate,
   ArrowBack,
   ArrowForward,
-  CameraAlt,
   CheckCircle,
   Delete,
   DirectionsCar,
@@ -20,6 +18,9 @@ import {
   Chip,
   Collapse,
   CircularProgress,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   FormControl,
   IconButton,
   InputLabel,
@@ -35,31 +36,63 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  attachWarehousePendingPhotos,
   createWarehouseVehicle,
-  getWarehouseVehiclePhotos,
+  downloadWarehouseVehicleInspectionAct,
   getWarehouseClients,
-  uploadWarehouseVehiclePhoto,
+  getWarehousePendingPhotos,
+  saveWarehouseVehicleInspection,
   WarehouseCounterparty,
+  WarehouseVehicleInspectionPayload,
   WarehouseVehicle,
   WarehouseVehiclePayload,
   WarehouseVehicleType,
 } from '../services/warehouse.api';
+import WarehouseInspectionForm, {
+  emptyWarehouseInspection,
+} from '../components/warehouse/WarehouseInspectionForm';
+import WarehouseDamageScheme from '../components/warehouse/WarehouseDamageScheme';
+import WarehousePhotoChecklist, {
+  buildPhotoChecklistState,
+} from '../components/warehouse/WarehousePhotoChecklist';
+import {
+  WAREHOUSE_VEHICLE_TYPES,
+  WarehousePhotoChecklistItem,
+  warehouseVehicleTypeLabel,
+} from '../constants/warehouse';
 import {
   clearWarehousePhotoQueue,
   enqueueWarehousePhoto,
   listWarehousePhotoQueue,
-  reassignWarehousePhotoQueue,
+  recoverWarehousePhotoQueue,
   removeWarehousePhotoQueueItem,
+  updateWarehousePhotoQueueItem,
   WarehousePhotoQueueItem,
 } from '../utils/warehouse-photo-queue';
 import { prepareWarehousePhoto } from '../utils/warehouse-photo-processing';
+import { uploadWarehousePhotoViaTus } from '../utils/warehouse-tus-upload';
 
 const DRAFT_KEY = 'warehouse-reception-draft-v1';
 const DRAFT_PHOTO_KEY = 'draft:warehouse-reception';
-const STEPS = ['Основа', 'ТС', 'Осмотр', 'Фото', 'Проверка'];
+const STEPS = ['Основа', 'ТС', 'Осмотр', 'Повреждения', 'Фото', 'Проверка'];
+const MAX_PARALLEL_PENDING_UPLOADS = 2;
+
+const createUploadSessionId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+const createClientHash = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID().replace(/-/g, '');
+  }
+  return `${Date.now()}${Math.random().toString(16).slice(2)}`.replace(/[^a-zA-Z0-9]/g, '');
+};
 
 const today = () => {
   return new Intl.DateTimeFormat('en-CA', {
@@ -101,8 +134,21 @@ const messageFromError = (error: unknown): string => {
   return error instanceof Error ? error.message : 'Не удалось выполнить приёмку.';
 };
 
+const downloadBlob = (blob: Blob, filename: string) => {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+};
+
 interface DraftState {
   form: WarehouseVehiclePayload;
+  inspection: WarehouseVehicleInspectionPayload;
+  uploadSessionId: string;
   activeStep: number;
   savedAt: string;
 }
@@ -111,10 +157,107 @@ interface DraftPhoto extends WarehousePhotoQueueItem {
   previewUrl: string;
 }
 
+const blobToDataUrl = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result || ''));
+  reader.onerror = () => reject(reader.error || new Error('Не удалось подготовить превью фотографии'));
+  reader.readAsDataURL(blob);
+});
+
+const dataUrlToBlob = (dataUrl?: string | null): Blob | null => {
+  if (!dataUrl || !dataUrl.startsWith('data:')) return null;
+  const [header, payload] = dataUrl.split(',');
+  if (!header || !payload) return null;
+  const mimeMatch = header.match(/^data:([^;]+);base64$/);
+  if (!mimeMatch) return null;
+  try {
+    const binary = atob(payload);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return new Blob([bytes], { type: mimeMatch[1] });
+  } catch {
+    return null;
+  }
+};
+
+const mergeDraftPhotosWithPreviews = (
+  current: DraftPhoto[],
+  queued: WarehousePhotoQueueItem[],
+  blobById?: Map<number, Blob>,
+): DraftPhoto[] => {
+  const previewById = new Map<number, string>();
+  const blobByCurrentId = new Map<number, Blob>();
+  current.forEach((photo) => {
+    if (photo.id) previewById.set(photo.id, photo.previewUrl);
+    if (photo.id) blobByCurrentId.set(photo.id, photo.blob);
+  });
+
+  const next = queued.map((photo) => {
+    const liveBlob = photo.id
+      ? blobById?.get(photo.id)
+        || blobByCurrentId.get(photo.id)
+        || dataUrlToBlob(photo.previewDataUrl)
+        || photo.blob
+      : photo.blob;
+    if (photo.id && liveBlob) {
+      blobById?.set(photo.id, liveBlob);
+    }
+
+    return {
+      ...photo,
+      blob: liveBlob,
+      previewUrl: photo.previewDataUrl || (
+        photo.id && previewById.has(photo.id)
+          ? previewById.get(photo.id)!
+          : URL.createObjectURL(liveBlob)
+      ),
+    };
+  });
+
+  const nextIds = new Set(next.map((photo) => photo.id).filter((id): id is number => Boolean(id)));
+  current.forEach((photo) => {
+    if (!photo.id || nextIds.has(photo.id)) return;
+    if (!photo.previewDataUrl) {
+      URL.revokeObjectURL(photo.previewUrl);
+    }
+  });
+
+  return next;
+};
+
+const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+const isRetriablePhotoUploadError = (error: unknown): boolean => {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const response = (error as { response?: { status?: number } }).response;
+    const status = response?.status;
+    return !status || status === 408 || status === 425 || status === 429 || status >= 500;
+  }
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    return String((error as { code?: string }).code || '').toUpperCase() === 'ECONNABORTED';
+  }
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return message.includes('network error')
+      || message.includes('internet')
+      || message.includes('disconnected')
+      || message.includes('failed to fetch')
+      || message.includes('fetch')
+      || message.includes('timeout')
+      || message.includes('время ожидания')
+      || message.includes('слишком много времени');
+  }
+  return false;
+};
+
 export default function WarehouseReceptionPage() {
   const navigate = useNavigate();
   const [activeStep, setActiveStep] = useState(0);
   const [form, setForm] = useState<WarehouseVehiclePayload>(emptyForm);
+  const [inspection, setInspection] = useState<WarehouseVehicleInspectionPayload>(emptyWarehouseInspection);
+  const [uploadSessionId, setUploadSessionId] = useState(createUploadSessionId);
   const [counterparties, setCounterparties] = useState<WarehouseCounterparty[]>([]);
   const [photos, setPhotos] = useState<DraftPhoto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -124,10 +267,17 @@ export default function WarehouseReceptionPage() {
   const [error, setError] = useState<string | null>(null);
   const [completedVehicle, setCompletedVehicle] = useState<WarehouseVehicle | null>(null);
   const [uploadWarning, setUploadWarning] = useState<string | null>(null);
+  const [inspectionWarning, setInspectionWarning] = useState<string | null>(null);
   const [photoUploadStatus, setPhotoUploadStatus] = useState({ uploaded: 0, total: 0, pending: 0 });
   const [photoLimitWarning, setPhotoLimitWarning] = useState<string | null>(null);
+  const [acceptanceModalOpen, setAcceptanceModalOpen] = useState(false);
+  const [pendingSubmitAfterUpload, setPendingSubmitAfterUpload] = useState(false);
+  const [counterpartyPickerOpen, setCounterpartyPickerOpen] = useState(false);
   const [basisOpen, setBasisOpen] = useState(false);
   const errorRef = useRef<HTMLDivElement | null>(null);
+  const activeUploadsRef = useRef<Set<number>>(new Set());
+  const activeUploadStartedAtRef = useRef<Map<number, number>>(new Map());
+  const livePhotoBlobsRef = useRef<Map<number, Blob>>(new Map());
 
   useEffect(() => {
     if (!error) return;
@@ -138,14 +288,33 @@ export default function WarehouseReceptionPage() {
 
   const loadDraftPhotos = useCallback(async () => {
     const queued = await listWarehousePhotoQueue(DRAFT_PHOTO_KEY);
-    setPhotos((current) => {
-      current.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
-      return queued.map((photo) => ({
-        ...photo,
-        previewUrl: URL.createObjectURL(photo.blob),
-      }));
-    });
+    setPhotos((current) => mergeDraftPhotosWithPreviews(current, queued, livePhotoBlobsRef.current));
   }, []);
+
+  const syncPendingPhotosFromServer = useCallback(async (sessionId = uploadSessionId) => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    const queued = await listWarehousePhotoQueue(DRAFT_PHOTO_KEY);
+    const effectiveSessionId = queued.find((photo) => photo.uploadSessionId)?.uploadSessionId || sessionId;
+    const response = await getWarehousePendingPhotos(effectiveSessionId, 'reception');
+    const uploadedHashes = new Set(response.data.map((photo) => photo.clientHash).filter(Boolean));
+    await Promise.all(queued.map((photo) => {
+      if (!photo.id || !photo.clientHash) return Promise.resolve();
+      if (!uploadedHashes.has(photo.clientHash)) {
+        if (!photo.shouldResumeUpload) return Promise.resolve();
+        return updateWarehousePhotoQueueItem(photo.id, {
+          shouldResumeUpload: false,
+          errorMessage: null,
+        });
+      }
+      if (photo.uploadStatus === 'uploaded' && photo.shouldResumeUpload === false) return Promise.resolve();
+      return updateWarehousePhotoQueueItem(photo.id, {
+        uploadStatus: 'uploaded',
+        shouldResumeUpload: false,
+        uploadedAt: photo.uploadedAt ?? Date.now(),
+        errorMessage: null,
+      });
+    }));
+  }, [uploadSessionId]);
 
   useEffect(() => {
     const load = async () => {
@@ -162,10 +331,17 @@ export default function WarehouseReceptionPage() {
         if (rawDraft) {
           const draft = JSON.parse(rawDraft) as DraftState;
           if (draft?.form) setForm({ ...emptyForm(), ...draft.form });
+          if (draft?.inspection) setInspection({ ...emptyWarehouseInspection(), ...draft.inspection });
+          if (draft?.uploadSessionId) setUploadSessionId(draft.uploadSessionId);
           if (Number.isInteger(draft?.activeStep)) {
             setActiveStep(Math.max(0, Math.min(STEPS.length - 1, draft.activeStep)));
           }
         }
+        await recoverWarehousePhotoQueue(DRAFT_PHOTO_KEY);
+        const restoredSessionId = rawDraft
+          ? (JSON.parse(rawDraft) as DraftState)?.uploadSessionId || uploadSessionId
+          : uploadSessionId;
+        await syncPendingPhotosFromServer(restoredSessionId).catch(() => undefined);
         await loadDraftPhotos();
       } catch (loadError) {
         setError(messageFromError(loadError));
@@ -177,31 +353,77 @@ export default function WarehouseReceptionPage() {
   }, [loadDraftPhotos]);
 
   useEffect(() => {
+    const resyncDraftPhotos = () => {
+      if (document.visibilityState && document.visibilityState !== 'visible') return;
+      void recoverWarehousePhotoQueue(DRAFT_PHOTO_KEY)
+        .then(() => syncPendingPhotosFromServer())
+        .then(() => loadDraftPhotos())
+        .catch(() => undefined);
+    };
+
+    window.addEventListener('focus', resyncDraftPhotos);
+    window.addEventListener('pageshow', resyncDraftPhotos);
+    document.addEventListener('visibilitychange', resyncDraftPhotos);
+
+    return () => {
+      window.removeEventListener('focus', resyncDraftPhotos);
+      window.removeEventListener('pageshow', resyncDraftPhotos);
+      document.removeEventListener('visibilitychange', resyncDraftPhotos);
+    };
+  }, [loadDraftPhotos, syncPendingPhotosFromServer]);
+
+  useEffect(() => {
     if (loading || completedVehicle) return;
     const timer = window.setTimeout(() => {
       const draft: DraftState = {
         form,
+        inspection,
+        uploadSessionId,
         activeStep,
         savedAt: new Date().toISOString(),
       };
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [activeStep, completedVehicle, form, loading]);
+  }, [activeStep, completedVehicle, form, inspection, loading, uploadSessionId]);
 
   useEffect(() => () => {
-    photos.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+    photos.forEach((photo) => {
+      if (!photo.previewDataUrl) {
+        URL.revokeObjectURL(photo.previewUrl);
+      }
+    });
   }, [photos]);
 
   const selectedCounterparty = useMemo(
     () => counterparties.find((item) => item.id === form.counterpartyId) ?? null,
     [counterparties, form.counterpartyId],
   );
+  const photoUploadSummary = useMemo(() => {
+    const uploaded = photos.filter((photo) => photo.uploadStatus === 'uploaded').length;
+    const uploading = photos.filter((photo) => photo.uploadStatus === 'uploading').length;
+    const failed = photos.filter((photo) => photo.uploadStatus === 'error').length;
+    const pending = Math.max(0, photos.length - uploaded - uploading - failed);
+    return {
+      total: photos.length,
+      uploaded,
+      uploading,
+      failed,
+      pending,
+      ready: photos.length === 0 || (uploaded === photos.length && failed === 0),
+    };
+  }, [photos]);
+
+  const damageMarksCount = useMemo(() => {
+    const marks = inspection.technicalCondition?.damageMarks;
+    return Array.isArray(marks) ? marks.length : 0;
+  }, [inspection.technicalCondition]);
   const stepErrors = useMemo(() => [
     !form.counterpartyId,
     !form.brand.trim() || !form.model.trim(),
     form.fuelLevelPercent != null
       && (form.fuelLevelPercent < 0 || form.fuelLevelPercent > 100),
+    false,
     photos.length === 0,
     false,
   ], [form, photos.length]);
@@ -218,7 +440,7 @@ export default function WarehouseReceptionPage() {
     ) {
       return 'Уровень топлива должен быть от 0 до 100%.';
     }
-    if (step === 3 && photos.length === 0) return 'Добавьте хотя бы одну фотографию.';
+    if (step === 4 && photos.length === 0) return 'Добавьте хотя бы одну фотографию.';
     return null;
   };
 
@@ -232,9 +454,135 @@ export default function WarehouseReceptionPage() {
     setActiveStep((current) => Math.min(STEPS.length - 1, current + 1));
   };
 
-  const handleFiles = async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
-    event.target.value = '';
+  const uploadDraftPhotoToPending = useCallback(async (photo: DraftPhoto) => {
+    if (!photo.id) return;
+    if (photo.uploadStatus === 'uploaded') return;
+    if (activeUploadsRef.current.has(photo.id)) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    const clientHash = photo.clientHash || createClientHash();
+    activeUploadsRef.current.add(photo.id);
+    activeUploadStartedAtRef.current.set(photo.id, Date.now());
+    await updateWarehousePhotoQueueItem(photo.id, {
+      uploadSessionId,
+      clientHash,
+      uploadStatus: 'uploading',
+      errorMessage: null,
+    });
+    await loadDraftPhotos();
+    try {
+      let uploaded = false;
+      let lastError: unknown = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          await uploadWarehousePhotoViaTus({
+            uploadSessionId,
+            clientHash,
+            file: photo.blob,
+            originalName: photo.name,
+            phase: 'reception',
+            checklistItem: photo.checklistItem,
+            resumeFromPrevious: Boolean(photo.shouldResumeUpload),
+          });
+          uploaded = true;
+          break;
+        } catch (uploadError) {
+          lastError = uploadError;
+          if (!isRetriablePhotoUploadError(uploadError) || attempt === 2) break;
+          await wait(700 * (attempt + 1));
+        }
+      }
+      if (!uploaded) throw lastError;
+      await updateWarehousePhotoQueueItem(photo.id, {
+        uploadSessionId,
+        clientHash,
+        uploadStatus: 'uploaded',
+        shouldResumeUpload: false,
+        uploadedAt: Date.now(),
+        errorMessage: null,
+      });
+    } catch (uploadError) {
+      const retriable = isRetriablePhotoUploadError(uploadError);
+      await updateWarehousePhotoQueueItem(photo.id, {
+        uploadSessionId,
+        clientHash,
+        uploadStatus: retriable ? 'pending' : 'error',
+        shouldResumeUpload: retriable,
+        errorMessage: messageFromError(uploadError),
+      });
+    } finally {
+      activeUploadsRef.current.delete(photo.id!);
+      activeUploadStartedAtRef.current.delete(photo.id!);
+      await loadDraftPhotos();
+    }
+  }, [loadDraftPhotos, uploadSessionId]);
+
+  const pumpPhotoUploadQueue = useCallback(() => {
+    if (completedVehicle || loading || processingPhotos) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    const now = Date.now();
+    const uploadingPhotoIds = new Set(
+      photos
+        .filter((photo) => photo.id && photo.uploadStatus === 'uploading')
+        .map((photo) => photo.id!),
+    );
+    activeUploadsRef.current.forEach((photoId) => {
+      const startedAt = activeUploadStartedAtRef.current.get(photoId) ?? 0;
+      const isStaleActiveSlot = startedAt > 0 && now - startedAt > 150_000;
+      if (!uploadingPhotoIds.has(photoId) || isStaleActiveSlot) {
+        activeUploadsRef.current.delete(photoId);
+        activeUploadStartedAtRef.current.delete(photoId);
+      }
+    });
+    const freeSlots = Math.max(0, MAX_PARALLEL_PENDING_UPLOADS - activeUploadsRef.current.size);
+    if (freeSlots === 0) return;
+    const nextBatch = photos.filter((photo) => (
+      photo.id
+      && (!photo.uploadStatus || photo.uploadStatus === 'pending')
+      && !activeUploadsRef.current.has(photo.id)
+    )).slice(0, freeSlots);
+    nextBatch.forEach((photo) => {
+      void uploadDraftPhotoToPending(photo);
+    });
+  }, [completedVehicle, loading, photos, processingPhotos, uploadDraftPhotoToPending]);
+
+  useEffect(() => {
+    pumpPhotoUploadQueue();
+  }, [pumpPhotoUploadQueue]);
+
+  useEffect(() => {
+    if (completedVehicle || loading || processingPhotos || photoUploadSummary.ready) return;
+    const timer = window.setInterval(() => {
+      pumpPhotoUploadQueue();
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [
+    completedVehicle,
+    loading,
+    photoUploadSummary.ready,
+    processingPhotos,
+    pumpPhotoUploadQueue,
+  ]);
+
+  useEffect(() => {
+    const resumeUploads = () => {
+      pumpPhotoUploadQueue();
+    };
+    window.addEventListener('focus', resumeUploads);
+    window.addEventListener('pageshow', resumeUploads);
+    window.addEventListener('online', resumeUploads);
+    document.addEventListener('visibilitychange', resumeUploads);
+    return () => {
+      window.removeEventListener('focus', resumeUploads);
+      window.removeEventListener('pageshow', resumeUploads);
+      window.removeEventListener('online', resumeUploads);
+      document.removeEventListener('visibilitychange', resumeUploads);
+    };
+  }, [pumpPhotoUploadQueue]);
+
+  const processPhotoFiles = async (
+    files: File[],
+    checklistItem?: WarehousePhotoChecklistItem | null,
+  ) => {
     if (files.length === 0) return;
     const availableSlots = Math.max(0, 60 - photos.length);
     if (availableSlots === 0) {
@@ -255,11 +603,19 @@ export default function WarehouseReceptionPage() {
       let done = 0;
       for (const file of files) {
         const prepared = await prepareWarehousePhoto(file);
-        await enqueueWarehousePhoto({
+        const previewDataUrl = await blobToDataUrl(prepared.blob);
+        const queueId = await enqueueWarehousePhoto({
           vehicleId: DRAFT_PHOTO_KEY,
           name: prepared.name,
           blob: prepared.blob,
+          previewDataUrl,
+          checklistItem,
+          uploadSessionId,
+          clientHash: createClientHash(),
+          uploadStatus: 'pending',
+          shouldResumeUpload: false,
         });
+        livePhotoBlobsRef.current.set(queueId, prepared.blob);
         done += 1;
         setProgress({ done, total: files.length, label: 'Подготовка фотографий' });
       }
@@ -271,9 +627,29 @@ export default function WarehouseReceptionPage() {
     }
   };
 
+  const handleChecklistFiles = async (
+    files: File[],
+    checklistItem: WarehousePhotoChecklistItem,
+  ) => {
+    await processPhotoFiles(files, checklistItem);
+  };
+
+  const retryFailedPhotos = useCallback(async () => {
+    const failed = photos.filter((photo) => photo.id && photo.uploadStatus === 'error');
+    await Promise.all(failed.map((photo) => photo.id
+      ? updateWarehousePhotoQueueItem(photo.id, {
+        uploadStatus: 'pending',
+        shouldResumeUpload: true,
+        errorMessage: null,
+      })
+      : Promise.resolve()));
+    await loadDraftPhotos();
+  }, [loadDraftPhotos, photos]);
+
   const removePhoto = async (photo: DraftPhoto) => {
     if (!photo.id) return;
     await removeWarehousePhotoQueueItem(photo.id);
+    livePhotoBlobsRef.current.delete(photo.id);
     setPhotoLimitWarning(null);
     await loadDraftPhotos();
   };
@@ -281,7 +657,10 @@ export default function WarehouseReceptionPage() {
   const clearDraft = async () => {
     localStorage.removeItem(DRAFT_KEY);
     await clearWarehousePhotoQueue(DRAFT_PHOTO_KEY);
+    livePhotoBlobsRef.current.clear();
     setForm(emptyForm());
+    setInspection(emptyWarehouseInspection());
+    setUploadSessionId(createUploadSessionId());
     setActiveStep(0);
     await loadDraftPhotos();
   };
@@ -290,41 +669,26 @@ export default function WarehouseReceptionPage() {
     navigate('/warehouse/operations', { replace: true });
   };
 
-  const reconcilePhotoQueue = async (vehicleId: string) => {
-    const [queue, serverResponse] = await Promise.all([
-      listWarehousePhotoQueue(vehicleId),
-      getWarehouseVehiclePhotos(vehicleId),
-    ]);
-    const availableServerPhotos = serverResponse.data
-      .filter((photo) => photo.phase === 'reception')
-      .map((photo) => ({ name: photo.originalName, size: photo.sizeBytes, matched: false }));
-
-    for (const item of queue) {
-      if (!item.id) continue;
-      const serverPhoto = availableServerPhotos.find(
-        (photo) => !photo.matched && photo.name === item.name && photo.size === item.blob.size,
-      );
-      if (!serverPhoto) continue;
-      serverPhoto.matched = true;
-      await removeWarehousePhotoQueueItem(item.id);
-    }
-    return listWarehousePhotoQueue(vehicleId);
-  };
-
   const uploadQueuedPhotos = async (vehicleId: string, total: number) => {
-    await reassignWarehousePhotoQueue(DRAFT_PHOTO_KEY, vehicleId);
-    const queue = await reconcilePhotoQueue(vehicleId);
-    let uploaded = total - queue.length;
-    setPhotoUploadStatus({ uploaded, total, pending: queue.length });
-    setProgress({ done: uploaded, total, label: 'Загрузка фотографий' });
-    for (const item of queue) {
-      if (!item.id) continue;
-      await uploadWarehouseVehiclePhoto(vehicleId, item.blob, item.name);
-      await removeWarehousePhotoQueueItem(item.id);
-      uploaded += 1;
-      setPhotoUploadStatus({ uploaded, total, pending: total - uploaded });
-      setProgress({ done: uploaded, total, label: 'Загрузка фотографий' });
+    const draftQueue = await listWarehousePhotoQueue(DRAFT_PHOTO_KEY);
+    const readyHashes = draftQueue
+      .filter((item) => item.uploadStatus === 'uploaded' && item.clientHash)
+      .map((item) => item.clientHash!);
+    if (readyHashes.length !== draftQueue.length) {
+      throw new Error('Не все фотографии догружены на сервер. Дождитесь завершения загрузки и повторите приёмку.');
     }
+    setProgress({ done: 0, total, label: 'Привязка фотографий' });
+    const response = await attachWarehousePendingPhotos(vehicleId, uploadSessionId, readyHashes);
+    const attachedCount = (response.data.attached || 0) + (response.data.alreadyAttached || 0);
+    setPhotoUploadStatus({
+      uploaded: attachedCount,
+      total,
+      pending: Math.max(0, total - attachedCount),
+    });
+    if (attachedCount === total) {
+      await clearWarehousePhotoQueue(DRAFT_PHOTO_KEY);
+    }
+    setProgress({ done: attachedCount, total, label: 'Привязка фотографий' });
   };
 
   const retryPhotoUpload = async () => {
@@ -334,23 +698,20 @@ export default function WarehouseReceptionPage() {
     try {
       await uploadQueuedPhotos(completedVehicle.id, photoUploadStatus.total);
     } catch {
-      const [vehicleQueue, draftQueue] = await Promise.all([
-        listWarehousePhotoQueue(completedVehicle.id).catch(() => []),
-        listWarehousePhotoQueue(DRAFT_PHOTO_KEY).catch(() => []),
-      ]);
-      const pending = vehicleQueue.length + draftQueue.length;
+      const draftQueue = await listWarehousePhotoQueue(DRAFT_PHOTO_KEY).catch(() => []);
+      const pending = draftQueue.filter((item) => item.uploadStatus !== 'uploaded').length;
       setPhotoUploadStatus((current) => ({
         ...current,
-        uploaded: current.total - pending,
+        uploaded: draftQueue.filter((item) => item.uploadStatus === 'uploaded').length,
         pending,
       }));
-      setUploadWarning('Не удалось догрузить все фотографии. Проверьте интернет и повторите попытку.');
+      setUploadWarning('Не удалось привязать все фотографии. Проверьте интернет и повторите попытку.');
     } finally {
       setSaving(false);
     }
   };
 
-  const submit = async () => {
+  const performSubmit = useCallback(async () => {
     for (let index = 0; index < STEPS.length - 1; index += 1) {
       const validationError = validateStep(index);
       if (validationError) {
@@ -362,6 +723,9 @@ export default function WarehouseReceptionPage() {
     setSaving(true);
     setError(null);
     setUploadWarning(null);
+    setInspectionWarning(null);
+    setAcceptanceModalOpen(false);
+    setPendingSubmitAfterUpload(false);
     let vehicle: WarehouseVehicle | null = null;
     try {
       setProgress({ done: 0, total: 1, label: 'Создание карточки ТС' });
@@ -374,26 +738,81 @@ export default function WarehouseReceptionPage() {
       setPhotoUploadStatus({ uploaded: 0, total: totalPhotos, pending: totalPhotos });
 
       try {
+        await saveWarehouseVehicleInspection(vehicle.id, 'reception', {
+          ...inspection,
+          photoChecklist: buildPhotoChecklistState(photos),
+        });
+      } catch (inspectionError) {
+        setInspectionWarning(
+          `Карточка создана, но акт осмотра не сохранился: ${messageFromError(inspectionError)}`,
+        );
+      }
+
+      try {
         await uploadQueuedPhotos(vehicle.id, totalPhotos);
       } catch {
-        const [vehicleQueue, draftQueue] = await Promise.all([
-          listWarehousePhotoQueue(vehicle.id).catch(() => []),
-          listWarehousePhotoQueue(DRAFT_PHOTO_KEY).catch(() => []),
-        ]);
-        const pending = vehicleQueue.length + draftQueue.length;
+        const draftQueue = await listWarehousePhotoQueue(DRAFT_PHOTO_KEY).catch(() => []);
+        const uploadedCount = draftQueue.filter((item) => item.uploadStatus === 'uploaded').length;
+        const pending = Math.max(0, totalPhotos - uploadedCount);
         setPhotoUploadStatus({
-          uploaded: Math.max(0, totalPhotos - pending),
+          uploaded: uploadedCount,
           total: totalPhotos,
           pending,
         });
-        setUploadWarning('Не все фотографии загружены. Проверьте интернет и повторите загрузку.');
+        setUploadWarning('Карточка создана, но не все фотографии удалось привязать. Повторите привязку.');
       }
     } catch (submitError) {
       if (!vehicle) {
         setError(messageFromError(submitError));
+      } else {
+        setCompletedVehicle(vehicle);
+        setInspectionWarning(
+          `Карточка создана, но часть данных приёмки не сохранилась: ${messageFromError(submitError)}`,
+        );
       }
     } finally {
       setSaving(false);
+    }
+  }, [
+    form,
+    inspection,
+    photos,
+    uploadSessionId,
+  ]);
+
+  const submit = async () => {
+    for (let index = 0; index < STEPS.length - 1; index += 1) {
+      const validationError = validateStep(index);
+      if (validationError) {
+        setActiveStep(index);
+        setError(validationError);
+        return;
+      }
+    }
+
+    if (!photoUploadSummary.ready || processingPhotos) {
+      setError(null);
+      setAcceptanceModalOpen(true);
+      setPendingSubmitAfterUpload(true);
+      return;
+    }
+
+    await performSubmit();
+  };
+
+  useEffect(() => {
+    if (!pendingSubmitAfterUpload || saving) return;
+    if (!photoUploadSummary.ready || processingPhotos) return;
+    void performSubmit();
+  }, [pendingSubmitAfterUpload, performSubmit, photoUploadSummary.ready, processingPhotos, saving]);
+
+  const downloadReceptionAct = async () => {
+    if (!completedVehicle) return;
+    try {
+      const response = await downloadWarehouseVehicleInspectionAct(completedVehicle.id, 'reception');
+      downloadBlob(response.data, `Акт_передачи_${completedVehicle.warehouseNumber}.pdf`);
+    } catch (downloadError) {
+      setError(messageFromError(downloadError));
     }
   };
 
@@ -423,7 +842,12 @@ export default function WarehouseReceptionPage() {
                 </Alert>
               )}
               {uploadWarning && <Alert severity="warning" sx={{ width: '100%' }}>{uploadWarning}</Alert>}
-              {photoUploadStatus.pending > 0 && (
+              {inspectionWarning && (
+                <Alert severity="warning" sx={{ width: '100%' }}>
+                  {inspectionWarning}
+                </Alert>
+              )}
+              {(photoUploadStatus.pending > 0 || uploadWarning) && (
                 <Button
                   fullWidth
                   variant="contained"
@@ -441,13 +865,23 @@ export default function WarehouseReceptionPage() {
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
                 <Button
                   variant="outlined"
+                  onClick={() => void downloadReceptionAct()}
+                >
+                  Скачать акт передачи
+                </Button>
+                <Button
+                  variant="outlined"
                   onClick={() => {
                     setCompletedVehicle(null);
                     setForm(emptyForm());
+                    setInspection(emptyWarehouseInspection());
+                    setUploadSessionId(createUploadSessionId());
                     setActiveStep(0);
+                    livePhotoBlobsRef.current.clear();
                     setPhotos([]);
                     setPhotoUploadStatus({ uploaded: 0, total: 0, pending: 0 });
                     setUploadWarning(null);
+                    setInspectionWarning(null);
                   }}
                 >
                   Принять ещё одно ТС
@@ -615,6 +1049,8 @@ export default function WarehouseReceptionPage() {
                   <Autocomplete
                     options={counterparties}
                     value={selectedCounterparty}
+                    onOpen={() => setCounterpartyPickerOpen(true)}
+                    onClose={() => setCounterpartyPickerOpen(false)}
                     onChange={(_event, value) => setForm((current) => ({
                       ...current,
                       counterpartyId: value?.id ?? '',
@@ -695,8 +1131,11 @@ export default function WarehouseReceptionPage() {
                       vehicleType: event.target.value as WarehouseVehicleType,
                     }))}
                   >
-                    <MenuItem value="passenger">Легковой</MenuItem>
-                    <MenuItem value="truck">Грузовой</MenuItem>
+                    {WAREHOUSE_VEHICLE_TYPES.map((vehicleType) => (
+                      <MenuItem key={vehicleType} value={vehicleType}>
+                        {warehouseVehicleTypeLabel(vehicleType)}
+                      </MenuItem>
+                    ))}
                   </Select>
                 </FormControl>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 1.25, sm: 2 }}>
@@ -746,7 +1185,7 @@ export default function WarehouseReceptionPage() {
             )}
 
             {activeStep === 2 && (
-              <>
+              <Stack spacing={2}>
                 <TextField
                   type="number"
                   label="Уровень топлива при приёмке, %"
@@ -765,10 +1204,21 @@ export default function WarehouseReceptionPage() {
                   value={form.notes || ''}
                   onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
                 />
-              </>
+                <WarehouseInspectionForm value={inspection} onChange={setInspection} />
+              </Stack>
             )}
 
             {activeStep === 3 && (
+              <Stack spacing={2}>
+                <WarehouseDamageScheme
+                  value={inspection}
+                  vehicleType={form.vehicleType}
+                  onChange={setInspection}
+                />
+              </Stack>
+            )}
+
+            {activeStep === 4 && (
               <>
                 <Chip
                   label={`Количество фотографий — ${photos.length} из 60`}
@@ -783,31 +1233,54 @@ export default function WarehouseReceptionPage() {
                     },
                   }}
                 />
+                {photos.length > 0 && (
+                  <Alert
+                    severity={
+                      photoUploadSummary.failed > 0
+                        ? 'error'
+                        : photoUploadSummary.ready
+                          ? 'success'
+                          : 'info'
+                    }
+                  >
+                    Фото на сервере: {photoUploadSummary.uploaded}/{photoUploadSummary.total}.
+                    {photoUploadSummary.uploading > 0 && ` Загружается: ${photoUploadSummary.uploading}.`}
+                    {photoUploadSummary.pending > 0 && ` В очереди: ${photoUploadSummary.pending}.`}
+                    {photoUploadSummary.failed > 0 && ` Ошибок: ${photoUploadSummary.failed}.`}
+                  </Alert>
+                )}
+                {photos.length > 0 && !photoUploadSummary.ready && photoUploadSummary.failed === 0 && (
+                  <LinearProgress
+                    variant="determinate"
+                    value={photoUploadSummary.total > 0
+                      ? photoUploadSummary.uploaded / photoUploadSummary.total * 100
+                      : 0}
+                  />
+                )}
+                {photoUploadSummary.failed > 0 && (
+                  <Button
+                    variant="contained"
+                    color="warning"
+                    startIcon={<Refresh />}
+                    onClick={() => void retryFailedPhotos()}
+                  >
+                    Повторить загрузку фото
+                  </Button>
+                )}
                 {photoLimitWarning && (
                   <Alert severity="warning" onClose={() => setPhotoLimitWarning(null)}>
                     {photoLimitWarning}
                   </Alert>
                 )}
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-                  <Button
-                    component="label"
-                    variant="contained"
-                    startIcon={<CameraAlt />}
-                    disabled={processingPhotos || photos.length >= 60}
-                  >
-                    Сделать фото
-                    <input hidden type="file" accept="image/*" capture="environment" onChange={(event) => void handleFiles(event)} />
-                  </Button>
-                  <Button
-                    component="label"
-                    variant="outlined"
-                    startIcon={<AddPhotoAlternate />}
-                    disabled={processingPhotos || photos.length >= 60}
-                  >
-                    Выбрать из галереи
-                    <input hidden type="file" accept="image/*" multiple onChange={(event) => void handleFiles(event)} />
-                  </Button>
-                </Stack>
+                <WarehousePhotoChecklist
+                  photos={photos}
+                  disabled={saving || processingPhotos || photos.length >= 60}
+                  onFiles={(files, checklistItem) => void handleChecklistFiles(files, checklistItem)}
+                  onRemove={(photo) => {
+                    const target = photos.find((item) => item.id === photo.id);
+                    if (target) void removePhoto(target);
+                  }}
+                />
                 {processingPhotos && (
                   <Box>
                     <Typography variant="body2" gutterBottom>
@@ -819,30 +1292,10 @@ export default function WarehouseReceptionPage() {
                     />
                   </Box>
                 )}
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' }, gap: 1 }}>
-                  {photos.map((photo, index) => (
-                    <Box key={photo.id} sx={{ position: 'relative', aspectRatio: '4 / 3' }}>
-                      <Box
-                        component="img"
-                        src={photo.previewUrl}
-                        alt={`Фото ${index + 1}`}
-                        sx={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 1 }}
-                      />
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => void removePhoto(photo)}
-                        sx={{ position: 'absolute', top: 4, right: 4, bgcolor: 'background.paper' }}
-                      >
-                        <Delete fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  ))}
-                </Box>
               </>
             )}
 
-            {activeStep === 4 && (
+            {activeStep === 5 && (
               <Stack spacing={2}>
                 <Alert severity="info">Проверьте данные перед созданием складской карточки.</Alert>
                 {[
@@ -850,13 +1303,14 @@ export default function WarehouseReceptionPage() {
                   ['Входящая заявка клиента', form.requestNumber
                     ? `${form.requestNumber}${form.requestDate ? ` от ${form.requestDate}` : ''}`
                     : 'Не указана'],
-                  ['Тип ТС', form.vehicleType === 'truck' ? 'Грузовой' : 'Легковой'],
+                  ['Тип ТС', warehouseVehicleTypeLabel(form.vehicleType)],
                   ['ТС', `${form.brand} ${form.model}`],
                   ['VIN / шасси', form.vin || form.chassisNumber || '—'],
                   ['Госномер', form.registrationNumber || '—'],
                   ['Дата и время приёмки', 'Автоматически при подтверждении'],
                   ['Топливо', form.fuelLevelPercent === null ? 'Не указано' : `${form.fuelLevelPercent}%`],
                   ['Фотографии', String(photos.length)],
+                  ['Отметки на схеме', damageMarksCount > 0 ? String(damageMarksCount) : 'Нет'],
                 ].map(([label, value]) => (
                   <Stack key={label} direction="row" justifyContent="space-between" gap={2} sx={{ borderBottom: 1, borderColor: 'divider', pb: 1 }}>
                     <Typography color="text.secondary">{label}</Typography>
@@ -885,11 +1339,12 @@ export default function WarehouseReceptionPage() {
           sx={{
             p: { xs: 0.75, sm: 1.5 },
             pb: { xs: 'calc(6px + env(safe-area-inset-bottom))', sm: 1.5 },
-            position: { xs: 'fixed', sm: 'sticky' },
+            display: { xs: counterpartyPickerOpen ? 'none' : 'block', sm: 'block' },
+            position: 'sticky',
             left: { xs: 4, sm: 'auto' },
             right: { xs: 4, sm: 'auto' },
             bottom: { xs: 0, sm: 0 },
-            zIndex: 2,
+            zIndex: (theme) => theme.zIndex.modal + 1,
             boxShadow: { xs: 3, md: 0 },
           }}
         >
@@ -918,7 +1373,13 @@ export default function WarehouseReceptionPage() {
                 Сохранить черновик
               </Button>
               {activeStep < STEPS.length - 1 ? (
-                <Button size="small" variant="contained" endIcon={<ArrowForward />} onClick={goNext}>
+                <Button
+                  size="small"
+                  variant="contained"
+                  endIcon={<ArrowForward />}
+                  onClick={goNext}
+                  disabled={saving}
+                >
                   Далее
                 </Button>
               ) : (
@@ -935,6 +1396,49 @@ export default function WarehouseReceptionPage() {
             </Stack>
           </Stack>
         </Paper>
+
+        <Dialog open={acceptanceModalOpen} fullWidth maxWidth="xs">
+          <DialogTitle>Подготовка фото к приёмке</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ pt: 1 }}>
+              <Typography variant="body2" color="text.secondary">
+                Карточка ТС будет создана автоматически, как только все фотографии догрузятся на сервер.
+              </Typography>
+              <Alert severity={photoUploadSummary.failed > 0 ? 'warning' : 'info'}>
+                Фото на сервере: {photoUploadSummary.uploaded}/{photoUploadSummary.total}.
+                {photoUploadSummary.uploading > 0 && ` Загружается: ${photoUploadSummary.uploading}.`}
+                {photoUploadSummary.pending > 0 && ` В очереди: ${photoUploadSummary.pending}.`}
+                {photoUploadSummary.failed > 0 && ` Ошибок: ${photoUploadSummary.failed}.`}
+              </Alert>
+              <LinearProgress
+                variant={photoUploadSummary.total > 0 ? 'determinate' : 'indeterminate'}
+                value={photoUploadSummary.total > 0
+                  ? photoUploadSummary.uploaded / photoUploadSummary.total * 100
+                  : 0}
+              />
+              {photoUploadSummary.failed > 0 && (
+                <Button
+                  variant="contained"
+                  color="warning"
+                  startIcon={<Refresh />}
+                  onClick={() => void retryFailedPhotos()}
+                >
+                  Повторить загрузку фото
+                </Button>
+              )}
+              <Button
+                variant="text"
+                disabled={saving}
+                onClick={() => {
+                  setPendingSubmitAfterUpload(false);
+                  setAcceptanceModalOpen(false);
+                }}
+              >
+                Вернуться к редактированию
+              </Button>
+            </Stack>
+          </DialogContent>
+        </Dialog>
       </Stack>
     </Box>
   );

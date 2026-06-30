@@ -1,5 +1,5 @@
-const MAX_IMAGE_SIDE = 3072;
-const JPEG_QUALITY = 0.9;
+const MAX_IMAGE_SIDE = 1920;
+const JPEG_QUALITY = 0.82;
 
 const loadImage = (file: File): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
   const url = URL.createObjectURL(file);

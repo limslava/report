@@ -29,7 +29,12 @@ import {
   getWarehouseServices,
   updateWarehouseService,
   WarehouseServiceDefinition,
+  WarehouseVehicleType,
 } from '../../services/warehouse.api';
+import {
+  WAREHOUSE_VEHICLE_TYPES,
+  warehouseVehicleTypeLabel,
+} from '../../constants/warehouse';
 
 const today = () => {
   const date = new Date();
@@ -39,7 +44,7 @@ const today = () => {
   return `${year}-${month}-${day}`;
 };
 const money = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' });
-const unitLabels = { operation: 'операция', liter: 'литр', day: 'сутки' };
+const unitLabels = { operation: 'операция', liter: 'литр', day: 'сутки', wheel: 'колесо' };
 
 const messageFromError = (error: unknown): string => {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -57,8 +62,8 @@ export default function WarehouseTariffsPanel() {
   const [success, setSuccess] = useState<string | null>(null);
   const [editing, setEditing] = useState<WarehouseServiceDefinition | null>(null);
   const [validFrom, setValidFrom] = useState(today());
-  const [passengerPrice, setPassengerPrice] = useState('');
-  const [truckPrice, setTruckPrice] = useState('');
+  const [prices, setPrices] = useState<Record<WarehouseVehicleType, string>>(() =>
+    Object.fromEntries(WAREHOUSE_VEHICLE_TYPES.map((type) => [type, ''])) as Record<WarehouseVehicleType, string>);
   const [defaultQuantity, setDefaultQuantity] = useState('1');
   const [isActive, setIsActive] = useState(true);
 
@@ -79,8 +84,14 @@ export default function WarehouseTariffsPanel() {
   const openEdit = (service: WarehouseServiceDefinition) => {
     setEditing(service);
     setValidFrom(today());
-    setPassengerPrice(service.currentTariffs.passenger?.price?.toString() ?? '');
-    setTruckPrice(service.currentTariffs.truck?.price?.toString() ?? '');
+    setPrices(
+      Object.fromEntries(
+        WAREHOUSE_VEHICLE_TYPES.map((type) => [
+          type,
+          service.currentTariffs[type]?.price?.toString() ?? '',
+        ]),
+      ) as Record<WarehouseVehicleType, string>,
+    );
     setDefaultQuantity(service.defaultQuantity === null ? '' : String(service.defaultQuantity));
     setIsActive(service.isActive);
     setError(null);
@@ -95,27 +106,14 @@ export default function WarehouseTariffsPanel() {
         defaultQuantity: defaultQuantity === '' ? null : Number(defaultQuantity),
         isActive,
       });
-      const tariffRequests = [];
-      if (
-        passengerPrice !== ''
-        && Number(passengerPrice) !== editing.currentTariffs.passenger?.price
-      ) {
-        tariffRequests.push(createWarehouseTariff(editing.id, {
-          vehicleType: 'passenger',
-          price: Number(passengerPrice),
+      const tariffRequests = WAREHOUSE_VEHICLE_TYPES
+        .filter((type) => prices[type] !== ''
+          && Number(prices[type]) !== editing.currentTariffs[type]?.price)
+        .map((type) => createWarehouseTariff(editing.id, {
+          vehicleType: type,
+          price: Number(prices[type]),
           validFrom,
         }));
-      }
-      if (
-        truckPrice !== ''
-        && Number(truckPrice) !== editing.currentTariffs.truck?.price
-      ) {
-        tariffRequests.push(createWarehouseTariff(editing.id, {
-          vehicleType: 'truck',
-          price: Number(truckPrice),
-          validFrom,
-        }));
-      }
       await Promise.all(tariffRequests);
       setSuccess(`Настройки услуги «${editing.name}» сохранены.`);
       setEditing(null);
@@ -134,7 +132,7 @@ export default function WarehouseTariffsPanel() {
       <Box>
         <Typography variant="h6">Услуги и тарифы</Typography>
         <Typography variant="body2" color="text.secondary">
-          Цены задаются отдельно для легковых и грузовых ТС. Новая цена действует с указанной даты.
+          Цены задаются отдельно для каждого типа ТС. Новая цена действует с указанной даты.
         </Typography>
       </Box>
       {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
@@ -145,8 +143,9 @@ export default function WarehouseTariffsPanel() {
             <TableRow>
               <TableCell>Услуга</TableCell>
               <TableCell>Единица</TableCell>
-              <TableCell align="right">Легковой</TableCell>
-              <TableCell align="right">Грузовой</TableCell>
+              {WAREHOUSE_VEHICLE_TYPES.map((type) => (
+                <TableCell key={type} align="right">{warehouseVehicleTypeLabel(type)}</TableCell>
+              ))}
               <TableCell>Статус</TableCell>
               <TableCell align="right">Настройка</TableCell>
             </TableRow>
@@ -168,16 +167,13 @@ export default function WarehouseTariffsPanel() {
                   )}
                 </TableCell>
                 <TableCell>{unitLabels[service.unit]}</TableCell>
-                <TableCell align="right">
-                  {service.currentTariffs.passenger
-                    ? `${money.format(service.currentTariffs.passenger.price)}${service.unit === 'liter' ? ' / л' : ''}`
-                    : 'Не задан'}
-                </TableCell>
-                <TableCell align="right">
-                  {service.currentTariffs.truck
-                    ? `${money.format(service.currentTariffs.truck.price)}${service.unit === 'liter' ? ' / л' : ''}`
-                    : 'Не задан'}
-                </TableCell>
+                {WAREHOUSE_VEHICLE_TYPES.map((type) => (
+                  <TableCell key={type} align="right">
+                    {service.currentTariffs[type]
+                      ? `${money.format(service.currentTariffs[type].price)}${service.unit === 'liter' ? ' / л' : ''}`
+                      : 'Не задан'}
+                  </TableCell>
+                ))}
                 <TableCell>
                   <Chip
                     size="small"
@@ -218,24 +214,22 @@ export default function WarehouseTariffsPanel() {
               value={validFrom}
               onChange={(event) => setValidFrom(event.target.value)}
             />
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField
-                fullWidth
-                type="number"
-                label={editing?.unit === 'liter' ? 'Легковой, ₽/л' : 'Легковой, ₽'}
-                value={passengerPrice}
-                onChange={(event) => setPassengerPrice(event.target.value)}
-                inputProps={{ min: 0, step: 0.01 }}
-              />
-              <TextField
-                fullWidth
-                type="number"
-                label={editing?.unit === 'liter' ? 'Грузовой, ₽/л' : 'Грузовой, ₽'}
-                value={truckPrice}
-                onChange={(event) => setTruckPrice(event.target.value)}
-                inputProps={{ min: 0, step: 0.01 }}
-              />
-            </Stack>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 2 }}>
+              {WAREHOUSE_VEHICLE_TYPES.map((type) => (
+                <TextField
+                  key={type}
+                  fullWidth
+                  type="number"
+                  label={`${warehouseVehicleTypeLabel(type)}, ${editing?.unit === 'liter' ? '₽/л' : '₽'}`}
+                  value={prices[type]}
+                  onChange={(event) => setPrices((current) => ({
+                    ...current,
+                    [type]: event.target.value,
+                  }))}
+                  inputProps={{ min: 0, step: 0.01 }}
+                />
+              ))}
+            </Box>
             <FormControlLabel
               control={<Switch checked={isActive} onChange={(event) => setIsActive(event.target.checked)} />}
               label="Услуга активна"

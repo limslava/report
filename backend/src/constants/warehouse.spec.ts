@@ -4,6 +4,8 @@ import {
   WAREHOUSE_DATE_CORRECTION_ROLES,
   WAREHOUSE_STAFF_ROLES,
   WAREHOUSE_TARIFF_MANAGEMENT_ROLES,
+  WAREHOUSE_VEHICLE_TYPE_LABELS,
+  WAREHOUSE_VEHICLE_TYPES,
 } from './warehouse';
 
 describe('warehouse role matrix', () => {
@@ -29,5 +31,18 @@ describe('warehouse role matrix', () => {
     expect(WAREHOUSE_STAFF_ROLES).not.toContain('financer');
     expect(WAREHOUSE_STAFF_ROLES).not.toContain('director');
     expect(WAREHOUSE_STAFF_ROLES).not.toContain('counterparty_user');
+  });
+
+  it('supports the storage contract vehicle categories', () => {
+    expect(WAREHOUSE_VEHICLE_TYPES).toEqual([
+      'passenger',
+      'light_commercial',
+      'truck',
+      'trailer',
+      'special',
+      'motorcycle',
+    ]);
+    expect(WAREHOUSE_VEHICLE_TYPE_LABELS.light_commercial)
+      .toBe('Легковой коммерческий автомобиль');
   });
 });

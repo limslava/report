@@ -4,25 +4,37 @@ import { AppDataSource } from '../config/data-source';
 import { Counterparty } from '../models/counterparty.model';
 import { Contract } from '../models/contract.model';
 import { WarehouseOperation, WarehouseOperationType } from '../models/warehouse-operation.model';
+import { WarehousePendingPhotoUpload } from '../models/warehouse-pending-photo-upload.model';
 import { WarehousePhoto } from '../models/warehouse-photo.model';
 import { WarehouseClient } from '../models/warehouse-client.model';
+import {
+  WarehouseInspectionPhase,
+  WarehouseVehicleInspection,
+} from '../models/warehouse-vehicle-inspection.model';
 import { WarehouseStorageRequest } from '../models/warehouse-storage-request.model';
 import {
   WarehouseVehicle,
   WarehouseVehicleType,
 } from '../models/warehouse-vehicle.model';
 import {
+  attachWarehousePendingPhotoFile,
+  deleteWarehousePendingPhotoFile,
   deleteWarehousePhotoFile,
   isAllowedWarehousePhotoMime,
   MAX_WAREHOUSE_PHOTO_BYTES,
   MAX_WAREHOUSE_PHOTOS_PER_VEHICLE,
   purgeWarehouseVehiclePhotos,
   resolveWarehousePhotoPath,
+  storeWarehousePendingPhoto,
   storeWarehousePhoto,
 } from '../services/warehouse-photo-storage.service';
 import fs from 'fs';
-import { assertWarehouseDateIsOpen } from '../services/warehouse-billing-lock.service';
+import {
+  assertWarehouseDateIsOpen,
+  assertWarehouseStorageRangeIsOpen,
+} from '../services/warehouse-billing-lock.service';
 import { recordAuditLog } from '../services/audit-log.service';
+import { buildWarehouseInspectionActPdf } from '../services/warehouse-inspection-act.service';
 
 const normalizeNullable = (value: unknown): string | null => {
   const normalized = String(value ?? '').trim();
@@ -120,10 +132,54 @@ const serializePhoto = (photo: WarehousePhoto) => ({
   originalName: photo.originalName,
   mimeType: photo.mimeType,
   sizeBytes: photo.sizeBytes,
+  clientHash: photo.clientHash,
   phase: photo.phase,
+  checklistItem: photo.checklistItem,
   uploadedByName: photo.uploadedByName,
   createdAt: photo.createdAt,
 });
+
+const serializePendingPhoto = (photo: WarehousePendingPhotoUpload) => ({
+  id: photo.id,
+  uploadSessionId: photo.uploadSessionId,
+  originalName: photo.originalName,
+  mimeType: photo.mimeType,
+  sizeBytes: photo.sizeBytes,
+  clientHash: photo.clientHash,
+  phase: photo.phase,
+  checklistItem: photo.checklistItem,
+  createdAt: photo.createdAt,
+  expiresAt: photo.expiresAt,
+});
+
+const normalizeJsonObject = (value: unknown): Record<string, unknown> => (
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+);
+
+const serializeInspection = (inspection: WarehouseVehicleInspection) => ({
+  id: inspection.id,
+  vehicleId: inspection.vehicleId,
+  phase: inspection.phase,
+  vehicleDetails: inspection.vehicleDetails,
+  documentsAndKeys: inspection.documentsAndKeys,
+  equipment: inspection.equipment,
+  technicalCondition: inspection.technicalCondition,
+  photoChecklist: inspection.photoChecklist,
+  damageNotes: inspection.damageNotes,
+  personalItemsNotes: inspection.personalItemsNotes,
+  responsibilityAmount: inspection.responsibilityAmount === null ? null : Number(inspection.responsibilityAmount),
+  inspectedByName: inspection.inspectedByName,
+  createdAt: inspection.createdAt,
+  updatedAt: inspection.updatedAt,
+});
+
+const inspectionContentDisposition = (filename: string): string => {
+  const encoded = encodeURIComponent(filename).replace(/%20/g, '+');
+  const fallback = filename.replace(/[^\x20-\x7E]+/g, '_');
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+};
 
 const addOperation = async (
   manager: EntityManager,
@@ -457,7 +513,14 @@ export const updateWarehouseVehicle = async (
         error.statusCode = 400;
         throw error;
       }
-      if (req.body.vehicleType !== undefined) vehicle.vehicleType = req.body.vehicleType;
+      if (req.body.vehicleType !== undefined && req.body.vehicleType !== vehicle.vehicleType) {
+        await assertWarehouseStorageRangeIsOpen(
+          vehicle.counterpartyId,
+          vehicle.receivedDate,
+          vehicle.issuedDate ?? todayDate(),
+        );
+        vehicle.vehicleType = req.body.vehicleType;
+      }
       if (req.body.vin !== undefined) vehicle.vin = normalizeNullable(req.body.vin)?.toUpperCase() ?? null;
       if (req.body.chassisNumber !== undefined) vehicle.chassisNumber = normalizeNullable(req.body.chassisNumber);
       if (req.body.brand !== undefined) vehicle.brand = String(req.body.brand).trim();
@@ -533,15 +596,16 @@ export const correctWarehouseVehicleDates = async (
 
       const nextReceivedDate = dateInVladivostok(receivedAt);
       const nextIssuedDate = issuedAt ? dateInVladivostok(issuedAt) : null;
-      const datesToCheck = new Set([
+      await assertWarehouseStorageRangeIsOpen(
+        vehicle.counterpartyId,
         vehicle.receivedDate,
-        vehicle.issuedDate,
+        vehicle.issuedDate ?? todayDate(),
+      );
+      await assertWarehouseStorageRangeIsOpen(
+        vehicle.counterpartyId,
         nextReceivedDate,
-        nextIssuedDate,
-      ].filter((value): value is string => Boolean(value)));
-      for (const date of datesToCheck) {
-        await assertWarehouseDateIsOpen(vehicle.counterpartyId, date);
-      }
+        nextIssuedDate ?? todayDate(),
+      );
 
       const before = {
         receivedDate: vehicle.receivedDate,
@@ -692,6 +756,257 @@ export const listWarehouseVehiclePhotos = async (
   }
 };
 
+export const uploadWarehousePendingPhoto = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  let storedName: string | null = null;
+  let uploadSessionId = '';
+  try {
+    uploadSessionId = String(req.headers['x-upload-session-id'] ?? '').trim();
+    const clientHash = String(req.headers['x-photo-client-hash'] ?? '').trim();
+    if (!uploadSessionId || uploadSessionId.length > 120 || !/^[a-zA-Z0-9._:-]+$/.test(uploadSessionId)) {
+      res.status(400).json({ message: 'Некорректная сессия загрузки фото' });
+      return;
+    }
+    if (!clientHash || clientHash.length > 80 || !/^[a-zA-Z0-9._:-]+$/.test(clientHash)) {
+      res.status(400).json({ message: 'Некорректный идентификатор фотографии' });
+      return;
+    }
+
+    const mimeType = String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+    if (!isAllowedWarehousePhotoMime(mimeType)) {
+      res.status(415).json({ message: 'Разрешены только JPEG, PNG и WebP' });
+      return;
+    }
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      res.status(400).json({ message: 'Файл фотографии пуст' });
+      return;
+    }
+    if (req.body.length > MAX_WAREHOUSE_PHOTO_BYTES) {
+      res.status(413).json({ message: 'Фотография превышает лимит 12 МБ' });
+      return;
+    }
+
+    const repository = AppDataSource.getRepository(WarehousePendingPhotoUpload);
+    const existing = await repository.findOne({
+      where: {
+        uploadSessionId,
+        clientHash,
+        uploadedById: req.user!.id,
+      },
+    });
+    if (existing && existing.expiresAt > new Date()) {
+      res.status(200).json(serializePendingPhoto(existing));
+      return;
+    }
+    if (existing) {
+      await deleteWarehousePendingPhotoFile(existing.uploadSessionId, existing.storedName).catch(() => undefined);
+      await repository.delete({ id: existing.id });
+    }
+
+    const originalNameHeader = String(req.headers['x-file-name'] ?? '').trim();
+    let decodedOriginalName = 'photo.jpg';
+    try {
+      decodedOriginalName = decodeURIComponent(originalNameHeader || decodedOriginalName);
+    } catch {
+      decodedOriginalName = 'photo.jpg';
+    }
+    const originalName = decodedOriginalName
+      .replace(/[\u0000-\u001f\u007f]/g, '')
+      .slice(0, 255);
+    const phase = req.headers['x-photo-phase'] === 'issue' ? 'issue' : 'reception';
+    const checklistItem = normalizeNullable(req.headers['x-photo-checklist-item']);
+    storedName = await storeWarehousePendingPhoto(uploadSessionId, mimeType, req.body);
+    const saved = await repository.save(repository.create({
+      uploadSessionId,
+      storedName,
+      originalName,
+      mimeType,
+      sizeBytes: req.body.length,
+      clientHash,
+      phase,
+      checklistItem,
+      uploadedById: req.user!.id,
+      uploadedByName: req.user!.fullName,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    }));
+    res.status(201).json(serializePendingPhoto(saved));
+  } catch (error) {
+    if (storedName && uploadSessionId) {
+      await deleteWarehousePendingPhotoFile(uploadSessionId, storedName).catch(() => undefined);
+    }
+    next(error);
+  }
+};
+
+export const listWarehousePendingPhotos = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const uploadSessionId = String(req.query.uploadSessionId ?? '').trim();
+    const phase = normalizeNullable(req.query.phase);
+    if (!uploadSessionId || uploadSessionId.length > 120 || !/^[a-zA-Z0-9._:-]+$/.test(uploadSessionId)) {
+      res.status(400).json({ message: 'Некорректная сессия загрузки фото' });
+      return;
+    }
+    if (phase && !['reception', 'issue'].includes(phase)) {
+      res.status(400).json({ message: 'Некорректный тип фотофиксации' });
+      return;
+    }
+
+    const query = AppDataSource.getRepository(WarehousePendingPhotoUpload)
+      .createQueryBuilder('photo')
+      .where('photo.uploadSessionId = :uploadSessionId', { uploadSessionId })
+      .andWhere('photo.uploadedById = :uploadedById', { uploadedById: req.user!.id })
+      .andWhere('photo.expiresAt > :now', { now: new Date() })
+      .orderBy('photo.createdAt', 'ASC');
+
+    if (phase) {
+      query.andWhere('photo.phase = :phase', { phase });
+    }
+
+    const photos = await query.getMany();
+    res.json(photos.map(serializePendingPhoto));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const attachWarehousePendingPhotos = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const vehicleRepository = AppDataSource.getRepository(WarehouseVehicle);
+    const vehicle = await vehicleRepository.findOne({ where: { id: req.params.id } });
+    if (!vehicle) {
+      res.status(404).json({ message: 'Карточка ТС не найдена' });
+      return;
+    }
+    await assertVehicleScope(req, vehicle);
+    if (vehicle.status !== 'on_site') {
+      res.status(409).json({ message: 'Фотографии можно добавлять только для ТС на стоянке' });
+      return;
+    }
+
+    const uploadSessionId = String(req.body.uploadSessionId ?? '').trim();
+    const clientHashes = Array.isArray(req.body.clientHashes)
+      ? req.body.clientHashes.map((value: unknown) => String(value ?? '').trim()).filter(Boolean)
+      : [];
+    if (!uploadSessionId || clientHashes.length === 0) {
+      res.json({ attached: 0, missing: clientHashes.length });
+      return;
+    }
+
+    const pendingRepository = AppDataSource.getRepository(WarehousePendingPhotoUpload);
+    const photoRepository = AppDataSource.getRepository(WarehousePhoto);
+    const existingPhotos = await photoRepository.find({
+      where: { vehicleId: vehicle.id },
+      select: ['id', 'clientHash'],
+    });
+    const alreadyAttachedHashes = new Set(
+      existingPhotos
+        .map((photo) => photo.clientHash)
+        .filter((value): value is string => Boolean(value)),
+    );
+    const missingHashes = clientHashes.filter((hash: string) => !alreadyAttachedHashes.has(hash));
+    const existingCount = await photoRepository.count({ where: { vehicleId: vehicle.id } });
+    if (existingCount + missingHashes.length > MAX_WAREHOUSE_PHOTOS_PER_VEHICLE) {
+      res.status(409).json({
+        message: `Для одного ТС разрешено не более ${MAX_WAREHOUSE_PHOTOS_PER_VEHICLE} фотографий`,
+      });
+      return;
+    }
+
+    if (missingHashes.length === 0) {
+      res.json({
+        attached: 0,
+        alreadyAttached: clientHashes.length,
+        photos: [],
+      });
+      return;
+    }
+
+    const pending = await pendingRepository
+      .createQueryBuilder('photo')
+      .where('photo.uploadSessionId = :uploadSessionId', { uploadSessionId })
+      .andWhere('photo.uploadedById = :uploadedById', { uploadedById: req.user!.id })
+      .andWhere('photo.expiresAt > :now', { now: new Date() })
+      .andWhere('photo.clientHash IN (:...clientHashes)', { clientHashes: missingHashes })
+      .orderBy('photo.createdAt', 'ASC')
+      .getMany();
+    const pendingByHash = new Map<string, WarehousePendingPhotoUpload>();
+    for (const pendingPhoto of pending) {
+      if (!pendingByHash.has(pendingPhoto.clientHash)) {
+        pendingByHash.set(pendingPhoto.clientHash, pendingPhoto);
+      }
+    }
+    const pendingToAttach = missingHashes
+      .map((hash: string) => pendingByHash.get(hash))
+      .filter((photo: WarehousePendingPhotoUpload | undefined): photo is WarehousePendingPhotoUpload => (
+        Boolean(photo)
+      ));
+
+    if (pendingToAttach.length < missingHashes.length) {
+      res.status(409).json({
+        message: `Не все фотографии загружены на сервер: ${pendingToAttach.length} из ${missingHashes.length}`,
+        attached: 0,
+        missing: missingHashes.length - pendingToAttach.length,
+        alreadyAttached: clientHashes.length - missingHashes.length,
+      });
+      return;
+    }
+
+    const savedPhotos: WarehousePhoto[] = [];
+    for (const pendingPhoto of pendingToAttach) {
+      const attachedName = await attachWarehousePendingPhotoFile(
+        pendingPhoto.uploadSessionId,
+        vehicle.id,
+        pendingPhoto.storedName,
+      );
+      const saved = await photoRepository.save(photoRepository.create({
+        vehicleId: vehicle.id,
+        storedName: attachedName,
+        originalName: pendingPhoto.originalName,
+        mimeType: pendingPhoto.mimeType,
+        sizeBytes: pendingPhoto.sizeBytes,
+        clientHash: pendingPhoto.clientHash,
+        phase: pendingPhoto.phase,
+        checklistItem: pendingPhoto.checklistItem,
+        uploadedById: pendingPhoto.uploadedById,
+        uploadedByName: pendingPhoto.uploadedByName,
+      }));
+      savedPhotos.push(saved);
+    }
+    const attachedPendingIds = new Set(pendingToAttach.map((photo: WarehousePendingPhotoUpload) => photo.id));
+    await Promise.all(
+      pending
+        .filter((photo: WarehousePendingPhotoUpload) => !attachedPendingIds.has(photo.id))
+        .map((photo: WarehousePendingPhotoUpload) => deleteWarehousePendingPhotoFile(photo.uploadSessionId, photo.storedName)
+          .catch(() => undefined)),
+    );
+    await pendingRepository.delete(pending.map((photo) => photo.id));
+    await AppDataSource.transaction(async (manager) => {
+      await addOperation(manager, vehicle, req, 'photo_uploaded', {
+        attachedPendingPhotos: savedPhotos.length,
+        uploadSessionId,
+      });
+    });
+    res.json({
+      attached: savedPhotos.length,
+      alreadyAttached: clientHashes.length - missingHashes.length,
+      photos: savedPhotos.map(serializePhoto),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const uploadWarehouseVehiclePhoto = async (
   req: Request,
   res: Response,
@@ -745,6 +1060,7 @@ export const uploadWarehouseVehiclePhoto = async (
       .replace(/[\u0000-\u001f\u007f]/g, '')
       .slice(0, 255);
     const phase = req.headers['x-photo-phase'] === 'issue' ? 'issue' : 'reception';
+    const checklistItem = normalizeNullable(req.headers['x-photo-checklist-item']);
     storedName = await storeWarehousePhoto(vehicle.id, mimeType, req.body);
     const saved = await photoRepository.save(photoRepository.create({
       vehicleId: vehicle.id,
@@ -752,7 +1068,9 @@ export const uploadWarehouseVehiclePhoto = async (
       originalName,
       mimeType,
       sizeBytes: req.body.length,
+      clientHash: null,
       phase,
+      checklistItem,
       uploadedById: req.user!.id,
       uploadedByName: req.user!.fullName,
     }));
@@ -762,6 +1080,7 @@ export const uploadWarehouseVehiclePhoto = async (
         originalName: saved.originalName,
         sizeBytes: saved.sizeBytes,
         phase: saved.phase,
+        checklistItem: saved.checklistItem,
       });
     });
     res.status(201).json(serializePhoto(saved));
@@ -849,6 +1168,125 @@ export const deleteWarehouseVehiclePhoto = async (
       });
     });
     res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getWarehouseVehicleInspection = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const vehicle = await AppDataSource.getRepository(WarehouseVehicle).findOne({
+      where: { id: req.params.id },
+    });
+    if (!vehicle) {
+      res.status(404).json({ message: 'Карточка ТС не найдена' });
+      return;
+    }
+    await assertVehicleScope(req, vehicle);
+    const inspection = await AppDataSource.getRepository(WarehouseVehicleInspection).findOne({
+      where: {
+        vehicleId: vehicle.id,
+        phase: req.params.phase as WarehouseInspectionPhase,
+      },
+    });
+    res.json(inspection ? serializeInspection(inspection) : null);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const upsertWarehouseVehicleInspection = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const result = await AppDataSource.transaction(async (manager) => {
+      const vehicle = await manager.getRepository(WarehouseVehicle).findOne({
+        where: { id: req.params.id },
+      });
+      if (!vehicle) {
+        const error: any = new Error('Карточка ТС не найдена');
+        error.statusCode = 404;
+        throw error;
+      }
+      const phase = req.params.phase as WarehouseInspectionPhase;
+      if (phase === 'reception') {
+        await assertWarehouseDateIsOpen(vehicle.counterpartyId, vehicle.receivedDate);
+      } else if (vehicle.issuedDate) {
+        await assertWarehouseDateIsOpen(vehicle.counterpartyId, vehicle.issuedDate);
+      }
+      const repository = manager.getRepository(WarehouseVehicleInspection);
+      const existing = await repository.findOne({
+        where: { vehicleId: vehicle.id, phase },
+      });
+      const payload = {
+        vehicleId: vehicle.id,
+        phase,
+        vehicleDetails: normalizeJsonObject(req.body.vehicleDetails),
+        documentsAndKeys: normalizeJsonObject(req.body.documentsAndKeys),
+        equipment: normalizeJsonObject(req.body.equipment),
+        technicalCondition: normalizeJsonObject(req.body.technicalCondition),
+        photoChecklist: normalizeJsonObject(req.body.photoChecklist),
+        damageNotes: normalizeNullable(req.body.damageNotes),
+        personalItemsNotes: normalizeNullable(req.body.personalItemsNotes),
+        responsibilityAmount: req.body.responsibilityAmount === null
+          || req.body.responsibilityAmount === undefined
+          || req.body.responsibilityAmount === ''
+          ? null
+          : String(req.body.responsibilityAmount),
+        inspectedById: req.user!.id,
+        inspectedByName: req.user!.fullName,
+      };
+      const saved = await repository.save(existing
+        ? repository.merge(existing, payload)
+        : repository.create(payload));
+      await addOperation(manager, vehicle, req, phase === 'reception' ? 'inspection_saved' : 'issue_inspection_saved', {
+        inspectionId: saved.id,
+        phase,
+      });
+      return saved;
+    });
+    res.json(serializeInspection(result));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const exportWarehouseVehicleInspectionAct = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const vehicle = await AppDataSource.getRepository(WarehouseVehicle).findOne({
+      where: { id: req.params.id },
+      relations: { counterparty: true, storageRequest: true },
+    });
+    if (!vehicle) {
+      res.status(404).json({ message: 'Карточка ТС не найдена' });
+      return;
+    }
+    await assertVehicleScope(req, vehicle);
+    const inspection = await AppDataSource.getRepository(WarehouseVehicleInspection).findOne({
+      where: {
+        vehicleId: vehicle.id,
+        phase: req.params.phase as WarehouseInspectionPhase,
+      },
+    });
+    if (!inspection) {
+      res.status(404).json({ message: 'Акт осмотра не заполнен' });
+      return;
+    }
+    const buffer = await buildWarehouseInspectionActPdf(vehicle, inspection);
+    const filename = `${inspection.phase === 'issue' ? 'Акт_возврата' : 'Акт_передачи'}_${vehicle.warehouseNumber}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', inspectionContentDisposition(filename));
+    res.send(buffer);
   } catch (error) {
     next(error);
   }

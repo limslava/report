@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import { AppDataSource } from '../config/data-source';
 import { WarehouseClient } from '../models/warehouse-client.model';
+import { WarehouseVehicleType } from '../models/warehouse-vehicle.model';
 import {
   buildWarehouseBillingExcel,
   buildWarehouseBillingPdf,
@@ -39,7 +40,7 @@ const reportParams = async (req: Request) => ({
   periodTo: String(req.query.periodTo),
   counterpartyId: await scopedCounterpartyId(req),
   vehicleType: req.query.vehicleType
-    ? String(req.query.vehicleType) as 'passenger' | 'truck'
+    ? String(req.query.vehicleType) as WarehouseVehicleType
     : null,
 });
 

@@ -3,15 +3,10 @@ import { financialPlanService } from '../services/financial-plan.service';
 import { planWebSocketService } from '../services/websocket.service';
 import { sendError } from '../utils/http';
 import { recordAuditLog } from '../services/audit-log.service';
+import { buildContentDisposition } from '../utils/content-disposition';
 
 const VIEW_ROLES = new Set(['admin', 'director', 'general_director', 'financer']);
 const EDIT_ROLES = new Set(['admin', 'director', 'general_director', 'financer']);
-
-function buildContentDisposition(filename: string): string {
-  const encoded = encodeURIComponent(filename).replace(/%20/g, '+');
-  const fallback = filename.replace(/[^\x20-\x7E]+/g, '_');
-  return `attachment; filename=\"${fallback}\"; filename*=UTF-8''${encoded}`;
-}
 
 function hasRole(user: { role: string } | undefined | null, allowed: Set<string>): boolean {
   if (!user) return false;

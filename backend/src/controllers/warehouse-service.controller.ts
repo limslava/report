@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import { EntityManager, LessThanOrEqual, MoreThan } from 'typeorm';
 import { AppDataSource } from '../config/data-source';
+import { WAREHOUSE_VEHICLE_TYPES } from '../constants/warehouse';
 import { WarehouseClient } from '../models/warehouse-client.model';
 import { WarehouseOperation } from '../models/warehouse-operation.model';
 import { WarehousePerformedService } from '../models/warehouse-performed-service.model';
@@ -141,10 +142,12 @@ export const listWarehouseServices = async (
         isRepeatable: service.isRepeatable,
         isOperational: service.isOperational,
         isActive: service.isActive,
-        currentTariffs: {
-          passenger: serializeTariff(currentTariff('passenger')),
-          truck: serializeTariff(currentTariff('truck')),
-        },
+        currentTariffs: Object.fromEntries(
+          WAREHOUSE_VEHICLE_TYPES.map((vehicleType) => [
+            vehicleType,
+            serializeTariff(currentTariff(vehicleType)),
+          ]),
+        ),
       };
     }));
   } catch (error) {
@@ -307,18 +310,13 @@ export const performWarehouseService = async (
         throw error;
       }
       const tariff = await findCurrentTariff(manager, service.id, vehicle.vehicleType, onDate);
-      if (!tariff) {
-        const error: any = new Error(`Для услуги «${service.name}» не задан тариф на ${onDate}`);
-        error.statusCode = 409;
-        throw error;
-      }
       if (service.code === 'refuel' && req.body.quantity === undefined) {
         const error: any = new Error('Укажите фактическое количество залитых литров');
         error.statusCode = 409;
         throw error;
       }
       const quantity = Number(req.body.quantity ?? service.defaultQuantity ?? 1);
-      const unitPrice = Number(tariff.price);
+      const unitPrice = tariff ? Number(tariff.price) : 0;
       const totalAmount = roundMoney(quantity * unitPrice);
       const repository = manager.getRepository(WarehousePerformedService);
       const saved = await repository.save(repository.create({
@@ -340,6 +338,8 @@ export const performWarehouseService = async (
         quantity,
         unitPrice,
         totalAmount,
+        tariffMissing: !tariff,
+        performedDate: onDate,
       });
       return repository.findOneOrFail({
         where: { id: saved.id },

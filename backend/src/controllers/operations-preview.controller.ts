@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import { AppDataSource } from '../config/data-source';
 import { OperationsPreviewState } from '../models/operations-preview-state.model';
 import { recordAuditLog } from '../services/audit-log.service';
+import { buildContentDisposition } from '../utils/content-disposition';
 
 const operationsPreviewRepo = AppDataSource.getRepository(OperationsPreviewState);
 const OPERATIONS_PREVIEW_SCOPE_KEY = 'ktk_vvo_preview_v1';
@@ -254,22 +255,6 @@ const toCellLabel = (code: CellCode): string => {
     N: 'Н',
   };
   return map[normalizeCellCode(code)];
-};
-
-const buildContentDisposition = (filename: string): string => {
-  const normalized = filename.normalize('NFC');
-  const sanitized = normalized.replace(/"/g, '');
-  const asciiFallback = sanitized
-    .normalize('NFKD')
-    .replace(/[^\x20-\x7E]+/g, '_')
-    .replace(/[\\"]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const safeFallback = asciiFallback || 'report.xlsx';
-  const encoded = encodeURIComponent(normalized)
-    .replace(/['()]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)
-    .replace(/\*/g, '%2A');
-  return `attachment; filename="${safeFallback}"; filename*=UTF-8''${encoded}`;
 };
 
 const extractPeopleByMonth = (payload: PreviewPersistedState): Record<string, PersonRow[]> => {
