@@ -216,6 +216,16 @@ const isValidSortField = (value: unknown): value is SortField =>
 const isValidSortDirection = (value: unknown): value is SortDirection =>
   value === 'asc' || value === 'desc';
 
+const parseManualOrder = (value: unknown): string[] => {
+  const raw = Array.isArray(value) ? value.join(',') : typeof value === 'string' ? value : '';
+  return raw
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+};
+
+const supportsPersonalManualOrder = (section: PreviewSection): boolean => section === 'mechanics' || section === 'guards';
+
 const getPrevMonthValue = (value: string): string | null => {
   const [yearRaw, monthRaw] = value.split('-');
   const year = Number(yearRaw);
@@ -493,6 +503,9 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
 
   const sortField: SortField = isValidSortField(req.query.sortField) ? req.query.sortField : 'manual';
   const sortDirection: SortDirection = isValidSortDirection(req.query.sortDirection) ? req.query.sortDirection : 'asc';
+  const manualOrderIds = sortField === 'manual' && supportsPersonalManualOrder(section)
+    ? parseManualOrder(req.query.manualOrder)
+    : [];
 
   const row = await operationsPreviewRepo.findOne({
     where: { scopeKey: OPERATIONS_PREVIEW_SCOPE_BY_LOCATION[location] },
@@ -744,7 +757,17 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
 
   const sectionPeople =
     sortField === 'manual' || (sortField === 'plate' && (section === 'dispatchers' || section === 'couriers'))
-      ? sectionPeopleBase
+      ? manualOrderIds.length
+        ? (() => {
+            const orderIndex = new Map(manualOrderIds.map((id, index) => [id, index]));
+            return [...sectionPeopleBase].sort((a, b) => {
+              const left = orderIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+              const right = orderIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+              if (left !== right) return left - right;
+              return a.rowIndex - b.rowIndex;
+            });
+          })()
+        : sectionPeopleBase
       : (() => {
           const sorted = [...sectionPeopleBase].sort((a, b) => {
             const left = sortField === 'name' ? a.name : a.plate;

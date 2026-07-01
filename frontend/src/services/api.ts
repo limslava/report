@@ -222,6 +222,7 @@ export const downloadOperationsPreviewExcel = async (params: {
   mode: 'plan' | 'fact';
   sortField?: 'manual' | 'name' | 'plate';
   sortDirection?: 'asc' | 'desc';
+  manualOrder?: string;
 }) =>
   api.get('/operations-preview/export', {
     params,
