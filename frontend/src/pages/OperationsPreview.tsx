@@ -21,10 +21,12 @@ type SortField = 'manual' | 'name' | 'plate';
 type SortDirection = 'asc' | 'desc';
 type SectionSortState = { field: SortField; direction: SortDirection };
 type SortBySection = Record<Department, SectionSortState>;
+type ManualOrderBySection = Partial<Record<Department, string[]>>;
 
 const WEEKDAY_LABELS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const PREVIEW_STORAGE_KEY = 'ops-preview-daily-input-draft-v1';
 const PREVIEW_SORT_STORAGE_PREFIX = 'ops-preview-sort-v1';
+const PREVIEW_MANUAL_ORDER_STORAGE_PREFIX = 'ops-preview-manual-order-v1';
 const DEFAULT_SORT_BY_SECTION: SortBySection = {
   Контейнеры: { field: 'manual', direction: 'asc' },
   Авто: { field: 'manual', direction: 'asc' },
@@ -92,6 +94,8 @@ const getDepartmentsForLocation = (location: PreviewLocation): Department[] =>
 
 const isPersonnelDepartment = (department: Department): boolean =>
   department === 'Диспетчера' || department === 'Курьеры' || department === 'Автослесари' || department === 'Сторожа';
+const hasPersonalManualOrder = (department: Department): boolean =>
+  department === 'Автослесари' || department === 'Сторожа';
 
 const getPersonnelNameLabel = (department: Department, location: PreviewLocation): string => {
   if (department === 'Диспетчера') return 'Диспетчер';
@@ -267,7 +271,6 @@ export default function OperationsPreview() {
   const [editPerson, setEditPerson] = useState<PersonRow | null>(null);
   const matrixSectionRef = useRef<HTMLElement | null>(null);
   const matrixBodyRef = useRef<HTMLDivElement | null>(null);
-  const dragGhostRef = useRef<HTMLDivElement | null>(null);
   const scopeVersionsRef = useRef<{
     overrideScopeVersions: Record<string, string>;
     peopleMonthVersions: Record<string, string>;
@@ -297,7 +300,9 @@ export default function OperationsPreview() {
   const [addOpen, setAddOpen] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [sortBySection, setSortBySection] = useState<SortBySection>(DEFAULT_SORT_BY_SECTION);
+  const [manualOrderBySection, setManualOrderBySection] = useState<ManualOrderBySection>({});
   const [sortHydrated, setSortHydrated] = useState(false);
+  const [manualOrderHydrated, setManualOrderHydrated] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [copyConfirmOpen, setCopyConfirmOpen] = useState(false);
@@ -497,6 +502,16 @@ export default function OperationsPreview() {
         .map((person) => ({ ...person, rowIndex: baseRowIndexById.get(person.id) ?? 0 }));
       const sortState = sortBySection[section];
       if (sortState.field === 'manual') {
+        const manualOrder = manualOrderBySection[section];
+        if (hasPersonalManualOrder(section) && manualOrder?.length) {
+          const orderIndex = new Map(manualOrder.map((id, index) => [id, index]));
+          return [...base].sort((a, b) => {
+            const left = orderIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+            const right = orderIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+            if (left !== right) return left - right;
+            return a.rowIndex - b.rowIndex;
+          });
+        }
         return base;
       }
       const sortField: Exclude<SortField, 'manual'> = sortState.field;
@@ -515,7 +530,7 @@ export default function OperationsPreview() {
       Автослесари: sortSection('Автослесари'),
       Сторожа: sortSection('Сторожа'),
     } as const;
-  }, [peopleState, baseRowIndexById, sortBySection]);
+  }, [peopleState, baseRowIndexById, manualOrderBySection, sortBySection]);
   const addDepartment: Department =
     filter !== 'Все' && allowedDepartmentSet.has(filter)
       ? filter
@@ -533,6 +548,7 @@ export default function OperationsPreview() {
   const canManageVvoGuards = isHrScheduleRole && activeLocation === 'security_vvo' && filter === 'Сторожа';
   const canEditCurrentSchedule = !isHrScheduleRole || canManageVvoMechanics || canManageVvoGuards || (effectiveMode === 'plan' && (filter === 'Контейнеры' || filter === 'Автослесари' || filter === 'Сторожа'));
   const canEditRows = !isHrScheduleRole || canManageVvoMechanics || canManageVvoGuards;
+  const canFillFactFromPreviousMonth = filter === 'Авто' && canEditRows;
   const canAddRows = canEditRows || (isHrScheduleRole && activeLocation === 'garage_vvo' && addDepartment === 'Автослесари') || (isHrScheduleRole && activeLocation === 'security_vvo' && addDepartment === 'Сторожа');
   const visibleCellCodes: CellCode[] = isPersonnelSection
     ? filter === 'Автослесари' || filter === 'Сторожа'
@@ -692,9 +708,48 @@ export default function OperationsPreview() {
     return currentSort.direction;
   };
 
+  const reorderPersonalManualOrder = (department: Department, sourceId: string, targetId: string, position: 'before' | 'after') => {
+    setManualOrderBySection((prev) => {
+      const departmentIds = peopleState
+        .filter((person) => person.department === department)
+        .map((person) => person.id);
+      const validIds = new Set(departmentIds);
+      const existing = (prev[department] ?? []).filter((id) => validIds.has(id));
+      const orderedIds = [
+        ...existing,
+        ...departmentIds.filter((id) => !existing.includes(id)),
+      ];
+      const fromIndex = orderedIds.indexOf(sourceId);
+      const targetIndex = orderedIds.indexOf(targetId);
+      if (fromIndex < 0 || targetIndex < 0) return prev;
+
+      const nextIds = [...orderedIds];
+      const [moved] = nextIds.splice(fromIndex, 1);
+      let insertIndex = position === 'after' ? targetIndex + 1 : targetIndex;
+      if (fromIndex < insertIndex) insertIndex -= 1;
+      insertIndex = Math.max(0, Math.min(nextIds.length, insertIndex));
+      nextIds.splice(insertIndex, 0, moved);
+
+      return {
+        ...prev,
+        [department]: nextIds,
+      };
+    });
+    setSortBySection((prev) => ({
+      ...prev,
+      [department]: { field: 'manual', direction: 'asc' },
+    }));
+  };
+
   const reorderPersonByDrop = (sourceId: string, targetId: string, position: 'before' | 'after' = 'before') => {
     if (!canEditRows) return;
     if (sourceId === targetId) return;
+    const sourcePerson = peopleState.find((item) => item.id === sourceId);
+    const targetPerson = peopleState.find((item) => item.id === targetId);
+    if (sourcePerson && targetPerson && sourcePerson.department === targetPerson.department && hasPersonalManualOrder(sourcePerson.department)) {
+      reorderPersonalManualOrder(sourcePerson.department, sourceId, targetId, position);
+      return;
+    }
     setPeopleStateForCurrentMonth((prev) => {
       const fromIndex = prev.findIndex((item) => item.id === sourceId);
       const toIndex = prev.findIndex((item) => item.id === targetId);
@@ -710,7 +765,6 @@ export default function OperationsPreview() {
       next.splice(insertIndex, 0, moved);
       return next;
     });
-    const sourcePerson = peopleState.find((item) => item.id === sourceId);
     if (sourcePerson) {
       setSortBySection((prev) => ({
         ...prev,
@@ -719,47 +773,9 @@ export default function OperationsPreview() {
     }
   };
 
-  const startRowDrag = (event: DragEvent<HTMLButtonElement>, personId: string, label: string) => {
-    event.stopPropagation();
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.dropEffect = 'move';
-    event.dataTransfer.setData('application/x-ops-person-id', personId);
-    event.dataTransfer.setData('text/plain', personId);
-    setDraggingId(personId);
-
-    const ghost = document.createElement('div');
-    ghost.className = 'ops-drag-ghost';
-    ghost.textContent = label;
-    ghost.style.position = 'fixed';
-    ghost.style.top = '-9999px';
-    ghost.style.left = '-9999px';
-    ghost.style.maxWidth = '420px';
-    ghost.style.pointerEvents = 'none';
-    ghost.style.opacity = '0.98';
-    ghost.style.background = '#ffffff';
-    ghost.style.boxShadow = '0 12px 28px rgba(15, 23, 42, 0.25)';
-    ghost.style.border = '1px solid #7aa2ff';
-    ghost.style.borderRadius = '8px';
-    ghost.style.padding = '8px 12px';
-    ghost.style.fontSize = '13px';
-    ghost.style.fontWeight = '600';
-    ghost.style.color = '#1f2937';
-    ghost.style.whiteSpace = 'nowrap';
-    ghost.style.overflow = 'hidden';
-    ghost.style.textOverflow = 'ellipsis';
-    ghost.style.zIndex = '9999';
-    document.body.appendChild(ghost);
-    dragGhostRef.current = ghost;
-    event.dataTransfer.setDragImage(ghost, 16, 16);
-  };
-
   const endRowDrag = () => {
     setDraggingId(null);
     setDragOverMarker(null);
-    if (dragGhostRef.current) {
-      dragGhostRef.current.remove();
-      dragGhostRef.current = null;
-    }
   };
 
   const getDraggedPersonId = (event?: DragEvent<HTMLElement>): string | null => {
@@ -859,6 +875,42 @@ export default function OperationsPreview() {
       // ignore localStorage write issues
     }
   }, [activeLocation, sortBySection, sortHydrated, userId]);
+
+  useEffect(() => {
+    setManualOrderHydrated(false);
+    const storageKey = `${PREVIEW_MANUAL_ORDER_STORAGE_PREFIX}:${activeLocation}:${userId ?? 'anonymous'}`;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) {
+        setManualOrderBySection({});
+        setManualOrderHydrated(true);
+        return;
+      }
+      const parsed = JSON.parse(raw) as Partial<Record<Department, unknown>>;
+      const normalizeSection = (section: Department): string[] | undefined => {
+        const current = parsed?.[section];
+        return Array.isArray(current) ? current.filter((id): id is string => typeof id === 'string') : undefined;
+      };
+      setManualOrderBySection({
+        Автослесари: normalizeSection('Автослесари'),
+        Сторожа: normalizeSection('Сторожа'),
+      });
+    } catch {
+      setManualOrderBySection({});
+    } finally {
+      setManualOrderHydrated(true);
+    }
+  }, [activeLocation, userId]);
+
+  useEffect(() => {
+    if (!manualOrderHydrated) return;
+    const storageKey = `${PREVIEW_MANUAL_ORDER_STORAGE_PREFIX}:${activeLocation}:${userId ?? 'anonymous'}`;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(manualOrderBySection));
+    } catch {
+      // ignore localStorage write issues
+    }
+  }, [activeLocation, manualOrderBySection, manualOrderHydrated, userId]);
 
   useEffect(() => {
     if (!efficiencyOnlyViewer) return;
@@ -1226,6 +1278,87 @@ export default function OperationsPreview() {
     setCopyStatus({
       type: 'success',
       text: 'План заполнен из прошлого месяца. Проверьте данные и нажмите «Сохранить».',
+    });
+  };
+
+  const handleFillFactFromPreviousMonth = () => {
+    const factDepartment: Department | null = filter === 'Авто' ? filter : null;
+    const prevMonth = getPrevMonthValue(monthValue);
+    if (!factDepartment || !prevMonth) return;
+
+    const prevPeople = clonePeople(resolvePeopleForMonth(prevMonth, peopleByMonthRef.current))
+      .filter((person) => person.department === factDepartment);
+    if (prevPeople.length === 0) {
+      setCopyStatus({ type: 'error', text: 'В прошлом месяце нет строк Автовозов для переноса.' });
+      return;
+    }
+
+    const prevFactKey = `fact|${prevMonth}` as OverrideScopeKey;
+    const currentFactKey = `fact|${monthValue}` as OverrideScopeKey;
+    const prevFact = allOverridesRef.current[prevFactKey] ?? {};
+    const currentFact = allOverridesRef.current[currentFactKey] ?? {};
+    const prevDaysInMonth = getDaysInMonthValue(prevMonth);
+    const currentPeople = clonePeople(resolvePeopleForMonth(monthValue, peopleByMonthRef.current));
+    const currentDepartmentIds = new Set(
+      currentPeople.filter((person) => person.department === factDepartment).map((person) => person.id)
+    );
+    const currentDepartmentIdList = Array.from(currentDepartmentIds);
+    const nextFact: Record<string, CellCode> = {};
+    const isCurrentDepartmentKey = (key: string): boolean =>
+      currentDepartmentIdList.some((personId) => key.startsWith(`${personId}-`));
+
+    Object.entries(currentFact).forEach(([key, value]) => {
+      if (!isCurrentDepartmentKey(key)) {
+        nextFact[key] = normalizeCellCode(value);
+      }
+    });
+
+    prevPeople.forEach((person, rowIndex) => {
+      monthDays.forEach((day) => {
+        if (day > prevDaysInMonth) return;
+        const lane1Key = `${person.id}-1-${day}`;
+        const lane1 = normalizeCellCode(prevFact[lane1Key] ?? getMonthlyCell(rowIndex, day, factDepartment));
+        if (lane1 !== 'E') {
+          nextFact[lane1Key] = lane1;
+        }
+
+        if (person.secondName) {
+          const lane2Key = `${person.id}-2-${day}`;
+          const lane2 = normalizeCellCode(prevFact[lane2Key] ?? getMonthlyCell(rowIndex + 50, day, factDepartment));
+          if (lane2 !== 'E') {
+            nextFact[lane2Key] = lane2;
+          }
+        }
+      });
+    });
+
+    setPeopleByMonth((prev) => {
+      const currentRows = clonePeople(resolvePeopleForMonth(monthValue, prev));
+      const nextRows = [
+        ...currentRows.filter((person) => person.department !== factDepartment),
+        ...prevPeople,
+      ];
+      const nextPeopleByMonth = {
+        ...prev,
+        [monthValue]: nextRows,
+      };
+      peopleByMonthRef.current = nextPeopleByMonth;
+      return nextPeopleByMonth;
+    });
+
+    setAllOverrides((prev) => {
+      const nextOverrides = {
+        ...prev,
+        [currentFactKey]: nextFact,
+      };
+      allOverridesRef.current = nextOverrides;
+      return nextOverrides;
+    });
+    setMode('fact');
+
+    setCopyStatus({
+      type: 'success',
+      text: 'Факт Автовозов заполнен из прошлого месяца. Проверьте данные и нажмите «Сохранить».',
     });
   };
 
@@ -1704,6 +1837,10 @@ export default function OperationsPreview() {
       }
 
       const section = resolveSectionForExport();
+      const exportDepartment = DEPARTMENT_BY_SECTION[section];
+      const manualOrder = exportDepartment && hasPersonalManualOrder(exportDepartment) && currentSort.field === 'manual'
+        ? sortedPeopleBySection[exportDepartment].map((person) => person.id).join(',')
+        : undefined;
       const response = await downloadOperationsPreviewExcel({
         location: activeLocation,
         section,
@@ -1712,6 +1849,7 @@ export default function OperationsPreview() {
         mode: effectiveMode,
         sortField: currentSort.field,
         sortDirection: currentSort.direction,
+        manualOrder,
       });
       const fallbackSectionLabel =
         section === 'containers'
@@ -1738,6 +1876,49 @@ export default function OperationsPreview() {
     } finally {
       setDownloading(false);
     }
+  };
+
+  const renderRowMoveControls = (person: PersonRow) => {
+    const sectionRows = sortedPeopleBySection[person.department] ?? [];
+    const rowPosition = sectionRows.findIndex((row) => row.id === person.id);
+    const prevPerson = rowPosition > 0 ? sectionRows[rowPosition - 1] : null;
+    const nextPerson = rowPosition >= 0 && rowPosition < sectionRows.length - 1 ? sectionRows[rowPosition + 1] : null;
+
+    const moveByButton = (target: PersonRow | null, position: 'before' | 'after') => {
+      if (!target) return;
+      reorderPersonByDrop(person.id, target.id, position);
+    };
+
+    return (
+      <div className="ops-matrix__row-move-controls" aria-label="Управление порядком строки">
+        <button
+          type="button"
+          className="ops-matrix__move-step-btn"
+          onClick={(event) => {
+            event.stopPropagation();
+            moveByButton(prevPerson, 'before');
+          }}
+          disabled={!canEditRows || !prevPerson}
+          title="Поднять строку"
+          aria-label="Поднять строку"
+        >
+          ↑
+        </button>
+        <button
+          type="button"
+          className="ops-matrix__move-step-btn"
+          onClick={(event) => {
+            event.stopPropagation();
+            moveByButton(nextPerson, 'after');
+          }}
+          disabled={!canEditRows || !nextPerson}
+          title="Опустить строку"
+          aria-label="Опустить строку"
+        >
+          ↓
+        </button>
+      </div>
+    );
   };
 
   return (
@@ -1860,6 +2041,16 @@ export default function OperationsPreview() {
                     Скопировать
                   </button>
                 </>
+              )}
+              {!isEfficiencySection && canFillFactFromPreviousMonth && (
+                <button
+                  type="button"
+                  className="ops-btn ops-btn--fill-prev"
+                  style={{ marginRight: 10 }}
+                  onClick={handleFillFactFromPreviousMonth}
+                >
+                  Заполнить факт из прошлого месяца
+                </button>
               )}
               {!isEfficiencySection && (
                 <>
@@ -2125,6 +2316,7 @@ export default function OperationsPreview() {
                               >
                                 {name ?? ''}
                               </span>
+                              {isPersonnelSection && !isSecond && renderRowMoveControls(person)}
                             </div>
                           </div>
                           {!isPersonnelSection && (
@@ -2149,17 +2341,7 @@ export default function OperationsPreview() {
                                   >
                                     {person.plate}
                                   </span>
-                                  <button
-                                    type="button"
-                                    className="ops-matrix__drag-hint-btn"
-                                    draggable
-                                    onDragStart={(event) => startRowDrag(event, person.id, `${name ?? ''} • ${person.plate}`)}
-                                    onDragEnd={endRowDrag}
-                                    title="Перетащите вверх или вниз"
-                                    aria-label="Переместить строку"
-                                  >
-                                    ↕
-                                  </button>
+                                  {renderRowMoveControls(person)}
                                 </div>
                               )}
                             </div>
@@ -2349,6 +2531,7 @@ export default function OperationsPreview() {
                                 >
                                   {person.name}
                                 </span>
+                                {isPersonnelSection && renderRowMoveControls(person)}
                               </div>
                             </div>
                             <div
@@ -2382,20 +2565,10 @@ export default function OperationsPreview() {
                                     setContextMenu({ x: event.clientX, y: event.clientY, person, target: 'plate' });
                                   }}
                                   title="Двойной щелчок для редактирования"
-                                >
-                                  {person.plate}
-                                </span>
-                                <button
-                                  type="button"
-                                  className="ops-matrix__drag-hint-btn"
-                                  draggable
-                                  onDragStart={(event) => startRowDrag(event, person.id, `${person.name} / ${person.secondName ?? ''} • ${person.plate}`)}
-                                  onDragEnd={endRowDrag}
-                                  title="Перетащите вверх или вниз"
-                                  aria-label="Переместить строку"
-                                >
-                                  ↕
-                                </button>
+                                  >
+                                    {person.plate}
+                                  </span>
+                                  {!isPersonnelSection && renderRowMoveControls(person)}
                               </div>
                             </div>
                             <div
