@@ -148,10 +148,6 @@ export const getSecurityContractInbox = (view: 'active' | 'processed' | 'complet
 export const getMyContractApprovalInbox = (view: 'active' | 'processed' | 'completed_month' | 'all' = 'active') =>
   api.get('/contracts/approval-inbox/my', { params: { view } });
 export const getMyApprovalDashboard = () => api.get('/contracts/approval-dashboard/my');
-export const submitSecurityVisa = (
-  contractId: string,
-  data: { visa: 'approved' | 'rejected' | 'approved_with_remarks'; comment?: string | null }
-) => api.post(`/contracts/security/inbox/${contractId}/visa`, data);
 export const getContractApprovalSheet = (id: string) => api.get(`/contracts/${id}/approval-sheet`);
 export const getContractDecisionHistory = (id: string) => api.get(`/contracts/${id}/decision-history`);
 export const downloadContractPrintPackage = (id: string) =>

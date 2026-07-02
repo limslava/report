@@ -1,6 +1,25 @@
 import { PlanningSegment } from '../types/planning-v2.types';
 import { SUMMARY_ROLES, SEGMENT_BY_ROLE } from './roles';
 
+const CONTRACT_APPROVAL_ACCESS_ROLES = new Set([
+  'admin',
+  'general_director',
+  'security',
+  'lawyer',
+  'chief_accountant',
+  'financer',
+  'secretary',
+  'manager_sales',
+  'head_sales',
+  'manager_ktk_vvo',
+  'head_ktk_vvo',
+  'manager_ktk_mow',
+  'manager_auto',
+  'manager_rail',
+  'manager_extra',
+  'manager_to',
+]);
+
 export function canViewSummary(role?: string | null): boolean {
   if (!role) {
     return false;
@@ -68,22 +87,7 @@ export function canViewCalendar(role?: string | null): boolean {
 }
 
 export function canAccessContractApproval(role?: string | null): boolean {
-  return role === 'admin'
-    || role === 'general_director'
-    || role === 'security'
-    || role === 'lawyer'
-    || role === 'chief_accountant'
-    || role === 'financer'
-    || role === 'secretary'
-    || role === 'manager_sales'
-    || role === 'head_sales'
-    || role === 'manager_ktk_vvo'
-    || role === 'head_ktk_vvo'
-    || role === 'manager_ktk_mow'
-    || role === 'manager_auto'
-    || role === 'manager_rail'
-    || role === 'manager_extra'
-    || role === 'manager_to';
+  return Boolean(role && CONTRACT_APPROVAL_ACCESS_ROLES.has(role));
 }
 
 export function canViewBPDashboard(role?: string | null): boolean {

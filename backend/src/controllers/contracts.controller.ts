@@ -34,6 +34,29 @@ import { notifyDecisionChanged, notifyStepAssigned } from '../services/contract-
 import { planWebSocketService } from '../services/websocket.service';
 import { logger } from '../utils/logger';
 import { buildContentDisposition } from '../utils/content-disposition';
+import {
+  CONTRACT_APPROVAL_DASHBOARD_ROLES,
+  CONTRACT_PARALLEL_APPROVAL_ROLES,
+  contractApprovalRoleLabel,
+} from '../constants/contract-approval';
+import {
+  buildContractFlowMeta,
+  canCreateFinalPrintPackage,
+  getCurrentApprovalSteps,
+  getLatestApprovalRevision,
+  getNextRevisionForDocuments,
+  hasPreSecretaryApprovalRemarks,
+  isParallelSecretaryRoute,
+  isPreSecretaryApprovalRole,
+} from '../services/contract-approval-route.service';
+import { assertContractDetailAccess, hasContractDetailAccess } from '../services/contract-approval-access.service';
+import {
+  applyApprovalDecision,
+  assignApprovalStep,
+  buildApprovalStepPayloads,
+  findSecretaryStepReadyForAssignment,
+  getDecidedPreSecretaryPeers,
+} from '../services/contract-approval-workflow.service';
 
 const contractRepository = AppDataSource.getRepository(Contract);
 const stepRepository = AppDataSource.getRepository(ContractApprovalStep);
@@ -42,18 +65,6 @@ const attachmentRepository = AppDataSource.getRepository(ContractAttachment);
 const userRepository = AppDataSource.getRepository(User);
 const execFileAsync = promisify(execFile);
 
-const ROLE_LABELS: Record<string, string> = {
-  initiator: 'Инициатор',
-  security: 'Руководитель СБ',
-  lawyer: 'Юрист',
-  chief_accountant: 'Главный бухгалтер',
-  financer: 'Финансовый директор',
-  general_director: 'Генеральный директор',
-  secretary: 'Офис-менеджер',
-};
-
-const PARALLEL_APPROVAL_ROLES = ['lawyer', 'chief_accountant', 'financer'] as const;
-const APPROVAL_DASHBOARD_ROLES = new Set(['security', 'lawyer', 'chief_accountant', 'financer', 'secretary']);
 const MAX_CONTRACT_FILE_BYTES = 20 * 1024 * 1024;
 const ALLOWED_CONTRACT_FILE_EXTENSIONS = new Set(['.pdf', '.doc', '.docx', '.png', '.jpg', '.jpeg']);
 
@@ -105,6 +116,36 @@ function serializeAttachment(item: ContractAttachment) {
     context: item.context,
     revisionNo: item.revisionNo || 1,
   };
+}
+
+function contractRevisionKey(contractId: string, revisionNo: number): string {
+  return `${contractId}:${revisionNo}`;
+}
+
+async function loadContractFilesByStepRevision(steps: ContractApprovalStep[]): Promise<Map<string, ContractAttachment[]>> {
+  const contractIds = [...new Set(steps.map((step) => step.contractId))];
+  if (!contractIds.length) {
+    return new Map();
+  }
+
+  const revisionKeys = new Set(steps.map((step) => contractRevisionKey(step.contractId, step.revisionNo || 1)));
+  const files = await attachmentRepository.find({
+    where: { contractId: In(contractIds), approvalStepId: IsNull() },
+    order: { createdAt: 'ASC' },
+  });
+  const filesByRevision = new Map<string, ContractAttachment[]>();
+
+  for (const file of files) {
+    const key = contractRevisionKey(file.contractId, file.revisionNo || 1);
+    if (!revisionKeys.has(key)) {
+      continue;
+    }
+    const current = filesByRevision.get(key) ?? [];
+    current.push(file);
+    filesByRevision.set(key, current);
+  }
+
+  return filesByRevision;
 }
 
 function assertAllowedContractFile(file: any, originalName: string, buffer: Buffer): void {
@@ -364,53 +405,12 @@ async function resolveApproverUserId(roleCode: string, contract: Contract): Prom
   });
 
   if (!approver) {
-    const error: any = new Error(`Не найден активный пользователь для роли: ${ROLE_LABELS[roleCode] ?? roleCode}`);
+    const error: any = new Error(`Не найден активный пользователь для роли: ${contractApprovalRoleLabel(roleCode)}`);
     error.statusCode = 400;
     throw error;
   }
 
   return approver.id;
-}
-
-function buildRouteRoles(contract: Contract): string[] {
-  void contract;
-  return ['security', ...PARALLEL_APPROVAL_ROLES, 'secretary'];
-}
-
-function getLatestApprovalRevision(steps: ContractApprovalStep[]): number {
-  return Math.max(1, ...steps.map((step) => step.revisionNo || 1));
-}
-
-function getCurrentApprovalSteps(steps: ContractApprovalStep[]): ContractApprovalStep[] {
-  const latestRevision = getLatestApprovalRevision(steps);
-  return steps.filter((step) => (step.revisionNo || 1) === latestRevision);
-}
-
-function getNextRevisionForDocuments(contractStatus: ContractStatus, steps: ContractApprovalStep[]): number {
-  const latestRevision = getLatestApprovalRevision(steps);
-  return contractStatus === ContractStatus.REWORK ? latestRevision + 1 : latestRevision;
-}
-
-function hasContractDetailAccess(contract: Contract, steps: ContractApprovalStep[], userId?: string, userRole?: string | null): boolean {
-  if (!userId) return false;
-  if (userRole === 'admin') return true;
-  if (userRole === 'general_director') return true;
-  // Signed contracts are part of the common registry for users admitted to this BP module.
-  if (contract.status === ContractStatus.APPROVED) return true;
-  if (contract.initiatorId === userId) return true;
-
-  return steps.some((step) => step.approverUserId === userId || step.roleCode === userRole);
-}
-
-function canCreateFinalPrintPackage(steps: ContractApprovalStep[]): boolean {
-  const currentSteps = getCurrentApprovalSteps(steps);
-  const securityStep = currentSteps.find((step) => step.roleCode === 'security');
-  const parallelSteps = currentSteps.filter((step) => (
-    PARALLEL_APPROVAL_ROLES.includes(step.roleCode as typeof PARALLEL_APPROVAL_ROLES[number])
-  ));
-  return securityStep?.decision === ContractApprovalDecision.APPROVE
-    && parallelSteps.length === PARALLEL_APPROVAL_ROLES.length
-    && parallelSteps.every((step) => Boolean(step.decision));
 }
 
 async function saveDecisionEvent(
@@ -436,14 +436,6 @@ async function saveDecisionEvent(
     newComment: params.step.comment,
   });
   await repository.save(event);
-}
-
-function assertContractDetailAccess(contract: Contract, steps: ContractApprovalStep[], userId?: string, userRole?: string | null): void {
-  if (hasContractDetailAccess(contract, steps, userId, userRole)) return;
-
-  const error: any = new Error('Нет доступа к карточке договора');
-  error.statusCode = userId ? 403 : 401;
-  throw error;
 }
 
 const PDF_A4: [number, number] = [595.28, 841.89];
@@ -709,7 +701,7 @@ async function appendApprovalSheetPdf(
   ]);
   for (const step of steps.filter((item) => item.roleCode !== 'secretary')) {
     rows.push([
-      ROLE_LABELS[step.roleCode] ?? step.roleCode,
+      contractApprovalRoleLabel(step.roleCode),
       step.approverUser?.fullName ?? step.approverUser?.email ?? '—',
       formatPdfStepDecision(step),
       formatPdfDateTime(step.acceptedAt),
@@ -810,10 +802,6 @@ async function appendAttachmentToPdf(pdf: PDFDocument, attachment: ContractAttac
       `${attachment.originalName}\nФайл можно скачать отдельно из карточки договора.`,
     );
   }
-}
-
-function isParallelSecretaryRoute(steps: ContractApprovalStep[]): boolean {
-  return steps.some((step) => step.roleCode === 'secretary');
 }
 
 function requireStartFields(contract: Contract): void {
@@ -1024,79 +1012,43 @@ export const listContracts = async (_req: Request, res: Response, next: NextFunc
         .filter((stepId): stepId is string => Boolean(stepId)),
     );
 
-    res.json(contracts.map((contract) => ({
-      ...(function getFlowMeta() {
-        const contractSteps = getCurrentApprovalSteps(stepsByContract.get(contract.id) ?? []);
-        const currentPending = contractSteps.find((s) => !s.decision) ?? null;
-        const lastDecided = [...contractSteps].reverse().find((s) => Boolean(s.decision)) ?? null;
-        const hasParallelRoute = isParallelSecretaryRoute(contractSteps);
-        const securityStep = contractSteps.find((s) => s.roleCode === 'security') ?? null;
-        const secretaryStep = contractSteps.find((s) => s.roleCode === 'secretary') ?? null;
-        const secretaryHasSignedFile = secretaryStep ? secretaryStepsWithFiles.has(secretaryStep.id) : false;
-        const parallelSteps = contractSteps.filter((s) => PARALLEL_APPROVAL_ROLES.includes(s.roleCode as typeof PARALLEL_APPROVAL_ROLES[number]));
-        const completedParallelCount = parallelSteps.filter((s) => Boolean(s.decision)).length;
-        const hasParallelRemarks = parallelSteps.some((s) => (
-          s.decision === ContractApprovalDecision.REJECT
-          || Boolean(s.comment?.trim())
-        ));
-        let currentStageLabel = currentPending ? `Проверка ${ROLE_LABELS[currentPending.roleCode] ?? currentPending.roleCode}` : null;
-        let statusDetail: string | null = null;
-        if (contract.status === ContractStatus.IN_APPROVAL) {
-          if (hasParallelRoute && !securityStep?.decision) {
-            statusDetail = 'Проверка руководителя СБ';
-            currentStageLabel = statusDetail;
-          } else if (hasParallelRoute && secretaryStep?.assignedAt && !secretaryStep.decision) {
-            statusDetail = hasParallelRemarks ? 'На подписи, есть замечания' : 'На подписи';
-            currentStageLabel = statusDetail;
-          } else if (hasParallelRoute) {
-            statusDetail = `Согласование: ${completedParallelCount} из ${parallelSteps.length}`;
-            currentStageLabel = statusDetail;
-          } else {
-            statusDetail = currentStageLabel;
-          }
-        } else if (contract.status === ContractStatus.REJECTED && lastDecided?.decision === ContractApprovalDecision.REJECT) {
-          if (lastDecided.roleCode === 'security') {
-            statusDetail = 'Отклонено руководителем СБ';
-          } else {
-            statusDetail = `Отклонено: ${ROLE_LABELS[lastDecided.roleCode] ?? lastDecided.roleCode}`;
-          }
-        }
-        return {
-          currentStageRole: currentPending?.roleCode ?? null,
-          currentStageLabel,
-          statusDetail,
-          needsSignedAttachment: (
-            (contract.status === ContractStatus.APPROVED || Boolean(secretaryStep?.assignedAt))
-            && !secretaryHasSignedFile
-          ),
-        };
-      }()),
-      id: contract.id,
-      contractNumber: contract.contractNumber,
-      contractType: contract.contractType,
-      incomeSubtype: contract.incomeSubtype,
-      counterpartyName: contract.counterpartyName,
-      counterpartyShortName: contract.counterpartyShortName,
-      ownershipForm: contract.ownershipForm,
-      counterpartyForm: contract.counterpartyForm,
-      counterpartyInn: contract.counterpartyInn,
-      templateKind: contract.templateKind,
-      subject: contract.subject,
-      contractDate: toYmdOrNull(contract.contractDate),
-      psrFlag: contract.psrFlag,
-      signingMethod: contract.signingMethod,
-      status: contract.status,
-      documentKind: contract.documentKind,
-      parentContractId: contract.parentContractId,
-      parentContractNumber: contract.parentContract?.contractNumber ?? null,
-      assignedGeneralDirectorId: contract.assignedGeneralDirectorId,
-      assignedGeneralDirector: null,
-      initiator: contract.initiator
-        ? { id: contract.initiator.id, fullName: contract.initiator.fullName, role: contract.initiator.role }
-        : null,
-      createdAt: contract.createdAt,
-      updatedAt: contract.updatedAt,
-    })));
+    res.json(contracts.map((contract) => {
+      const contractSteps = stepsByContract.get(contract.id) ?? [];
+      const secretaryStep = getCurrentApprovalSteps(contractSteps).find((step) => step.roleCode === 'secretary') ?? null;
+      return {
+        ...buildContractFlowMeta({
+          contract,
+          steps: contractSteps,
+          roleLabel: contractApprovalRoleLabel,
+          secretaryHasSignedFile: secretaryStep ? secretaryStepsWithFiles.has(secretaryStep.id) : false,
+        }),
+        id: contract.id,
+        contractNumber: contract.contractNumber,
+        contractType: contract.contractType,
+        incomeSubtype: contract.incomeSubtype,
+        counterpartyName: contract.counterpartyName,
+        counterpartyShortName: contract.counterpartyShortName,
+        ownershipForm: contract.ownershipForm,
+        counterpartyForm: contract.counterpartyForm,
+        counterpartyInn: contract.counterpartyInn,
+        templateKind: contract.templateKind,
+        subject: contract.subject,
+        contractDate: toYmdOrNull(contract.contractDate),
+        psrFlag: contract.psrFlag,
+        signingMethod: contract.signingMethod,
+        status: contract.status,
+        documentKind: contract.documentKind,
+        parentContractId: contract.parentContractId,
+        parentContractNumber: contract.parentContract?.contractNumber ?? null,
+        assignedGeneralDirectorId: contract.assignedGeneralDirectorId,
+        assignedGeneralDirector: null,
+        initiator: contract.initiator
+          ? { id: contract.initiator.id, fullName: contract.initiator.fullName, role: contract.initiator.role }
+          : null,
+        createdAt: contract.createdAt,
+        updatedAt: contract.updatedAt,
+      };
+    }));
   } catch (error) {
     next(error);
   }
@@ -1169,13 +1121,10 @@ export const listSecurityInbox = async (req: Request, res: Response, next: NextF
 
     const uniqueSteps = Array.from(uniqueByContract.values())
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const filesByRevision = await loadContractFilesByStepRevision(uniqueSteps);
 
-    const data = await Promise.all(uniqueSteps.map(async (step) => {
-        const files = await attachmentRepository.find({
-          where: { contractId: step.contractId, approvalStepId: IsNull(), revisionNo: step.revisionNo || 1 },
-          order: { createdAt: 'ASC' },
-        });
-
+    const data = uniqueSteps.map((step) => {
+        const files = filesByRevision.get(contractRevisionKey(step.contractId, step.revisionNo || 1)) ?? [];
         return {
           contractId: step.contract.id,
           stepId: step.id,
@@ -1196,7 +1145,7 @@ export const listSecurityInbox = async (req: Request, res: Response, next: NextF
           securityComment: step.comment,
           attachments: files.map(serializeAttachment),
         };
-      }));
+      });
 
     res.json(data);
   } catch (error) {
@@ -1213,7 +1162,7 @@ export const listMyApprovalInbox = async (req: Request, res: Response, next: Nex
       error.statusCode = 401;
       throw error;
     }
-    if (!currentUserRole || !PARALLEL_APPROVAL_ROLES.includes(currentUserRole as typeof PARALLEL_APPROVAL_ROLES[number])
+    if (!currentUserRole || !CONTRACT_PARALLEL_APPROVAL_ROLES.includes(currentUserRole as typeof CONTRACT_PARALLEL_APPROVAL_ROLES[number])
       && currentUserRole !== 'secretary') {
       const error: any = new Error('Для роли недоступна очередь согласования');
       error.statusCode = 403;
@@ -1265,13 +1214,10 @@ export const listMyApprovalInbox = async (req: Request, res: Response, next: Nex
 
     const uniqueSteps = Array.from(uniqueByContract.values())
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const filesByRevision = await loadContractFilesByStepRevision(uniqueSteps);
 
-    const data = await Promise.all(uniqueSteps.map(async (step) => {
-      const files = await attachmentRepository.find({
-        where: { contractId: step.contractId, approvalStepId: IsNull(), revisionNo: step.revisionNo || 1 },
-        order: { createdAt: 'ASC' },
-      });
-
+    const data = uniqueSteps.map((step) => {
+      const files = filesByRevision.get(contractRevisionKey(step.contractId, step.revisionNo || 1)) ?? [];
       return {
         contractId: step.contract.id,
         stepId: step.id,
@@ -1291,10 +1237,10 @@ export const listMyApprovalInbox = async (req: Request, res: Response, next: Nex
         stepSignedAt: toIsoOrNull(step.signedAt),
         stepComment: step.comment,
         roleCode: step.roleCode,
-        roleLabel: ROLE_LABELS[step.roleCode] ?? step.roleCode,
+        roleLabel: contractApprovalRoleLabel(step.roleCode),
         attachments: files.map(serializeAttachment),
       };
-    }));
+    });
 
     res.json(data);
   } catch (error) {
@@ -1311,7 +1257,7 @@ export const getMyApprovalDashboard = async (req: Request, res: Response, next: 
       error.statusCode = 401;
       throw error;
     }
-    if (!currentUserRole || !APPROVAL_DASHBOARD_ROLES.has(currentUserRole)) {
+    if (!currentUserRole || !CONTRACT_APPROVAL_DASHBOARD_ROLES.has(currentUserRole)) {
       const error: any = new Error('Дашборд согласования доступен только участникам маршрута согласования');
       error.statusCode = 403;
       throw error;
@@ -1941,10 +1887,8 @@ export const securityVisaDecision = async (req: Request, res: Response, next: Ne
     }
     const allSteps = await stepRepository.find({ where: { contractId }, order: { orderNo: 'ASC' } });
     const steps = getCurrentApprovalSteps(allSteps);
-    const currentStep = steps.find((s) => !s.decision) ?? null;
     const securityStep = steps.find((s) => s.roleCode === 'security') ?? null;
-    const isCurrentSecurityStep = Boolean(currentStep && securityStep && currentStep.id === securityStep.id);
-    if (!securityStep || (!securityStep.decision && !isCurrentSecurityStep)) {
+    if (!securityStep || (!securityStep.decision && !securityStep.assignedAt)) {
       const error: any = new Error('Сейчас нет активного шага руководителя СБ');
       error.statusCode = 400;
       throw error;
@@ -1965,16 +1909,15 @@ export const securityVisaDecision = async (req: Request, res: Response, next: Ne
     const priorDecision = securityStep.decision;
     const priorComment = securityStep.comment?.trim() || null;
     const decision = visa === 'rejected' ? ContractApprovalDecision.REJECT : ContractApprovalDecision.APPROVE;
-    securityStep.decision = decision;
-    securityStep.comment = normalizedComment;
-    securityStep.acceptedAt = securityStep.acceptedAt ?? new Date();
-    securityStep.signedAt = new Date();
+    applyApprovalDecision({
+      step: securityStep,
+      decision,
+      comment: normalizedComment,
+      decidedAt: new Date(),
+    });
 
     const hasParallelRoute = isParallelSecretaryRoute(steps);
-    const nextPending = steps.find((s) => !s.decision && s.id !== securityStep.id) ?? null;
-    const nextSteps = hasParallelRoute
-      ? steps.filter((s) => PARALLEL_APPROVAL_ROLES.includes(s.roleCode as typeof PARALLEL_APPROVAL_ROLES[number]) && !s.decision)
-      : (nextPending ? [nextPending] : []);
+    const secretaryStep = hasParallelRoute ? findSecretaryStepReadyForAssignment(steps) : null;
     const stepsToNotify: ContractApprovalStep[] = [];
 
     await AppDataSource.transaction(async (manager) => {
@@ -1994,17 +1937,15 @@ export const securityVisaDecision = async (req: Request, res: Response, next: Ne
         await manager.save(contract);
         return;
       }
-      for (const nextStep of nextSteps) {
-        if (!nextStep.assignedAt) {
-          const now = new Date();
-          nextStep.assignedAt = now;
-          const nextSchedule = await resolveEffectiveWorkSchedule(nextStep.roleCode, nextStep.approverUserId);
-          nextStep.deadlineAt = await calculateDeadlineBySchedule(now, nextStep.slaWorkdays || 1, nextSchedule);
-          await manager.save(nextStep);
-          stepsToNotify.push(nextStep);
-        }
+      if (secretaryStep) {
+        await assignApprovalStep(secretaryStep, new Date(), {
+          resolveEffectiveWorkSchedule,
+          calculateDeadlineBySchedule,
+        });
+        await manager.save(secretaryStep);
+        stepsToNotify.push(secretaryStep);
       }
-      contract.status = nextSteps.length || steps.some((s) => !s.decision && s.id !== securityStep.id)
+      contract.status = steps.some((s) => !s.decision && s.id !== securityStep.id)
         ? ContractStatus.IN_APPROVAL
         : ContractStatus.APPROVED;
       await manager.save(contract);
@@ -2018,10 +1959,7 @@ export const securityVisaDecision = async (req: Request, res: Response, next: Ne
     const securityDecisionChanged = Boolean(priorDecision)
       && (priorDecision !== decision || priorComment !== normalizedComment);
     if (securityDecisionChanged) {
-      const affectedSteps = steps.filter((step) => (
-        PARALLEL_APPROVAL_ROLES.includes(step.roleCode as typeof PARALLEL_APPROVAL_ROLES[number])
-        && Boolean(step.decision)
-      ));
+      const affectedSteps = getDecidedPreSecretaryPeers(steps, securityStep);
       if (affectedSteps.length) {
         void notifyDecisionChanged(contract, securityStep, priorDecision, priorComment, affectedSteps).catch((error) => {
           logger.error('Failed to send changed Security visa notification:', error);
@@ -2086,7 +2024,7 @@ export const getContractApprovalSheet = async (req: Request, res: Response, next
     const serializeStep = (step: ContractApprovalStep) => ({
       id: step.id,
       roleCode: step.roleCode,
-      roleLabel: ROLE_LABELS[step.roleCode] ?? step.roleCode,
+      roleLabel: contractApprovalRoleLabel(step.roleCode),
       approverUserId: step.approverUserId,
       approverName: step.approverUser?.fullName ?? '—',
       orderNo: step.orderNo,
@@ -2162,7 +2100,7 @@ export const getContractDecisionHistory = async (req: Request, res: Response, ne
     res.json(events.map((event) => ({
       id: event.id,
       roleCode: event.roleCode,
-      roleLabel: ROLE_LABELS[event.roleCode] ?? event.roleCode,
+      roleLabel: contractApprovalRoleLabel(event.roleCode),
       revisionNo: event.revisionNo,
       actorName: event.actorUser?.fullName ?? '—',
       previousDecision: event.previousDecision,
@@ -2316,53 +2254,35 @@ export const startContractApproval = async (req: Request, res: Response, next: N
       }
     }
 
-    const routeRoles = buildRouteRoles(contract);
-    const stepsPayload: Array<Partial<ContractApprovalStep>> = [];
     const now = new Date();
+    const stepsPayload = await buildApprovalStepPayloads({
+      contract,
+      revisionNo,
+      assignedAt: now,
+      dependencies: {
+        resolveApproverUserId,
+        resolveSlaWorkdays,
+        resolveEffectiveWorkSchedule,
+        calculateDeadlineBySchedule,
+      },
+    });
 
-    for (let index = 0; index < routeRoles.length; index += 1) {
-      const roleCode = routeRoles[index];
-      const approverUserId = await resolveApproverUserId(roleCode, contract);
-      const slaWorkdays = await resolveSlaWorkdays(contract, roleCode);
-      const approverSchedule = await resolveEffectiveWorkSchedule(roleCode, approverUserId);
-      const isFirstStep = index === 0;
-      const assignedAt = isFirstStep ? now : null;
-      const deadlineAt = isFirstStep ? await calculateDeadlineBySchedule(now, slaWorkdays, approverSchedule) : null;
-
-      stepsPayload.push({
-        contractId: contract.id,
-        roleCode,
-        approverUserId,
-        orderNo: index + 1,
-        revisionNo,
-        acceptedAt: null,
-        signedAt: null,
-        decision: null,
-        comment: null,
-        slaWorkdays,
-        assignedAt,
-        deadlineAt,
-        reminderBeforeSentAt: null,
-        reminderDeadlineSentAt: null,
-        reminderOverdueSentAt: null,
-        escalationSentAt: null,
-      });
-    }
-
+    let createdSteps: ContractApprovalStep[] = [];
     await AppDataSource.transaction(async (manager) => {
       const created = manager.create(ContractApprovalStep, stepsPayload);
-      await manager.save(created);
+      createdSteps = await manager.save(created);
 
       contract.status = ContractStatus.IN_APPROVAL;
       await manager.save(contract);
     });
 
-    const firstStep = stepsPayload[0] as ContractApprovalStep | undefined;
-    if (firstStep) {
-      void notifyStepAssigned(contract, firstStep).catch((error) => {
-        logger.error('Failed to send step-assigned notification (startContractApproval):', error);
+    createdSteps
+      .filter((step) => Boolean(step.assignedAt))
+      .forEach((step) => {
+        void notifyStepAssigned(contract, step).catch((error) => {
+          logger.error('Failed to send step-assigned notification (startContractApproval):', error);
+        });
       });
-    }
 
     notifyContractApprovalUpdated(contract.id, currentUserId);
     res.json({ message: 'Маршрут согласования запущен' });
@@ -2415,7 +2335,7 @@ export const decideContractApprovalStep = async (req: Request, res: Response, ne
     const hasParallelRoute = isParallelSecretaryRoute(steps);
     const currentStep = steps.find((item) => !item.decision);
     const canProcessAssignedParallelStep = hasParallelRoute
-      && step.roleCode !== 'security'
+      && isPreSecretaryApprovalRole(step.roleCode)
       && Boolean(step.assignedAt);
     if (!wasProcessedStep && !canProcessAssignedParallelStep && (!currentStep || currentStep.id !== step.id)) {
       const error: any = new Error('Этот шаг согласования еще не назначен');
@@ -2455,10 +2375,12 @@ export const decideContractApprovalStep = async (req: Request, res: Response, ne
       }
     }
 
-    step.decision = decision;
-    step.comment = normalizedComment || null;
-    step.acceptedAt = step.acceptedAt ?? decisionDate;
-    step.signedAt = decisionDate;
+    applyApprovalDecision({
+      step,
+      decision,
+      comment: normalizedComment,
+      decidedAt: decisionDate,
+    });
     await AppDataSource.transaction(async (manager) => {
       await manager.save(step);
       await saveDecisionEvent(manager, {
@@ -2470,39 +2392,28 @@ export const decideContractApprovalStep = async (req: Request, res: Response, ne
       });
     });
 
-    const isParallelApprovalStep = hasParallelRoute
-      && PARALLEL_APPROVAL_ROLES.includes(step.roleCode as typeof PARALLEL_APPROVAL_ROLES[number]);
+    const isParallelApprovalStep = hasParallelRoute && isPreSecretaryApprovalRole(step.roleCode);
     if (isParallelApprovalStep) {
-      const parallelSteps = steps.filter((item) => PARALLEL_APPROVAL_ROLES.includes(item.roleCode as typeof PARALLEL_APPROVAL_ROLES[number]));
       const decisionChanged = wasProcessedStep
         && (priorDecision !== decision || priorComment !== (normalizedComment || null));
       if (decisionChanged) {
-        const affectedSteps = parallelSteps.filter((item) => item.id !== step.id && Boolean(item.decision));
+        const affectedSteps = getDecidedPreSecretaryPeers(steps, step);
         if (affectedSteps.length) {
           void notifyDecisionChanged(contract, step, priorDecision, priorComment, affectedSteps).catch((error) => {
             logger.error('Failed to send changed parallel visa notification:', error);
           });
         }
       }
-      const parallelComplete = parallelSteps.every((item) => Boolean(item.decision));
-      const hasRemarks = parallelSteps.some((item) => (
-        item.decision === ContractApprovalDecision.REJECT
-        || item.decision === ContractApprovalDecision.REWORK
-        || Boolean(item.comment?.trim())
-      ));
-      const secretaryStep = steps.find((item) => item.roleCode === 'secretary') ?? null;
+      const hasRemarks = hasPreSecretaryApprovalRemarks(steps);
+      const secretaryStep = findSecretaryStepReadyForAssignment(steps);
       contract.status = ContractStatus.IN_APPROVAL;
       await contractRepository.save(contract);
 
-      if (parallelComplete && secretaryStep && !secretaryStep.assignedAt) {
-        const assignedAt = new Date();
-        secretaryStep.assignedAt = assignedAt;
-        const secretarySchedule = await resolveEffectiveWorkSchedule(secretaryStep.roleCode, secretaryStep.approverUserId);
-        secretaryStep.deadlineAt = await calculateDeadlineBySchedule(
-          assignedAt,
-          Math.max(1, secretaryStep.slaWorkdays || 1),
-          secretarySchedule
-        );
+      if (secretaryStep) {
+        await assignApprovalStep(secretaryStep, new Date(), {
+          resolveEffectiveWorkSchedule,
+          calculateDeadlineBySchedule,
+        });
         await stepRepository.save(secretaryStep);
         void notifyStepAssigned(contract, secretaryStep).catch((error) => {
           logger.error('Failed to send secretary notification (decideContractApprovalStep):', error);

@@ -4,16 +4,9 @@ import { ContractApprovalDecision, ContractApprovalStep } from '../models/contra
 import { User } from '../models/user.model';
 import { sendEmailWithAttachment } from './email.service';
 import { logger } from '../utils/logger';
+import { contractApprovalRoleLabel } from '../constants/contract-approval';
 
 const userRepo = AppDataSource.getRepository(User);
-
-const ROLE_LABELS: Record<string, string> = {
-  security: 'Руководитель СБ',
-  lawyer: 'Юрист',
-  chief_accountant: 'Главный бухгалтер',
-  financer: 'Финансовый директор',
-  secretary: 'Офис-менеджер',
-};
 
 function escapeHtml(value: string | null | undefined): string {
   return String(value ?? '')
@@ -25,7 +18,7 @@ function escapeHtml(value: string | null | undefined): string {
 }
 
 function roleLabel(roleCode: string): string {
-  return ROLE_LABELS[roleCode] ?? roleCode;
+  return contractApprovalRoleLabel(roleCode);
 }
 
 function counterpartyLabel(contract: Contract): string {
