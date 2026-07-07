@@ -148,7 +148,7 @@ const DashboardLayout = () => {
   const isSecurityHead = user?.role === 'security';
   const isAdmin = canAccessAdmin(user?.role);
   const canUseWorkSchedule = canAccessOperationsPreview(user?.role);
-  const canViewPlansMenu = !isHrScheduleRole && !isGarageHead && !isWarehouseStaffScheduleOperator && !isSecurityHead;
+  const canViewPlansMenu = !isHrScheduleRole && !isGarageHead && user?.role !== 'warehouse_manager_vvo' && !isSecurityHead;
   const canViewVvoSchedule = isAdmin || isHrScheduleRole || isKtkVvoManager;
   const canViewMoscowSchedule = isAdmin || isHrScheduleRole || isKtkMowManager;
   const canViewVvoGarageSchedule = isAdmin || isHrScheduleRole || isGarageHead || isWarehouseStaffScheduleOperator;
