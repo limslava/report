@@ -12,7 +12,7 @@ export function getDefaultAuthenticatedRoute(role?: string | null): string {
   if (role === 'garage_head' || role === 'garage_head_vvo') {
     return '/operations-preview?location=garage_vvo&section=mechanics';
   }
-  if (role === 'warehouse_manager_vvo' || role === 'manager_to') {
+  if (role === 'warehouse_manager_vvo') {
     return '/operations-preview?location=garage_vvo&section=warehouse_staff';
   }
   if (canViewPlans(role)) return '/plans';

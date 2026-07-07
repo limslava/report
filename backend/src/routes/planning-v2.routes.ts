@@ -27,6 +27,7 @@ const PLANNING_ALLOWED_ROLES = [
   'manager_auto',
   'manager_ktk_vvo',
   'head_ktk_vvo',
+  'manager_to',
 ] as const;
 
 router.use(authenticate);
