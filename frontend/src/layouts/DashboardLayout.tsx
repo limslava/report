@@ -144,19 +144,19 @@ const DashboardLayout = () => {
   const isKtkDispatchRole = isKtkVvoManager || isKtkMowManager;
   const isHrScheduleRole = user?.role === 'head_hr' || user?.role === 'hr_specialist';
   const isGarageHead = user?.role === 'garage_head' || user?.role === 'garage_head_vvo';
-  const isWarehouseManagerVvo = user?.role === 'warehouse_manager_vvo';
+  const isWarehouseStaffScheduleOperator = user?.role === 'warehouse_manager_vvo' || user?.role === 'manager_to';
   const isSecurityHead = user?.role === 'security';
   const isAdmin = canAccessAdmin(user?.role);
   const canUseWorkSchedule = canAccessOperationsPreview(user?.role);
-  const canViewPlansMenu = !isHrScheduleRole && !isGarageHead && !isWarehouseManagerVvo && !isSecurityHead;
+  const canViewPlansMenu = !isHrScheduleRole && !isGarageHead && !isWarehouseStaffScheduleOperator && !isSecurityHead;
   const canViewVvoSchedule = isAdmin || isHrScheduleRole || isKtkVvoManager;
   const canViewMoscowSchedule = isAdmin || isHrScheduleRole || isKtkMowManager;
-  const canViewVvoGarageSchedule = isAdmin || isHrScheduleRole || isGarageHead || isWarehouseManagerVvo;
+  const canViewVvoGarageSchedule = isAdmin || isHrScheduleRole || isGarageHead || isWarehouseStaffScheduleOperator;
   const canViewVvoSecuritySchedule = isAdmin || isHrScheduleRole || isSecurityHead;
   const canViewMoscowGarageSchedule = false;
   const defaultScheduleRoute = isGarageHead
     ? '/operations-preview?location=garage_vvo&section=mechanics'
-    : isWarehouseManagerVvo
+    : isWarehouseStaffScheduleOperator
       ? '/operations-preview?location=garage_vvo&section=warehouse_staff'
     : isSecurityHead
       ? '/operations-preview?location=security_vvo&section=guards'
@@ -251,7 +251,7 @@ const DashboardLayout = () => {
       }
       if (canViewVvoGarageSchedule) {
         setIsWorkGarageSubmenuOpen(true);
-        handleNavigate(`/operations-preview?location=garage_vvo&section=${isWarehouseManagerVvo ? 'warehouse_staff' : 'mechanics'}`);
+        handleNavigate(`/operations-preview?location=garage_vvo&section=${isWarehouseStaffScheduleOperator ? 'warehouse_staff' : 'mechanics'}`);
       }
     }
   };
@@ -647,7 +647,7 @@ const DashboardLayout = () => {
             )}
           </>
         )}
-        {canUseWorkSchedule && (isAdmin || isHrScheduleRole || isGarageHead || isWarehouseManagerVvo || isSecurityHead) && (
+        {canUseWorkSchedule && (isAdmin || isHrScheduleRole || isGarageHead || isWarehouseStaffScheduleOperator || isSecurityHead) && (
           <>
             <ListItem disablePadding>
               <Tooltip title={!isPinnedOpen ? 'График работы' : ''} placement="right">
@@ -766,7 +766,7 @@ const DashboardLayout = () => {
                             </ListItem>
                             {isWorkGarageSubmenuOpen && (
                               <>
-                                {!isWarehouseManagerVvo && (
+                                {!isWarehouseStaffScheduleOperator && (
                                   <ListItem disablePadding sx={{ pl: 8 }}>
                                     <ListItemButton
                                       selected={location.pathname === '/operations-preview' && location.search.includes('location=garage_vvo') && location.search.includes('section=mechanics')}

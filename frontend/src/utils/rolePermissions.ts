@@ -18,7 +18,8 @@ export function canViewTotalsInPlans(role?: string | null): boolean {
     && role !== 'hr_specialist'
     && role !== 'garage_head'
     && role !== 'garage_head_vvo'
-    && role !== 'warehouse_manager_vvo';
+    && role !== 'warehouse_manager_vvo'
+    && role !== 'manager_to';
 }
 
 export function canEditTotalsPlan(role?: string | null): boolean {
@@ -45,6 +46,7 @@ export function canAccessOperationsPreview(role?: string | null): boolean {
     role === 'garage_head_vvo' ||
     role === 'garage_head' ||
     role === 'warehouse_manager_vvo' ||
+    role === 'manager_to' ||
     role === 'security'
   );
 }

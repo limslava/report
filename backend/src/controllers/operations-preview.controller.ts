@@ -200,7 +200,7 @@ const canAccessLocationSection = (role: unknown, location: PreviewLocation, sect
   if (role === 'admin') return true;
   if ((role === 'head_hr' || role === 'hr_specialist') && section !== 'efficiency') return true;
   if (role === 'garage_head' || role === 'garage_head_vvo') return location === 'garage_vvo' && section === 'mechanics';
-  if (role === 'warehouse_manager_vvo') return location === 'garage_vvo' && section === 'warehouse_staff';
+  if (role === 'warehouse_manager_vvo' || role === 'manager_to') return location === 'garage_vvo' && section === 'warehouse_staff';
   if (role === 'security') return location === 'security_vvo' && section === 'guards';
   if (role === 'manager_ktk_vvo' || role === 'head_ktk_vvo') return location === 'ktk_vvo';
   if (role === 'manager_ktk_mow' || role === 'head_ktk_mow') return location === 'ktk_mow';

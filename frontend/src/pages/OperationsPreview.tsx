@@ -225,7 +225,7 @@ export default function OperationsPreview() {
   const userId = useAuthStore((state) => state.user?.id);
   const userRole = useAuthStore((state) => state.user?.role);
   const isHrScheduleRole = userRole === 'head_hr' || userRole === 'hr_specialist';
-  const isWarehouseManagerVvo = userRole === 'warehouse_manager_vvo';
+  const isWarehouseStaffScheduleOperator = userRole === 'warehouse_manager_vvo' || userRole === 'manager_to';
   const canManagePlanFact = (
     userRole === 'admin'
     || userRole === 'head_ktk_vvo'
@@ -555,7 +555,7 @@ export default function OperationsPreview() {
   const canManageVvoMechanics = isHrScheduleRole && activeLocation === 'garage_vvo' && filter === 'Автослесари';
   const canManageVvoWarehouseStaff = isHrScheduleRole && activeLocation === 'garage_vvo' && filter === 'Сотрудники склада';
   const canManageVvoGuards = isHrScheduleRole && activeLocation === 'security_vvo' && filter === 'Сторожа';
-  const canEditWarehouseStaffAsManager = isWarehouseManagerVvo && activeLocation === 'garage_vvo' && filter === 'Сотрудники склада';
+  const canEditWarehouseStaffAsManager = isWarehouseStaffScheduleOperator && activeLocation === 'garage_vvo' && filter === 'Сотрудники склада';
   const canEditCurrentSchedule = !isHrScheduleRole || canManageVvoMechanics || canManageVvoWarehouseStaff || canManageVvoGuards || canEditWarehouseStaffAsManager || (effectiveMode === 'plan' && (filter === 'Контейнеры' || filter === 'Автослесари' || filter === 'Сотрудники склада' || filter === 'Сторожа'));
   const canEditRows = !isHrScheduleRole || canManageVvoMechanics || canManageVvoWarehouseStaff || canManageVvoGuards || canEditWarehouseStaffAsManager;
   const canFillFactFromPreviousMonth = filter === 'Авто' && canEditRows;
