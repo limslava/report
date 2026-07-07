@@ -7,10 +7,12 @@ describe('warehouse route access', () => {
   it.each([
     ['warehouse', 'warehouse_keeper', true],
     ['warehouse', 'warehouse_manager', true],
+    ['warehouse', 'warehouse_manager_vvo', false],
     ['warehouse', 'counterparty_user', true],
     ['warehouse', 'financer', true],
     ['warehouse/operations', 'warehouse_keeper', true],
     ['warehouse/operations', 'warehouse_manager', true],
+    ['warehouse/operations', 'warehouse_manager_vvo', false],
     ['warehouse/operations', 'counterparty_user', false],
     ['warehouse/operations', 'financer', false],
     ['warehouse/on-site', 'warehouse_keeper', true],

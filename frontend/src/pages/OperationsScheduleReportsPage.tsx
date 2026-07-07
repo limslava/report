@@ -47,6 +47,7 @@ const sectionOptionsByDepartment: Record<ReportDepartment, Array<SelectOption<Re
   ],
   garage: [
     { value: 'mechanics', label: 'Автослесарь' },
+    { value: 'warehouse_staff', label: 'Сотрудник склада' },
   ],
   security: [
     { value: 'guards', label: 'Сотрудник охраны' },
@@ -88,7 +89,7 @@ export default function OperationsScheduleReportsPage() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [city, setCity] = useState<ReportCity>('vvo');
   const [departments, setDepartments] = useState<ReportDepartment[]>(['dispatch', 'garage', 'security']);
-  const [sections, setSections] = useState<ReportSection[]>(['containers', 'auto', 'dispatchers', 'couriers', 'mechanics', 'guards']);
+  const [sections, setSections] = useState<ReportSection[]>(['containers', 'auto', 'dispatchers', 'couriers', 'mechanics', 'warehouse_staff', 'guards']);
   const [modes, setModes] = useState<Array<'plan' | 'fact'>>(['fact', 'plan']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -116,12 +117,12 @@ export default function OperationsScheduleReportsPage() {
 
   const selectedSheetsCount = locations.reduce((count, locationValue) => {
     return count + effectiveSections.reduce((sectionCount, sectionValue) => {
-      if (locationValue === 'ktk_mow' && (sectionValue === 'auto' || sectionValue === 'mechanics')) return sectionCount;
+      if (locationValue === 'ktk_mow' && (sectionValue === 'auto' || sectionValue === 'mechanics' || sectionValue === 'warehouse_staff')) return sectionCount;
       if (locationValue === 'ktk_mow' && sectionValue === 'guards') return sectionCount;
-      if (locationValue === 'garage_vvo' && sectionValue !== 'mechanics') return sectionCount;
+      if (locationValue === 'garage_vvo' && sectionValue !== 'mechanics' && sectionValue !== 'warehouse_staff') return sectionCount;
       if (locationValue === 'security_vvo' && sectionValue !== 'guards') return sectionCount;
-      if (locationValue === 'ktk_vvo' && (sectionValue === 'mechanics' || sectionValue === 'guards')) return sectionCount;
-      return sectionCount + (sectionValue === 'containers' || sectionValue === 'mechanics' || sectionValue === 'guards' ? effectiveModes.length : 1);
+      if (locationValue === 'ktk_vvo' && (sectionValue === 'mechanics' || sectionValue === 'warehouse_staff' || sectionValue === 'guards')) return sectionCount;
+      return sectionCount + (sectionValue === 'containers' || sectionValue === 'mechanics' || sectionValue === 'warehouse_staff' || sectionValue === 'guards' ? effectiveModes.length : 1);
     }, 0);
   }, 0);
 
@@ -136,7 +137,7 @@ export default function OperationsScheduleReportsPage() {
       setSections(['containers', 'dispatchers', 'couriers']);
     } else {
       setDepartments(['dispatch', 'garage', 'security']);
-      setSections(['containers', 'auto', 'dispatchers', 'couriers', 'mechanics', 'guards']);
+      setSections(['containers', 'auto', 'dispatchers', 'couriers', 'mechanics', 'warehouse_staff', 'guards']);
     }
   };
 
@@ -153,8 +154,11 @@ export default function OperationsScheduleReportsPage() {
     setDepartments(nextDepartments);
     setSections((prev) => {
       const filtered = prev.filter((section) => nextAvailableSections.includes(section));
-      if (department === 'garage' && !isSelected && !filtered.includes('mechanics')) {
-        return [...filtered, 'mechanics'];
+      if (department === 'garage' && !isSelected) {
+        return [
+          ...filtered,
+          ...(['mechanics', 'warehouse_staff'] as ReportSection[]).filter((section) => !filtered.includes(section)),
+        ];
       }
       if (department === 'security' && !isSelected && !filtered.includes('guards')) {
         return [...filtered, 'guards'];
@@ -255,7 +259,7 @@ export default function OperationsScheduleReportsPage() {
             {departments.includes('dispatch') && (
               <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 4, rowGap: 0.5 }}>
                 {availableSections
-                  .filter((item) => item.value !== 'mechanics' && item.value !== 'guards')
+                  .filter((item) => item.value !== 'mechanics' && item.value !== 'warehouse_staff' && item.value !== 'guards')
                   .map((item) => (
                     <FormControlLabel
                       key={item.value}
@@ -276,12 +280,22 @@ export default function OperationsScheduleReportsPage() {
                 <FormControlLabel
                   control={(
                     <Checkbox
-                      checked={departments.includes('garage')}
+                      checked={effectiveSections.includes('mechanics')}
                       disabled
                     />
                   )}
                   label="Автослесарь"
-                  sx={{ minWidth: 190, opacity: departments.includes('garage') ? 1 : 0.55 }}
+                  sx={{ minWidth: 190, opacity: effectiveSections.includes('mechanics') ? 1 : 0.55 }}
+                />
+                <FormControlLabel
+                  control={(
+                    <Checkbox
+                      checked={effectiveSections.includes('warehouse_staff')}
+                      disabled
+                    />
+                  )}
+                  label="Сотрудник склада"
+                  sx={{ minWidth: 190, opacity: effectiveSections.includes('warehouse_staff') ? 1 : 0.55 }}
                 />
                 <FormControlLabel
                   control={(

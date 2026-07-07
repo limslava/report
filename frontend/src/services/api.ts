@@ -106,7 +106,7 @@ export const resolveCounterpartyByName = (name: string) => api.get('/counterpart
 export const lookupSinokorBl = (blNo: string, debug = false) =>
   api.get(`/carriers/sinokor/bl/${encodeURIComponent(blNo)}`, { params: debug ? { debug: '1' } : undefined });
 export const createContract = (data: {
-  contractNumber: string;
+  contractNumber?: string | null;
   contractType: 'expense' | 'income';
   incomeSubtype?: 'standard' | 'with_psr' | null;
   counterpartyName: string;
@@ -114,6 +114,19 @@ export const createContract = (data: {
   ownershipForm?: string | null;
   counterpartyForm?: 'ooo' | 'ao' | 'pao' | 'zao' | 'ip' | null;
   counterpartyInn: string;
+  counterpartyOgrn?: string | null;
+  counterpartyKpp?: string | null;
+  counterpartyLegalAddress?: string | null;
+  counterpartyPostalAddress?: string | null;
+  counterpartyPhone?: string | null;
+  counterpartyEmail?: string | null;
+  counterpartySignerPosition?: string | null;
+  counterpartySignerName?: string | null;
+  counterpartySignerAuthority?: string | null;
+  counterpartyBankName?: string | null;
+  counterpartyBankBik?: string | null;
+  counterpartyBankAccount?: string | null;
+  counterpartyCorrespondentAccount?: string | null;
   subject?: string | null;
   contractDate?: string | null;
   psrFlag?: boolean;
@@ -200,7 +213,7 @@ export const saveSmtpConfig = (data: any) => api.post('/smtp-config', data);
 export const testSmtpConfig = () => api.post('/smtp-config/test');
 
 export type OperationsPreviewLocation = 'ktk_vvo' | 'ktk_mow' | 'garage_vvo' | 'garage_mow' | 'security_vvo';
-export type OperationsPreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'mechanics' | 'guards' | 'efficiency';
+export type OperationsPreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'mechanics' | 'warehouse_staff' | 'guards' | 'efficiency';
 
 export const getOperationsPreviewState = (params?: { location?: OperationsPreviewLocation; section?: OperationsPreviewSection }) =>
   api.get('/operations-preview/state', { params });

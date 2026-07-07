@@ -9,6 +9,7 @@ describe('getDefaultAuthenticatedRoute', () => {
     ['manager_sales', '/plans'],
     ['security', '/business-processes/dashboard'],
     ['garage_head', '/operations-preview?location=garage_vvo&section=mechanics'],
+    ['warehouse_manager_vvo', '/operations-preview?location=garage_vvo&section=warehouse_staff'],
     ['head_hr', '/operations-preview?location=ktk_vvo&section=containers'],
     ['warehouse_keeper', '/warehouse/operations'],
     ['warehouse_manager', '/warehouse'],
