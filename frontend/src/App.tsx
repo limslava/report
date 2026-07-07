@@ -36,6 +36,9 @@ function App() {
     if (user?.role === 'garage_head' || user?.role === 'garage_head_vvo') {
       return '/operations-preview?location=garage_vvo&section=mechanics';
     }
+    if (user?.role === 'warehouse_manager_vvo') {
+      return '/operations-preview?location=garage_vvo&section=warehouse_staff';
+    }
     if (user?.role === 'head_hr' || user?.role === 'hr_specialist') {
       return '/operations-preview?location=ktk_vvo&section=containers';
     }

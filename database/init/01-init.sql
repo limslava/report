@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS users (
   full_name VARCHAR(255) NOT NULL,
   role VARCHAR(50) NOT NULL CHECK (role IN (
     'admin', 'director', 'financer', 'manager_sales',
-    'manager_ktk_vvo', 'manager_ktk_mow', 'manager_auto', 'manager_rail', 'manager_extra', 'manager_to'
+    'manager_ktk_vvo', 'manager_ktk_mow', 'manager_auto', 'manager_rail', 'manager_extra', 'manager_to',
+    'warehouse_manager_vvo'
   )),
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMP DEFAULT NOW(),

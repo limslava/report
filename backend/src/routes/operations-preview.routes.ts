@@ -25,6 +25,7 @@ router.get(
     'hr_specialist',
     'garage_head_vvo',
     'garage_head',
+    'warehouse_manager_vvo',
     'security',
     'director',
     'financer'
@@ -43,6 +44,7 @@ router.put(
     'hr_specialist',
     'garage_head_vvo',
     'garage_head',
+    'warehouse_manager_vvo',
     'security'
   ),
   asyncHandler(saveOperationsPreviewState)
@@ -59,6 +61,7 @@ router.get(
     'hr_specialist',
     'garage_head_vvo',
     'garage_head',
+    'warehouse_manager_vvo',
     'security',
     'director',
     'financer'

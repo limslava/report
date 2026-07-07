@@ -13,9 +13,9 @@ import { downloadBlob } from '../utils/download';
 import '../styles/operations-preview.css';
 
 type PreviewLocation = OperationsPreviewLocation;
-type PreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'mechanics' | 'guards' | 'efficiency';
+type PreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'mechanics' | 'warehouse_staff' | 'guards' | 'efficiency';
 type PreviewMode = 'plan' | 'fact';
-type Department = 'Контейнеры' | 'Авто' | 'Диспетчера' | 'Курьеры' | 'Автослесари' | 'Сторожа';
+type Department = 'Контейнеры' | 'Авто' | 'Диспетчера' | 'Курьеры' | 'Автослесари' | 'Сотрудники склада' | 'Сторожа';
 type EfficiencyLocation = 'ktk_vvo' | 'ktk_mow';
 type SortField = 'manual' | 'name' | 'plate';
 type SortDirection = 'asc' | 'desc';
@@ -33,6 +33,7 @@ const DEFAULT_SORT_BY_SECTION: SortBySection = {
   Диспетчера: { field: 'manual', direction: 'asc' },
   Курьеры: { field: 'manual', direction: 'asc' },
   Автослесари: { field: 'manual', direction: 'asc' },
+  'Сотрудники склада': { field: 'manual', direction: 'asc' },
   Сторожа: { field: 'manual', direction: 'asc' },
 };
 const MONTH_OPTIONS = [
@@ -58,7 +59,7 @@ const EFFICIENCY_LOCATION_OPTIONS: Array<{ value: EfficiencyLocation; label: str
 const LOCATION_SECTIONS: Record<PreviewLocation, PreviewSection[]> = {
   ktk_vvo: ['containers', 'auto', 'dispatchers', 'couriers', 'efficiency'],
   ktk_mow: ['containers', 'dispatchers', 'couriers', 'efficiency'],
-  garage_vvo: ['mechanics'],
+  garage_vvo: ['mechanics', 'warehouse_staff'],
   garage_mow: ['mechanics'],
   security_vvo: ['guards'],
 };
@@ -69,6 +70,7 @@ const DEPARTMENT_BY_SECTION: Partial<Record<PreviewSection, Department>> = {
   dispatchers: 'Диспетчера',
   couriers: 'Курьеры',
   mechanics: 'Автослесари',
+  warehouse_staff: 'Сотрудники склада',
   guards: 'Сторожа',
 };
 
@@ -78,6 +80,7 @@ const SECTION_BY_DEPARTMENT: Record<Department, PreviewSection> = {
   Диспетчера: 'dispatchers',
   Курьеры: 'couriers',
   Автослесари: 'mechanics',
+  'Сотрудники склада': 'warehouse_staff',
   Сторожа: 'guards',
 };
 
@@ -93,14 +96,15 @@ const getDepartmentsForLocation = (location: PreviewLocation): Department[] =>
     .filter(Boolean) as Department[];
 
 const isPersonnelDepartment = (department: Department): boolean =>
-  department === 'Диспетчера' || department === 'Курьеры' || department === 'Автослесари' || department === 'Сторожа';
+  department === 'Диспетчера' || department === 'Курьеры' || department === 'Автослесари' || department === 'Сотрудники склада' || department === 'Сторожа';
 const hasPersonalManualOrder = (department: Department): boolean =>
-  department === 'Автослесари' || department === 'Сторожа';
+  department === 'Автослесари' || department === 'Сотрудники склада' || department === 'Сторожа';
 
 const getPersonnelNameLabel = (department: Department, location: PreviewLocation): string => {
   if (department === 'Диспетчера') return 'Диспетчер';
   if (department === 'Курьеры') return location === 'ktk_mow' ? 'Механик' : 'Оперативник';
   if (department === 'Автослесари') return 'Автослесарь';
+  if (department === 'Сотрудники склада') return 'Сотрудник склада';
   if (department === 'Сторожа') return 'Сотрудник охраны';
   return 'Первый водитель';
 };
@@ -221,6 +225,7 @@ export default function OperationsPreview() {
   const userId = useAuthStore((state) => state.user?.id);
   const userRole = useAuthStore((state) => state.user?.role);
   const isHrScheduleRole = userRole === 'head_hr' || userRole === 'hr_specialist';
+  const isWarehouseManagerVvo = userRole === 'warehouse_manager_vvo';
   const canManagePlanFact = (
     userRole === 'admin'
     || userRole === 'head_ktk_vvo'
@@ -528,6 +533,7 @@ export default function OperationsPreview() {
       Диспетчера: sortSection('Диспетчера'),
       Курьеры: sortSection('Курьеры'),
       Автослесари: sortSection('Автослесари'),
+      'Сотрудники склада': sortSection('Сотрудники склада'),
       Сторожа: sortSection('Сторожа'),
     } as const;
   }, [peopleState, baseRowIndexById, manualOrderBySection, sortBySection]);
@@ -537,23 +543,27 @@ export default function OperationsPreview() {
       : allowedDepartments[0] ?? 'Контейнеры';
   const isPersonnelSection = filter !== 'Все' && isPersonnelDepartment(filter);
   const canManageMechanicPlan = userRole === 'admin' || isHrScheduleRole;
+  const canManageWarehouseStaffPlan = userRole === 'admin' || isHrScheduleRole;
   const canManageGuardPlan = userRole === 'admin' || isHrScheduleRole || userRole === 'security';
   const canUsePlanMode = (
     (filter === 'Контейнеры' && canManagePlanFact)
     || (filter === 'Автослесари' && canManageMechanicPlan)
+    || (filter === 'Сотрудники склада' && canManageWarehouseStaffPlan)
     || (filter === 'Сторожа' && canManageGuardPlan)
   );
-  const effectiveMode: PreviewMode = (filter === 'Контейнеры' || filter === 'Автослесари' || filter === 'Сторожа') ? mode : 'fact';
+  const effectiveMode: PreviewMode = (filter === 'Контейнеры' || filter === 'Автослесари' || filter === 'Сотрудники склада' || filter === 'Сторожа') ? mode : 'fact';
   const canManageVvoMechanics = isHrScheduleRole && activeLocation === 'garage_vvo' && filter === 'Автослесари';
+  const canManageVvoWarehouseStaff = isHrScheduleRole && activeLocation === 'garage_vvo' && filter === 'Сотрудники склада';
   const canManageVvoGuards = isHrScheduleRole && activeLocation === 'security_vvo' && filter === 'Сторожа';
-  const canEditCurrentSchedule = !isHrScheduleRole || canManageVvoMechanics || canManageVvoGuards || (effectiveMode === 'plan' && (filter === 'Контейнеры' || filter === 'Автослесари' || filter === 'Сторожа'));
-  const canEditRows = !isHrScheduleRole || canManageVvoMechanics || canManageVvoGuards;
+  const canEditWarehouseStaffAsManager = isWarehouseManagerVvo && activeLocation === 'garage_vvo' && filter === 'Сотрудники склада';
+  const canEditCurrentSchedule = !isHrScheduleRole || canManageVvoMechanics || canManageVvoWarehouseStaff || canManageVvoGuards || canEditWarehouseStaffAsManager || (effectiveMode === 'plan' && (filter === 'Контейнеры' || filter === 'Автослесари' || filter === 'Сотрудники склада' || filter === 'Сторожа'));
+  const canEditRows = !isHrScheduleRole || canManageVvoMechanics || canManageVvoWarehouseStaff || canManageVvoGuards || canEditWarehouseStaffAsManager;
   const canFillFactFromPreviousMonth = filter === 'Авто' && canEditRows;
-  const canAddRows = canEditRows || (isHrScheduleRole && activeLocation === 'garage_vvo' && addDepartment === 'Автослесари') || (isHrScheduleRole && activeLocation === 'security_vvo' && addDepartment === 'Сторожа');
+  const canAddRows = canEditRows
+    || (isHrScheduleRole && activeLocation === 'garage_vvo' && (addDepartment === 'Автослесари' || addDepartment === 'Сотрудники склада'))
+    || (isHrScheduleRole && activeLocation === 'security_vvo' && addDepartment === 'Сторожа');
   const visibleCellCodes: CellCode[] = isPersonnelSection
-    ? filter === 'Автослесари' || filter === 'Сторожа'
-      ? ['W', 'V', 'O', 'B', 'N']
-      : ['W', 'V', 'O', 'B']
+    ? (filter === 'Автослесари' || filter === 'Сотрудники склада' || filter === 'Сторожа' ? ['W', 'V', 'O', 'B', 'N'] : ['W', 'V', 'O', 'B'])
     : filter === 'Авто'
       ? ['W', 'O', 'V', 'B', 'H', 'S', 'R', 'N']
       : ['W', 'O', 'V', 'B', 'H', 'R', 'N'];
@@ -675,7 +685,7 @@ export default function OperationsPreview() {
       const next: SortBySection = { ...prev };
       const sections = getVisibleSections();
       sections.forEach((section) => {
-        if (field === 'plate' && (section === 'Диспетчера' || section === 'Курьеры' || section === 'Автослесари' || section === 'Сторожа')) {
+        if (field === 'plate' && (section === 'Диспетчера' || section === 'Курьеры' || section === 'Автослесари' || section === 'Сотрудники склада' || section === 'Сторожа')) {
           return;
         }
         const current = prev[section];
@@ -857,6 +867,7 @@ export default function OperationsPreview() {
         Диспетчера: normalizeSection('Диспетчера'),
         Курьеры: normalizeSection('Курьеры'),
         Автослесари: normalizeSection('Автослесари'),
+        'Сотрудники склада': normalizeSection('Сотрудники склада'),
         Сторожа: normalizeSection('Сторожа'),
       });
     } catch {
@@ -893,6 +904,7 @@ export default function OperationsPreview() {
       };
       setManualOrderBySection({
         Автослесари: normalizeSection('Автослесари'),
+        'Сотрудники склада': normalizeSection('Сотрудники склада'),
         Сторожа: normalizeSection('Сторожа'),
       });
     } catch {
@@ -964,6 +976,7 @@ export default function OperationsPreview() {
           payload?.filter === 'Диспетчера' ||
           payload?.filter === 'Курьеры' ||
           payload?.filter === 'Автослесари' ||
+          payload?.filter === 'Сотрудники склада' ||
           payload?.filter === 'Сторожа' ||
           payload?.filter === 'Все'
             ? payload.filter
@@ -1051,7 +1064,7 @@ export default function OperationsPreview() {
   }, [activeSection, allowedDepartmentSet, filter]);
 
   useEffect(() => {
-    if (filter !== 'Контейнеры' && filter !== 'Автослесари' && filter !== 'Сторожа' && mode !== 'fact') {
+    if (filter !== 'Контейнеры' && filter !== 'Автослесари' && filter !== 'Сотрудники склада' && filter !== 'Сторожа' && mode !== 'fact') {
       setMode('fact');
       return;
     }
@@ -1117,7 +1130,7 @@ export default function OperationsPreview() {
   };
 
   const hasManualFactEditsForMonth = useMemo(() => {
-    const planDepartment: Department | null = filter === 'Контейнеры' || filter === 'Автослесари' || filter === 'Сторожа' ? filter : null;
+    const planDepartment: Department | null = filter === 'Контейнеры' || filter === 'Автослесари' || filter === 'Сотрудники склада' || filter === 'Сторожа' ? filter : null;
     if (!planDepartment) return false;
     const planKey = `plan|${monthValue}` as OverrideScopeKey;
     const factKey = `fact|${monthValue}` as OverrideScopeKey;
@@ -1152,7 +1165,7 @@ export default function OperationsPreview() {
   }, [allOverrides, monthValue, peopleState, monthDays, filter]);
 
   const applyCopyPlanToFact = (options?: { switchToFactAfterCopy?: boolean }): boolean => {
-    const planDepartment: Department | null = filter === 'Контейнеры' || filter === 'Автослесари' || filter === 'Сторожа' ? filter : null;
+    const planDepartment: Department | null = filter === 'Контейнеры' || filter === 'Автослесари' || filter === 'Сотрудники склада' || filter === 'Сторожа' ? filter : null;
     if (!planDepartment) return false;
     const switchToFactAfterCopy = options?.switchToFactAfterCopy ?? false;
     const planKey = `plan|${monthValue}` as OverrideScopeKey;
@@ -1214,7 +1227,7 @@ export default function OperationsPreview() {
   };
 
   const handleFillPlanFromPreviousMonth = () => {
-    const planDepartment: Department | null = filter === 'Контейнеры' || filter === 'Автослесари' || filter === 'Сторожа' ? filter : null;
+    const planDepartment: Department | null = filter === 'Контейнеры' || filter === 'Автослесари' || filter === 'Сотрудники склада' || filter === 'Сторожа' ? filter : null;
     const prevMonth = getPrevMonthValue(monthValue);
     if (!planDepartment || !prevMonth) return;
 
@@ -1864,9 +1877,11 @@ export default function OperationsPreview() {
                   : 'Оперативники'
                 : section === 'mechanics'
                   ? 'Автослесарь'
-                  : section === 'guards'
-                    ? 'Сотрудник охраны'
-                    : 'Эффективность';
+                  : section === 'warehouse_staff'
+                    ? 'Сотрудник склада'
+                    : section === 'guards'
+                      ? 'Сотрудник охраны'
+                      : 'Эффективность';
       const filename =
         extractFilename(response.headers['content-disposition']) ??
         `График работы - ${fallbackSectionLabel} - ${String(parsedMonth.month).padStart(2, '0')}.${parsedMonth.year}.xlsx`;
@@ -2021,7 +2036,7 @@ export default function OperationsPreview() {
               >
                 {downloading ? 'Скачивание...' : 'Скачать Excel'}
               </button>
-              {!isEfficiencySection && canUsePlanMode && mode === 'plan' && (filter === 'Контейнеры' || filter === 'Автослесари' || filter === 'Сторожа') && (
+              {!isEfficiencySection && canUsePlanMode && mode === 'plan' && (filter === 'Контейнеры' || filter === 'Автослесари' || filter === 'Сотрудники склада' || filter === 'Сторожа') && (
                 <>
                   <button
                     type="button"

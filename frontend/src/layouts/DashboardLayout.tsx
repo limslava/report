@@ -144,17 +144,20 @@ const DashboardLayout = () => {
   const isKtkDispatchRole = isKtkVvoManager || isKtkMowManager;
   const isHrScheduleRole = user?.role === 'head_hr' || user?.role === 'hr_specialist';
   const isGarageHead = user?.role === 'garage_head' || user?.role === 'garage_head_vvo';
+  const isWarehouseManagerVvo = user?.role === 'warehouse_manager_vvo';
   const isSecurityHead = user?.role === 'security';
   const isAdmin = canAccessAdmin(user?.role);
   const canUseWorkSchedule = canAccessOperationsPreview(user?.role);
-  const canViewPlansMenu = !isHrScheduleRole && !isGarageHead && !isSecurityHead;
+  const canViewPlansMenu = !isHrScheduleRole && !isGarageHead && !isWarehouseManagerVvo && !isSecurityHead;
   const canViewVvoSchedule = isAdmin || isHrScheduleRole || isKtkVvoManager;
   const canViewMoscowSchedule = isAdmin || isHrScheduleRole || isKtkMowManager;
-  const canViewVvoGarageSchedule = isAdmin || isHrScheduleRole || isGarageHead;
+  const canViewVvoGarageSchedule = isAdmin || isHrScheduleRole || isGarageHead || isWarehouseManagerVvo;
   const canViewVvoSecuritySchedule = isAdmin || isHrScheduleRole || isSecurityHead;
   const canViewMoscowGarageSchedule = false;
   const defaultScheduleRoute = isGarageHead
     ? '/operations-preview?location=garage_vvo&section=mechanics'
+    : isWarehouseManagerVvo
+      ? '/operations-preview?location=garage_vvo&section=warehouse_staff'
     : isSecurityHead
       ? '/operations-preview?location=security_vvo&section=guards'
     : isKtkMowManager
@@ -248,7 +251,7 @@ const DashboardLayout = () => {
       }
       if (canViewVvoGarageSchedule) {
         setIsWorkGarageSubmenuOpen(true);
-        handleNavigate('/operations-preview?location=garage_vvo&section=mechanics');
+        handleNavigate(`/operations-preview?location=garage_vvo&section=${isWarehouseManagerVvo ? 'warehouse_staff' : 'mechanics'}`);
       }
     }
   };
@@ -762,15 +765,30 @@ const DashboardLayout = () => {
                               </ListItemButton>
                             </ListItem>
                             {isWorkGarageSubmenuOpen && (
-                              <ListItem disablePadding sx={{ pl: 8 }}>
-                                <ListItemButton
-                                  selected={location.pathname === '/operations-preview' && location.search.includes('location=garage_vvo') && location.search.includes('section=mechanics')}
-                                  onClick={() => handleNavigate('/operations-preview?location=garage_vvo&section=mechanics')}
-                                  sx={{ py: 0.5, minHeight: 30 }}
-                                >
-                                  <ListItemText primary="Автослесарь" primaryTypographyProps={{ fontSize: 13 }} />
-                                </ListItemButton>
-                              </ListItem>
+                              <>
+                                {!isWarehouseManagerVvo && (
+                                  <ListItem disablePadding sx={{ pl: 8 }}>
+                                    <ListItemButton
+                                      selected={location.pathname === '/operations-preview' && location.search.includes('location=garage_vvo') && location.search.includes('section=mechanics')}
+                                      onClick={() => handleNavigate('/operations-preview?location=garage_vvo&section=mechanics')}
+                                      sx={{ py: 0.5, minHeight: 30 }}
+                                    >
+                                      <ListItemText primary="Автослесарь" primaryTypographyProps={{ fontSize: 13 }} />
+                                    </ListItemButton>
+                                  </ListItem>
+                                )}
+                                {!isGarageHead && (
+                                  <ListItem disablePadding sx={{ pl: 8 }}>
+                                    <ListItemButton
+                                      selected={location.pathname === '/operations-preview' && location.search.includes('location=garage_vvo') && location.search.includes('section=warehouse_staff')}
+                                      onClick={() => handleNavigate('/operations-preview?location=garage_vvo&section=warehouse_staff')}
+                                      sx={{ py: 0.5, minHeight: 30 }}
+                                    >
+                                      <ListItemText primary="Сотрудник склада" primaryTypographyProps={{ fontSize: 13 }} />
+                                    </ListItemButton>
+                                  </ListItem>
+                                )}
+                              </>
                             )}
                           </>
                         )}
@@ -975,6 +993,8 @@ const DashboardLayout = () => {
                       ? location.search.includes('location=ktk_mow') ? 'График работы - Механики' : 'График работы - Оперативники'
                       : location.pathname === '/operations-preview' && location.search.includes('section=mechanics')
                       ? 'График работы - Автослесарь'
+                      : location.pathname === '/operations-preview' && location.search.includes('section=warehouse_staff')
+                      ? 'График работы - Сотрудник склада'
                       : location.pathname === '/operations-preview' && location.search.includes('section=guards')
                       ? 'График работы - Сотрудник охраны'
                       : location.pathname === '/operations-preview' && location.search.includes('section=efficiency')
