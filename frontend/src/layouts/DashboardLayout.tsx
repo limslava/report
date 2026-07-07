@@ -683,7 +683,7 @@ const DashboardLayout = () => {
             )}
           </>
         )}
-        {canUseWorkSchedule && (isAdmin || isHrScheduleRole || isGarageHead || isSecurityHead) && (
+        {canUseWorkSchedule && (isAdmin || isHrScheduleRole || isGarageHead || isWarehouseManagerVvo || isSecurityHead) && (
           <>
             <ListItem disablePadding>
               <Tooltip title={!isPinnedOpen ? 'График работы' : ''} placement="right">
