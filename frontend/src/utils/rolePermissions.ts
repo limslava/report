@@ -17,7 +17,6 @@ const CONTRACT_APPROVAL_ACCESS_ROLES = new Set([
   'manager_auto',
   'manager_rail',
   'manager_extra',
-  'manager_to',
 ]);
 
 export function canViewSummary(role?: string | null): boolean {
@@ -52,6 +51,7 @@ export function canViewTotalsInPlans(role?: string | null): boolean {
     && role !== 'garage_head'
     && role !== 'garage_head_vvo'
     && role !== 'warehouse_manager_vvo'
+    && role !== 'manager_to'
     && role !== 'warehouse_manager'
     && role !== 'warehouse_keeper'
     && role !== 'counterparty_user';
@@ -68,6 +68,7 @@ export function canViewPlans(role?: string | null): boolean {
     && role !== 'garage_head'
     && role !== 'garage_head_vvo'
     && role !== 'warehouse_manager_vvo'
+    && role !== 'manager_to'
     && role !== 'warehouse_manager'
     && role !== 'warehouse_keeper'
     && role !== 'counterparty_user';
