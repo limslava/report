@@ -18,6 +18,10 @@
 2. Собирает образ по `Dockerfile`.
 3. Запускает приложение в контейнере на порту `3000`.
 
+Проект разворачивается как один Docker-контейнер: backend запускает Express API,
+WebSocket и scheduler, а также раздаёт собранный frontend из `frontend/dist`.
+Отдельный frontend-сервис на Amvera для текущей схемы не нужен.
+
 Контейнер включает `LibreOffice Writer`: он нужен для серверного PDF-предпросмотра
 загруженных файлов `.docx` в процессе согласования договоров. Оригинал `.docx`
 не заменяется и скачивается без преобразования.
@@ -27,7 +31,82 @@
 Это важно: каталог внутри контейнера не должен использоваться как постоянное
 хранилище документов.
 
+Фотографии складского модуля и временные TUS-загрузки также должны храниться
+на постоянном томе `/data`, иначе при перезапуске контейнера можно потерять
+незавершённые загрузки или файлы фотофиксации:
+
+- `WAREHOUSE_UPLOAD_PATH=/data/warehouse`
+- `WAREHOUSE_PHOTO_BACKUP_PATH=/data/warehouse-photo-backup`
+- `WAREHOUSE_TUS_TEMP_PATH=/data/warehouse-tus-temp`
+
 Важно: `npm error signal SIGTERM` во время переключения версии часто является нормальным завершением старого процесса при перезапуске старого Node-развертывания.
+
+## 2.1. Переменные окружения для `report-stage`
+
+Все переменные добавляются в Amvera в приложении `report-stage`:
+`Переменные` → `Добавить переменные и секреты`. Этап — `Запуск`.
+
+Минимальный набор для stage:
+
+```env
+NODE_ENV=production
+APP_PORT=3000
+
+JWT_SECRET=<секрет>
+JWT_EXPIRES_IN=7d
+INVITE_ONLY=true
+TRUST_PROXY=1
+
+DB_HOST=<postgres-host>
+DB_PORT=5432
+DB_DATABASE=<database>
+DB_USERNAME=<user>
+DB_PASSWORD=<password>
+
+FRONTEND_URL=https://report-stage-limslava.amvera.io
+CORS_ALLOWED_ORIGINS=https://report-stage-limslava.amvera.io
+
+UPLOAD_PATH=/data/uploads
+WAREHOUSE_UPLOAD_PATH=/data/warehouse
+WAREHOUSE_PHOTO_BACKUP_PATH=/data/warehouse-photo-backup
+WAREHOUSE_TUS_TEMP_PATH=/data/warehouse-tus-temp
+WAREHOUSE_PENDING_UPLOAD_TTL_HOURS=24
+WAREHOUSE_TUS_CLEANUP_MAX_AGE_HOURS=24
+WAREHOUSE_TUS_CLEANUP_INTERVAL_HOURS=1
+
+SCHEDULER_ENABLED=true
+SCHEDULER_USE_QUEUE=false
+SCHEDULER_INTERVAL_MINUTES=5
+SCHEDULER_TIMEZONE=Asia/Vladivostok
+REDIS_ENABLED=false
+```
+
+Секретами в Amvera должны быть как минимум:
+
+- `JWT_SECRET`
+- `DB_USERNAME`
+- `DB_PASSWORD`
+- `REDIS_PASSWORD`, если используется Redis
+- `SMTP_PASSWORD`, если используется SMTP
+
+Для первого запуска складского модуля на stage, где база уже существовала до
+добавления склада, временно допускается:
+
+```env
+DB_SYNCHRONIZE=true
+DB_MIGRATIONS_RUN=false
+```
+
+Именно это добавляет недостающие поля и таблицы склада, например
+`users.warehouse_client_id`. После стабилизации схемы и перехода на TypeORM
+migrations нужно вернуть:
+
+```env
+DB_SYNCHRONIZE=false
+DB_MIGRATIONS_RUN=true
+```
+
+Для production `DB_SYNCHRONIZE=true` не использовать.
 
 ## 3. Базовый цикл разработки (develop)
 
@@ -111,6 +190,20 @@ Amvera поднимет новую сборку с откатом.
 5. Нет циклических перезапусков контейнера.
 6. В карточке договора файл `.docx` открывается в виде PDF-превью, а действие
    `Скачать оригинал` отдает исходный `.docx`.
+7. `/warehouse` открывается у ролей склада.
+8. Кладовщик может пройти приёмку ТС с фото, добавить услугу и выполнить выдачу.
+9. Финансист видит начисления склада по периоду.
+10. Представитель контрагента видит только свои ТС и начисления.
+
+Если в логах stage есть ошибка:
+
+```text
+column User.warehouse_client_id does not exist
+```
+
+значит база не обновлена под складской модуль. Для stage включите
+`DB_SYNCHRONIZE=true`, перезапустите контейнер и после успешного запуска
+запланируйте перевод схемы на миграции.
 
 ## 7. Частые вопросы
 

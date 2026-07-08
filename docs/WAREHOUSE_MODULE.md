@@ -260,14 +260,23 @@
   `npm run migration:run` в каталоге `backend`.
 - Для автоматического применения миграций при старте можно явно установить
   `DB_MIGRATIONS_RUN=true`.
-- `DB_SYNCHRONIZE=true` допускается только для временной локальной разработки,
-  но не для рабочей базы.
+- Для `report-stage`, если база была создана до добавления складского модуля и
+  в логах есть ошибка `column User.warehouse_client_id does not exist`,
+  временно допускается `DB_SYNCHRONIZE=true` и `DB_MIGRATIONS_RUN=false`.
+  Это позволяет TypeORM добавить недостающие поля и таблицы склада.
+- Для production `DB_SYNCHRONIZE=true` не использовать. После стабилизации
+  stage нужно перейти на TypeORM migrations и вернуть
+  `DB_SYNCHRONIZE=false`, `DB_MIGRATIONS_RUN=true`.
 
 ## Резервирование фотографий
 
 - Основной путь задаётся через `WAREHOUSE_UPLOAD_PATH`.
 - Резервный путь задаётся через `WAREHOUSE_PHOTO_BACKUP_PATH` и должен
-  находиться на другом диске или сетевом томе.
-- Если резервный путь не задан, модуль продолжает работать без зеркальной
-  копии, а `/api/warehouse/status` возвращает
-  `photoBackupEnabled: false`.
+  находиться в другом каталоге постоянного тома.
+- Временные TUS-загрузки задаются через `WAREHOUSE_TUS_TEMP_PATH`.
+- Для Amvera stage рекомендуется:
+  - `WAREHOUSE_UPLOAD_PATH=/data/warehouse`
+  - `WAREHOUSE_PHOTO_BACKUP_PATH=/data/warehouse-photo-backup`
+  - `WAREHOUSE_TUS_TEMP_PATH=/data/warehouse-tus-temp`
+- Если основной путь и путь резервной копии совпадают, сервер не стартует:
+  это защита от ложного резервирования.

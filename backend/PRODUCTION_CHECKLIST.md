@@ -8,10 +8,18 @@
 - Set `INVITE_ONLY=true` to disable open registration (admin invites only).
 - Set `JWT_EXPIRES_IN` if you need a custom token TTL.
 - Set `TRUST_PROXY` for deployments behind a reverse proxy.
+- Set persistent upload paths:
+  - `UPLOAD_PATH=/data/uploads`
+  - `WAREHOUSE_UPLOAD_PATH=/data/warehouse`
+  - `WAREHOUSE_PHOTO_BACKUP_PATH=/data/warehouse-photo-backup`
+  - `WAREHOUSE_TUS_TEMP_PATH=/data/warehouse-tus-temp`
 - (Optional) Tune DB circuit breaker: `DB_CIRCUIT_FAILURE_THRESHOLD`, `DB_CIRCUIT_OPEN_MS`.
 
 ## 2) Database
 - Run migrations before first start.
+- Keep `DB_SYNCHRONIZE=false` in production.
+- `DB_SYNCHRONIZE=true` is allowed only as a temporary stage bootstrap measure
+  for an existing test database, never for production.
 - Configure daily backups and restore test.
 - Verify DB access only from trusted network.
 
@@ -27,6 +35,12 @@
 - Verify `/health/scheduler` returns `200 OK` when scheduler is enabled.
 - Verify email schedule queue and test email.
 - Verify login rate limit (`429`) works after repeated failed attempts.
+- Verify warehouse smoke test:
+  - reception with photo upload;
+  - additional service;
+  - issue with photo upload;
+  - billing for financer;
+  - counterparty sees only own vehicles.
 
 ## 5) Release
 - Build backend/frontend successfully.
