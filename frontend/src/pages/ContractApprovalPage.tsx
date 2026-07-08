@@ -181,6 +181,21 @@ export default function ContractApprovalPage() {
   const [revisionTarget, setRevisionTarget] = useState<ContractRecord | null>(null);
   const [revisionPreparing, setRevisionPreparing] = useState(false);
   const [wizardPrefill, setWizardPrefill] = useState<ContractWizardPrefill | null>(null);
+  const emptyWizardDetails = {
+    counterpartyOgrn: '',
+    counterpartyKpp: '',
+    counterpartyLegalAddress: '',
+    counterpartyPostalAddress: '',
+    counterpartyPhone: '',
+    counterpartyEmail: '',
+    counterpartySignerPosition: '',
+    counterpartySignerName: '',
+    counterpartySignerAuthority: '',
+    counterpartyBankName: '',
+    counterpartyBankBik: '',
+    counterpartyBankAccount: '',
+    counterpartyCorrespondentAccount: '',
+  };
   const [wizard, setWizard] = useState<ContractWizardForm>({
     clientRequestId: crypto.randomUUID(),
     counterpartyInn: '',
@@ -190,10 +205,12 @@ export default function ContractApprovalPage() {
     subject: '',
     contractDate: '',
     signingMethod: 'post' as 'edo' | 'post',
+    ...emptyWizardDetails,
   });
   const wizardInnInput = wizard.counterpartyInn.trim();
   const isWizardInnValidLength = /^(\d{10}|\d{12})$/.test(wizardInnInput);
   const isWizardInnInvalidLength = wizardInnInput.length > 0 && !isWizardInnValidLength;
+  const isIncomeWithoutPsrWizard = wizard.contractType === 'income' && wizard.psrMode === 'without_psr';
 
   const [securityVisa, setSecurityVisa] = useState<Record<string, { visa: SecurityVisaValue; comment: string }>>({});
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -258,6 +275,7 @@ export default function ContractApprovalPage() {
       subject: '',
       contractDate: '',
       signingMethod: 'post',
+      ...emptyWizardDetails,
     });
   };
 
@@ -290,6 +308,9 @@ export default function ContractApprovalPage() {
       counterpartyName: draft.counterpartyName,
       counterpartyShortName: draft.counterpartyShortName || undefined,
       counterpartyForm: draft.counterpartyForm || undefined,
+      counterpartyOgrn: draft.counterpartyOgrn || '',
+      counterpartyKpp: draft.counterpartyKpp || '',
+      counterpartyLegalAddress: draft.counterpartyLegalAddress || '',
     });
     setWizardResolvedInn(draft.counterpartyInn);
     setWizard({
@@ -301,6 +322,19 @@ export default function ContractApprovalPage() {
       subject: draft.subject || '',
       contractDate: draft.contractDate || '',
       signingMethod: draft.signingMethod,
+      counterpartyOgrn: draft.counterpartyOgrn || '',
+      counterpartyKpp: draft.counterpartyKpp || '',
+      counterpartyLegalAddress: draft.counterpartyLegalAddress || '',
+      counterpartyPostalAddress: draft.counterpartyPostalAddress || draft.counterpartyLegalAddress || '',
+      counterpartyPhone: draft.counterpartyPhone || '',
+      counterpartyEmail: draft.counterpartyEmail || '',
+      counterpartySignerPosition: draft.counterpartySignerPosition || '',
+      counterpartySignerName: draft.counterpartySignerName || '',
+      counterpartySignerAuthority: draft.counterpartySignerAuthority || '',
+      counterpartyBankName: draft.counterpartyBankName || '',
+      counterpartyBankBik: draft.counterpartyBankBik || '',
+      counterpartyBankAccount: draft.counterpartyBankAccount || '',
+      counterpartyCorrespondentAccount: draft.counterpartyCorrespondentAccount || '',
     });
     setWizardStep(5);
     setWizardOpen(true);
@@ -360,8 +394,7 @@ export default function ContractApprovalPage() {
     resetWizard();
   };
 
-  // Вложения временно разрешены для всех типов, пока шаблон доходного договора не формируется автоматически.
-  const requiresAttachmentStep = () => true;
+  const requiresAttachmentStep = () => !isIncomeWithoutPsrWizard;
 
   const appendWizardFiles = (files: File[]) => {
     if (!files.length) return;
@@ -411,10 +444,19 @@ export default function ContractApprovalPage() {
             counterpartyName: data.nameFull,
             counterpartyShortName: data.nameShort,
             counterpartyForm: data.counterpartyForm,
+            counterpartyOgrn: data.ogrn,
+            counterpartyKpp: data.kpp,
+            counterpartyLegalAddress: data.address,
           });
           setWizard((prev) => ({
             ...prev,
             counterpartyInn: data.inn || prev.counterpartyInn,
+            counterpartyOgrn: data.ogrn || prev.counterpartyOgrn,
+            counterpartyKpp: data.kpp || prev.counterpartyKpp,
+            counterpartyLegalAddress: data.address || prev.counterpartyLegalAddress,
+            counterpartyPostalAddress: prev.counterpartyPostalAddress || data.address || '',
+            counterpartySignerPosition: prev.counterpartySignerPosition || (data.counterpartyForm === 'ip' ? 'Индивидуального предпринимателя' : 'Генерального директора'),
+            counterpartySignerAuthority: prev.counterpartySignerAuthority || (data.counterpartyForm === 'ip' ? 'государственной регистрации' : 'Устава'),
           }));
         }
       }
@@ -447,8 +489,21 @@ export default function ContractApprovalPage() {
             counterpartyName: data.nameFull,
             counterpartyShortName: data.nameShort,
             counterpartyForm: data.counterpartyForm,
+            counterpartyOgrn: data.ogrn,
+            counterpartyKpp: data.kpp,
+            counterpartyLegalAddress: data.address,
           };
           setWizardPrefill(resolved);
+          setWizard((prev) => ({
+            ...prev,
+            counterpartyInn: data.inn || prev.counterpartyInn,
+            counterpartyOgrn: data.ogrn || prev.counterpartyOgrn,
+            counterpartyKpp: data.kpp || prev.counterpartyKpp,
+            counterpartyLegalAddress: data.address || prev.counterpartyLegalAddress,
+            counterpartyPostalAddress: prev.counterpartyPostalAddress || data.address || '',
+            counterpartySignerPosition: prev.counterpartySignerPosition || (data.counterpartyForm === 'ip' ? 'Индивидуального предпринимателя' : 'Генерального директора'),
+            counterpartySignerAuthority: prev.counterpartySignerAuthority || (data.counterpartyForm === 'ip' ? 'государственной регистрации' : 'Устава'),
+          }));
         }
       }
 
@@ -462,9 +517,30 @@ export default function ContractApprovalPage() {
         return;
       }
 
+      if (isIncomeWithoutPsrWizard) {
+        const requiredDetails: Array<[keyof ContractWizardForm, string]> = [
+          ['counterpartyOgrn', 'ОГРН/ОГРНИП'],
+          ['counterpartyLegalAddress', 'юридический адрес'],
+          ['counterpartySignerPosition', 'должность подписанта'],
+          ['counterpartySignerName', 'ФИО подписанта'],
+          ['counterpartySignerAuthority', 'основание полномочий'],
+          ['counterpartyBankName', 'банк'],
+          ['counterpartyBankBik', 'БИК'],
+          ['counterpartyBankAccount', 'расчетный счет'],
+          ['counterpartyCorrespondentAccount', 'корреспондентский счет'],
+        ];
+        const missing = requiredDetails
+          .filter(([key]) => !String(wizard[key] ?? '').trim())
+          .map(([, label]) => label);
+        if (missing.length) {
+          setError(`Для формирования договора заполните: ${missing.join(', ')}`);
+          return;
+        }
+      }
+
       const contractPayload: Parameters<typeof createContract>[0] = {
         clientRequestId: wizard.clientRequestId,
-        contractNumber: wizard.contractNumber.trim(),
+        contractNumber: isIncomeWithoutPsrWizard ? null : wizard.contractNumber.trim(),
         contractType: wizard.contractType,
         incomeSubtype: wizard.contractType === 'income'
           ? (wizard.psrMode === 'with_psr' ? 'with_psr' : 'standard')
@@ -473,7 +549,20 @@ export default function ContractApprovalPage() {
         counterpartyShortName: resolved.counterpartyShortName || null,
         counterpartyForm: resolved.counterpartyForm || null,
         counterpartyInn: inn,
-        subject: wizard.subject.trim(),
+        counterpartyOgrn: wizard.counterpartyOgrn.trim() || null,
+        counterpartyKpp: wizard.counterpartyKpp.trim() || null,
+        counterpartyLegalAddress: wizard.counterpartyLegalAddress.trim() || null,
+        counterpartyPostalAddress: wizard.counterpartyPostalAddress.trim() || wizard.counterpartyLegalAddress.trim() || null,
+        counterpartyPhone: wizard.counterpartyPhone.trim() || null,
+        counterpartyEmail: wizard.counterpartyEmail.trim() || null,
+        counterpartySignerPosition: wizard.counterpartySignerPosition.trim() || null,
+        counterpartySignerName: wizard.counterpartySignerName.trim() || null,
+        counterpartySignerAuthority: wizard.counterpartySignerAuthority.trim() || null,
+        counterpartyBankName: wizard.counterpartyBankName.trim() || null,
+        counterpartyBankBik: wizard.counterpartyBankBik.trim() || null,
+        counterpartyBankAccount: wizard.counterpartyBankAccount.trim() || null,
+        counterpartyCorrespondentAccount: wizard.counterpartyCorrespondentAccount.trim() || null,
+        subject: wizard.subject.trim() || (isIncomeWithoutPsrWizard ? 'Оказание транспортно-экспедиционных услуг и перевалке грузов' : ''),
         contractDate: wizard.contractDate,
         psrFlag: wizard.psrMode === 'with_psr',
         signingMethod: wizard.signingMethod,
@@ -533,12 +622,21 @@ export default function ContractApprovalPage() {
       setWizard((prev) => ({
         ...prev,
         counterpartyInn: data.inn || prev.counterpartyInn,
+        counterpartyOgrn: data.ogrn || prev.counterpartyOgrn,
+        counterpartyKpp: data.kpp || prev.counterpartyKpp,
+        counterpartyLegalAddress: data.address || prev.counterpartyLegalAddress,
+        counterpartyPostalAddress: prev.counterpartyPostalAddress || data.address || '',
+        counterpartySignerPosition: prev.counterpartySignerPosition || (data.counterpartyForm === 'ip' ? 'Индивидуального предпринимателя' : 'Генерального директора'),
+        counterpartySignerAuthority: prev.counterpartySignerAuthority || (data.counterpartyForm === 'ip' ? 'государственной регистрации' : 'Устава'),
       }));
       setWizardPrefill({
         resolvedInn: data.inn,
         counterpartyName: data.nameFull,
         counterpartyShortName: data.nameShort,
         counterpartyForm: data.counterpartyForm,
+        counterpartyOgrn: data.ogrn,
+        counterpartyKpp: data.kpp,
+        counterpartyLegalAddress: data.address,
       });
       setWizardResolvedInn(typedId);
     } catch {

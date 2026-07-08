@@ -57,6 +57,11 @@ import {
   findSecretaryStepReadyForAssignment,
   getDecidedPreSecretaryPeers,
 } from '../services/contract-approval-workflow.service';
+import {
+  generateIncomeStandardContractDocument,
+  isGeneratedIncomeStandardFileName,
+  shouldGenerateIncomeStandardContract,
+} from '../services/income-contract-document.service';
 
 const contractRepository = AppDataSource.getRepository(Contract);
 const stepRepository = AppDataSource.getRepository(ContractApprovalStep);
@@ -96,6 +101,15 @@ function buildAttachmentDisposition(filename: string, disposition: 'attachment' 
 
 function normalizeFilename(name: string): string {
   return name.replace(/[^\w.\-()\u0400-\u04FF ]/g, '_').slice(0, 180) || 'document';
+}
+
+function normalizeNullableString(value: unknown): string | null {
+  const normalized = String(value ?? '').trim();
+  return normalized || null;
+}
+
+function isIncomeStandardContractInput(contractType: ContractType, incomeSubtype: ContractIncomeSubtype | null): boolean {
+  return contractType === ContractType.INCOME && incomeSubtype !== ContractIncomeSubtype.WITH_PSR;
 }
 
 function getContractsUploadRoot(contractId: string): string {
@@ -248,6 +262,74 @@ async function persistContractAttachments(params: {
   }
 
   return uploaded;
+}
+
+async function generateNextContractNumber(contractDate: Date | null): Promise<string> {
+  const year = (contractDate ?? new Date()).getFullYear();
+  const prefix = `SW-${year}-`;
+  const rows = await contractRepository
+    .createQueryBuilder('contract')
+    .select('contract.contractNumber', 'contractNumber')
+    .where('contract.contractNumber LIKE :prefix', { prefix: `${prefix}%` })
+    .getRawMany<{ contractNumber: string }>();
+  const maxSequence = rows.reduce((max, row) => {
+    const match = String(row.contractNumber || '').match(new RegExp(`^${prefix}(\\d{4,})$`));
+    if (!match) return max;
+    return Math.max(max, Number(match[1]) || 0);
+  }, 0);
+  return `${prefix}${String(maxSequence + 1).padStart(4, '0')}`;
+}
+
+function assertIncomeStandardGenerationDetails(contract: Contract): void {
+  if (!shouldGenerateIncomeStandardContract(contract)) return;
+  const missing: string[] = [];
+  if (!contract.counterpartyLegalAddress?.trim()) missing.push('юридический адрес');
+  if (!contract.counterpartyOgrn?.trim()) missing.push('ОГРН/ОГРНИП');
+  if (!contract.counterpartySignerPosition?.trim()) missing.push('должность подписанта');
+  if (!contract.counterpartySignerName?.trim()) missing.push('ФИО подписанта');
+  if (!contract.counterpartySignerAuthority?.trim()) missing.push('основание полномочий');
+  if (!contract.counterpartyBankName?.trim()) missing.push('банк');
+  if (!contract.counterpartyBankBik?.trim()) missing.push('БИК');
+  if (!contract.counterpartyBankAccount?.trim()) missing.push('расчетный счет');
+  if (!contract.counterpartyCorrespondentAccount?.trim()) missing.push('корреспондентский счет');
+  if (missing.length) {
+    const error: any = new Error(`Для формирования доходного договора без ПСР заполните: ${missing.join(', ')}`);
+    error.statusCode = 400;
+    throw error;
+  }
+}
+
+async function replaceGeneratedIncomeStandardAttachment(contract: Contract, uploadedByUserId?: string | null): Promise<void> {
+  const generated = await generateIncomeStandardContractDocument(contract);
+  if (!generated) return;
+
+  const existing = await attachmentRepository.find({
+    where: {
+      contractId: contract.id,
+      approvalStepId: IsNull(),
+      context: 'contract',
+    },
+  });
+  for (const attachment of existing) {
+    if (!isGeneratedIncomeStandardFileName(attachment.originalName)) continue;
+    const readablePath = await resolveAttachmentPath(attachment);
+    if (readablePath) {
+      await fs.rm(readablePath, { force: true });
+      await fs.rm(`${readablePath}.preview.pdf`, { force: true });
+    }
+    await attachmentRepository.remove(attachment);
+  }
+
+  await persistContractAttachments({
+    contractId: contract.id,
+    uploadedByUserId,
+    files: [{
+      name: generated.name,
+      mimeType: generated.mimeType,
+      size: generated.buffer.length,
+      contentBase64: generated.buffer.toString('base64'),
+    }],
+  });
 }
 
 async function resolveAttachmentPath(item: ContractAttachment): Promise<string | null> {
@@ -1031,6 +1113,19 @@ export const listContracts = async (_req: Request, res: Response, next: NextFunc
         ownershipForm: contract.ownershipForm,
         counterpartyForm: contract.counterpartyForm,
         counterpartyInn: contract.counterpartyInn,
+        counterpartyOgrn: contract.counterpartyOgrn,
+        counterpartyKpp: contract.counterpartyKpp,
+        counterpartyLegalAddress: contract.counterpartyLegalAddress,
+        counterpartyPostalAddress: contract.counterpartyPostalAddress,
+        counterpartyPhone: contract.counterpartyPhone,
+        counterpartyEmail: contract.counterpartyEmail,
+        counterpartySignerPosition: contract.counterpartySignerPosition,
+        counterpartySignerName: contract.counterpartySignerName,
+        counterpartySignerAuthority: contract.counterpartySignerAuthority,
+        counterpartyBankName: contract.counterpartyBankName,
+        counterpartyBankBik: contract.counterpartyBankBik,
+        counterpartyBankAccount: contract.counterpartyBankAccount,
+        counterpartyCorrespondentAccount: contract.counterpartyCorrespondentAccount,
         templateKind: contract.templateKind,
         subject: contract.subject,
         contractDate: toYmdOrNull(contract.contractDate),
@@ -1370,6 +1465,19 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       ownershipForm,
       counterpartyForm,
       counterpartyInn,
+      counterpartyOgrn,
+      counterpartyKpp,
+      counterpartyLegalAddress,
+      counterpartyPostalAddress,
+      counterpartyPhone,
+      counterpartyEmail,
+      counterpartySignerPosition,
+      counterpartySignerName,
+      counterpartySignerAuthority,
+      counterpartyBankName,
+      counterpartyBankBik,
+      counterpartyBankAccount,
+      counterpartyCorrespondentAccount,
       subject,
       contractDate,
       psrFlag,
@@ -1387,6 +1495,19 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       ownershipForm?: string | null;
       counterpartyForm?: string | null;
       counterpartyInn: string;
+      counterpartyOgrn?: string | null;
+      counterpartyKpp?: string | null;
+      counterpartyLegalAddress?: string | null;
+      counterpartyPostalAddress?: string | null;
+      counterpartyPhone?: string | null;
+      counterpartyEmail?: string | null;
+      counterpartySignerPosition?: string | null;
+      counterpartySignerName?: string | null;
+      counterpartySignerAuthority?: string | null;
+      counterpartyBankName?: string | null;
+      counterpartyBankBik?: string | null;
+      counterpartyBankAccount?: string | null;
+      counterpartyCorrespondentAccount?: string | null;
       subject?: string | null;
       contractDate?: string | null;
       psrFlag?: boolean;
@@ -1434,17 +1555,23 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       }
     }
 
-    const parsedContractDate = contractDate ? new Date(contractDate) : null;
+    const normalizedIncomeSubtype = contractType === ContractType.INCOME ? (incomeSubtype ?? ContractIncomeSubtype.STANDARD) : null;
+    const parsedContractDate = contractDate
+      ? new Date(contractDate)
+      : isIncomeStandardContractInput(contractType, normalizedIncomeSubtype)
+        ? new Date()
+        : null;
     if (parsedContractDate && Number.isNaN(parsedContractDate.getTime())) {
       const error: any = new Error('Некорректная дата договора');
       error.statusCode = 400;
       throw error;
     }
 
-    const normalizedIncomeSubtype = contractType === ContractType.INCOME ? (incomeSubtype ?? ContractIncomeSubtype.STANDARD) : null;
     const normalizedPsrFlag = contractType === ContractType.INCOME && normalizedIncomeSubtype === ContractIncomeSubtype.WITH_PSR
       ? true
       : Boolean(psrFlag);
+    const normalizedContractNumber = normalizeNullableString(contractNumber)
+      ?? await generateNextContractNumber(parsedContractDate);
 
     validateInnByCounterpartyForm(counterpartyInn.trim(), counterpartyForm ?? null);
 
@@ -1474,7 +1601,7 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
     }
 
     const contract = contractRepository.create({
-      contractNumber: contractNumber.trim(),
+      contractNumber: normalizedContractNumber,
       contractType,
       incomeSubtype: normalizedIncomeSubtype,
       counterpartyName: counterpartyName.trim(),
@@ -1482,6 +1609,19 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       ownershipForm: ownershipForm?.trim() || null,
       counterpartyForm: counterpartyForm || null,
       counterpartyInn: counterpartyInn.trim(),
+      counterpartyOgrn: normalizeNullableString(counterpartyOgrn),
+      counterpartyKpp: normalizeNullableString(counterpartyKpp),
+      counterpartyLegalAddress: normalizeNullableString(counterpartyLegalAddress),
+      counterpartyPostalAddress: normalizeNullableString(counterpartyPostalAddress),
+      counterpartyPhone: normalizeNullableString(counterpartyPhone),
+      counterpartyEmail: normalizeNullableString(counterpartyEmail),
+      counterpartySignerPosition: normalizeNullableString(counterpartySignerPosition),
+      counterpartySignerName: normalizeNullableString(counterpartySignerName),
+      counterpartySignerAuthority: normalizeNullableString(counterpartySignerAuthority),
+      counterpartyBankName: normalizeNullableString(counterpartyBankName),
+      counterpartyBankBik: normalizeNullableString(counterpartyBankBik),
+      counterpartyBankAccount: normalizeNullableString(counterpartyBankAccount),
+      counterpartyCorrespondentAccount: normalizeNullableString(counterpartyCorrespondentAccount),
       templateKind: ContractTemplateKind.TYPICAL,
       subject: subject?.trim() || null,
       contractDate: parsedContractDate,
@@ -1494,8 +1634,10 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       initiatorId: req.user.id,
       clientRequestId: normalizedClientRequestId,
     });
+    assertIncomeStandardGenerationDetails(contract);
 
     const saved = await contractRepository.save(contract);
+    await replaceGeneratedIncomeStandardAttachment(saved, req.user.id);
 
     notifyContractApprovalUpdated(saved.id, req.user.id);
     res.status(201).json({ id: saved.id, reused: false });
@@ -1532,6 +1674,19 @@ export const updateDraftContract = async (req: Request, res: Response, next: Nex
       counterpartyShortName,
       counterpartyForm,
       counterpartyInn,
+      counterpartyOgrn,
+      counterpartyKpp,
+      counterpartyLegalAddress,
+      counterpartyPostalAddress,
+      counterpartyPhone,
+      counterpartyEmail,
+      counterpartySignerPosition,
+      counterpartySignerName,
+      counterpartySignerAuthority,
+      counterpartyBankName,
+      counterpartyBankBik,
+      counterpartyBankAccount,
+      counterpartyCorrespondentAccount,
       subject,
       contractDate,
       psrFlag,
@@ -1544,6 +1699,19 @@ export const updateDraftContract = async (req: Request, res: Response, next: Nex
       counterpartyShortName?: string | null;
       counterpartyForm?: string | null;
       counterpartyInn: string;
+      counterpartyOgrn?: string | null;
+      counterpartyKpp?: string | null;
+      counterpartyLegalAddress?: string | null;
+      counterpartyPostalAddress?: string | null;
+      counterpartyPhone?: string | null;
+      counterpartyEmail?: string | null;
+      counterpartySignerPosition?: string | null;
+      counterpartySignerName?: string | null;
+      counterpartySignerAuthority?: string | null;
+      counterpartyBankName?: string | null;
+      counterpartyBankBik?: string | null;
+      counterpartyBankAccount?: string | null;
+      counterpartyCorrespondentAccount?: string | null;
       subject?: string | null;
       contractDate?: string | null;
       psrFlag?: boolean;
@@ -1568,14 +1736,29 @@ export const updateDraftContract = async (req: Request, res: Response, next: Nex
     contract.counterpartyShortName = counterpartyShortName?.trim() || null;
     contract.counterpartyForm = counterpartyForm || null;
     contract.counterpartyInn = counterpartyInn.trim();
+    contract.counterpartyOgrn = normalizeNullableString(counterpartyOgrn);
+    contract.counterpartyKpp = normalizeNullableString(counterpartyKpp);
+    contract.counterpartyLegalAddress = normalizeNullableString(counterpartyLegalAddress);
+    contract.counterpartyPostalAddress = normalizeNullableString(counterpartyPostalAddress);
+    contract.counterpartyPhone = normalizeNullableString(counterpartyPhone);
+    contract.counterpartyEmail = normalizeNullableString(counterpartyEmail);
+    contract.counterpartySignerPosition = normalizeNullableString(counterpartySignerPosition);
+    contract.counterpartySignerName = normalizeNullableString(counterpartySignerName);
+    contract.counterpartySignerAuthority = normalizeNullableString(counterpartySignerAuthority);
+    contract.counterpartyBankName = normalizeNullableString(counterpartyBankName);
+    contract.counterpartyBankBik = normalizeNullableString(counterpartyBankBik);
+    contract.counterpartyBankAccount = normalizeNullableString(counterpartyBankAccount);
+    contract.counterpartyCorrespondentAccount = normalizeNullableString(counterpartyCorrespondentAccount);
     contract.subject = subject?.trim() || null;
     contract.contractDate = parsedContractDate;
     contract.psrFlag = contractType === ContractType.INCOME && normalizedIncomeSubtype === ContractIncomeSubtype.WITH_PSR
       ? true
       : Boolean(psrFlag);
     contract.signingMethod = signingMethod ?? ContractSigningMethod.POST;
+    assertIncomeStandardGenerationDetails(contract);
 
     await contractRepository.save(contract);
+    await replaceGeneratedIncomeStandardAttachment(contract, req.user?.id);
     notifyContractApprovalUpdated(contract.id, req.user?.id);
     res.json({ id: contract.id });
   } catch (error) {
@@ -2054,6 +2237,19 @@ export const getContractApprovalSheet = async (req: Request, res: Response, next
         counterpartyShortName: contract.counterpartyShortName,
         ownershipForm: contract.ownershipForm,
         counterpartyInn: contract.counterpartyInn,
+        counterpartyOgrn: contract.counterpartyOgrn,
+        counterpartyKpp: contract.counterpartyKpp,
+        counterpartyLegalAddress: contract.counterpartyLegalAddress,
+        counterpartyPostalAddress: contract.counterpartyPostalAddress,
+        counterpartyPhone: contract.counterpartyPhone,
+        counterpartyEmail: contract.counterpartyEmail,
+        counterpartySignerPosition: contract.counterpartySignerPosition,
+        counterpartySignerName: contract.counterpartySignerName,
+        counterpartySignerAuthority: contract.counterpartySignerAuthority,
+        counterpartyBankName: contract.counterpartyBankName,
+        counterpartyBankBik: contract.counterpartyBankBik,
+        counterpartyBankAccount: contract.counterpartyBankAccount,
+        counterpartyCorrespondentAccount: contract.counterpartyCorrespondentAccount,
         subject: contract.subject,
         contractDate: toYmdOrNull(contract.contractDate),
         psrFlag: contract.psrFlag,

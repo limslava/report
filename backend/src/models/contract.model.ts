@@ -79,6 +79,45 @@ export class Contract {
   @Column({ name: 'counterparty_inn', type: 'varchar', length: 12 })
   counterpartyInn!: string;
 
+  @Column({ name: 'counterparty_ogrn', type: 'varchar', length: 15, nullable: true })
+  counterpartyOgrn!: string | null;
+
+  @Column({ name: 'counterparty_kpp', type: 'varchar', length: 9, nullable: true })
+  counterpartyKpp!: string | null;
+
+  @Column({ name: 'counterparty_legal_address', type: 'varchar', length: 500, nullable: true })
+  counterpartyLegalAddress!: string | null;
+
+  @Column({ name: 'counterparty_postal_address', type: 'varchar', length: 500, nullable: true })
+  counterpartyPostalAddress!: string | null;
+
+  @Column({ name: 'counterparty_phone', type: 'varchar', length: 100, nullable: true })
+  counterpartyPhone!: string | null;
+
+  @Column({ name: 'counterparty_email', type: 'varchar', length: 255, nullable: true })
+  counterpartyEmail!: string | null;
+
+  @Column({ name: 'counterparty_signer_position', type: 'varchar', length: 255, nullable: true })
+  counterpartySignerPosition!: string | null;
+
+  @Column({ name: 'counterparty_signer_name', type: 'varchar', length: 255, nullable: true })
+  counterpartySignerName!: string | null;
+
+  @Column({ name: 'counterparty_signer_authority', type: 'varchar', length: 255, nullable: true })
+  counterpartySignerAuthority!: string | null;
+
+  @Column({ name: 'counterparty_bank_name', type: 'varchar', length: 255, nullable: true })
+  counterpartyBankName!: string | null;
+
+  @Column({ name: 'counterparty_bank_bik', type: 'varchar', length: 9, nullable: true })
+  counterpartyBankBik!: string | null;
+
+  @Column({ name: 'counterparty_bank_account', type: 'varchar', length: 20, nullable: true })
+  counterpartyBankAccount!: string | null;
+
+  @Column({ name: 'counterparty_correspondent_account', type: 'varchar', length: 20, nullable: true })
+  counterpartyCorrespondentAccount!: string | null;
+
   @Column({ name: 'template_kind', type: 'enum', enum: ContractTemplateKind, default: ContractTemplateKind.TYPICAL })
   templateKind!: ContractTemplateKind;
 

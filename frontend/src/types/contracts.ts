@@ -14,6 +14,19 @@ export type ContractRecord = {
   counterpartyShortName: string | null;
   counterpartyForm: CounterpartyFormRef['code'] | null;
   counterpartyInn: string;
+  counterpartyOgrn?: string | null;
+  counterpartyKpp?: string | null;
+  counterpartyLegalAddress?: string | null;
+  counterpartyPostalAddress?: string | null;
+  counterpartyPhone?: string | null;
+  counterpartyEmail?: string | null;
+  counterpartySignerPosition?: string | null;
+  counterpartySignerName?: string | null;
+  counterpartySignerAuthority?: string | null;
+  counterpartyBankName?: string | null;
+  counterpartyBankBik?: string | null;
+  counterpartyBankAccount?: string | null;
+  counterpartyCorrespondentAccount?: string | null;
   subject: string | null;
   contractDate: string | null;
   psrFlag: boolean;
@@ -39,6 +52,9 @@ export type ContractWizardPrefill = {
   counterpartyName?: string;
   counterpartyShortName?: string;
   counterpartyForm?: CounterpartyFormRef['code'];
+  counterpartyOgrn?: string | null;
+  counterpartyKpp?: string | null;
+  counterpartyLegalAddress?: string | null;
 };
 
 export type ContractWizardForm = {
@@ -50,6 +66,19 @@ export type ContractWizardForm = {
   subject: string;
   contractDate: string;
   signingMethod: 'edo' | 'post';
+  counterpartyOgrn: string;
+  counterpartyKpp: string;
+  counterpartyLegalAddress: string;
+  counterpartyPostalAddress: string;
+  counterpartyPhone: string;
+  counterpartyEmail: string;
+  counterpartySignerPosition: string;
+  counterpartySignerName: string;
+  counterpartySignerAuthority: string;
+  counterpartyBankName: string;
+  counterpartyBankBik: string;
+  counterpartyBankAccount: string;
+  counterpartyCorrespondentAccount: string;
 };
 
 export type SecurityVisaValue = '' | 'approved' | 'rejected' | 'approved_with_remarks';
@@ -100,6 +129,19 @@ export type ApprovalSheet = {
     counterpartyName: string;
     counterpartyShortName: string | null;
     counterpartyInn: string;
+    counterpartyOgrn?: string | null;
+    counterpartyKpp?: string | null;
+    counterpartyLegalAddress?: string | null;
+    counterpartyPostalAddress?: string | null;
+    counterpartyPhone?: string | null;
+    counterpartyEmail?: string | null;
+    counterpartySignerPosition?: string | null;
+    counterpartySignerName?: string | null;
+    counterpartySignerAuthority?: string | null;
+    counterpartyBankName?: string | null;
+    counterpartyBankBik?: string | null;
+    counterpartyBankAccount?: string | null;
+    counterpartyCorrespondentAccount?: string | null;
     subject: string | null;
     contractDate: string | null;
     psrFlag: boolean;

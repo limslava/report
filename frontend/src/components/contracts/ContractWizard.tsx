@@ -81,6 +81,8 @@ export function ContractWizard({
   onAppendFiles,
   onRemoveFile,
 }: ContractWizardProps) {
+  const isIncomeWithoutPsr = wizard.contractType === 'income' && wizard.psrMode === 'without_psr';
+
   return (
     <Dialog
       open={open}
@@ -92,7 +94,7 @@ export function ContractWizard({
           width: '100%',
           maxWidth: 760,
           minHeight: 500,
-          height: 500,
+          maxHeight: '90vh',
         },
       }}
     >
@@ -138,6 +140,7 @@ export function ContractWizard({
                     ...wizard,
                     contractType,
                     psrMode: contractType === 'income' ? wizard.psrMode : 'without_psr',
+                    contractNumber: contractType === 'income' && wizard.psrMode === 'without_psr' ? '' : wizard.contractNumber,
                   });
                 }}
               >
@@ -154,6 +157,7 @@ export function ContractWizard({
                   onChange={(event) => setWizard({
                     ...wizard,
                     psrMode: event.target.value as ContractWizardForm['psrMode'],
+                    contractNumber: event.target.value === 'without_psr' ? '' : wizard.contractNumber,
                   })}
                 >
                   <MenuItem value="with_psr">С ПСР</MenuItem>
@@ -214,11 +218,17 @@ export function ContractWizard({
 
         {step === 5 && (
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              label="№ договора"
-              value={wizard.contractNumber}
-              onChange={(event) => setWizard({ ...wizard, contractNumber: event.target.value })}
-            />
+            {isIncomeWithoutPsr ? (
+              <Alert severity="info">
+                Номер договора будет присвоен автоматически при отправке.
+              </Alert>
+            ) : (
+              <TextField
+                label="№ договора"
+                value={wizard.contractNumber}
+                onChange={(event) => setWizard({ ...wizard, contractNumber: event.target.value })}
+              />
+            )}
             <TextField
               label="Предмет договора"
               value={wizard.subject}
@@ -245,6 +255,88 @@ export function ContractWizard({
                 <MenuItem value="post">Почта</MenuItem>
               </Select>
             </FormControl>
+            {isIncomeWithoutPsr && (
+              <>
+                <Typography variant="subtitle2">Данные из ФНС</Typography>
+                <TextField
+                  label="ОГРН / ОГРНИП"
+                  value={wizard.counterpartyOgrn}
+                  onChange={(event) => setWizard({ ...wizard, counterpartyOgrn: event.target.value.replace(/\D/g, '').slice(0, 15) })}
+                />
+                <TextField
+                  label="КПП"
+                  value={wizard.counterpartyKpp}
+                  onChange={(event) => setWizard({ ...wizard, counterpartyKpp: event.target.value.replace(/\D/g, '').slice(0, 9) })}
+                  helperText={prefill?.counterpartyForm === 'ip' ? 'Для ИП КПП не требуется' : ' '}
+                />
+                <TextField
+                  label="Юридический адрес"
+                  value={wizard.counterpartyLegalAddress}
+                  onChange={(event) => setWizard({ ...wizard, counterpartyLegalAddress: event.target.value })}
+                  multiline
+                  minRows={2}
+                />
+                <TextField
+                  label="Почтовый адрес"
+                  value={wizard.counterpartyPostalAddress}
+                  onChange={(event) => setWizard({ ...wizard, counterpartyPostalAddress: event.target.value })}
+                  multiline
+                  minRows={2}
+                  placeholder="Если совпадает с юридическим, можно оставить как есть"
+                />
+
+                <Typography variant="subtitle2">Подписант</Typography>
+                <TextField
+                  label="Должность подписанта в договоре"
+                  value={wizard.counterpartySignerPosition}
+                  onChange={(event) => setWizard({ ...wizard, counterpartySignerPosition: event.target.value })}
+                  helperText="Например: Генерального директора"
+                />
+                <TextField
+                  label="ФИО подписанта"
+                  value={wizard.counterpartySignerName}
+                  onChange={(event) => setWizard({ ...wizard, counterpartySignerName: event.target.value })}
+                />
+                <TextField
+                  label="Основание полномочий"
+                  value={wizard.counterpartySignerAuthority}
+                  onChange={(event) => setWizard({ ...wizard, counterpartySignerAuthority: event.target.value })}
+                  placeholder="Например: Устава"
+                />
+
+                <Typography variant="subtitle2">Банковские и контактные реквизиты</Typography>
+                <TextField
+                  label="Расчетный счет"
+                  value={wizard.counterpartyBankAccount}
+                  onChange={(event) => setWizard({ ...wizard, counterpartyBankAccount: event.target.value.replace(/\D/g, '').slice(0, 20) })}
+                />
+                <TextField
+                  label="Банк"
+                  value={wizard.counterpartyBankName}
+                  onChange={(event) => setWizard({ ...wizard, counterpartyBankName: event.target.value })}
+                />
+                <TextField
+                  label="Корреспондентский счет"
+                  value={wizard.counterpartyCorrespondentAccount}
+                  onChange={(event) => setWizard({ ...wizard, counterpartyCorrespondentAccount: event.target.value.replace(/\D/g, '').slice(0, 20) })}
+                />
+                <TextField
+                  label="БИК"
+                  value={wizard.counterpartyBankBik}
+                  onChange={(event) => setWizard({ ...wizard, counterpartyBankBik: event.target.value.replace(/\D/g, '').slice(0, 9) })}
+                />
+                <TextField
+                  label="Телефон"
+                  value={wizard.counterpartyPhone}
+                  onChange={(event) => setWizard({ ...wizard, counterpartyPhone: event.target.value })}
+                />
+                <TextField
+                  label="E-mail"
+                  value={wizard.counterpartyEmail}
+                  onChange={(event) => setWizard({ ...wizard, counterpartyEmail: event.target.value })}
+                />
+              </>
+            )}
           </Stack>
         )}
 
@@ -358,7 +450,7 @@ export function ContractWizard({
           <Button
             variant="contained"
             onClick={requiresAttachmentStep ? onGoToFiles : onSubmit}
-            disabled={!wizard.contractNumber.trim() || !wizard.subject.trim() || !wizard.contractDate || submitting}
+            disabled={(requiresAttachmentStep && !wizard.contractNumber.trim()) || !wizard.subject.trim() || !wizard.contractDate || submitting}
           >
             {requiresAttachmentStep ? 'Далее' : submitting ? 'Отправка...' : 'Отправить'}
           </Button>
