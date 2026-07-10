@@ -5,6 +5,7 @@ import { adminOnly, roleOrAdmin } from '../middleware/admin-only.middleware';
 import { handleValidationErrors } from '../middleware/express-validator.middleware';
 import {
   createContract,
+  importSignedContract,
   decideContractApprovalStep,
   deleteContractAttachment,
   deleteDraftContract,
@@ -110,6 +111,52 @@ router.post(
 );
 
 router.post(
+  '/import-signed',
+  writeContractAccess,
+  [
+    body('contractNumber').isString().trim().notEmpty().isLength({ max: 100 }),
+    body('contractType').isIn(['expense', 'income']),
+    body('incomeSubtype').optional({ nullable: true }).isIn(['standard', 'with_psr']),
+    body('counterpartyName').isString().trim().notEmpty().isLength({ max: 255 }),
+    body('counterpartyShortName').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
+    body('ownershipForm').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
+    body('counterpartyForm').optional({ nullable: true }).isIn(['ooo', 'ao', 'pao', 'zao', 'ip']),
+    body('counterpartyInn').isString().trim().matches(/^(\d{10}|\d{12})$/),
+    body('counterpartyOgrn').optional({ nullable: true }).isString().trim().isLength({ max: 15 }),
+    body('counterpartyKpp').optional({ nullable: true }).isString().trim().isLength({ max: 9 }),
+    body('counterpartyLegalAddress').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
+    body('counterpartyPostalAddress').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
+    body('counterpartyPhone').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
+    body('counterpartyEmail').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
+    body('counterpartySignerPosition').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
+    body('counterpartySignerName').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
+    body('counterpartySignerAuthority').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
+    body('counterpartyBankName').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
+    body('counterpartyBankBik').optional({ nullable: true }).isString().trim().matches(/^$|^\d{9}$/),
+    body('counterpartyBankAccount').optional({ nullable: true }).isString().trim().matches(/^$|^\d{20}$/),
+    body('counterpartyCorrespondentAccount').optional({ nullable: true }).isString().trim().matches(/^$|^\d{20}$/),
+    body('subject').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
+    body('contractDate').isISO8601(),
+    body('psrFlag').optional().isBoolean(),
+    body('signingMethod').optional().isIn(['edo', 'post']),
+    body('allowDuplicate').optional().isBoolean(),
+    body('documentKind').optional().isIn(['master', 'addendum']),
+    body('parentContractId')
+      .custom((value, { req }) => req.body.documentKind !== 'addendum' || Boolean(value))
+      .withMessage('Для допсоглашения нужно выбрать базовый договор')
+      .bail(),
+    body('parentContractId').optional({ nullable: true }).isUUID(),
+    body('files').isArray({ min: 1, max: 10 }),
+    body('files.*.name').isString().trim().notEmpty().isLength({ max: 255 }),
+    body('files.*.mimeType').optional({ nullable: true }).isString().isLength({ max: 120 }),
+    body('files.*.contentBase64').isString().notEmpty(),
+    body('files.*.size').optional().isInt({ min: 1 }),
+  ],
+  handleValidationErrors,
+  importSignedContract,
+);
+
+router.post(
   '/',
   writeContractAccess,
   [
@@ -140,6 +187,10 @@ router.post(
     body('signingMethod').optional().isIn(['edo', 'post']),
     body('allowDuplicate').optional().isBoolean(),
     body('documentKind').optional().isIn(['master', 'addendum']),
+    body('parentContractId')
+      .custom((value, { req }) => req.body.documentKind !== 'addendum' || Boolean(value))
+      .withMessage('Для допсоглашения нужно выбрать базовый договор')
+      .bail(),
     body('parentContractId').optional({ nullable: true }).isUUID(),
   ],
   handleValidationErrors,
@@ -151,7 +202,7 @@ router.put(
   writeContractAccess,
   [
     param('id').isUUID(),
-    body('contractNumber').isString().trim().notEmpty().isLength({ max: 100 }),
+    body('contractNumber').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
     body('contractType').isIn(['expense', 'income']),
     body('incomeSubtype').optional({ nullable: true }).isIn(['standard', 'with_psr']),
     body('counterpartyName').isString().trim().notEmpty().isLength({ max: 255 }),

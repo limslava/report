@@ -13,6 +13,9 @@ import {
   updateAppSettings,
   getContractWorkSchedules,
   upsertContractWorkSchedules,
+  getContractTemplateVersions,
+  uploadContractTemplateVersion,
+  activateContractTemplate,
 } from '../controllers/admin.controller';
 import { handleValidationErrors } from '../middleware/express-validator.middleware';
 import { authenticate } from '../middleware/authenticate';
@@ -117,5 +120,23 @@ router.put(
 
 router.get('/contract-work-schedules', getContractWorkSchedules);
 router.put('/contract-work-schedules', upsertContractWorkSchedules);
+
+router.get('/contract-templates', getContractTemplateVersions);
+router.post(
+  '/contract-templates',
+  [
+    body('templateType').isIn(['income_standard', 'income_with_psr', 'expense', 'addendum']),
+    body('originalName').isString().trim().notEmpty().isLength({ max: 255 }),
+    body('contentBase64').isString().notEmpty(),
+  ],
+  handleValidationErrors,
+  uploadContractTemplateVersion,
+);
+router.post(
+  '/contract-templates/:id/activate',
+  [param('id').isUUID()],
+  handleValidationErrors,
+  activateContractTemplate,
+);
 
 export { router as adminRouter };

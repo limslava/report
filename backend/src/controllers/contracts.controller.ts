@@ -62,6 +62,7 @@ import {
   isGeneratedIncomeStandardFileName,
   shouldGenerateIncomeStandardContract,
 } from '../services/income-contract-document.service';
+import { replaceGeneratedContractAttachment } from '../services/generated-contract-attachment.service';
 
 const contractRepository = AppDataSource.getRepository(Contract);
 const stepRepository = AppDataSource.getRepository(ContractApprovalStep);
@@ -300,36 +301,32 @@ function assertIncomeStandardGenerationDetails(contract: Contract): void {
 }
 
 async function replaceGeneratedIncomeStandardAttachment(contract: Contract, uploadedByUserId?: string | null): Promise<void> {
-  const generated = await generateIncomeStandardContractDocument(contract);
-  if (!generated) return;
-
-  const existing = await attachmentRepository.find({
-    where: {
-      contractId: contract.id,
-      approvalStepId: IsNull(),
-      context: 'contract',
+  const replaced = await replaceGeneratedContractAttachment({
+    contract,
+    uploadedByUserId,
+    dependencies: {
+      generateDocument: generateIncomeStandardContractDocument,
+      isGeneratedFileName: isGeneratedIncomeStandardFileName,
+      findExistingAttachments: (contractId) => attachmentRepository.find({
+        where: {
+          contractId,
+          approvalStepId: IsNull(),
+          context: 'contract',
+        },
+      }),
+      resolveAttachmentPath,
+      removeFile: (filePath) => fs.rm(filePath, { force: true }),
+      removeAttachment: (attachment) => attachmentRepository.remove(attachment).then(() => undefined),
+      persistAttachment: ({ contractId, uploadedByUserId: ownerId, file }) => persistContractAttachments({
+        contractId,
+        uploadedByUserId: ownerId,
+        files: [file],
+      }).then(() => undefined),
     },
   });
-  for (const attachment of existing) {
-    if (!isGeneratedIncomeStandardFileName(attachment.originalName)) continue;
-    const readablePath = await resolveAttachmentPath(attachment);
-    if (readablePath) {
-      await fs.rm(readablePath, { force: true });
-      await fs.rm(`${readablePath}.preview.pdf`, { force: true });
-    }
-    await attachmentRepository.remove(attachment);
+  if (replaced) {
+    await contractRepository.update(contract.id, { templateVersionId: contract.templateVersionId });
   }
-
-  await persistContractAttachments({
-    contractId: contract.id,
-    uploadedByUserId,
-    files: [{
-      name: generated.name,
-      mimeType: generated.mimeType,
-      size: generated.buffer.length,
-      contentBase64: generated.buffer.toString('base64'),
-    }],
-  });
 }
 
 async function resolveAttachmentPath(item: ContractAttachment): Promise<string | null> {
@@ -899,7 +896,7 @@ function requireStartFields(contract: Contract): void {
     throw error;
   }
 
-  if (!contract.subject?.trim()) {
+  if (contract.documentKind !== ContractDocumentKind.ADDENDUM && !contract.subject?.trim()) {
     const error: any = new Error('Не заполнено поле предмет договора');
     error.statusCode = 400;
     throw error;
@@ -1487,7 +1484,7 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       parentContractId,
       clientRequestId,
     } = req.body as {
-      contractNumber: string;
+      contractNumber?: string | null;
       contractType: ContractType;
       incomeSubtype?: ContractIncomeSubtype | null;
       counterpartyName: string;
@@ -1646,6 +1643,188 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
   }
 };
 
+export const importSignedContract = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const {
+      contractNumber,
+      contractType,
+      incomeSubtype,
+      counterpartyName,
+      counterpartyShortName,
+      ownershipForm,
+      counterpartyForm,
+      counterpartyInn,
+      counterpartyOgrn,
+      counterpartyKpp,
+      counterpartyLegalAddress,
+      counterpartyPostalAddress,
+      counterpartyPhone,
+      counterpartyEmail,
+      counterpartySignerPosition,
+      counterpartySignerName,
+      counterpartySignerAuthority,
+      counterpartyBankName,
+      counterpartyBankBik,
+      counterpartyBankAccount,
+      counterpartyCorrespondentAccount,
+      subject,
+      contractDate,
+      psrFlag,
+      signingMethod,
+      allowDuplicate,
+      documentKind,
+      parentContractId,
+      files,
+    } = req.body as {
+      contractNumber: string;
+      contractType: ContractType;
+      incomeSubtype?: ContractIncomeSubtype | null;
+      counterpartyName: string;
+      counterpartyShortName?: string | null;
+      ownershipForm?: string | null;
+      counterpartyForm?: string | null;
+      counterpartyInn: string;
+      counterpartyOgrn?: string | null;
+      counterpartyKpp?: string | null;
+      counterpartyLegalAddress?: string | null;
+      counterpartyPostalAddress?: string | null;
+      counterpartyPhone?: string | null;
+      counterpartyEmail?: string | null;
+      counterpartySignerPosition?: string | null;
+      counterpartySignerName?: string | null;
+      counterpartySignerAuthority?: string | null;
+      counterpartyBankName?: string | null;
+      counterpartyBankBik?: string | null;
+      counterpartyBankAccount?: string | null;
+      counterpartyCorrespondentAccount?: string | null;
+      subject?: string | null;
+      contractDate: string;
+      psrFlag?: boolean;
+      signingMethod?: ContractSigningMethod;
+      allowDuplicate?: boolean;
+      documentKind?: ContractDocumentKind;
+      parentContractId?: string | null;
+      files: Array<{ name: string; mimeType?: string | null; size?: number; contentBase64: string }>;
+    };
+
+    if (!req.user?.id) {
+      const error: any = new Error('Authentication required');
+      error.statusCode = 401;
+      throw error;
+    }
+
+    const normalizedDocumentKind = documentKind ?? ContractDocumentKind.MASTER;
+    if (normalizedDocumentKind === ContractDocumentKind.ADDENDUM && !parentContractId) {
+      const error: any = new Error('Для допсоглашения нужно выбрать базовый договор');
+      error.statusCode = 400;
+      throw error;
+    }
+    if (parentContractId) {
+      const parentExists = await contractRepository.exist({ where: { id: parentContractId } });
+      if (!parentExists) {
+        const error: any = new Error('Базовый договор не найден');
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+
+    const parsedContractDate = new Date(contractDate);
+    if (Number.isNaN(parsedContractDate.getTime())) {
+      const error: any = new Error('Некорректная дата договора');
+      error.statusCode = 400;
+      throw error;
+    }
+    validateInnByCounterpartyForm(counterpartyInn.trim(), counterpartyForm ?? null);
+
+    const normalizedContractNumber = normalizeNullableString(contractNumber);
+    if (!normalizedContractNumber) {
+      const error: any = new Error('Для импорта подписанного договора укажите номер договора');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!allowDuplicate) {
+      const duplicates = await contractRepository.find({
+        where: [
+          { contractNumber: normalizedContractNumber },
+          { counterpartyInn: counterpartyInn.trim(), contractType },
+        ],
+        order: { createdAt: 'DESC' },
+        take: 20,
+      });
+      if (duplicates.length > 0) {
+        res.status(409).json({
+          error: 'DUPLICATE_CONTRACTS_FOUND',
+          message: 'Найден(ы) договор(ы) с таким номером или ИНН и типом договора',
+          duplicates: duplicates.map((item) => ({
+            id: item.id,
+            contractNumber: item.contractNumber,
+            contractDate: toYmdOrNull(item.contractDate),
+            subject: item.subject,
+            status: item.status,
+          })),
+        });
+        return;
+      }
+    }
+
+    const normalizedIncomeSubtype = contractType === ContractType.INCOME
+      ? (incomeSubtype ?? ContractIncomeSubtype.STANDARD)
+      : null;
+    const normalizedPsrFlag = contractType === ContractType.INCOME && normalizedIncomeSubtype === ContractIncomeSubtype.WITH_PSR
+      ? true
+      : Boolean(psrFlag);
+
+    const contract = contractRepository.create({
+      contractNumber: normalizedContractNumber,
+      contractType,
+      incomeSubtype: normalizedIncomeSubtype,
+      counterpartyName: counterpartyName.trim(),
+      counterpartyShortName: counterpartyShortName?.trim() || null,
+      ownershipForm: ownershipForm?.trim() || null,
+      counterpartyForm: counterpartyForm || null,
+      counterpartyInn: counterpartyInn.trim(),
+      counterpartyOgrn: normalizeNullableString(counterpartyOgrn),
+      counterpartyKpp: normalizeNullableString(counterpartyKpp),
+      counterpartyLegalAddress: normalizeNullableString(counterpartyLegalAddress),
+      counterpartyPostalAddress: normalizeNullableString(counterpartyPostalAddress),
+      counterpartyPhone: normalizeNullableString(counterpartyPhone),
+      counterpartyEmail: normalizeNullableString(counterpartyEmail),
+      counterpartySignerPosition: normalizeNullableString(counterpartySignerPosition),
+      counterpartySignerName: normalizeNullableString(counterpartySignerName),
+      counterpartySignerAuthority: normalizeNullableString(counterpartySignerAuthority),
+      counterpartyBankName: normalizeNullableString(counterpartyBankName),
+      counterpartyBankBik: normalizeNullableString(counterpartyBankBik),
+      counterpartyBankAccount: normalizeNullableString(counterpartyBankAccount),
+      counterpartyCorrespondentAccount: normalizeNullableString(counterpartyCorrespondentAccount),
+      templateKind: ContractTemplateKind.NON_TYPICAL,
+      subject: subject?.trim() || null,
+      contractDate: parsedContractDate,
+      psrFlag: normalizedPsrFlag,
+      signingMethod: signingMethod ?? ContractSigningMethod.POST,
+      status: ContractStatus.APPROVED,
+      assignedGeneralDirectorId: null,
+      documentKind: normalizedDocumentKind,
+      parentContractId: parentContractId || null,
+      initiatorId: req.user.id,
+      clientRequestId: null,
+    });
+
+    const saved = await contractRepository.save(contract);
+    await persistContractAttachments({
+      contractId: saved.id,
+      uploadedByUserId: req.user.id,
+      revisionNo: 1,
+      files,
+    });
+
+    notifyContractApprovalUpdated(saved.id, req.user.id);
+    res.status(201).json({ id: saved.id, imported: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const updateDraftContract = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
@@ -1729,7 +1908,9 @@ export const updateDraftContract = async (req: Request, res: Response, next: Nex
     const normalizedIncomeSubtype = contractType === ContractType.INCOME
       ? (incomeSubtype ?? ContractIncomeSubtype.STANDARD)
       : null;
-    contract.contractNumber = contractNumber.trim();
+    contract.contractNumber = normalizeNullableString(contractNumber)
+      ?? contract.contractNumber
+      ?? await generateNextContractNumber(parsedContractDate);
     contract.contractType = contractType;
     contract.incomeSubtype = normalizedIncomeSubtype;
     contract.counterpartyName = counterpartyName.trim();
@@ -2115,11 +2296,6 @@ export const securityVisaDecision = async (req: Request, res: Response, next: Ne
         previousDecision: priorDecision,
         previousComment: priorComment,
       });
-      if (decision === ContractApprovalDecision.REJECT) {
-        contract.status = ContractStatus.REJECTED;
-        await manager.save(contract);
-        return;
-      }
       if (secretaryStep) {
         await assignApprovalStep(secretaryStep, new Date(), {
           resolveEffectiveWorkSchedule,

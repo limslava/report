@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { User } from './user.model';
 import { ContractApprovalStep } from './contract-approval-step.model';
+import { ContractTemplateVersion } from './contract-template-version.model';
 
 export enum ContractType {
   EXPENSE = 'expense',
@@ -120,6 +121,13 @@ export class Contract {
 
   @Column({ name: 'template_kind', type: 'enum', enum: ContractTemplateKind, default: ContractTemplateKind.TYPICAL })
   templateKind!: ContractTemplateKind;
+
+  @Column({ name: 'template_version_id', type: 'uuid', nullable: true })
+  templateVersionId!: string | null;
+
+  @ManyToOne(() => ContractTemplateVersion, { nullable: true })
+  @JoinColumn({ name: 'template_version_id' })
+  templateVersion!: ContractTemplateVersion | null;
 
   @Column({ name: 'subject', type: 'varchar', length: 500, nullable: true })
   subject!: string | null;

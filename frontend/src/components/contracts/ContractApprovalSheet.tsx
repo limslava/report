@@ -36,6 +36,7 @@ export function ContractApprovalSheet({
   const secretaryAttachments = sheet.steps
     .filter((step) => step.roleCode === 'secretary')
     .flatMap((step) => step.attachments);
+  const contractAttachments = sheet.contract.attachments ?? [];
 
   return (
     <Box className="approval-sheet-print">
@@ -53,6 +54,26 @@ export function ContractApprovalSheet({
           </TableBody>
         </Table>
       </TableContainer>
+
+      {contractAttachments.length > 0 && (
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle1" sx={{ mb: 0.5 }}>
+            {sheet.contract.status === 'approved' && sheet.steps.length === 0 ? 'Подписанный экземпляр' : 'Файлы договора'}
+          </Typography>
+          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+            {contractAttachments.map((file) => (
+              <Button
+                key={file.id}
+                size="small"
+                variant="text"
+                onClick={() => onOpenAttachmentPreview(file.id, file.originalName)}
+              >
+                {file.originalName}
+              </Button>
+            ))}
+          </Stack>
+        </Box>
+      )}
 
       {secretaryAttachments.length > 0 && (
         <Box sx={{ mb: 2 }}>

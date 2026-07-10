@@ -481,74 +481,185 @@ export const closeWarehouseBillingPeriod = async (params: {
 
 export const buildWarehouseBillingExcel = async (report: WarehouseBillingReport): Promise<Buffer> => {
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet('Акт');
-  const headers = [
+  workbook.creator = 'Simple Way Logistics';
+  workbook.created = new Date();
+
+  const moneyFormat = '#,##0.00';
+  const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFDCE6F1' } };
+  const border = {
+    top: { style: 'thin' as const, color: { argb: 'FFD9E2EC' } },
+    left: { style: 'thin' as const, color: { argb: 'FFD9E2EC' } },
+    bottom: { style: 'thin' as const, color: { argb: 'FFD9E2EC' } },
+    right: { style: 'thin' as const, color: { argb: 'FFD9E2EC' } },
+  };
+  const formatRateBreakdown = (rates: WarehouseBillingVehicleLine['storageRates']) => {
+    if (!rates.length) return '';
+    return rates
+      .map((rate) => `${rate.price}`)
+      .join('; ');
+  };
+  const serviceDate = (service: WarehouseBillingServiceLine | null) =>
+    service ? operationDateOnly(new Date(service.performedAt)) : null;
+  const findAutomaticService = (
+    line: WarehouseBillingVehicleLine,
+    code: 'vehicle_acceptance' | 'vehicle_issue',
+  ) => line.services.find((service) => service.id.startsWith(`automatic:${code}:`)) ?? null;
+  const additionalServices = report.lines.flatMap((line) => line.services
+    .filter((service) => !service.id.startsWith('automatic:'))
+    .map((service) => ({ line, service })));
+  const styleDataSheet = (sheet: ExcelJS.Worksheet, headerRowNumber: number, moneyColumns: string[]) => {
+    const headerRow = sheet.getRow(headerRowNumber);
+    headerRow.font = { bold: true };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    headerRow.eachCell((cell) => {
+      cell.fill = headerFill;
+      cell.border = border;
+    });
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber < headerRowNumber) return;
+      row.eachCell((cell) => {
+        cell.border = border;
+        cell.alignment = { vertical: 'top', wrapText: true };
+      });
+    });
+    moneyColumns.forEach((column) => {
+      sheet.getColumn(column).numFmt = moneyFormat;
+    });
+    sheet.autoFilter = {
+      from: { row: headerRowNumber, column: 1 },
+      to: { row: headerRowNumber, column: sheet.columnCount },
+    };
+  };
+
+  const actSheet = workbook.addWorksheet('Акт');
+  const actHeaders = [
     'Складской №',
     'Контрагент',
     'ТС',
-    'VIN / госномер',
-    'Период хранения',
-    'Суток',
-    'Хранение, ₽',
-    'Операции и услуги, ₽',
-    'Итого, ₽',
+    'VIN',
+    'гос.номер',
+    'Начало расчетного периода',
+    'Расчетная дата',
+    'Кол-во суток ',
+    'Стоймость хранения сут./руб.',
+    'Итого хранение',
+    'Дата приема',
+    'Итого за прием',
+    'Дата выдачи',
+    'Итого за выдачу',
+    'Всего Итого',
   ];
-  sheet.columns = [
+  actSheet.columns = [
     { key: 'warehouseNumber', width: 22 },
     { key: 'counterparty', width: 34 },
     { key: 'vehicle', width: 28 },
-    { key: 'identifiers', width: 28 },
-    { key: 'storagePeriod', width: 24 },
-    { key: 'days', width: 10 },
-    { key: 'storage', width: 16 },
-    { key: 'services', width: 18 },
+    { key: 'vin', width: 22 },
+    { key: 'registrationNumber', width: 16 },
+    { key: 'storageFrom', width: 18 },
+    { key: 'storageTo', width: 16 },
+    { key: 'storageDays', width: 14 },
+    { key: 'storageRate', width: 26 },
+    { key: 'storageAmount', width: 16 },
+    { key: 'acceptanceDate', width: 14 },
+    { key: 'acceptanceAmount', width: 16 },
+    { key: 'issueDate', width: 14 },
+    { key: 'issueAmount', width: 16 },
     { key: 'total', width: 16 },
   ];
-  sheet.addRow([`Акт оказанных услуг за ${report.periodFrom}–${report.periodTo}`]);
-  sheet.mergeCells('A1:I1');
-  sheet.getCell('A1').font = { bold: true, size: 14 };
-  sheet.addRow([report.counterpartyName || 'Все контрагенты']);
-  sheet.mergeCells('A2:I2');
-  sheet.addRow([]);
-  const headerRow = sheet.addRow(headers);
-  headerRow.font = { bold: true };
-  headerRow.eachCell((cell) => {
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCE6F1' } };
-  });
+  actSheet.addRow([`Акт склад ${report.periodFrom}–${report.periodTo}`]);
+  actSheet.mergeCells('A1:O1');
+  actSheet.getCell('A1').font = { bold: true, size: 14 };
+  actSheet.getCell('A1').alignment = { horizontal: 'center' };
+  actSheet.addRow([report.counterpartyName || 'Все контрагенты']);
+  actSheet.mergeCells('A2:O2');
+  actSheet.getCell('A2').alignment = { horizontal: 'center' };
+  actSheet.addRow([]);
+  actSheet.addRow(actHeaders);
   report.lines.forEach((line) => {
-    sheet.addRow({
+    const acceptance = findAutomaticService(line, 'vehicle_acceptance');
+    const issue = findAutomaticService(line, 'vehicle_issue');
+    const actTotal = roundMoney(line.storageAmount + (acceptance?.amount ?? 0) + (issue?.amount ?? 0));
+    actSheet.addRow({
       warehouseNumber: line.warehouseNumber,
       counterparty: `${line.counterpartyName}, ИНН ${line.counterpartyInn}`,
       vehicle: line.vehicleName,
-      identifiers: [line.vin, line.registrationNumber].filter(Boolean).join(' / '),
-      storagePeriod: `${line.storageFrom}–${line.storageTo}`,
-      days: line.storageDays,
-      storage: line.storageAmount,
-      services: line.servicesAmount,
-      total: line.totalAmount,
-    });
-    line.services.forEach((service) => {
-      sheet.addRow({
-        vehicle: `↳ ${service.name}`,
-        identifiers: new Date(service.performedAt).toLocaleString('ru-RU'),
-        days: service.quantity,
-        storage: service.unitPrice,
-        services: service.amount,
-      });
+      vin: line.vin ?? '',
+      registrationNumber: line.registrationNumber ?? '',
+      storageFrom: line.storageFrom,
+      storageTo: line.storageTo,
+      storageDays: line.storageDays,
+      storageRate: formatRateBreakdown(line.storageRates),
+      storageAmount: line.storageAmount,
+      acceptanceDate: serviceDate(acceptance),
+      acceptanceAmount: acceptance?.amount ?? null,
+      issueDate: serviceDate(issue),
+      issueAmount: issue?.amount ?? null,
+      total: actTotal,
     });
   });
-  const totalRow = sheet.addRow({
+  const actTotalRow = actSheet.addRow({
     vehicle: 'ИТОГО',
-    days: report.totals.storageDays,
-    storage: report.totals.storageAmount,
-    services: report.totals.servicesAmount,
-    total: report.totals.totalAmount,
+    storageDays: report.totals.storageDays,
+    storageAmount: report.totals.storageAmount,
+    acceptanceAmount: report.lines.reduce((sum, line) => sum + (findAutomaticService(line, 'vehicle_acceptance')?.amount ?? 0), 0),
+    issueAmount: report.lines.reduce((sum, line) => sum + (findAutomaticService(line, 'vehicle_issue')?.amount ?? 0), 0),
+    total: report.lines.reduce((sum, line) => {
+      const acceptance = findAutomaticService(line, 'vehicle_acceptance');
+      const issue = findAutomaticService(line, 'vehicle_issue');
+      return sum + line.storageAmount + (acceptance?.amount ?? 0) + (issue?.amount ?? 0);
+    }, 0),
   });
-  totalRow.font = { bold: true };
-  ['G', 'H', 'I'].forEach((column) => {
-    sheet.getColumn(column).numFmt = '#,##0.00';
+  actTotalRow.font = { bold: true };
+  styleDataSheet(actSheet, 4, ['J', 'L', 'N', 'O']);
+  actSheet.views = [{ state: 'frozen', ySplit: 4 }];
+
+  const servicesSheet = workbook.addWorksheet('Доп услуги');
+  servicesSheet.columns = [
+    { key: 'warehouseNumber', width: 22 },
+    { key: 'counterparty', width: 34 },
+    { key: 'vehicle', width: 28 },
+    { key: 'vin', width: 22 },
+    { key: 'registrationNumber', width: 16 },
+    { key: 'serviceName', width: 30 },
+    { key: 'performedDate', width: 18 },
+    { key: 'quantity', width: 12 },
+    { key: 'unitPrice', width: 14 },
+    { key: 'amount', width: 14 },
+  ];
+  servicesSheet.addRow([
+    'Складской №',
+    'Контрагент',
+    'ТС',
+    'VIN',
+    'гос.номер',
+    'Вид услуги',
+    'Дата оказаня услуги',
+    'Количество',
+    'Цена',
+    'Итого',
+  ]);
+  additionalServices.forEach(({ line, service }) => {
+    servicesSheet.addRow({
+      warehouseNumber: line.warehouseNumber,
+      counterparty: `${line.counterpartyName}, ИНН ${line.counterpartyInn}`,
+      vehicle: line.vehicleName,
+      vin: line.vin ?? '',
+      registrationNumber: line.registrationNumber ?? '',
+      serviceName: service.name,
+      performedDate: serviceDate(service),
+      quantity: service.quantity,
+      unitPrice: service.unitPrice,
+      amount: service.amount,
+    });
   });
-  sheet.views = [{ state: 'frozen', ySplit: 4 }];
+  const servicesTotalRow = servicesSheet.addRow({
+    serviceName: 'ИТОГО',
+    amount: additionalServices.reduce((sum, { service }) => sum + service.amount, 0),
+  });
+  servicesTotalRow.font = { bold: true };
+  styleDataSheet(servicesSheet, 1, ['I', 'J']);
+  servicesSheet.views = [{ state: 'frozen', ySplit: 1 }];
+
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);
 };

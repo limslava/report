@@ -213,6 +213,55 @@
   background: #fff0cc;
 }
 
+.contract-registry-table tbody tr.contract-registry-addendum-row td {
+  background: #eef6ff;
+  color: #1f2937;
+}
+
+.contract-registry-table tbody tr.contract-registry-addendum-row td:first-child {
+  box-shadow: inset 4px 0 0 #1976d2;
+}
+
+.contract-registry-table tbody tr.contract-registry-addendum-row:hover td {
+  background: #e2efff;
+}
+
+.contract-registry-tree-cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 2px;
+}
+
+.contract-registry-tree-toggle {
+  width: 20px !important;
+  height: 20px !important;
+  padding: 0 !important;
+  color: #4b5563 !important;
+}
+
+.contract-registry-tree-spacer {
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+}
+
+.contract-registry-document-pill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contract-registry-document-pill--addendum {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #d7e9ff;
+  color: #0d47a1;
+  font-weight: 700;
+}
+
 .contract-registry-action {
   min-width: auto !important;
   padding: 1px 4px !important;
@@ -248,6 +297,19 @@
   justify-content: space-between;
   gap: 6px;
   min-height: 24px;
+}
+
+.contract-registry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.contract-registry-actions .MuiButton-root {
+  flex: 0 0 auto;
+  min-width: max-content;
+  white-space: nowrap;
 }
 
 .col-resize-handle {
@@ -637,6 +699,10 @@
   border-top: 1px solid #d0d7de;
 }
 
+.contract-inbox-mobile {
+  display: none;
+}
+
 @media (max-width: 900px) {
   .contract-my-task {
     grid-template-columns: 1fr;
@@ -684,6 +750,73 @@
 
   .contract-process-step-details {
     padding-left: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .contract-inbox-desktop {
+    display: none;
+  }
+
+  .contract-inbox-mobile {
+    display: grid;
+    gap: 8px;
+  }
+
+  .contract-inbox-card {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    background: #fff;
+  }
+
+  .contract-inbox-card-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .contract-inbox-card-heading .contract-visa-text {
+    flex-shrink: 0;
+    max-width: 42%;
+    text-align: right;
+  }
+
+  .contract-inbox-card-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+  }
+
+  .contract-inbox-card-field {
+    min-width: 0;
+  }
+
+  .contract-inbox-card-field .MuiTypography-caption {
+    display: block;
+    color: #6b7280;
+  }
+
+  .contract-inbox-card-field .MuiTypography-body2 {
+    overflow-wrap: anywhere;
+  }
+
+  .contract-card-title {
+    padding: 12px 16px !important;
+  }
+
+  .contract-card-content {
+    padding: 12px !important;
+  }
+
+  .contract-card-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    flex-wrap: wrap;
   }
 }
 

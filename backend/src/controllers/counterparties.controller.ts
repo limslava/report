@@ -3,7 +3,11 @@ import { ILike } from 'typeorm';
 import { AppDataSource } from '../config/data-source';
 import { Counterparty } from '../models/counterparty.model';
 import { Contract } from '../models/contract.model';
-import { fetchCounterpartyFromFnsByInn, fetchCounterpartyFromFnsByName } from '../services/fns-egrul.service';
+import {
+  fetchCounterpartyFromFnsByInn,
+  fetchCounterpartyFromFnsByName,
+  FnsServiceUnavailableError,
+} from '../services/fns-egrul.service';
 
 const counterpartyRepository = AppDataSource.getRepository(Counterparty);
 const contractRepository = AppDataSource.getRepository(Contract);
@@ -54,7 +58,16 @@ export const resolveCounterpartyByInn = async (req: Request, res: Response, next
       return;
     }
 
-    const fns = await fetchCounterpartyFromFnsByInn(inn);
+    let fns = null;
+    try {
+      fns = await fetchCounterpartyFromFnsByInn(inn);
+    } catch (error) {
+      if (error instanceof FnsServiceUnavailableError) {
+        res.status(503).json({ message: 'Сервис ФНС временно недоступен, заполните данные вручную или попробуйте позже' });
+        return;
+      }
+      throw error;
+    }
     if (!fns) {
       res.status(404).json({ message: 'Контрагент по ИНН не найден' });
       return;
@@ -144,7 +157,16 @@ export const resolveCounterpartyByName = async (req: Request, res: Response, nex
       return;
     }
 
-    const fns = await fetchCounterpartyFromFnsByName(name);
+    let fns = null;
+    try {
+      fns = await fetchCounterpartyFromFnsByName(name);
+    } catch (error) {
+      if (error instanceof FnsServiceUnavailableError) {
+        res.status(503).json({ message: 'Сервис ФНС временно недоступен, заполните данные вручную или попробуйте позже' });
+        return;
+      }
+      throw error;
+    }
     if (!fns) {
       res.status(404).json({ message: 'Контрагент по наименованию не найден' });
       return;

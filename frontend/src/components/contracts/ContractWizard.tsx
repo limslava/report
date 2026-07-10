@@ -40,9 +40,17 @@ type ContractWizardProps = {
   duplicates: DuplicateContract[];
   existingFiles: ContractAttachmentRef[];
   files: File[];
+  parentContracts: Array<{
+    id: string;
+    contractNumber: string;
+    counterpartyName: string;
+    counterpartyShortName?: string | null;
+    contractType: 'expense' | 'income';
+  }>;
   isInnValidLength: boolean;
   isInnInvalidLength: boolean;
   requiresAttachmentStep: boolean;
+  importSigned: boolean;
   onClose: () => void;
   onInnBlur: () => void;
   onCheck: () => void;
@@ -67,9 +75,11 @@ export function ContractWizard({
   duplicates,
   existingFiles,
   files,
+  parentContracts,
   isInnValidLength,
   isInnInvalidLength,
   requiresAttachmentStep,
+  importSigned,
   onClose,
   onInnBlur,
   onCheck,
@@ -81,7 +91,9 @@ export function ContractWizard({
   onAppendFiles,
   onRemoveFile,
 }: ContractWizardProps) {
-  const isIncomeWithoutPsr = wizard.contractType === 'income' && wizard.psrMode === 'without_psr';
+  const isIncomeContract = wizard.contractType === 'income';
+  const isIncomeWithoutPsr = isIncomeContract && wizard.psrMode === 'without_psr';
+  const isAddendum = wizard.documentKind === 'addendum';
 
   return (
     <Dialog
@@ -98,7 +110,11 @@ export function ContractWizard({
         },
       }}
     >
-      <DialogTitle>Добавление на согласование</DialogTitle>
+      <DialogTitle>
+        {importSigned
+          ? isAddendum ? 'Импорт подписанного доп. соглашения' : 'Импорт подписанного договора'
+          : isAddendum ? 'Добавление доп. соглашения' : 'Добавление договора на согласование'}
+      </DialogTitle>
       <DialogContent sx={{ minHeight: 380 }}>
         {step === 0 && (
           <Stack spacing={2} sx={{ mt: 1 }}>
@@ -115,19 +131,82 @@ export function ContractWizard({
             />
             <TextField
               label="Наименование (контрагент)"
-              value={prefill?.counterpartyName || ''}
-              InputProps={{ readOnly: true }}
+              value={wizard.counterpartyName}
+              onChange={(event) => setWizard({ ...wizard, counterpartyName: event.target.value })}
               multiline
               minRows={2}
-              placeholder="Будет заполнено автоматически после ввода ИНН"
+              placeholder="Заполнится из ФНС или введите вручную"
             />
+            <TextField
+              label="Краткое наименование"
+              value={wizard.counterpartyShortName}
+              onChange={(event) => setWizard({ ...wizard, counterpartyShortName: event.target.value })}
+              placeholder="Например: ООО Ромашка"
+            />
+            <FormControl fullWidth>
+              <InputLabel>Форма контрагента</InputLabel>
+              <Select
+                label="Форма контрагента"
+                value={wizard.counterpartyForm}
+                onChange={(event) => setWizard({
+                  ...wizard,
+                  counterpartyForm: event.target.value as ContractWizardForm['counterpartyForm'],
+                })}
+              >
+                <MenuItem value="">Не указана</MenuItem>
+                <MenuItem value="ooo">ООО</MenuItem>
+                <MenuItem value="ao">АО</MenuItem>
+                <MenuItem value="pao">ПАО</MenuItem>
+                <MenuItem value="zao">ЗАО</MenuItem>
+                <MenuItem value="ip">ИП</MenuItem>
+              </Select>
+            </FormControl>
             {innResolving && (
               <Typography variant="body2" color="text.secondary">Поиск контрагента по ИНН...</Typography>
             )}
             {!innResolving && isInnValidLength && !prefill?.counterpartyName && (
               <Typography variant="body2" color="warning.main">
-                Контрагент пока не определен. Нажмите «Проверить» для повторной проверки.
+                Если ФНС не вернет данные, заполните реквизиты вручную.
               </Typography>
+            )}
+            <FormControl fullWidth>
+              <InputLabel>Вид документа</InputLabel>
+              <Select
+                label="Вид документа"
+                value={wizard.documentKind}
+                onChange={(event) => setWizard({
+                  ...wizard,
+                  documentKind: event.target.value as ContractWizardForm['documentKind'],
+                  parentContractId: event.target.value === 'master' ? '' : wizard.parentContractId,
+                })}
+              >
+                <MenuItem value="master">Основной договор</MenuItem>
+                <MenuItem value="addendum">Доп. соглашение</MenuItem>
+              </Select>
+            </FormControl>
+            {isAddendum && (
+              <FormControl fullWidth>
+                <InputLabel>К основному договору</InputLabel>
+                <Select
+                  label="К основному договору"
+                  value={wizard.parentContractId}
+                  onChange={(event) => setWizard({
+                    ...wizard,
+                    parentContractId: event.target.value,
+                  })}
+                >
+                  {!parentContracts.length && (
+                    <MenuItem disabled value="">
+                      Нет основных договоров этого контрагента и типа
+                    </MenuItem>
+                  )}
+                  {parentContracts.map((contract) => (
+                    <MenuItem key={contract.id} value={contract.id}>
+                      {contract.contractNumber} - {contract.counterpartyShortName || contract.counterpartyName}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             )}
             <FormControl fullWidth>
               <InputLabel>Тип договора</InputLabel>
@@ -140,7 +219,8 @@ export function ContractWizard({
                     ...wizard,
                     contractType,
                     psrMode: contractType === 'income' ? wizard.psrMode : 'without_psr',
-                    contractNumber: contractType === 'income' && wizard.psrMode === 'without_psr' ? '' : wizard.contractNumber,
+                    contractNumber: contractType === 'income' ? '' : wizard.contractNumber,
+                    parentContractId: wizard.documentKind === 'addendum' ? '' : wizard.parentContractId,
                   });
                 }}
               >
@@ -157,7 +237,7 @@ export function ContractWizard({
                   onChange={(event) => setWizard({
                     ...wizard,
                     psrMode: event.target.value as ContractWizardForm['psrMode'],
-                    contractNumber: event.target.value === 'without_psr' ? '' : wizard.contractNumber,
+                    contractNumber: '',
                   })}
                 >
                   <MenuItem value="with_psr">С ПСР</MenuItem>
@@ -218,24 +298,26 @@ export function ContractWizard({
 
         {step === 5 && (
           <Stack spacing={2} sx={{ mt: 1 }}>
-            {isIncomeWithoutPsr ? (
+            {isIncomeContract && !importSigned && !isAddendum ? (
               <Alert severity="info">
-                Номер договора будет присвоен автоматически при отправке.
+                Номер доходного договора будет присвоен автоматически при отправке.
               </Alert>
             ) : (
               <TextField
-                label="№ договора"
+                label={isAddendum ? '№ доп. соглашения' : '№ договора'}
                 value={wizard.contractNumber}
                 onChange={(event) => setWizard({ ...wizard, contractNumber: event.target.value })}
               />
             )}
+            {!isAddendum && (
+              <TextField
+                label="Предмет договора"
+                value={wizard.subject}
+                onChange={(event) => setWizard({ ...wizard, subject: event.target.value })}
+              />
+            )}
             <TextField
-              label="Предмет договора"
-              value={wizard.subject}
-              onChange={(event) => setWizard({ ...wizard, subject: event.target.value })}
-            />
-            <TextField
-              label="Дата договора"
+              label={isAddendum ? 'Дата доп. соглашения' : 'Дата договора'}
               type="date"
               value={wizard.contractDate}
               onChange={(event) => setWizard({ ...wizard, contractDate: event.target.value })}
@@ -432,16 +514,16 @@ export function ContractWizard({
           <Button
             variant="contained"
             onClick={onCheck}
-            disabled={!isInnValidLength || innResolving || submitting}
+            disabled={!isInnValidLength || innResolving || submitting || (isAddendum && !wizard.parentContractId)}
           >
-            Проверить
+            {isAddendum ? 'Далее' : 'Проверить'}
           </Button>
         )}
         {step === 4 && !checking && (
           <Button
             variant="contained"
             onClick={onContinueFromDuplicates}
-            disabled={!prefill?.counterpartyName || submitting}
+            disabled={!wizard.counterpartyName.trim() || submitting}
           >
             Продолжить
           </Button>
@@ -450,14 +532,14 @@ export function ContractWizard({
           <Button
             variant="contained"
             onClick={requiresAttachmentStep ? onGoToFiles : onSubmit}
-            disabled={(requiresAttachmentStep && !wizard.contractNumber.trim()) || !wizard.subject.trim() || !wizard.contractDate || submitting}
+            disabled={((requiresAttachmentStep && (!isIncomeContract || importSigned)) || isAddendum) && !wizard.contractNumber.trim() || (!isAddendum && !wizard.subject.trim()) || !wizard.contractDate || submitting}
           >
             {requiresAttachmentStep ? 'Далее' : submitting ? 'Отправка...' : 'Отправить'}
           </Button>
         )}
         {step === 6 && (
-          <Button variant="contained" onClick={onSubmit} disabled={submitting}>
-            {submitting ? 'Отправка...' : 'Отправить'}
+          <Button variant="contained" onClick={onSubmit} disabled={submitting || (importSigned && files.length === 0 && existingFiles.length === 0)}>
+            {submitting ? 'Отправка...' : importSigned ? 'Импортировать' : 'Отправить'}
           </Button>
         )}
       </DialogActions>

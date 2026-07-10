@@ -78,10 +78,12 @@ describe('contract approval route service', () => {
     expect(arePreSecretaryApprovalsComplete(steps)).toBe(true);
   });
 
-  it('allows print package only after security approved and pre-secretary steps decided', () => {
+  it('allows print package after every pre-secretary step has any decision', () => {
     expect(canCreateFinalPrintPackage([
-      step({ roleCode: 'security', decision: ContractApprovalDecision.APPROVE }),
-      step({ roleCode: 'lawyer', decision: ContractApprovalDecision.APPROVE }),
+      step({ roleCode: 'security', decision: ContractApprovalDecision.REJECT }),
+      step({ roleCode: 'lawyer', decision: ContractApprovalDecision.REWORK }),
+      step({ roleCode: 'chief_accountant', decision: ContractApprovalDecision.APPROVE }),
+      step({ roleCode: 'financer', decision: ContractApprovalDecision.APPROVE, comment: 'Есть замечания' }),
       step({ roleCode: 'secretary', decision: null }),
     ])).toBe(true);
 

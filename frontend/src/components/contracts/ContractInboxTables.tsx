@@ -1,5 +1,6 @@
 import {
   Box,
+  Button,
   Paper,
   Table,
   TableBody,
@@ -94,6 +95,15 @@ function InboxHeader({ columns }: { columns: readonly { key: string; label: stri
   );
 }
 
+function InboxCardField({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <Box className="contract-inbox-card-field">
+      <Typography variant="caption">{label}</Typography>
+      <Typography variant="body2" component="div">{value || '—'}</Typography>
+    </Box>
+  );
+}
+
 export function SecurityContractInboxTable({
   items,
   totalItems,
@@ -105,7 +115,7 @@ export function SecurityContractInboxTable({
         <Typography variant="body2" color="text.secondary">Сейчас нет договоров на проверке руководителя СБ.</Typography>
       )}
       {!!items.length && (
-        <TableContainer className="contract-registry-table-wrap">
+        <TableContainer className="contract-registry-table-wrap contract-inbox-desktop">
           <Table size="small" className="contract-registry-table">
             <InboxHeader columns={SECURITY_INBOX_COLUMNS} />
             <TableBody>
@@ -156,6 +166,35 @@ export function SecurityContractInboxTable({
           </Table>
         </TableContainer>
       )}
+      {!!items.length && (
+        <Box className="contract-inbox-mobile">
+          {items.map((item) => (
+            <Box key={item.contractId} className="contract-inbox-card">
+              <Box className="contract-inbox-card-heading">
+                <Box>
+                  <Typography variant="subtitle2">Договор № {item.contractNumber}</Typography>
+                  <Typography variant="body2">
+                    {item.counterpartyShortName?.trim() || normalizeCounterpartyName(item.counterpartyName)}
+                  </Typography>
+                </Box>
+                <Typography
+                  variant="caption"
+                  className={`contract-visa-text contract-visa-text--${getSecurityVisaColor(item)}`}
+                >
+                  {getSecurityVisaLabel(item)}
+                </Typography>
+              </Box>
+              <Box className="contract-inbox-card-grid">
+                <InboxCardField label="Тип" value={formatContractTypeLabel(item.contractType, item.incomeSubtype)} />
+                <InboxCardField label="Срок" value={formatDateOnly(item.deadlineAt)} />
+                <InboxCardField label="Инициатор" value={item.initiatorName} />
+                <InboxCardField label="Предмет" value={item.subject || '—'} />
+              </Box>
+              <Button variant="outlined" fullWidth onClick={() => onOpenItem(item)}>Открыть</Button>
+            </Box>
+          ))}
+        </Box>
+      )}
       {!!totalItems && !items.length && (
         <Typography variant="body2" color="text.secondary">По вашему запросу ничего не найдено.</Typography>
       )}
@@ -179,7 +218,7 @@ export function ApprovalContractInboxTable({
         <Typography variant="body2" color="text.secondary">Сейчас нет договоров для вашего согласования.</Typography>
       )}
       {!!items.length && (
-        <TableContainer className="contract-registry-table-wrap">
+        <TableContainer className="contract-registry-table-wrap contract-inbox-desktop">
           <Table size="small" className="contract-registry-table">
             <InboxHeader columns={columns} />
             <TableBody>
@@ -222,6 +261,38 @@ export function ApprovalContractInboxTable({
             </TableBody>
           </Table>
         </TableContainer>
+      )}
+      {!!items.length && (
+        <Box className="contract-inbox-mobile">
+          {items.map((item) => (
+            <Box key={item.contractId} className="contract-inbox-card">
+              <Box className="contract-inbox-card-heading">
+                <Box>
+                  <Typography variant="subtitle2">Договор № {item.contractNumber}</Typography>
+                  <Typography variant="body2">
+                    {item.counterpartyShortName?.trim() || normalizeCounterpartyName(item.counterpartyName)}
+                  </Typography>
+                </Box>
+                <Typography
+                  variant="caption"
+                  className={`contract-visa-text contract-visa-text--${getApprovalInboxDecisionTone(item)}`}
+                >
+                  {getApprovalInboxDecisionLabel(item)}
+                </Typography>
+              </Box>
+              <Box className="contract-inbox-card-grid">
+                <InboxCardField label="Тип" value={formatContractTypeLabel(item.contractType, item.incomeSubtype)} />
+                <InboxCardField label="Срок" value={formatDateOnly(item.deadlineAt)} />
+                <InboxCardField label="Инициатор" value={item.initiatorName} />
+                <InboxCardField label="Предмет" value={item.subject || '—'} />
+                {isChiefAccountant && (
+                  <InboxCardField label="Подписание" value={item.signingMethod === 'edo' ? 'ЭДО' : 'Почта'} />
+                )}
+              </Box>
+              <Button variant="outlined" fullWidth onClick={() => onOpenContract(item.contractId)}>Открыть</Button>
+            </Box>
+          ))}
+        </Box>
       )}
       {!!totalItems && !items.length && (
         <Typography variant="body2" color="text.secondary">По вашему запросу ничего не найдено.</Typography>

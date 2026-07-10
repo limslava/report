@@ -39,6 +39,11 @@ import {
   getAuditLog,
   resetUserPasswordByAdmin,
   reassignAndDeleteUserByAdmin,
+  getContractTemplateVersions,
+  uploadContractTemplateVersion,
+  activateContractTemplateVersion,
+  type ContractTemplateType,
+  type ContractTemplateVersion,
 } from '../services/api';
 import useNotesUnreadStore from '../store/notes-unread-store';
 import { getWarehouseClients, WarehouseClient } from '../services/warehouse.api';
@@ -67,6 +72,12 @@ const AdminPage = () => {
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
   const [warehouseClients, setWarehouseClients] = useState<WarehouseClient[]>([]);
+  const [contractTemplates, setContractTemplates] = useState<ContractTemplateVersion[]>([]);
+  const [templateUploadType, setTemplateUploadType] = useState<ContractTemplateType>('income_standard');
+  const [templateUploadFile, setTemplateUploadFile] = useState<File | null>(null);
+  const [templateBusy, setTemplateBusy] = useState(false);
+  const [templateError, setTemplateError] = useState<string | null>(null);
+  const [templateSuccess, setTemplateSuccess] = useState<string | null>(null);
   const [auditFilters, setAuditFilters] = useState({
     userId: '',
     action: '',
@@ -95,6 +106,13 @@ const AdminPage = () => {
     0: 'Вс',
   };
 
+  const contractTemplateTypes: Array<{ value: ContractTemplateType; label: string }> = [
+    { value: 'income_standard', label: 'Доходный без ПСР' },
+    { value: 'income_with_psr', label: 'Доходный с ПСР' },
+    { value: 'expense', label: 'Расходный' },
+    { value: 'addendum', label: 'Доп. соглашение' },
+  ];
+
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
@@ -118,6 +136,20 @@ const AdminPage = () => {
     void getWarehouseClients(false)
       .then((response) => setWarehouseClients(response.data))
       .catch(() => setWarehouseClients([]));
+  }, []);
+
+  const loadContractTemplates = async () => {
+    try {
+      setTemplateError(null);
+      const response = await getContractTemplateVersions();
+      setContractTemplates(Array.isArray(response.data) ? response.data : []);
+    } catch (error: any) {
+      setTemplateError(error.response?.data?.message || error.message || 'Не удалось загрузить шаблоны договоров');
+    }
+  };
+
+  useEffect(() => {
+    void loadContractTemplates();
   }, []);
 
   useEffect(() => {
@@ -291,6 +323,58 @@ const AdminPage = () => {
     if (days > 0) return `${days}д ${hours}ч ${minutes}м`;
     if (hours > 0) return `${hours}ч ${minutes}м`;
     return `${minutes}м`;
+  };
+
+  const fileToBase64 = (file: File) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+    reader.onerror = () => reject(new Error(`Не удалось прочитать файл: ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+
+  const formatBytes = (value?: number | null) => {
+    if (!value) return '—';
+    if (value < 1024) return `${value} Б`;
+    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} КБ`;
+    return `${(value / (1024 * 1024)).toFixed(1)} МБ`;
+  };
+
+  const handleUploadContractTemplate = async () => {
+    if (!templateUploadFile || templateBusy) return;
+    try {
+      setTemplateBusy(true);
+      setTemplateError(null);
+      setTemplateSuccess(null);
+      const contentBase64 = await fileToBase64(templateUploadFile);
+      await uploadContractTemplateVersion({
+        templateType: templateUploadType,
+        originalName: templateUploadFile.name,
+        contentBase64,
+      });
+      setTemplateUploadFile(null);
+      setTemplateSuccess('Версия шаблона загружена. Активируйте ее, когда будете готовы применять к новым договорам.');
+      await loadContractTemplates();
+    } catch (error: any) {
+      setTemplateError(error.response?.data?.message || error.message || 'Не удалось загрузить шаблон');
+    } finally {
+      setTemplateBusy(false);
+    }
+  };
+
+  const handleActivateContractTemplate = async (id: string) => {
+    if (templateBusy) return;
+    try {
+      setTemplateBusy(true);
+      setTemplateError(null);
+      setTemplateSuccess(null);
+      await activateContractTemplateVersion(id);
+      setTemplateSuccess('Активная версия шаблона обновлена');
+      await loadContractTemplates();
+    } catch (error: any) {
+      setTemplateError(error.response?.data?.message || error.message || 'Не удалось активировать шаблон');
+    } finally {
+      setTemplateBusy(false);
+    }
   };
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
@@ -535,6 +619,7 @@ const AdminPage = () => {
           <Tab label="Пользователи системы" />
           <Tab label="Статистика" />
           <Tab label="Журнал действий" />
+          <Tab label="Шаблоны договоров" />
         </Tabs>
 
         {tabValue === 0 && (
@@ -784,6 +869,127 @@ const AdminPage = () => {
                   {auditLogs.length === 0 && !auditLoading && (
                     <TableRow>
                       <TableCell colSpan={5}>Нет записей</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
+        )}
+
+        {tabValue === 3 && (
+          <Box sx={{ pt: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Шаблоны договоров
+            </Typography>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Новая активная версия применяется только к новым договорам и к черновикам при пересборке документа.
+              Уже созданные вложения договоров автоматически не меняются.
+            </Alert>
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Сейчас автогенерация подключена для типа «Доходный без ПСР». Остальные типы можно версионировать заранее,
+              но они начнут применяться после подключения генераторов для этих видов документов.
+            </Alert>
+
+            {templateError && (
+              <Alert severity="error" sx={{ mb: 2 }}>{templateError}</Alert>
+            )}
+            {templateSuccess && (
+              <Alert severity="success" sx={{ mb: 2 }}>{templateSuccess}</Alert>
+            )}
+
+            <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+              <Typography variant="subtitle1" sx={{ mb: 2 }}>
+                Загрузить новую версию
+              </Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '260px 1fr auto' }, gap: 2, alignItems: 'center' }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Тип шаблона</InputLabel>
+                  <Select
+                    label="Тип шаблона"
+                    value={templateUploadType}
+                    onChange={(event) => setTemplateUploadType(event.target.value as ContractTemplateType)}
+                  >
+                    {contractTemplateTypes.map((item) => (
+                      <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Button variant="outlined" component="label" disabled={templateBusy}>
+                  {templateUploadFile ? templateUploadFile.name : 'Выбрать .docx'}
+                  <input
+                    hidden
+                    type="file"
+                    accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    onChange={(event) => setTemplateUploadFile(event.target.files?.[0] ?? null)}
+                  />
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={handleUploadContractTemplate}
+                  disabled={!templateUploadFile || templateBusy}
+                >
+                  {templateBusy ? 'Загрузка...' : 'Загрузить'}
+                </Button>
+              </Box>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+                Обязательные плейсхолдеры для доходного без ПСР: contractNumber, contractDate, counterpartyName,
+                inn, legalAddress, bankName, bankBik, bankAccount, correspondentAccount, signerName.
+              </Typography>
+            </Paper>
+
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Тип</TableCell>
+                    <TableCell>Версия</TableCell>
+                    <TableCell>Файл</TableCell>
+                    <TableCell>Плейсхолдеры</TableCell>
+                    <TableCell>Загружен</TableCell>
+                    <TableCell>Статус</TableCell>
+                    <TableCell>Действия</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {contractTemplates.map((template) => (
+                    <TableRow key={template.id}>
+                      <TableCell>{template.templateLabel}</TableCell>
+                      <TableCell>v{template.version}</TableCell>
+                      <TableCell>
+                        <Typography variant="body2">{template.originalName}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatBytes(template.sizeBytes)} · {template.contentSha256.slice(0, 10)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ maxWidth: 320 }}>
+                        <Typography variant="caption" sx={{ whiteSpace: 'normal' }}>
+                          {template.placeholders.length ? template.placeholders.join(', ') : '—'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>{formatLocalDateTime(template.createdAt)}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          color={template.isActive ? 'success' : 'default'}
+                          label={template.isActive ? 'Активна' : 'Архив'}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          disabled={template.isActive || templateBusy}
+                          onClick={() => handleActivateContractTemplate(template.id)}
+                        >
+                          Активировать
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {contractTemplates.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7}>Версии шаблонов пока не загружены</TableCell>
                     </TableRow>
                   )}
                 </TableBody>

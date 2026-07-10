@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store/auth-store';
 import DashboardLayout from './layouts/DashboardLayout';
 import LoginPage from './pages/LoginPage';
@@ -12,8 +12,10 @@ import {
 
 function App() {
   const { token, user } = useAuthStore();
+  const location = useLocation();
   const isAuthenticated = !!token;
   const defaultAuthenticatedRoute = getDefaultAuthenticatedRoute(user?.role);
+  const returnTo = `${location.pathname}${location.search}${location.hash}`;
 
   return (
     <Routes>
@@ -36,7 +38,10 @@ function App() {
           ))}
         </Route>
       ) : (
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route
+          path="*"
+          element={<Navigate to={`/login?returnTo=${encodeURIComponent(returnTo)}`} replace />}
+        />
       )}
     </Routes>
   );

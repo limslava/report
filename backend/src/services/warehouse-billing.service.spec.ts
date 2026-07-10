@@ -4,11 +4,14 @@ jest.mock('../config/data-source', () => ({
   },
 }));
 
+import ExcelJS from 'exceljs';
 import {
   assertWarehouseBillingPeriodCompleted,
+  buildWarehouseBillingExcel,
   calculateWarehouseBillingTotals,
   calculateWarehouseStorage,
   findWarehouseTariffForDate,
+  WarehouseBillingReport,
   WarehouseBillingVehicleLine,
 } from './warehouse-billing.service';
 
@@ -258,5 +261,99 @@ describe('warehouse billing calculations', () => {
       servicesAmount: 100,
       totalAmount: 400,
     });
+  });
+
+  it('exports billing excel with separate act and additional service sheets', async () => {
+    const report: WarehouseBillingReport = {
+      periodFrom: '2026-07-01',
+      periodTo: '2026-07-31',
+      counterpartyId: null,
+      counterpartyName: null,
+      status: 'preview',
+      closedPeriodId: null,
+      closedAt: null,
+      lines: [{
+        vehicleId: 'vehicle-1',
+        warehouseNumber: 'СКЛ-2026-000001',
+        counterpartyId: 'counterparty-1',
+        counterpartyName: 'ООО Тест',
+        counterpartyInn: '7700000000',
+        vehicleType: 'passenger',
+        vehicleName: 'Марка Модель',
+        vin: 'VIN001',
+        registrationNumber: 'А001АА',
+        storageFrom: '2026-07-01',
+        storageTo: '2026-07-31',
+        storageDays: 31,
+        storageAmount: 3100,
+        storageRates: [{ price: 100, days: 31, amount: 3100 }],
+        services: [
+          {
+            id: 'automatic:vehicle_acceptance:vehicle-1',
+            name: 'Прием ТС',
+            performedAt: '2026-07-01T01:00:00.000Z',
+            quantity: 1,
+            unit: 'operation',
+            unitPrice: 500,
+            amount: 500,
+            performedByName: 'Система',
+            comment: null,
+          },
+          {
+            id: 'service-1',
+            name: 'Мойка',
+            performedAt: '2026-07-03T01:00:00.000Z',
+            quantity: 2,
+            unit: 'operation',
+            unitPrice: 700,
+            amount: 1400,
+            performedByName: 'Оператор',
+            comment: null,
+          },
+        ],
+        servicesAmount: 1900,
+        totalAmount: 5000,
+      }],
+      totals: {
+        vehicleCount: 1,
+        storageDays: 31,
+        storageAmount: 3100,
+        servicesAmount: 1900,
+        totalAmount: 5000,
+      },
+      warnings: [],
+    };
+
+    const buffer = await buildWarehouseBillingExcel(report);
+    const workbook = new ExcelJS.Workbook();
+    const arrayBuffer = buffer.buffer.slice(
+      buffer.byteOffset,
+      buffer.byteOffset + buffer.byteLength,
+    ) as ArrayBuffer;
+    await workbook.xlsx.load(arrayBuffer);
+
+    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(['Акт', 'Доп услуги']);
+    expect(workbook.getWorksheet('Акт')?.getRow(4).values).toEqual([
+      undefined,
+      'Складской №',
+      'Контрагент',
+      'ТС',
+      'VIN',
+      'гос.номер',
+      'Начало расчетного периода',
+      'Расчетная дата',
+      'Кол-во суток ',
+      'Стоймость хранения сут./руб.',
+      'Итого хранение',
+      'Дата приема',
+      'Итого за прием',
+      'Дата выдачи',
+      'Итого за выдачу',
+      'Всего Итого',
+    ]);
+    expect(workbook.getWorksheet('Акт')?.getCell('I5').value).toBe('100');
+    expect(workbook.getWorksheet('Акт')?.getCell('L5').value).toBe(500);
+    expect(workbook.getWorksheet('Доп услуги')?.getCell('F2').value).toBe('Мойка');
+    expect(workbook.getWorksheet('Доп услуги')?.getCell('J2').value).toBe(1400);
   });
 });

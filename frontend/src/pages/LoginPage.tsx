@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Alert,
   Container,
@@ -25,6 +25,7 @@ const LoginPage = () => {
   const [retryAfterSec, setRetryAfterSec] = useState<number | null>(null);
   const retryUntilKey = 'login-retry-until';
   const navigate = useNavigate();
+  const location = useLocation();
   const { login: setAuth } = useAuthStore();
   const serviceHealth = useServiceHealth();
 
@@ -92,7 +93,11 @@ const LoginPage = () => {
       localStorage.removeItem(retryUntilKey);
       setRetryAfterSec(null);
       setAuth(token, user as User);
-      navigate('/');
+      const requestedPath = new URLSearchParams(location.search).get('returnTo');
+      const safeReturnTo = requestedPath?.startsWith('/') && !requestedPath.startsWith('//')
+        ? requestedPath
+        : '/';
+      navigate(safeReturnTo, { replace: true });
     } catch (err: unknown) {
       let errorMessage = 'Логин или пароль неверный';
       if (typeof err === 'object' && err !== null && 'response' in err) {

@@ -29,9 +29,22 @@ export function getJwtExpiresIn(): SignOptions['expiresIn'] {
 export function getAllowedCorsOrigins(): string[] {
   const fromCsv = splitCsv(process.env.CORS_ALLOWED_ORIGINS);
   if (fromCsv.length > 0) {
-    return fromCsv;
+    return expandLocalhostOrigins(fromCsv);
   }
-  return [process.env.FRONTEND_URL || 'http://localhost:5173'];
+  return expandLocalhostOrigins([process.env.FRONTEND_URL || 'http://localhost:5173']);
+}
+
+function expandLocalhostOrigins(origins: string[]): string[] {
+  const expanded = new Set(origins);
+  for (const origin of origins) {
+    if (origin.startsWith('http://localhost:')) {
+      expanded.add(origin.replace('http://localhost:', 'http://127.0.0.1:'));
+    }
+    if (origin.startsWith('http://127.0.0.1:')) {
+      expanded.add(origin.replace('http://127.0.0.1:', 'http://localhost:'));
+    }
+  }
+  return [...expanded];
 }
 
 export function getAppPort(): number {

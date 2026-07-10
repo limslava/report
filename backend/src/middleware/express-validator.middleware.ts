@@ -10,7 +10,7 @@ export const handleValidationErrors = (req: Request, res: Response, next: NextFu
   
   if (!errors.isEmpty()) {
     const errorDetails = errors.array().map(error => ({
-      field: 'field' in error ? error.field : error.type,
+      field: 'path' in error ? error.path : 'field' in error ? error.field : error.type,
       message: error.msg,
     }));
 

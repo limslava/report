@@ -6,11 +6,19 @@ import { AuditLog } from '../models/audit-log.model';
 import { Report } from '../models/reports.model';
 import { ContractWorkSchedule } from '../models/contract-work-schedule.model';
 import { WarehouseClient } from '../models/warehouse-client.model';
+import { ContractTemplateType } from '../models/contract-template-version.model';
 import { logger } from '../utils/logger';
 import { sendInvitationEmail } from '../services/email.service';
 import { planWebSocketService } from '../services/websocket.service';
 import { recordAuditLog } from '../services/audit-log.service';
 import { getWarehouseContractState } from '../utils/warehouse-contract';
+import {
+  CONTRACT_TEMPLATE_LABELS,
+  activateContractTemplateVersion,
+  createContractTemplateVersion,
+  decodeTemplateBase64,
+  listContractTemplateVersions,
+} from '../services/contract-template.service';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { Between, IsNull, LessThanOrEqual, MoreThanOrEqual, QueryFailedError } from 'typeorm';
@@ -36,6 +44,20 @@ const serializeWarehouseClient = (client: WarehouseClient | null | undefined) =>
     isActive: client.isActive,
   };
 };
+
+const serializeContractTemplateVersion = (item: Awaited<ReturnType<typeof listContractTemplateVersions>>[number]) => ({
+  id: item.id,
+  templateType: item.templateType,
+  templateLabel: CONTRACT_TEMPLATE_LABELS[item.templateType],
+  version: item.version,
+  originalName: item.originalName,
+  sizeBytes: item.sizeBytes,
+  contentSha256: item.contentSha256,
+  placeholders: item.placeholders ?? [],
+  isActive: item.isActive,
+  uploadedByUserId: item.uploadedByUserId,
+  createdAt: item.createdAt,
+});
 
 const resolveWarehouseClientId = async (
   role: string,
@@ -310,6 +332,72 @@ export const upsertContractWorkSchedules = async (req: Request, res: Response, n
       order: { scope: 'ASC', roleCode: 'ASC', userId: 'ASC', createdAt: 'ASC' },
     });
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getContractTemplateVersions = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const rows = await listContractTemplateVersions();
+    res.json(rows.map(serializeContractTemplateVersion));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const uploadContractTemplateVersion = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const templateType = String(req.body?.templateType || '').trim() as ContractTemplateType;
+    if (!Object.values(ContractTemplateType).includes(templateType)) {
+      const error: any = new Error('Некорректный тип шаблона');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const originalName = String(req.body?.originalName || '').trim();
+    const buffer = decodeTemplateBase64(String(req.body?.contentBase64 || ''));
+    const created = await createContractTemplateVersion({
+      templateType,
+      originalName,
+      buffer,
+      uploadedByUserId: req.user?.id ?? null,
+    });
+
+    await recordAuditLog({
+      action: 'CONTRACT_TEMPLATE_UPLOADED',
+      userId: req.user?.id,
+      entityType: 'contract_template_version',
+      entityId: created.id,
+      details: {
+        templateType,
+        version: created.version,
+        originalName,
+      },
+      req,
+    });
+
+    res.status(201).json(serializeContractTemplateVersion(created));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const activateContractTemplate = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const activated = await activateContractTemplateVersion(req.params.id);
+    await recordAuditLog({
+      action: 'CONTRACT_TEMPLATE_ACTIVATED',
+      userId: req.user?.id,
+      entityType: 'contract_template_version',
+      entityId: activated.id,
+      details: {
+        templateType: activated.templateType,
+        version: activated.version,
+      },
+      req,
+    });
+    res.json(serializeContractTemplateVersion(activated));
   } catch (error) {
     next(error);
   }

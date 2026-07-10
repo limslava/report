@@ -151,6 +151,15 @@ describe('contract approval workflow service', () => {
     expect(findSecretaryStepReadyForAssignment(steps)).toBeNull();
   });
 
+  it('treats any pre-secretary decision as completed before assigning the secretary', () => {
+    const steps = [
+      step({ id: 'security-step', roleCode: 'security', decision: ContractApprovalDecision.REJECT }),
+      step({ id: 'secretary-step', roleCode: 'secretary', assignedAt: null, decision: null }),
+    ];
+
+    expect(findSecretaryStepReadyForAssignment(steps)?.id).toBe('secretary-step');
+  });
+
   it('normalizes empty and whitespace decision comments', () => {
     const reworkStep = step({ id: 'lawyer-step', roleCode: 'lawyer' });
     applyApprovalDecision({

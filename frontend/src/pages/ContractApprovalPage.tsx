@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -10,6 +10,7 @@ import {
   DialogTitle,
   FormControl,
   InputLabel,
+  Menu,
   MenuItem,
   Paper,
   Select,
@@ -17,6 +18,8 @@ import {
   Stack,
   TextField,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import { useLocation } from 'react-router-dom';
 import {
@@ -24,11 +27,13 @@ import {
   decideContractApprovalStep,
   deleteContractAttachment,
   deleteDraftContract,
+  decideSecurityContractVisa,
   downloadContractAttachment,
   downloadContractPrintPackage,
   getContractApprovalSheet,
   getContractDecisionHistory,
   getContractDuplicates,
+  importSignedContract,
   prepareContractRevision,
   previewContractAttachment,
   resolveCounterpartyByInn,
@@ -106,8 +111,15 @@ async function fileToUploadPayload(file: File) {
   };
 }
 
+function getFnsUnavailableMessage(error: any): string | null {
+  if (error?.response?.status !== 503) return null;
+  return error?.response?.data?.message || 'Сервис ФНС временно недоступен, заполните данные вручную или попробуйте позже';
+}
+
 export default function ContractApprovalPage() {
   const location = useLocation();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const currentUser = useAuthStore((state) => state.user);
   const isSecurity = currentUser?.role === 'security';
   const isApprovalWorkRole = ['lawyer', 'chief_accountant', 'financer', 'secretary'].includes(currentUser?.role ?? '');
@@ -167,6 +179,9 @@ export default function ContractApprovalPage() {
   });
 
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [addMenuAnchor, setAddMenuAnchor] = useState<null | HTMLElement>(null);
+  const [importMenuAnchor, setImportMenuAnchor] = useState<null | HTMLElement>(null);
+  const [wizardImportSigned, setWizardImportSigned] = useState(false);
   const [wizardStep, setWizardStep] = useState(0);
   const [wizardChecking, setWizardChecking] = useState(false);
   const [wizardSubmitting, setWizardSubmitting] = useState(false);
@@ -182,6 +197,9 @@ export default function ContractApprovalPage() {
   const [revisionPreparing, setRevisionPreparing] = useState(false);
   const [wizardPrefill, setWizardPrefill] = useState<ContractWizardPrefill | null>(null);
   const emptyWizardDetails = {
+    counterpartyName: '',
+    counterpartyShortName: '',
+    counterpartyForm: '' as ContractWizardForm['counterpartyForm'],
     counterpartyOgrn: '',
     counterpartyKpp: '',
     counterpartyLegalAddress: '',
@@ -198,6 +216,8 @@ export default function ContractApprovalPage() {
   };
   const [wizard, setWizard] = useState<ContractWizardForm>({
     clientRequestId: crypto.randomUUID(),
+    documentKind: 'master',
+    parentContractId: '',
     counterpartyInn: '',
     contractType: 'expense' as 'expense' | 'income',
     psrMode: 'without_psr' as 'with_psr' | 'without_psr',
@@ -210,7 +230,22 @@ export default function ContractApprovalPage() {
   const wizardInnInput = wizard.counterpartyInn.trim();
   const isWizardInnValidLength = /^(\d{10}|\d{12})$/.test(wizardInnInput);
   const isWizardInnInvalidLength = wizardInnInput.length > 0 && !isWizardInnValidLength;
-  const isIncomeWithoutPsrWizard = wizard.contractType === 'income' && wizard.psrMode === 'without_psr';
+  const isIncomeContractWizard = wizard.contractType === 'income';
+  const isIncomeWithoutPsrWizard = isIncomeContractWizard && wizard.psrMode === 'without_psr';
+  const normalizedWizardInn = wizard.counterpartyInn.trim();
+  const masterContractOptions = contracts
+    .filter((contract) => (
+      contract.documentKind !== 'addendum'
+      && contract.contractType === wizard.contractType
+      && contract.counterpartyInn === normalizedWizardInn
+    ))
+    .map((contract) => ({
+      id: contract.id,
+      contractNumber: contract.contractNumber,
+      counterpartyName: contract.counterpartyName,
+      counterpartyShortName: contract.counterpartyShortName,
+      contractType: contract.contractType,
+    }));
 
   const [securityVisa, setSecurityVisa] = useState<Record<string, { visa: SecurityVisaValue; comment: string }>>({});
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -239,6 +274,7 @@ export default function ContractApprovalPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryEvent[]>([]);
+  const openedDeepLinkRef = useRef('');
 
   const openDecisionHistory = async () => {
     if (!sheet?.contract.id || !isAdmin) return;
@@ -266,8 +302,11 @@ export default function ContractApprovalPage() {
     setWizardFiles([]);
     setWizardExistingFiles([]);
     setEditingDraftId(null);
+    setWizardImportSigned(false);
     setWizard({
       clientRequestId: crypto.randomUUID(),
+      documentKind: 'master',
+      parentContractId: '',
       counterpartyInn: '',
       contractType: 'expense',
       psrMode: 'without_psr',
@@ -279,8 +318,16 @@ export default function ContractApprovalPage() {
     });
   };
 
-  const openWizard = () => {
+  const openWizard = (importSigned = false, documentKind: ContractWizardForm['documentKind'] = 'master') => {
     resetWizard();
+    setAddMenuAnchor(null);
+    setImportMenuAnchor(null);
+    setWizardImportSigned(importSigned);
+    setWizard((prev) => ({
+      ...prev,
+      documentKind,
+      parentContractId: '',
+    }));
     setWizardOpen(true);
   };
 
@@ -315,7 +362,12 @@ export default function ContractApprovalPage() {
     setWizardResolvedInn(draft.counterpartyInn);
     setWizard({
       clientRequestId: crypto.randomUUID(),
+      documentKind: draft.documentKind || 'master',
+      parentContractId: draft.parentContractId || '',
       counterpartyInn: draft.counterpartyInn,
+      counterpartyName: draft.counterpartyName,
+      counterpartyShortName: draft.counterpartyShortName || '',
+      counterpartyForm: (draft.counterpartyForm || '') as ContractWizardForm['counterpartyForm'],
       contractType: draft.contractType,
       psrMode: draft.incomeSubtype === 'with_psr' || draft.psrFlag ? 'with_psr' : 'without_psr',
       contractNumber: draft.contractNumber,
@@ -394,7 +446,7 @@ export default function ContractApprovalPage() {
     resetWizard();
   };
 
-  const requiresAttachmentStep = () => !isIncomeWithoutPsrWizard;
+  const requiresAttachmentStep = () => wizardImportSigned || !isIncomeWithoutPsrWizard;
 
   const appendWizardFiles = (files: File[]) => {
     if (!files.length) return;
@@ -451,6 +503,9 @@ export default function ContractApprovalPage() {
           setWizard((prev) => ({
             ...prev,
             counterpartyInn: data.inn || prev.counterpartyInn,
+            counterpartyName: data.nameFull || prev.counterpartyName,
+            counterpartyShortName: data.nameShort || prev.counterpartyShortName,
+            counterpartyForm: data.counterpartyForm || prev.counterpartyForm,
             counterpartyOgrn: data.ogrn || prev.counterpartyOgrn,
             counterpartyKpp: data.kpp || prev.counterpartyKpp,
             counterpartyLegalAddress: data.address || prev.counterpartyLegalAddress,
@@ -458,6 +513,11 @@ export default function ContractApprovalPage() {
             counterpartySignerPosition: prev.counterpartySignerPosition || (data.counterpartyForm === 'ip' ? 'Индивидуального предпринимателя' : 'Генерального директора'),
             counterpartySignerAuthority: prev.counterpartySignerAuthority || (data.counterpartyForm === 'ip' ? 'государственной регистрации' : 'Устава'),
           }));
+        }
+      } else {
+        const message = getFnsUnavailableMessage(resolveRes.reason);
+        if (message) {
+          setError(message);
         }
       }
     } finally {
@@ -476,6 +536,10 @@ export default function ContractApprovalPage() {
       const typedId = wizard.counterpartyInn.trim();
       if (!/^(\d{10}|\d{12})$/.test(typedId)) {
         setError('Некорректный ИНН: допустимо 10 или 12 цифр');
+        return;
+      }
+      if (wizard.documentKind === 'addendum' && !wizard.parentContractId) {
+        setError('Для доп. соглашения выберите основной договор');
         return;
       }
 
@@ -497,6 +561,9 @@ export default function ContractApprovalPage() {
           setWizard((prev) => ({
             ...prev,
             counterpartyInn: data.inn || prev.counterpartyInn,
+            counterpartyName: data.nameFull || prev.counterpartyName,
+            counterpartyShortName: data.nameShort || prev.counterpartyShortName,
+            counterpartyForm: data.counterpartyForm || prev.counterpartyForm,
             counterpartyOgrn: data.ogrn || prev.counterpartyOgrn,
             counterpartyKpp: data.kpp || prev.counterpartyKpp,
             counterpartyLegalAddress: data.address || prev.counterpartyLegalAddress,
@@ -507,17 +574,18 @@ export default function ContractApprovalPage() {
         }
       }
 
-      if (!resolved?.counterpartyName) {
-        setError('Не удалось определить наименование контрагента по ИНН');
+      const counterpartyName = (wizard.counterpartyName || resolved?.counterpartyName || '').trim();
+      if (!counterpartyName) {
+        setError('Заполните наименование контрагента');
         return;
       }
-      const inn = String(resolved?.resolvedInn || typedId).trim();
+      const inn = String(wizard.counterpartyInn || resolved?.resolvedInn || typedId).trim();
       if (!/^(\d{10}|\d{12})$/.test(inn)) {
         setError('Не удалось определить корректный ИНН контрагента');
         return;
       }
 
-      if (isIncomeWithoutPsrWizard) {
+      if (isIncomeWithoutPsrWizard && !wizardImportSigned) {
         const requiredDetails: Array<[keyof ContractWizardForm, string]> = [
           ['counterpartyOgrn', 'ОГРН/ОГРНИП'],
           ['counterpartyLegalAddress', 'юридический адрес'],
@@ -540,14 +608,18 @@ export default function ContractApprovalPage() {
 
       const contractPayload: Parameters<typeof createContract>[0] = {
         clientRequestId: wizard.clientRequestId,
-        contractNumber: isIncomeWithoutPsrWizard ? null : wizard.contractNumber.trim(),
+        documentKind: wizard.documentKind,
+        parentContractId: wizard.documentKind === 'addendum' ? wizard.parentContractId : null,
+        contractNumber: isIncomeContractWizard && !wizardImportSigned && wizard.documentKind !== 'addendum'
+          ? null
+          : wizard.contractNumber.trim(),
         contractType: wizard.contractType,
         incomeSubtype: wizard.contractType === 'income'
           ? (wizard.psrMode === 'with_psr' ? 'with_psr' : 'standard')
           : null,
-        counterpartyName: resolved.counterpartyName,
-        counterpartyShortName: resolved.counterpartyShortName || null,
-        counterpartyForm: resolved.counterpartyForm || null,
+        counterpartyName,
+        counterpartyShortName: wizard.counterpartyShortName.trim() || resolved?.counterpartyShortName || null,
+        counterpartyForm: wizard.counterpartyForm || resolved?.counterpartyForm || null,
         counterpartyInn: inn,
         counterpartyOgrn: wizard.counterpartyOgrn.trim() || null,
         counterpartyKpp: wizard.counterpartyKpp.trim() || null,
@@ -568,17 +640,28 @@ export default function ContractApprovalPage() {
         signingMethod: wizard.signingMethod,
         allowDuplicate: true,
       };
-      const saveRes = editingDraftId
-        ? await updateDraftContract(editingDraftId, contractPayload)
-        : await createContract(contractPayload);
+      if (wizardImportSigned && !wizardFiles.length && !wizardExistingFiles.length) {
+        setError('Для импорта подписанного договора приложите файл договора');
+        return;
+      }
+      const filesPayload = wizardFiles.length ? await Promise.all(wizardFiles.map(fileToUploadPayload)) : [];
+      const saveRes = wizardImportSigned
+        ? await importSignedContract({
+          ...contractPayload,
+          contractNumber: wizard.contractNumber.trim(),
+          contractDate: wizard.contractDate,
+          files: filesPayload,
+        })
+        : editingDraftId
+          ? await updateDraftContract(editingDraftId, contractPayload)
+          : await createContract(contractPayload);
 
       createdId = saveRes.data?.id as string | undefined;
-      if (createdId && wizardFiles.length) {
-        const filesPayload = await Promise.all(wizardFiles.map(fileToUploadPayload));
+      if (!wizardImportSigned && createdId && filesPayload.length) {
         await uploadContractAttachments(createdId, filesPayload);
       }
 
-      if (createdId) {
+      if (createdId && !wizardImportSigned) {
         await startContractApproval(createdId);
         startedApproval = true;
       }
@@ -592,12 +675,19 @@ export default function ContractApprovalPage() {
       } catch {
         // Отправка уже выполнена — ошибки рефреша UI не должны блокировать завершение мастера.
       }
-      setSuccess(createdId ? 'Договор отправлен на согласование' : 'Договор создан');
+      const isAddendum = wizard.documentKind === 'addendum';
+      setSuccess(
+        wizardImportSigned
+          ? isAddendum ? 'Подписанное доп. соглашение импортировано' : 'Подписанный договор импортирован'
+          : createdId
+            ? isAddendum ? 'Доп. соглашение отправлено на согласование' : 'Договор отправлен на согласование'
+            : isAddendum ? 'Доп. соглашение создано' : 'Договор создан'
+      );
       closeWizard();
     } catch (e: any) {
       if (startedApproval && createdId) {
         // Договор реально ушел на согласование, но UI-обновление могло упасть.
-        setSuccess('Договор отправлен на согласование');
+        setSuccess(wizard.documentKind === 'addendum' ? 'Доп. соглашение отправлено на согласование' : 'Договор отправлен на согласование');
         closeWizard();
         void loadRegistry();
         setSelectedContractId(createdId);
@@ -622,6 +712,9 @@ export default function ContractApprovalPage() {
       setWizard((prev) => ({
         ...prev,
         counterpartyInn: data.inn || prev.counterpartyInn,
+        counterpartyName: data.nameFull || prev.counterpartyName,
+        counterpartyShortName: data.nameShort || prev.counterpartyShortName,
+        counterpartyForm: data.counterpartyForm || prev.counterpartyForm,
         counterpartyOgrn: data.ogrn || prev.counterpartyOgrn,
         counterpartyKpp: data.kpp || prev.counterpartyKpp,
         counterpartyLegalAddress: data.address || prev.counterpartyLegalAddress,
@@ -639,9 +732,12 @@ export default function ContractApprovalPage() {
         counterpartyLegalAddress: data.address,
       });
       setWizardResolvedInn(typedId);
-    } catch {
+    } catch (error) {
+      const message = getFnsUnavailableMessage(error);
+      if (message) {
+        setError(message);
+      }
       setWizardPrefill(null);
-      setError('Контрагент не найден по указанному ИНН');
     } finally {
       setWizardInnResolving(false);
     }
@@ -715,8 +811,10 @@ export default function ContractApprovalPage() {
   ]);
 
   useEffect(() => {
-    loadSheet(selectedContractId);
-  }, [selectedContractId]);
+    if (tab === 1 && selectedContractId) {
+      void loadSheet(selectedContractId);
+    }
+  }, [loadSheet, selectedContractId, tab]);
 
   useEffect(() => {
     setContractSection(canUseInbox ? 'inbox' : (isAdmin || isReadOnlyRegistry || !canUseMyContracts) ? 'registry' : 'mine');
@@ -810,9 +908,8 @@ export default function ContractApprovalPage() {
     setError(null);
     setSuccess(null);
     try {
-      const decision = form.visa === 'rejected' ? 'reject' : 'approve';
-      const response = await decideContractApprovalStep(item.contractId, item.stepId, {
-        decision,
+      const response = await decideSecurityContractVisa(item.contractId, {
+        visa: form.visa,
         comment: form.comment.trim() || null,
       });
       setSuccess(response.data?.message || 'Виза руководителя СБ сохранена');
@@ -1011,6 +1108,33 @@ export default function ContractApprovalPage() {
     }
   };
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const contractId = params.get('contractId')?.trim() || '';
+    const stepId = params.get('stepId')?.trim() || '';
+    if (!contractId) return;
+
+    const deepLinkKey = `${contractId}:${stepId}`;
+    if (openedDeepLinkRef.current === deepLinkKey) return;
+
+    if (isSecurity) {
+      const item = securityInbox.find((candidate) => candidate.contractId === contractId);
+      if (!item) return;
+      openedDeepLinkRef.current = deepLinkKey;
+      setContractSection('inbox');
+      setTab(2);
+      void openSecurityCard(item);
+      return;
+    }
+
+    openedDeepLinkRef.current = deepLinkKey;
+    if (isApprovalWorkRole) {
+      setContractSection('inbox');
+      setTab(3);
+    }
+    void openSheetModal(contractId);
+  }, [approvalInbox, isApprovalWorkRole, isSecurity, location.search, securityInbox]);
+
   const canFinalizeSignature = (step: SheetStep) => Boolean(
     step.roleCode === 'secretary'
     && currentUser
@@ -1122,9 +1246,31 @@ export default function ContractApprovalPage() {
     ? contracts.filter((contract) => contract.initiator?.id === currentUser?.id)
     : contracts;
   const registrySearchQuery = registrySearch.trim().toLowerCase();
-  const filteredRegistryContracts = registryBaseContracts.filter((contract, index) => (
-    !registrySearchQuery || getRegistrySearchText(contract, index).includes(registrySearchQuery)
-  ));
+  const filteredRegistryContracts = registrySearchQuery
+    ? (() => {
+      const matchedIds = new Set<string>();
+      const byId = new Map(registryBaseContracts.map((contract) => [contract.id, contract]));
+
+      registryBaseContracts.forEach((contract, index) => {
+        if (!getRegistrySearchText(contract, index).includes(registrySearchQuery)) return;
+
+        matchedIds.add(contract.id);
+
+        if (contract.documentKind === 'addendum' && contract.parentContractId) {
+          matchedIds.add(contract.parentContractId);
+          return;
+        }
+
+        registryBaseContracts.forEach((candidate) => {
+          if (candidate.parentContractId === contract.id) {
+            matchedIds.add(candidate.id);
+          }
+        });
+      });
+
+      return registryBaseContracts.filter((contract) => matchedIds.has(contract.id) || Boolean(contract.parentContractId && byId.has(contract.parentContractId) && matchedIds.has(contract.parentContractId)));
+    })()
+    : registryBaseContracts;
 
   const mapDecisionToVisa = (
     decision: SecurityInboxItem['securityDecision'],
@@ -1271,12 +1417,13 @@ export default function ContractApprovalPage() {
 
           <Box
             sx={{
-              display: 'grid',
+              display: contractSection === 'registry' ? 'flex' : 'grid',
               gridTemplateColumns: { xs: '1fr', sm: '210px 230px' },
+              flexWrap: 'wrap',
               alignItems: 'center',
-              justifyContent: 'end',
+              justifyContent: 'flex-end',
               gap: 0.75,
-              width: { xs: '100%', lg: 'auto' },
+              width: { xs: '100%', lg: contractSection === 'registry' ? 'min(100%, 1180px)' : 'auto' },
               '& .MuiInputBase-root': {
                 height: 36,
                 fontSize: 13,
@@ -1344,9 +1491,36 @@ export default function ContractApprovalPage() {
                   </Select>
                 </FormControl>
               ) : !isReadOnlyRegistry ? (
-                <Button variant="contained" fullWidth onClick={openWizard}>
-                  Добавить договор
-                </Button>
+                <Stack direction="row" spacing={1} className="contract-registry-actions">
+                  <Button
+                    variant="contained"
+                    onClick={(event) => setAddMenuAnchor(event.currentTarget)}
+                  >
+                    Добавить
+                  </Button>
+                  <Menu
+                    anchorEl={addMenuAnchor}
+                    open={Boolean(addMenuAnchor)}
+                    onClose={() => setAddMenuAnchor(null)}
+                  >
+                    <MenuItem onClick={() => openWizard(false)}>Договор</MenuItem>
+                    <MenuItem onClick={() => openWizard(false, 'addendum')}>Доп. соглашение</MenuItem>
+                  </Menu>
+                  <Button
+                    variant="outlined"
+                    onClick={(event) => setImportMenuAnchor(event.currentTarget)}
+                  >
+                    Импорт
+                  </Button>
+                  <Menu
+                    anchorEl={importMenuAnchor}
+                    open={Boolean(importMenuAnchor)}
+                    onClose={() => setImportMenuAnchor(null)}
+                  >
+                    <MenuItem onClick={() => openWizard(true)}>Подписанный договор</MenuItem>
+                    <MenuItem onClick={() => openWizard(true, 'addendum')}>Подписанное доп. соглашение</MenuItem>
+                  </Menu>
+                </Stack>
               ) : (
                 <Box />
               )}
@@ -1475,6 +1649,7 @@ export default function ContractApprovalPage() {
       <Dialog
         open={securityCardOpen}
         onClose={closeSecurityCard}
+        fullScreen={isMobile}
         fullWidth
         maxWidth="lg"
         PaperProps={{ className: 'contract-card-dialog' }}
@@ -1579,6 +1754,7 @@ export default function ContractApprovalPage() {
       <Dialog
         open={sheetModalOpen}
         onClose={closeSheetModal}
+        fullScreen={isMobile}
         fullWidth
         maxWidth="lg"
         PaperProps={isApprovalWorkRole ? { className: 'contract-card-dialog' } : undefined}
@@ -1770,12 +1946,18 @@ export default function ContractApprovalPage() {
         duplicates={wizardDuplicates}
         existingFiles={wizardExistingFiles}
         files={wizardFiles}
+        parentContracts={masterContractOptions}
         isInnValidLength={isWizardInnValidLength}
         isInnInvalidLength={isWizardInnInvalidLength}
         requiresAttachmentStep={requiresAttachmentStep()}
+        importSigned={wizardImportSigned}
         onClose={closeWizard}
         onInnBlur={() => { void onWizardInnBlur(); }}
         onCheck={() => {
+          if (wizard.documentKind === 'addendum') {
+            setWizardStep(5);
+            return;
+          }
           setWizardStep(4);
           void runWizardChecks();
         }}

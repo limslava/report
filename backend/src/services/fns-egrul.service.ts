@@ -19,6 +19,13 @@ type FnsResolvedCounterparty = {
   sourcePayload: Record<string, unknown>;
 };
 
+export class FnsServiceUnavailableError extends Error {
+  constructor(message = 'Сервис ФНС временно недоступен') {
+    super(message);
+    this.name = 'FnsServiceUnavailableError';
+  }
+}
+
 function normalizeForm(name: string, kind?: string): string | null {
   if (String(kind || '').toLowerCase() === 'fl') return 'ip';
   const upper = name.toUpperCase();
@@ -39,42 +46,54 @@ async function fetchFnsFirstRow(query: string): Promise<FnsSearchResultItem | nu
     Referer: 'https://egrul.nalog.ru/index.html',
   };
 
-  const initResponse = await fetch('https://egrul.nalog.ru/', {
-    method: 'POST',
-    headers: {
-      ...headers,
-      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-    },
-    body: new URLSearchParams({ query }).toString(),
-    signal: controller.signal,
-  });
-  const initData = await initResponse.json() as any;
-  const token = initData?.t;
-  if (!token) {
-    clearTimeout(timeout);
-    return null;
-  }
-  const cookie = initResponse.headers.get('set-cookie');
-
-  const pollHeaders = cookie ? { ...headers, Cookie: cookie } : headers;
-
-  // FNS may prepare search results asynchronously; poll for a short period.
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const resultResponse = await fetch(`https://egrul.nalog.ru/search-result/${token}`, {
-      method: 'GET',
-      headers: pollHeaders,
+  try {
+    const initResponse = await fetch('https://egrul.nalog.ru/', {
+      method: 'POST',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      },
+      body: new URLSearchParams({ query }).toString(),
       signal: controller.signal,
     });
-    const resultData = await resultResponse.json() as any;
-    const rows = Array.isArray(resultData?.rows) ? (resultData.rows as FnsSearchResultItem[]) : [];
-    if (rows.length > 0) {
-      clearTimeout(timeout);
-      return rows[0];
+    if (!initResponse.ok) {
+      throw new FnsServiceUnavailableError();
     }
-    await new Promise((resolve) => setTimeout(resolve, 350));
+    const initData = await initResponse.json() as any;
+    const token = initData?.t;
+    if (!token) {
+      return null;
+    }
+    const cookie = initResponse.headers.get('set-cookie');
+
+    const pollHeaders = cookie ? { ...headers, Cookie: cookie } : headers;
+
+    // FNS may prepare search results asynchronously; poll for a short period.
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const resultResponse = await fetch(`https://egrul.nalog.ru/search-result/${token}`, {
+        method: 'GET',
+        headers: pollHeaders,
+        signal: controller.signal,
+      });
+      if (!resultResponse.ok) {
+        throw new FnsServiceUnavailableError();
+      }
+      const resultData = await resultResponse.json() as any;
+      const rows = Array.isArray(resultData?.rows) ? (resultData.rows as FnsSearchResultItem[]) : [];
+      if (rows.length > 0) {
+        return rows[0];
+      }
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    }
+    return null;
+  } catch (error) {
+    if (error instanceof FnsServiceUnavailableError) {
+      throw error;
+    }
+    throw new FnsServiceUnavailableError();
+  } finally {
+    clearTimeout(timeout);
   }
-  clearTimeout(timeout);
-  return null;
 }
 
 function mapFnsRowToCounterparty(row: FnsSearchResultItem, fallbackInn?: string): FnsResolvedCounterparty | null {

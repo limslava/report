@@ -2,6 +2,12 @@ import fs from 'fs/promises';
 import path from 'path';
 import PizZip from 'pizzip';
 import { Contract, ContractIncomeSubtype, ContractType } from '../models/contract.model';
+import { ContractTemplateType } from '../models/contract-template-version.model';
+import {
+  buildContractTemplateValues,
+  getActiveContractTemplate,
+  renderDocxTemplate,
+} from './contract-template.service';
 
 const DOCX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const TEMPLATE_FILE_NAME = 'income-standard-simpleway-2026.docx';
@@ -11,6 +17,7 @@ type GeneratedContractDocument = {
   name: string;
   mimeType: string;
   buffer: Buffer;
+  templateVersionId?: string | null;
 };
 
 function isIncomeStandardContract(contract: Contract): boolean {
@@ -234,6 +241,17 @@ ___________________ /_____________/                           __________________
 
 export async function generateIncomeStandardContractDocument(contract: Contract): Promise<GeneratedContractDocument | null> {
   if (!shouldGenerateIncomeStandardContract(contract)) return null;
+  const activeTemplate = await getActiveContractTemplate(ContractTemplateType.INCOME_STANDARD);
+  if (activeTemplate) {
+    const templateBuffer = await fs.readFile(activeTemplate.storagePath);
+    return {
+      name: generatedFileName(contract),
+      mimeType: DOCX_MIME_TYPE,
+      buffer: renderDocxTemplate(templateBuffer, buildContractTemplateValues(contract)),
+      templateVersionId: activeTemplate.id,
+    };
+  }
+
   const templateBuffer = await readTemplate();
   const zip = new PizZip(templateBuffer);
   const documentFile = zip.file('word/document.xml');
@@ -247,5 +265,6 @@ export async function generateIncomeStandardContractDocument(contract: Contract)
     name: generatedFileName(contract),
     mimeType: DOCX_MIME_TYPE,
     buffer,
+    templateVersionId: null,
   };
 }

@@ -82,6 +82,28 @@ export const changePassword = (data: { currentPassword: string; newPassword: str
 export const getRuntimeAppSettings = () => api.get('/auth/app-settings');
 
 export const getUsers = (params?: any) => api.get('/admin/users', { params });
+export type ContractTemplateType = 'income_standard' | 'income_with_psr' | 'expense' | 'addendum';
+export type ContractTemplateVersion = {
+  id: string;
+  templateType: ContractTemplateType;
+  templateLabel: string;
+  version: number;
+  originalName: string;
+  sizeBytes: number;
+  contentSha256: string;
+  placeholders: string[];
+  isActive: boolean;
+  uploadedByUserId: string | null;
+  createdAt: string;
+};
+export const getContractTemplateVersions = () => api.get<ContractTemplateVersion[]>('/admin/contract-templates');
+export const uploadContractTemplateVersion = (data: {
+  templateType: ContractTemplateType;
+  originalName: string;
+  contentBase64: string;
+}) => api.post<ContractTemplateVersion>('/admin/contract-templates', data);
+export const activateContractTemplateVersion = (id: string) =>
+  api.post<ContractTemplateVersion>(`/admin/contract-templates/${id}/activate`);
 export const getUsersDirectory = () => api.get('/users/directory');
 export const getContracts = () => api.get('/contracts');
 export const getMasterContracts = () => api.get('/contracts/masters');
@@ -105,8 +127,17 @@ export const resolveCounterpartyByInn = (inn: string) => api.get('/counterpartie
 export const resolveCounterpartyByName = (name: string) => api.get('/counterparties/resolve-by-name', { params: { name } });
 export const lookupSinokorBl = (blNo: string, debug = false) =>
   api.get(`/carriers/sinokor/bl/${encodeURIComponent(blNo)}`, { params: debug ? { debug: '1' } : undefined });
+export type ContractFilePayload = {
+  name: string;
+  mimeType?: string | null;
+  size?: number;
+  contentBase64: string;
+};
+
 export const createContract = (data: {
   contractNumber?: string | null;
+  documentKind?: 'master' | 'addendum';
+  parentContractId?: string | null;
   contractType: 'expense' | 'income';
   incomeSubtype?: 'standard' | 'with_psr' | null;
   counterpartyName: string;
@@ -134,6 +165,9 @@ export const createContract = (data: {
   allowDuplicate?: boolean;
   clientRequestId?: string | null;
 }) => api.post('/contracts', data);
+export const importSignedContract = (
+  data: Parameters<typeof createContract>[0] & { contractNumber: string; contractDate: string; files: ContractFilePayload[] }
+) => api.post('/contracts/import-signed', data);
 export const updateDraftContract = (
   contractId: string,
   data: Parameters<typeof createContract>[0]
@@ -142,7 +176,7 @@ export const deleteDraftContract = (contractId: string) => api.delete(`/contract
 export const prepareContractRevision = (contractId: string) => api.post(`/contracts/${contractId}/new-revision`);
 export const uploadContractAttachments = (
   contractId: string,
-  files: Array<{ name: string; mimeType?: string | null; size?: number; contentBase64: string }>
+  files: ContractFilePayload[]
 ) => api.post(`/contracts/${contractId}/attachments`, { files });
 export const uploadContractStepAttachments = (
   contractId: string,
@@ -158,6 +192,13 @@ export const deleteContractAttachment = (attachmentId: string) =>
   api.delete(`/contracts/attachments/${attachmentId}`);
 export const getSecurityContractInbox = (view: 'active' | 'processed' | 'completed_month' | 'all' = 'active') =>
   api.get('/contracts/security/inbox', { params: { view } });
+export const decideSecurityContractVisa = (
+  contractId: string,
+  data: {
+    visa: 'approved' | 'rejected' | 'approved_with_remarks';
+    comment?: string | null;
+  }
+) => api.post(`/contracts/security/inbox/${contractId}/visa`, data);
 export const getMyContractApprovalInbox = (view: 'active' | 'processed' | 'completed_month' | 'all' = 'active') =>
   api.get('/contracts/approval-inbox/my', { params: { view } });
 export const getMyApprovalDashboard = () => api.get('/contracts/approval-dashboard/my');

@@ -25,6 +25,24 @@ function counterpartyLabel(contract: Contract): string {
   return contract.counterpartyShortName?.trim() || contract.counterpartyName;
 }
 
+function contractTaskUrl(contractId: string, stepId: string): string {
+  const frontendBaseUrl = (process.env.FRONTEND_URL || 'https://report-limslava.amvera.io').replace(/\/+$/, '');
+  const params = new URLSearchParams({ contractId, stepId, source: 'email' });
+  return `${frontendBaseUrl}/business-processes/contract-approval?${params.toString()}`;
+}
+
+function openContractButton(url: string): string {
+  const safeUrl = escapeHtml(url);
+  return `
+    <p style="margin:20px 0 8px">
+      <a href="${safeUrl}" style="display:inline-block;padding:10px 16px;border-radius:4px;background:#1976d2;color:#fff;text-decoration:none;font-weight:600">
+        Открыть договор
+      </a>
+    </p>
+    <p style="margin:0;color:#67758a;font-size:12px">Если кнопка не открывается: <a href="${safeUrl}">${safeUrl}</a></p>
+  `;
+}
+
 function formatDateTime(value: Date | null): string {
   if (!value) return 'не указан';
   return new Intl.DateTimeFormat('ru-RU', {
@@ -68,6 +86,7 @@ function contractSummary(contract: Contract): string {
 export async function notifyStepAssigned(contract: Contract, step: ContractApprovalStep): Promise<void> {
   const shortCounterparty = counterpartyLabel(contract);
   const isSigningHandoff = step.roleCode === 'secretary';
+  const taskUrl = contractTaskUrl(contract.id, step.id);
   const subject = isSigningHandoff
     ? `Договор готов к подписанию: № ${contract.contractNumber} - ${shortCounterparty}`
     : `Новая задача: договор № ${contract.contractNumber} - ${shortCounterparty}`;
@@ -77,12 +96,14 @@ export async function notifyStepAssigned(contract: Contract, step: ContractAppro
       ${contractSummary(contract)}
       <p><strong>Срок выполнения:</strong> ${escapeHtml(formatDateTime(step.deadlineAt))} (Владивосток)</p>
       <p>Откройте карточку договора, распечатайте пакет документов, передайте его на подпись и после возврата приложите подписанный экземпляр.</p>
+      ${openContractButton(taskUrl)}
     `
     : `
       <p>Вам назначена задача по согласованию договора.</p>
       ${contractSummary(contract)}
       <p><strong>Срок выполнения:</strong> ${escapeHtml(formatDateTime(step.deadlineAt))} (Владивосток)</p>
       <p>Откройте раздел «Согласование договоров», ознакомьтесь с документами и сохраните решение.</p>
+      ${openContractButton(taskUrl)}
     `;
   const html = `
     <div style="font-family:Arial,sans-serif;color:#25324a;font-size:14px;line-height:1.45">
@@ -102,6 +123,7 @@ export async function notifyDecisionChanged(
   const changedRole = roleLabel(changedStep.roleCode);
   const subject = `Изменена виза: договор № ${contract.contractNumber} — ${changedRole}`;
   const currentComment = changedStep.comment?.trim() || null;
+  const taskUrl = contractTaskUrl(contract.id, changedStep.id);
   const html = `
     <div style="font-family:Arial,sans-serif;color:#25324a;font-size:14px;line-height:1.45">
       <p>После принятия вашей визы участник <strong>${escapeHtml(changedRole)}</strong> изменил свое решение по договору.</p>
@@ -110,6 +132,7 @@ export async function notifyDecisionChanged(
       <strong>Стало:</strong> ${escapeHtml(decisionLabel(changedStep.decision, currentComment))}</p>
       ${currentComment ? `<p><strong>Комментарий:</strong> ${escapeHtml(currentComment)}</p>` : ''}
       <p>Пожалуйста, проверьте актуальную ситуацию в карточке договора. При необходимости вы можете обновить свою визу.</p>
+      ${openContractButton(taskUrl)}
     </div>
   `;
   await sendEmailToUsers(recipientSteps.map((step) => step.approverUserId), subject, html);

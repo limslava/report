@@ -59,7 +59,6 @@ export function canCreateFinalPrintPackage(steps: ContractApprovalStep[]): boole
   const currentSteps = getCurrentApprovalSteps(steps);
   const preSecretarySteps = getPreSecretaryApprovalSteps(currentSteps);
   return preSecretarySteps.length > 0
-    && preSecretarySteps.some((step) => step.roleCode === 'security' && step.decision === ContractApprovalDecision.APPROVE)
     && preSecretarySteps.every((step) => Boolean(step.decision));
 }
 
@@ -75,6 +74,7 @@ export function buildContractFlowMeta(params: {
   const lastDecided = [...contractSteps].reverse().find((step) => Boolean(step.decision)) ?? null;
   const hasParallelRoute = isParallelSecretaryRoute(contractSteps);
   const secretaryStep = contractSteps.find((step) => step.roleCode === 'secretary') ?? null;
+  const routeHasSecretaryStep = Boolean(secretaryStep);
   const parallelSteps = getPreSecretaryApprovalSteps(contractSteps);
   const completedParallelCount = parallelSteps.filter((step) => Boolean(step.decision)).length;
   const hasParallelRemarks = parallelSteps.some((step) => (
@@ -105,7 +105,7 @@ export function buildContractFlowMeta(params: {
     currentStageLabel,
     statusDetail,
     needsSignedAttachment: (
-      (contract.status === ContractStatus.APPROVED || Boolean(secretaryStep?.assignedAt))
+      ((contract.status === ContractStatus.APPROVED && routeHasSecretaryStep) || Boolean(secretaryStep?.assignedAt))
       && !secretaryHasSignedFile
     ),
   };

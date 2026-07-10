@@ -8,6 +8,9 @@ export type CounterpartyFormRef = {
 export type ContractRecord = {
   id: string;
   contractNumber: string;
+  documentKind: 'master' | 'addendum';
+  parentContractId: string | null;
+  parentContractNumber?: string | null;
   contractType: 'expense' | 'income';
   incomeSubtype: 'standard' | 'with_psr' | null;
   counterpartyName: string;
@@ -59,7 +62,12 @@ export type ContractWizardPrefill = {
 
 export type ContractWizardForm = {
   clientRequestId: string;
+  documentKind: 'master' | 'addendum';
+  parentContractId: string;
   counterpartyInn: string;
+  counterpartyName: string;
+  counterpartyShortName: string;
+  counterpartyForm: CounterpartyFormRef['code'] | '';
   contractType: 'expense' | 'income';
   psrMode: 'with_psr' | 'without_psr';
   contractNumber: string;
@@ -124,6 +132,9 @@ export type ApprovalSheet = {
   contract: {
     id: string;
     contractNumber: string;
+    documentKind: 'master' | 'addendum';
+    parentContractId: string | null;
+    parentContractNumber?: string | null;
     contractType: 'expense' | 'income';
     incomeSubtype: 'standard' | 'with_psr' | null;
     counterpartyName: string;
