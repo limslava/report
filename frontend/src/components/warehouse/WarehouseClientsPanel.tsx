@@ -160,12 +160,7 @@ export default function WarehouseClientsPanel({
   return (
     <Stack spacing={2}>
       <Stack direction="row" justifyContent="space-between" alignItems="center">
-        <Box>
-          <Typography variant="h6">Клиенты склада</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Только активные клиенты доступны в форме приёмки ТС.
-          </Typography>
-        </Box>
+        <Box />
         <Button variant="contained" startIcon={<Add />} onClick={() => void openCreate()}>
           Добавить клиента
         </Button>

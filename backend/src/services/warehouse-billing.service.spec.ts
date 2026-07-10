@@ -260,6 +260,17 @@ describe('warehouse billing calculations', () => {
       storageAmount: 300,
       servicesAmount: 100,
       totalAmount: 400,
+      vatRate: 0,
+      vatAmount: 0,
+      totalWithoutVat: 400,
+      totalWithVat: 400,
+    });
+    expect(calculateWarehouseBillingTotals([line], 20)).toMatchObject({
+      totalAmount: 400,
+      vatRate: 20,
+      vatAmount: 66.67,
+      totalWithoutVat: 333.33,
+      totalWithVat: 400,
     });
   });
 
@@ -320,6 +331,10 @@ describe('warehouse billing calculations', () => {
         storageAmount: 3100,
         servicesAmount: 1900,
         totalAmount: 5000,
+        vatRate: 20,
+        vatAmount: 833.33,
+        totalWithoutVat: 4166.67,
+        totalWithVat: 5000,
       },
       warnings: [],
     };

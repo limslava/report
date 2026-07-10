@@ -1439,7 +1439,12 @@ export default function ContractApprovalPage() {
               },
             }}
           >
-            <Box sx={{ width: '100%', visibility: contractSection === 'registry' ? 'hidden' : 'visible' }}>
+            <Box
+              sx={{
+                width: contractSection === 'inbox' ? '100%' : 'auto',
+                display: contractSection === 'registry' && isReadOnlyRegistry ? 'none' : 'block',
+              }}
+            >
               {contractSection === 'inbox' && isSecurity ? (
                 <FormControl size="small" fullWidth>
                   <InputLabel id="sb-view-label">Фильтр</InputLabel>

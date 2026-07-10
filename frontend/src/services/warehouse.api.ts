@@ -172,6 +172,10 @@ export interface WarehouseBillingReport {
     storageAmount: number;
     servicesAmount: number;
     totalAmount: number;
+    vatRate: number;
+    vatAmount: number;
+    totalWithoutVat: number;
+    totalWithVat: number;
   };
   warnings: string[];
 }

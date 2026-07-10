@@ -9,6 +9,7 @@ import { WarehousePerformedService } from '../models/warehouse-performed-service
 import { WarehouseServiceDefinition } from '../models/warehouse-service-definition.model';
 import { WarehouseTariff } from '../models/warehouse-tariff.model';
 import { WarehouseVehicle, WarehouseVehicleType } from '../models/warehouse-vehicle.model';
+import { FinancialVatRate } from '../models/financial-vat-rate.model';
 
 export interface WarehouseBillingServiceLine {
   id: string;
@@ -57,6 +58,10 @@ export interface WarehouseBillingReport {
     storageAmount: number;
     servicesAmount: number;
     totalAmount: number;
+    vatRate: number;
+    vatAmount: number;
+    totalWithoutVat: number;
+    totalWithVat: number;
   };
   warnings: string[];
 }
@@ -108,6 +113,20 @@ const addDays = (date: string, days: number): string => {
 
 const maxDate = (a: string, b: string) => a > b ? a : b;
 const minDate = (a: string, b: string) => a < b ? a : b;
+
+const extractVatAmount = (amountWithVat: number, vatRate: number): number => {
+  if (vatRate <= 0) return 0;
+  return roundMoney((amountWithVat * vatRate) / (100 + vatRate));
+};
+
+const resolveVatRateForDate = async (onDate: string): Promise<number> => {
+  const rate = await AppDataSource.getRepository(FinancialVatRate)
+    .createQueryBuilder('rate')
+    .where('rate.effectiveFrom <= :onDate', { onDate })
+    .orderBy('rate.effectiveFrom', 'DESC')
+    .getOne();
+  return rate ? Number(rate.rate) : 0;
+};
 
 export interface WarehouseStorageCalculation {
   storageFrom: string;
@@ -161,13 +180,21 @@ export const calculateWarehouseStorage = (params: {
   };
 };
 
-export const calculateWarehouseBillingTotals = (lines: WarehouseBillingVehicleLine[]) => ({
-  vehicleCount: lines.length,
-  storageDays: lines.reduce((sum, line) => sum + line.storageDays, 0),
-  storageAmount: roundMoney(lines.reduce((sum, line) => sum + line.storageAmount, 0)),
-  servicesAmount: roundMoney(lines.reduce((sum, line) => sum + line.servicesAmount, 0)),
-  totalAmount: roundMoney(lines.reduce((sum, line) => sum + line.totalAmount, 0)),
-});
+export const calculateWarehouseBillingTotals = (lines: WarehouseBillingVehicleLine[], vatRate = 0) => {
+  const totalAmount = roundMoney(lines.reduce((sum, line) => sum + line.totalAmount, 0));
+  const vatAmount = extractVatAmount(totalAmount, vatRate);
+  return {
+    vehicleCount: lines.length,
+    storageDays: lines.reduce((sum, line) => sum + line.storageDays, 0),
+    storageAmount: roundMoney(lines.reduce((sum, line) => sum + line.storageAmount, 0)),
+    servicesAmount: roundMoney(lines.reduce((sum, line) => sum + line.servicesAmount, 0)),
+    totalAmount,
+    vatRate,
+    vatAmount,
+    totalWithoutVat: roundMoney(totalAmount - vatAmount),
+    totalWithVat: totalAmount,
+  };
+};
 
 const filterReportByVehicleType = (
   report: WarehouseBillingReport,
@@ -175,7 +202,27 @@ const filterReportByVehicleType = (
 ): WarehouseBillingReport => {
   if (!vehicleType) return report;
   const lines = report.lines.filter((line) => line.vehicleType === vehicleType);
-  return { ...report, lines, totals: calculateWarehouseBillingTotals(lines) };
+  return { ...report, lines, totals: calculateWarehouseBillingTotals(lines, report.totals.vatRate) };
+};
+
+const ensureWarehouseBillingVatTotals = (
+  report: WarehouseBillingReport,
+  fallbackVatRate: number,
+): WarehouseBillingReport => {
+  const vatRate = Number(report.totals?.vatRate ?? fallbackVatRate);
+  return {
+    ...report,
+    totals: {
+      ...calculateWarehouseBillingTotals(report.lines, vatRate),
+      storageAmount: Number(report.totals.storageAmount),
+      servicesAmount: Number(report.totals.servicesAmount),
+      totalAmount: Number(report.totals.totalAmount),
+      vatRate,
+      vatAmount: extractVatAmount(Number(report.totals.totalAmount), vatRate),
+      totalWithoutVat: roundMoney(Number(report.totals.totalAmount) - extractVatAmount(Number(report.totals.totalAmount), vatRate)),
+      totalWithVat: Number(report.totals.totalAmount),
+    },
+  };
 };
 
 const findClosedPeriod = async (
@@ -201,17 +248,18 @@ export const calculateWarehouseBilling = async (params: {
     vehicleType = null,
     useClosedSnapshot = true,
   } = params;
+  const vatRate = await resolveVatRateForDate(periodTo);
 
   if (counterpartyId && useClosedSnapshot) {
     const closed = await findClosedPeriod(periodFrom, periodTo, counterpartyId);
     if (closed) {
       return filterReportByVehicleType(
-        {
+        ensureWarehouseBillingVatTotals({
           ...(closed.snapshot as unknown as WarehouseBillingReport),
           status: 'closed',
           closedPeriodId: closed.id,
           closedAt: closed.closedAt.toISOString(),
-        },
+        }, vatRate),
         vehicleType,
       );
     }
@@ -414,7 +462,7 @@ export const calculateWarehouseBilling = async (params: {
     closedPeriodId: null,
     closedAt: null,
     lines,
-    totals: calculateWarehouseBillingTotals(lines),
+    totals: calculateWarehouseBillingTotals(lines, vatRate),
     warnings: Array.from(new Set(warnings)),
   };
 };

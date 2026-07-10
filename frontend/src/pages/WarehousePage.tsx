@@ -14,6 +14,8 @@ import {
   Autocomplete,
   Box,
   Button,
+  Card,
+  CardContent,
   Chip,
   CircularProgress,
   Dialog,
@@ -338,25 +340,6 @@ export default function WarehousePage() {
   return (
     <Box sx={{ p: { xs: 1.5, md: 3 } }}>
       <Stack spacing={2.5}>
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          justifyContent="space-between"
-          alignItems={{ xs: 'stretch', sm: 'center' }}
-          gap={2}
-        >
-          <Box>
-            <Typography variant="h4" component="h1">Склад ТС</Typography>
-            <Typography color="text.secondary">
-              Реестр техники на хранении и история складских операций
-            </Typography>
-          </Box>
-          {canOperateWarehouse && tab === 'registry' && (
-            <Button variant="contained" startIcon={<Add />} onClick={openCreateDialog}>
-              Принять ТС
-            </Button>
-          )}
-        </Stack>
-
         {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
         {success && <Alert severity="success" onClose={() => setSuccess(null)}>{success}</Alert>}
         {user?.role === 'counterparty_user'
@@ -374,20 +357,39 @@ export default function WarehousePage() {
             </Alert>
         )}
 
-        {showTabs && (
-          <Tabs
-            value={tab}
-            onChange={(_event, value) => setTab(value)}
-            variant="scrollable"
-            scrollButtons="auto"
-            allowScrollButtonsMobile
-          >
-            <Tab value="registry" label="Реестр ТС" />
-            {canManageClients && <Tab value="clients" label="Клиенты склада" />}
-            {canManageTariffs && <Tab value="tariffs" label="Услуги и тарифы" />}
-            {canViewBilling && <Tab value="billing" label="Начисления и акты" />}
-          </Tabs>
-        )}
+        <Card variant="outlined">
+          <CardContent sx={{ py: 1.25, '&:last-child': { pb: 1.25 } }}>
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              justifyContent="space-between"
+              alignItems={{ xs: 'stretch', md: 'center' }}
+              gap={2}
+            >
+              {showTabs ? (
+                <Tabs
+                  value={tab}
+                  onChange={(_event, value) => setTab(value)}
+                  variant="scrollable"
+                  scrollButtons="auto"
+                  allowScrollButtonsMobile
+                  sx={{ minHeight: 40 }}
+                >
+                  <Tab value="registry" label="Реестр ТС" sx={{ minHeight: 40 }} />
+                  {canManageClients && <Tab value="clients" label="Клиенты склада" sx={{ minHeight: 40 }} />}
+                  {canManageTariffs && <Tab value="tariffs" label="Услуги и тарифы" sx={{ minHeight: 40 }} />}
+                  {canViewBilling && <Tab value="billing" label="Начисления и акты" sx={{ minHeight: 40 }} />}
+                </Tabs>
+              ) : (
+                <Box />
+              )}
+              {canOperateWarehouse && tab === 'registry' && (
+                <Button variant="contained" startIcon={<Add />} onClick={openCreateDialog}>
+                  Принять ТС
+                </Button>
+              )}
+            </Stack>
+          </CardContent>
+        </Card>
 
         {tab === 'clients' && canManageClients ? (
           <WarehouseClientsPanel onClientsChanged={() => void loadCounterparties()} />

@@ -129,12 +129,6 @@ export default function WarehouseTariffsPanel() {
 
   return (
     <Stack spacing={2}>
-      <Box>
-        <Typography variant="h6">Услуги и тарифы</Typography>
-        <Typography variant="body2" color="text.secondary">
-          Цены задаются отдельно для каждого типа ТС. Новая цена действует с указанной даты.
-        </Typography>
-      </Box>
       {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
       {success && <Alert severity="success" onClose={() => setSuccess(null)}>{success}</Alert>}
       <TableContainer>
