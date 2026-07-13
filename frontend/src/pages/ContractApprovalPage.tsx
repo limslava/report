@@ -16,6 +16,8 @@ import {
   Select,
   Snackbar,
   Stack,
+  Tab,
+  Tabs,
   TextField,
   Typography,
   useMediaQuery,
@@ -116,6 +118,25 @@ function getFnsUnavailableMessage(error: any): string | null {
   return error?.response?.data?.message || 'Сервис ФНС временно недоступен, заполните данные вручную или попробуйте позже';
 }
 
+const contractValidationFieldLabels: Record<string, string> = {
+  counterpartyBankBik: 'БИК должен содержать 9 цифр',
+  counterpartyBankAccount: 'Расчетный счет должен содержать 20 цифр',
+  counterpartyCorrespondentAccount: 'Корреспондентский счет должен содержать 20 цифр',
+  counterpartyInn: 'ИНН должен содержать 10 или 12 цифр',
+  counterpartyOgrn: 'ОГРН/ОГРНИП должен содержать не более 15 цифр',
+  counterpartyKpp: 'КПП должен содержать 9 цифр',
+};
+
+function contractErrorMessage(error: any, fallback: string): string {
+  const details = error?.response?.data?.details;
+  if (Array.isArray(details) && details.length) {
+    return details
+      .map((detail) => contractValidationFieldLabels[String(detail.field)] || String(detail.message || detail.field))
+      .join(', ');
+  }
+  return error?.response?.data?.message || error?.message || fallback;
+}
+
 export default function ContractApprovalPage() {
   const location = useLocation();
   const theme = useTheme();
@@ -208,6 +229,7 @@ export default function ContractApprovalPage() {
     counterpartyEmail: '',
     counterpartySignerPosition: '',
     counterpartySignerName: '',
+    counterpartySignerNameGenitive: '',
     counterpartySignerAuthority: '',
     counterpartyBankName: '',
     counterpartyBankBik: '',
@@ -277,7 +299,7 @@ export default function ContractApprovalPage() {
   const openedDeepLinkRef = useRef('');
 
   const openDecisionHistory = async () => {
-    if (!sheet?.contract.id || !isAdmin) return;
+    if (!sheet?.contract.id) return;
     setHistoryOpen(true);
     setHistoryLoading(true);
     setError(null);
@@ -382,6 +404,7 @@ export default function ContractApprovalPage() {
       counterpartyEmail: draft.counterpartyEmail || '',
       counterpartySignerPosition: draft.counterpartySignerPosition || '',
       counterpartySignerName: draft.counterpartySignerName || '',
+      counterpartySignerNameGenitive: draft.counterpartySignerNameGenitive || '',
       counterpartySignerAuthority: draft.counterpartySignerAuthority || '',
       counterpartyBankName: draft.counterpartyBankName || '',
       counterpartyBankBik: draft.counterpartyBankBik || '',
@@ -499,6 +522,7 @@ export default function ContractApprovalPage() {
             counterpartyOgrn: data.ogrn,
             counterpartyKpp: data.kpp,
             counterpartyLegalAddress: data.address,
+            counterpartySignerName: data.signerName,
           });
           setWizard((prev) => ({
             ...prev,
@@ -511,6 +535,7 @@ export default function ContractApprovalPage() {
             counterpartyLegalAddress: data.address || prev.counterpartyLegalAddress,
             counterpartyPostalAddress: prev.counterpartyPostalAddress || data.address || '',
             counterpartySignerPosition: prev.counterpartySignerPosition || (data.counterpartyForm === 'ip' ? 'Индивидуального предпринимателя' : 'Генерального директора'),
+            counterpartySignerName: prev.counterpartySignerName || data.signerName || '',
             counterpartySignerAuthority: prev.counterpartySignerAuthority || (data.counterpartyForm === 'ip' ? 'государственной регистрации' : 'Устава'),
           }));
         }
@@ -556,6 +581,7 @@ export default function ContractApprovalPage() {
             counterpartyOgrn: data.ogrn,
             counterpartyKpp: data.kpp,
             counterpartyLegalAddress: data.address,
+            counterpartySignerName: data.signerName,
           };
           setWizardPrefill(resolved);
           setWizard((prev) => ({
@@ -569,6 +595,7 @@ export default function ContractApprovalPage() {
             counterpartyLegalAddress: data.address || prev.counterpartyLegalAddress,
             counterpartyPostalAddress: prev.counterpartyPostalAddress || data.address || '',
             counterpartySignerPosition: prev.counterpartySignerPosition || (data.counterpartyForm === 'ip' ? 'Индивидуального предпринимателя' : 'Генерального директора'),
+            counterpartySignerName: prev.counterpartySignerName || data.signerName || '',
             counterpartySignerAuthority: prev.counterpartySignerAuthority || (data.counterpartyForm === 'ip' ? 'государственной регистрации' : 'Устава'),
           }));
         }
@@ -591,6 +618,7 @@ export default function ContractApprovalPage() {
           ['counterpartyLegalAddress', 'юридический адрес'],
           ['counterpartySignerPosition', 'должность подписанта'],
           ['counterpartySignerName', 'ФИО подписанта'],
+          ['counterpartySignerNameGenitive', 'ФИО подписанта в родительном падеже'],
           ['counterpartySignerAuthority', 'основание полномочий'],
           ['counterpartyBankName', 'банк'],
           ['counterpartyBankBik', 'БИК'],
@@ -602,6 +630,14 @@ export default function ContractApprovalPage() {
           .map(([, label]) => label);
         if (missing.length) {
           setError(`Для формирования договора заполните: ${missing.join(', ')}`);
+          return;
+        }
+        const invalidBankDetails: string[] = [];
+        if (!/^\d{9}$/.test(wizard.counterpartyBankBik.trim())) invalidBankDetails.push('БИК должен содержать 9 цифр');
+        if (!/^\d{20}$/.test(wizard.counterpartyBankAccount.trim())) invalidBankDetails.push('Расчетный счет должен содержать 20 цифр');
+        if (!/^\d{20}$/.test(wizard.counterpartyCorrespondentAccount.trim())) invalidBankDetails.push('Корреспондентский счет должен содержать 20 цифр');
+        if (invalidBankDetails.length) {
+          setError(invalidBankDetails.join(', '));
           return;
         }
       }
@@ -629,6 +665,7 @@ export default function ContractApprovalPage() {
         counterpartyEmail: wizard.counterpartyEmail.trim() || null,
         counterpartySignerPosition: wizard.counterpartySignerPosition.trim() || null,
         counterpartySignerName: wizard.counterpartySignerName.trim() || null,
+        counterpartySignerNameGenitive: wizard.counterpartySignerNameGenitive.trim() || null,
         counterpartySignerAuthority: wizard.counterpartySignerAuthority.trim() || null,
         counterpartyBankName: wizard.counterpartyBankName.trim() || null,
         counterpartyBankBik: wizard.counterpartyBankBik.trim() || null,
@@ -693,8 +730,7 @@ export default function ContractApprovalPage() {
         setSelectedContractId(createdId);
         return;
       }
-      const message = e?.response?.data?.message || e?.message || 'Не удалось создать договор';
-      setError(message);
+      setError(contractErrorMessage(e, 'Не удалось создать договор'));
     } finally {
       setWizardSubmitting(false);
     }
@@ -720,6 +756,7 @@ export default function ContractApprovalPage() {
         counterpartyLegalAddress: data.address || prev.counterpartyLegalAddress,
         counterpartyPostalAddress: prev.counterpartyPostalAddress || data.address || '',
         counterpartySignerPosition: prev.counterpartySignerPosition || (data.counterpartyForm === 'ip' ? 'Индивидуального предпринимателя' : 'Генерального директора'),
+        counterpartySignerName: prev.counterpartySignerName || data.signerName || '',
         counterpartySignerAuthority: prev.counterpartySignerAuthority || (data.counterpartyForm === 'ip' ? 'государственной регистрации' : 'Устава'),
       }));
       setWizardPrefill({
@@ -730,6 +767,7 @@ export default function ContractApprovalPage() {
         counterpartyOgrn: data.ogrn,
         counterpartyKpp: data.kpp,
         counterpartyLegalAddress: data.address,
+        counterpartySignerName: data.signerName,
       });
       setWizardResolvedInn(typedId);
     } catch (error) {
@@ -1378,42 +1416,36 @@ export default function ContractApprovalPage() {
     <Box sx={{ px: { xs: 0.125, sm: 0.25 }, py: { xs: 0.25, sm: 0.375 }, display: 'grid', gap: 0.5 }}>
       <Paper sx={{ px: 0.25, py: 1 }}>
         <Stack direction={{ xs: 'column', lg: 'row' }} alignItems={{ xs: 'stretch', lg: 'center' }} justifyContent="space-between" sx={{ px: 1, gap: 1 }}>
-          <Stack direction="row" alignItems="center" sx={{ gap: 0.5, flexWrap: 'nowrap', overflowX: 'auto', minWidth: 0 }}>
+          <Tabs
+            value={contractSection}
+            onChange={(_event, value: ContractSection) => {
+              switchContractSection(value, value === 'inbox' ? (isSecurity ? 2 : 3) : 0);
+            }}
+            variant="scrollable"
+            scrollButtons={false}
+            allowScrollButtonsMobile
+            sx={{ minHeight: 34, minWidth: 0 }}
+          >
             {canUseInbox && (
-              <Button
-                size="small"
-                variant={contractSection === 'inbox' ? 'contained' : 'text'}
-                sx={{ minWidth: 0, whiteSpace: 'nowrap', px: 1.5 }}
-                onClick={() => {
-                  switchContractSection('inbox', isSecurity ? 2 : 3);
-                }}
-              >
-                Согласование договоров
-              </Button>
+              <Tab
+                value="inbox"
+                label="Согласование договоров"
+                sx={{ minHeight: 34, py: 0.5 }}
+              />
             )}
             {canUseMyContracts && (
-              <Button
-                size="small"
-                variant={contractSection === 'mine' ? 'contained' : 'text'}
-                sx={{ minWidth: 0, whiteSpace: 'nowrap', px: 1.5 }}
-                onClick={() => {
-                  switchContractSection('mine', 0);
-                }}
-              >
-                Мои договоры
-              </Button>
+              <Tab
+                value="mine"
+                label="Мои договоры"
+                sx={{ minHeight: 34, py: 0.5 }}
+              />
             )}
-            <Button
-              size="small"
-              variant={contractSection === 'registry' ? 'contained' : 'text'}
-              sx={{ minWidth: 0, whiteSpace: 'nowrap', px: 1.5 }}
-              onClick={() => {
-                switchContractSection('registry', 0);
-              }}
-            >
-              Реестр договоров
-            </Button>
-          </Stack>
+            <Tab
+              value="registry"
+              label="Реестр договоров"
+              sx={{ minHeight: 34, py: 0.5 }}
+            />
+          </Tabs>
 
           <Box
             sx={{
@@ -1495,7 +1527,7 @@ export default function ContractApprovalPage() {
                     <MenuItem value="all">Все</MenuItem>
                   </Select>
                 </FormControl>
-              ) : !isReadOnlyRegistry ? (
+              ) : contractSection === 'mine' && !isReadOnlyRegistry ? (
                 <Stack direction="row" spacing={1} className="contract-registry-actions">
                   <Button
                     variant="contained"
@@ -1871,7 +1903,7 @@ export default function ContractApprovalPage() {
           )}
         </DialogContent>
         <DialogActions className={isApprovalWorkRole ? 'contract-card-actions' : undefined}>
-          {isAdmin && sheet && (
+          {sheet && (
             <Button onClick={() => { void openDecisionHistory(); }}>
               История решений
             </Button>
@@ -1913,6 +1945,8 @@ export default function ContractApprovalPage() {
       <HistoryDialog
         open={historyOpen}
         contractNumber={sheet?.contract.contractNumber || ''}
+        importedWithoutWorkflow={Boolean(sheet && sheet.contract.status === 'approved' && !sheet.steps.length)}
+        documentKind={sheet?.contract.documentKind}
         loading={historyLoading}
         events={decisionHistory}
         onClose={() => setHistoryOpen(false)}
@@ -1952,6 +1986,7 @@ export default function ContractApprovalPage() {
         existingFiles={wizardExistingFiles}
         files={wizardFiles}
         parentContracts={masterContractOptions}
+        documentKindLocked
         isInnValidLength={isWizardInnValidLength}
         isInnInvalidLength={isWizardInnInvalidLength}
         requiresAttachmentStep={requiresAttachmentStep()}

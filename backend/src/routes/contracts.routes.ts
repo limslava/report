@@ -91,7 +91,7 @@ router.post(
 router.get('/attachments/:attachmentId/download', [param('attachmentId').isUUID()], handleValidationErrors, downloadContractAttachment);
 router.get('/attachments/:attachmentId/preview', [param('attachmentId').isUUID()], handleValidationErrors, previewContractAttachment);
 router.delete('/attachments/:attachmentId', [param('attachmentId').isUUID()], handleValidationErrors, deleteContractAttachment);
-router.get('/:id/decision-history', adminOnly, [param('id').isUUID()], handleValidationErrors, getContractDecisionHistory);
+router.get('/:id/decision-history', [param('id').isUUID()], handleValidationErrors, getContractDecisionHistory);
 router.get('/:id/approval-sheet', [param('id').isUUID()], handleValidationErrors, getContractApprovalSheet);
 router.get('/:id/print-package', [param('id').isUUID()], handleValidationErrors, downloadContractPrintPackage);
 router.get('/:id/attachments', [param('id').isUUID()], handleValidationErrors, listContractAttachments);
@@ -130,6 +130,7 @@ router.post(
     body('counterpartyEmail').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('counterpartySignerPosition').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('counterpartySignerName').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
+    body('counterpartySignerNameGenitive').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('counterpartySignerAuthority').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('counterpartyBankName').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('counterpartyBankBik').optional({ nullable: true }).isString().trim().matches(/^$|^\d{9}$/),
@@ -176,6 +177,7 @@ router.post(
     body('counterpartyEmail').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('counterpartySignerPosition').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('counterpartySignerName').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
+    body('counterpartySignerNameGenitive').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('counterpartySignerAuthority').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('counterpartyBankName').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('counterpartyBankBik').optional({ nullable: true }).isString().trim().matches(/^$|^\d{9}$/),
@@ -217,6 +219,7 @@ router.put(
     body('counterpartyEmail').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('counterpartySignerPosition').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('counterpartySignerName').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
+    body('counterpartySignerNameGenitive').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('counterpartySignerAuthority').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('counterpartyBankName').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('counterpartyBankBik').optional({ nullable: true }).isString().trim().matches(/^$|^\d{9}$/),

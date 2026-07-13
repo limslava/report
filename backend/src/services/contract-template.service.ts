@@ -28,7 +28,12 @@ export const ALLOWED_CONTRACT_TEMPLATE_PLACEHOLDERS = new Set([
   'bankAccount',
   'correspondentAccount',
   'signerPosition',
+  'signerPositionNominative',
   'signerName',
+  'signerNameGenitive',
+  'signerShortName',
+  'customerSignatureLine',
+  'customerSignatureBlock',
   'signerAuthority',
   'phone',
   'email',
@@ -46,6 +51,7 @@ const REQUIRED_PLACEHOLDERS_BY_TYPE: Record<ContractTemplateType, string[]> = {
     'bankAccount',
     'correspondentAccount',
     'signerName',
+    'signerNameGenitive',
   ],
   [ContractTemplateType.INCOME_WITH_PSR]: ['contractNumber', 'contractDate', 'counterpartyName', 'inn'],
   [ContractTemplateType.EXPENSE]: ['contractNumber', 'contractDate', 'counterpartyName', 'inn'],
@@ -55,6 +61,23 @@ const REQUIRED_PLACEHOLDERS_BY_TYPE: Record<ContractTemplateType, string[]> = {
 const templateRepository = AppDataSource.getRepository(ContractTemplateVersion);
 
 const normalize = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim();
+
+const shortSignerName = (fullName: string | null): string => {
+  const parts = normalize(fullName).split(' ').filter(Boolean);
+  if (parts.length >= 3) {
+    return `${parts[0]} ${parts[1][0]}.${parts[2][0]}.`;
+  }
+  return normalize(fullName);
+};
+
+const signerPositionNominative = (positionValue: string | null): string => {
+  const position = normalize(positionValue);
+  const normalized = position.toLowerCase();
+  if (normalized === 'генерального директора') return 'Генеральный директор';
+  if (normalized === 'директора') return 'Директор';
+  if (normalized === 'индивидуального предпринимателя') return 'Индивидуальный предприниматель';
+  return position;
+};
 
 const formatRuDate = (value: Date | string | null | undefined): string => {
   const date = value ? new Date(value) : new Date();
@@ -146,6 +169,10 @@ export async function getActiveContractTemplate(templateType: ContractTemplateTy
 }
 
 export function buildContractTemplateValues(contract: Contract): Record<string, string> {
+  const signerShortName = shortSignerName(contract.counterpartySignerName);
+  const customerName = normalize(contract.counterpartyShortName || contract.counterpartyName);
+  const signaturePosition = signerPositionNominative(contract.counterpartySignerPosition);
+  const customerSignatureLine = `_______________ / ${signerShortName}`;
   return {
     contractNumber: normalize(contract.contractNumber),
     contractDate: formatRuDate(contract.contractDate),
@@ -161,7 +188,18 @@ export function buildContractTemplateValues(contract: Contract): Record<string, 
     bankAccount: normalize(contract.counterpartyBankAccount),
     correspondentAccount: normalize(contract.counterpartyCorrespondentAccount),
     signerPosition: normalize(contract.counterpartySignerPosition),
+    signerPositionNominative: signaturePosition,
     signerName: normalize(contract.counterpartySignerName),
+    signerNameGenitive: normalize(contract.counterpartySignerNameGenitive || contract.counterpartySignerName),
+    signerShortName,
+    customerSignatureLine,
+    customerSignatureBlock: [
+      signaturePosition,
+      customerName,
+      '',
+      customerSignatureLine,
+      'м.п.',
+    ].join('\n'),
     signerAuthority: normalize(contract.counterpartySignerAuthority),
     phone: normalize(contract.counterpartyPhone),
     email: normalize(contract.counterpartyEmail),

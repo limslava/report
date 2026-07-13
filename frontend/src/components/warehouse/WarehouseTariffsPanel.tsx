@@ -1,16 +1,14 @@
-import { Edit } from '@mui/icons-material';
 import {
   Alert,
   Box,
   Button,
-  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   FormControlLabel,
-  IconButton,
+  Paper,
   Stack,
   Switch,
   Table,
@@ -20,8 +18,6 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Tooltip,
-  Typography,
 } from '@mui/material';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -45,6 +41,14 @@ const today = () => {
 };
 const money = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' });
 const unitLabels = { operation: 'операция', liter: 'литр', day: 'сутки', wheel: 'колесо' };
+const tariffColumnWidths: Record<WarehouseVehicleType, number> = {
+  passenger: 140,
+  light_commercial: 220,
+  truck: 120,
+  trailer: 128,
+  special: 106,
+  motorcycle: 106,
+};
 
 const messageFromError = (error: unknown): string => {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -53,6 +57,25 @@ const messageFromError = (error: unknown): string => {
   }
   return 'Не удалось сохранить тариф.';
 };
+
+const tariffValidFromSummary = (service: WarehouseServiceDefinition) => {
+  const dates = Array.from(new Set(
+    WAREHOUSE_VEHICLE_TYPES
+      .map((type) => service.currentTariffs[type]?.validFrom)
+      .filter((value): value is string => Boolean(value)),
+  ));
+  if (dates.length === 0) return '—';
+  if (dates.length === 1) return dates[0];
+  return 'Разные даты';
+};
+
+const tariffValidFromTitle = (service: WarehouseServiceDefinition) => WAREHOUSE_VEHICLE_TYPES
+  .map((type) => {
+    const date = service.currentTariffs[type]?.validFrom;
+    return date ? `${warehouseVehicleTypeLabel(type)}: ${date}` : null;
+  })
+  .filter((value): value is string => Boolean(value))
+  .join('\n');
 
 export default function WarehouseTariffsPanel() {
   const [services, setServices] = useState<WarehouseServiceDefinition[]>([]);
@@ -131,57 +154,81 @@ export default function WarehouseTariffsPanel() {
     <Stack spacing={2}>
       {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
       {success && <Alert severity="success" onClose={() => setSuccess(null)}>{success}</Alert>}
-      <TableContainer>
-        <Table size="small">
+      <TableContainer component={Paper} variant="outlined">
+        <Table
+          size="small"
+          sx={{
+            minWidth: 1320,
+            tableLayout: 'fixed',
+            '& th, & td': {
+              borderColor: '#d0d7de',
+              borderRight: '1px solid #d0d7de',
+              fontSize: '10px',
+              lineHeight: 1.25,
+              py: '6px',
+              px: '8px',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            },
+            '& th:last-of-type, & td:last-of-type': {
+              borderRight: 0,
+            },
+            '& thead th': {
+              backgroundColor: '#f4f7fb',
+              color: '#27364b',
+              fontWeight: 700,
+              height: 44,
+              whiteSpace: 'normal',
+              overflow: 'visible',
+              textOverflow: 'clip',
+              lineHeight: 1.15,
+            },
+            '& tbody tr:nth-of-type(odd) td': {
+              backgroundColor: '#f8fbff',
+            },
+            '& tbody tr:hover td': {
+              backgroundColor: '#eef5ff',
+            },
+          }}
+        >
           <TableHead>
             <TableRow>
-              <TableCell>Услуга</TableCell>
-              <TableCell>Единица</TableCell>
+              <TableCell sx={{ width: 300 }}>Услуга</TableCell>
+              <TableCell sx={{ width: 72 }}>Единица</TableCell>
+              <TableCell sx={{ width: 96 }}>Действует с</TableCell>
               {WAREHOUSE_VEHICLE_TYPES.map((type) => (
-                <TableCell key={type} align="right">{warehouseVehicleTypeLabel(type)}</TableCell>
+                <TableCell key={type} align="right" sx={{ width: tariffColumnWidths[type] }}>
+                  {warehouseVehicleTypeLabel(type)}
+                </TableCell>
               ))}
-              <TableCell>Статус</TableCell>
-              <TableCell align="right">Настройка</TableCell>
+              <TableCell sx={{ width: 70 }}>Статус</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {services.map((service) => (
-              <TableRow key={service.id} hover>
-                <TableCell>
-                  <Typography variant="body2" fontWeight={600}>{service.name}</Typography>
-                  {!service.isOperational && (
-                    <Typography variant="caption" color="text.secondary">
-                      Рассчитывается автоматически по календарным суткам
-                    </Typography>
-                  )}
-                  {(service.code === 'vehicle_acceptance' || service.code === 'vehicle_issue') && (
-                    <Typography variant="caption" color="text.secondary" display="block">
-                      Начисляется автоматически по факту складской операции
-                    </Typography>
-                  )}
+              <TableRow
+                key={service.id}
+                hover
+                title="Двойной клик откроет настройку услуги"
+                onDoubleClick={() => openEdit(service)}
+                sx={{ cursor: 'pointer' }}
+              >
+                <TableCell sx={{ fontWeight: 600 }}>
+                  {service.name}
                 </TableCell>
                 <TableCell>{unitLabels[service.unit]}</TableCell>
+                <TableCell title={tariffValidFromTitle(service)}>
+                  {tariffValidFromSummary(service)}
+                </TableCell>
                 {WAREHOUSE_VEHICLE_TYPES.map((type) => (
-                  <TableCell key={type} align="right">
+                  <TableCell key={type} align="right" sx={{ width: tariffColumnWidths[type] }}>
                     {service.currentTariffs[type]
                       ? `${money.format(service.currentTariffs[type].price)}${service.unit === 'liter' ? ' / л' : ''}`
                       : 'Не задан'}
                   </TableCell>
                 ))}
-                <TableCell>
-                  <Chip
-                    size="small"
-                    color={service.isActive ? 'success' : 'default'}
-                    label={service.isActive ? 'Активна' : 'Отключена'}
-                  />
-                </TableCell>
-                <TableCell align="right">
-                  <Tooltip title="Настроить">
-                    <IconButton size="small" onClick={() => openEdit(service)}>
-                      <Edit fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </TableCell>
+                <TableCell>{service.isActive ? 'Активна' : 'Отключена'}</TableCell>
               </TableRow>
             ))}
           </TableBody>

@@ -288,6 +288,7 @@ function assertIncomeStandardGenerationDetails(contract: Contract): void {
   if (!contract.counterpartyOgrn?.trim()) missing.push('ОГРН/ОГРНИП');
   if (!contract.counterpartySignerPosition?.trim()) missing.push('должность подписанта');
   if (!contract.counterpartySignerName?.trim()) missing.push('ФИО подписанта');
+  if (!contract.counterpartySignerNameGenitive?.trim()) missing.push('ФИО подписанта в родительном падеже');
   if (!contract.counterpartySignerAuthority?.trim()) missing.push('основание полномочий');
   if (!contract.counterpartyBankName?.trim()) missing.push('банк');
   if (!contract.counterpartyBankBik?.trim()) missing.push('БИК');
@@ -1118,6 +1119,7 @@ export const listContracts = async (_req: Request, res: Response, next: NextFunc
         counterpartyEmail: contract.counterpartyEmail,
         counterpartySignerPosition: contract.counterpartySignerPosition,
         counterpartySignerName: contract.counterpartySignerName,
+        counterpartySignerNameGenitive: contract.counterpartySignerNameGenitive,
         counterpartySignerAuthority: contract.counterpartySignerAuthority,
         counterpartyBankName: contract.counterpartyBankName,
         counterpartyBankBik: contract.counterpartyBankBik,
@@ -1470,6 +1472,7 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       counterpartyEmail,
       counterpartySignerPosition,
       counterpartySignerName,
+      counterpartySignerNameGenitive,
       counterpartySignerAuthority,
       counterpartyBankName,
       counterpartyBankBik,
@@ -1500,6 +1503,7 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       counterpartyEmail?: string | null;
       counterpartySignerPosition?: string | null;
       counterpartySignerName?: string | null;
+      counterpartySignerNameGenitive?: string | null;
       counterpartySignerAuthority?: string | null;
       counterpartyBankName?: string | null;
       counterpartyBankBik?: string | null;
@@ -1614,6 +1618,7 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       counterpartyEmail: normalizeNullableString(counterpartyEmail),
       counterpartySignerPosition: normalizeNullableString(counterpartySignerPosition),
       counterpartySignerName: normalizeNullableString(counterpartySignerName),
+      counterpartySignerNameGenitive: normalizeNullableString(counterpartySignerNameGenitive),
       counterpartySignerAuthority: normalizeNullableString(counterpartySignerAuthority),
       counterpartyBankName: normalizeNullableString(counterpartyBankName),
       counterpartyBankBik: normalizeNullableString(counterpartyBankBik),
@@ -1662,6 +1667,7 @@ export const importSignedContract = async (req: Request, res: Response, next: Ne
       counterpartyEmail,
       counterpartySignerPosition,
       counterpartySignerName,
+      counterpartySignerNameGenitive,
       counterpartySignerAuthority,
       counterpartyBankName,
       counterpartyBankBik,
@@ -1692,6 +1698,7 @@ export const importSignedContract = async (req: Request, res: Response, next: Ne
       counterpartyEmail?: string | null;
       counterpartySignerPosition?: string | null;
       counterpartySignerName?: string | null;
+      counterpartySignerNameGenitive?: string | null;
       counterpartySignerAuthority?: string | null;
       counterpartyBankName?: string | null;
       counterpartyBankBik?: string | null;
@@ -1792,6 +1799,7 @@ export const importSignedContract = async (req: Request, res: Response, next: Ne
       counterpartyEmail: normalizeNullableString(counterpartyEmail),
       counterpartySignerPosition: normalizeNullableString(counterpartySignerPosition),
       counterpartySignerName: normalizeNullableString(counterpartySignerName),
+      counterpartySignerNameGenitive: normalizeNullableString(counterpartySignerNameGenitive),
       counterpartySignerAuthority: normalizeNullableString(counterpartySignerAuthority),
       counterpartyBankName: normalizeNullableString(counterpartyBankName),
       counterpartyBankBik: normalizeNullableString(counterpartyBankBik),
@@ -1861,6 +1869,7 @@ export const updateDraftContract = async (req: Request, res: Response, next: Nex
       counterpartyEmail,
       counterpartySignerPosition,
       counterpartySignerName,
+      counterpartySignerNameGenitive,
       counterpartySignerAuthority,
       counterpartyBankName,
       counterpartyBankBik,
@@ -1886,6 +1895,7 @@ export const updateDraftContract = async (req: Request, res: Response, next: Nex
       counterpartyEmail?: string | null;
       counterpartySignerPosition?: string | null;
       counterpartySignerName?: string | null;
+      counterpartySignerNameGenitive?: string | null;
       counterpartySignerAuthority?: string | null;
       counterpartyBankName?: string | null;
       counterpartyBankBik?: string | null;
@@ -1925,6 +1935,7 @@ export const updateDraftContract = async (req: Request, res: Response, next: Nex
     contract.counterpartyEmail = normalizeNullableString(counterpartyEmail);
     contract.counterpartySignerPosition = normalizeNullableString(counterpartySignerPosition);
     contract.counterpartySignerName = normalizeNullableString(counterpartySignerName);
+    contract.counterpartySignerNameGenitive = normalizeNullableString(counterpartySignerNameGenitive);
     contract.counterpartySignerAuthority = normalizeNullableString(counterpartySignerAuthority);
     contract.counterpartyBankName = normalizeNullableString(counterpartyBankName);
     contract.counterpartyBankBik = normalizeNullableString(counterpartyBankBik);
@@ -2421,6 +2432,7 @@ export const getContractApprovalSheet = async (req: Request, res: Response, next
         counterpartyEmail: contract.counterpartyEmail,
         counterpartySignerPosition: contract.counterpartySignerPosition,
         counterpartySignerName: contract.counterpartySignerName,
+        counterpartySignerNameGenitive: contract.counterpartySignerNameGenitive,
         counterpartySignerAuthority: contract.counterpartySignerAuthority,
         counterpartyBankName: contract.counterpartyBankName,
         counterpartyBankBik: contract.counterpartyBankBik,
@@ -2458,12 +2470,15 @@ export const getContractApprovalSheet = async (req: Request, res: Response, next
 export const getContractDecisionHistory = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const contractExists = await contractRepository.exist({ where: { id } });
-    if (!contractExists) {
+    const contract = await contractRepository.findOne({ where: { id } });
+    if (!contract) {
       const error: any = new Error('Договор не найден');
       error.statusCode = 404;
       throw error;
     }
+    const routeSteps = await stepRepository.find({ where: { contractId: id } });
+    assertContractDetailAccess(contract, routeSteps, req.user?.id, req.user?.role);
+
     const events = await decisionEventRepository.find({
       where: { contractId: id },
       relations: ['actorUser'],

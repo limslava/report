@@ -1,17 +1,17 @@
-import { Add, Edit } from '@mui/icons-material';
+import { Search } from '@mui/icons-material';
 import {
   Alert,
   Autocomplete,
-  Box,
   Button,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   FormControlLabel,
-  IconButton,
+  InputAdornment,
+  MenuItem,
   Paper,
+  Select,
   Stack,
   Switch,
   Table,
@@ -21,10 +21,15 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Tooltip,
-  Typography,
 } from '@mui/material';
-import { useCallback, useEffect, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useState,
+} from 'react';
 import {
   createWarehouseClient,
   getAvailableWarehouseCounterparties,
@@ -39,6 +44,10 @@ interface WarehouseClientsPanelProps {
   onClientsChanged?: () => void;
 }
 
+export interface WarehouseClientsPanelHandle {
+  openCreate: () => void;
+}
+
 const emptyForm = (): WarehouseClientPayload => ({
   inn: '',
   nameFull: '',
@@ -46,7 +55,6 @@ const emptyForm = (): WarehouseClientPayload => ({
   contractNumber: '',
   contractDate: '',
   contractEndDate: '',
-  serviceStartDate: '',
   isActive: true,
   notes: '',
 });
@@ -63,15 +71,17 @@ const messageFromError = (error: unknown): string => {
   return error instanceof Error ? error.message : 'Не удалось выполнить операцию.';
 };
 
-export default function WarehouseClientsPanel({
+const WarehouseClientsPanel = forwardRef<WarehouseClientsPanelHandle, WarehouseClientsPanelProps>(function WarehouseClientsPanel({
   onClientsChanged,
-}: WarehouseClientsPanelProps) {
+}, ref) {
   const [clients, setClients] = useState<WarehouseClient[]>([]);
   const [available, setAvailable] = useState<WarehouseCounterparty[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<WarehouseClient | null>(null);
   const [selectedCounterparty, setSelectedCounterparty] = useState<WarehouseCounterparty | null>(null);
   const [form, setForm] = useState<WarehouseClientPayload>(emptyForm);
+  const [query, setQuery] = useState('');
+  const [activityFilter, setActivityFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -98,6 +108,12 @@ export default function WarehouseClientsPanel({
     setDialogOpen(true);
   };
 
+  useImperativeHandle(ref, () => ({
+    openCreate: () => {
+      void openCreate();
+    },
+  }));
+
   const openEdit = (client: WarehouseClient) => {
     setEditing(client);
     setSelectedCounterparty(null);
@@ -108,7 +124,6 @@ export default function WarehouseClientsPanel({
       contractNumber: client.contractNumber,
       contractDate: client.contractDate,
       contractEndDate: client.contractEndDate,
-      serviceStartDate: client.serviceStartDate,
       isActive: client.isActive,
       notes: client.notes,
     });
@@ -140,7 +155,6 @@ export default function WarehouseClientsPanel({
           contractNumber: form.contractNumber,
           contractDate: form.contractDate,
           contractEndDate: form.contractEndDate,
-          serviceStartDate: form.serviceStartDate,
           isActive: form.isActive,
           notes: form.notes,
         });
@@ -157,14 +171,61 @@ export default function WarehouseClientsPanel({
     }
   };
 
+  const filteredClients = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    return clients.filter((client) => {
+      if (activityFilter === 'active' && !client.isActive) return false;
+      if (activityFilter === 'inactive' && client.isActive) return false;
+      if (!normalizedQuery) return true;
+
+      return [
+        client.nameFull,
+        client.nameShort,
+        client.inn,
+        client.contractNumber,
+      ].some((value) => value?.toLowerCase().includes(normalizedQuery));
+    });
+  }, [activityFilter, clients, query]);
+
+  const contractStatusText = (client: WarehouseClient) => {
+    if (client.contractStatus === 'expired') return 'Истёк';
+    if (client.contractStatus === 'expiring') return `Истекает через ${client.contractDaysRemaining} дн.`;
+    if (client.contractStatus === 'active') return 'Действует';
+    return 'Срок не указан';
+  };
+
   return (
-    <Stack spacing={2}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center">
-        <Box />
-        <Button variant="contained" startIcon={<Add />} onClick={() => void openCreate()}>
-          Добавить клиента
-        </Button>
-      </Stack>
+    <Stack spacing={0.5}>
+      <Paper variant="outlined" sx={{ px: 0.75, py: 0.75 }}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ xs: 'stretch', md: 'center' }}>
+          <TextField
+            label="Поиск"
+            size="small"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Организация, ИНН, договор"
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+            sx={{ flex: 1 }}
+          />
+          <Select
+            size="small"
+            value={activityFilter}
+            onChange={(event) => setActivityFilter(event.target.value as 'all' | 'active' | 'inactive')}
+            sx={{ width: { xs: '100%', md: 180 } }}
+          >
+            <MenuItem value="all">Все клиенты</MenuItem>
+            <MenuItem value="active">Активные</MenuItem>
+            <MenuItem value="inactive">Отключённые</MenuItem>
+          </Select>
+        </Stack>
+      </Paper>
 
       {error && !dialogOpen && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
       {clients.some((client) => client.contractStatus === 'expired') && (
@@ -180,75 +241,73 @@ export default function WarehouseClientsPanel({
       )}
 
       <TableContainer component={Paper} variant="outlined">
-        <Table size="small">
+        <Table
+          size="small"
+          sx={{
+            minWidth: 1120,
+            tableLayout: 'fixed',
+            '& th, & td': {
+              borderLeft: '1px solid #d0d7de',
+              borderColor: '#d0d7de',
+              fontSize: '10px',
+              lineHeight: 1.25,
+              py: '6px',
+              px: '8px',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            },
+            '& th': {
+              bgcolor: '#f3f6fb',
+              fontWeight: 700,
+              color: '#2f3b52',
+            },
+            '& th:first-of-type, & td:first-of-type': {
+              borderLeft: 0,
+            },
+            '& tbody tr:nth-of-type(odd) td': {
+              backgroundColor: '#f8fbff',
+            },
+            '& tbody tr:hover td': {
+              backgroundColor: '#eef5ff',
+            },
+          }}
+        >
           <TableHead>
             <TableRow>
-              <TableCell>Организация</TableCell>
-              <TableCell>ИНН</TableCell>
-              <TableCell>Договор хранения</TableCell>
-              <TableCell>Срок действия</TableCell>
-              <TableCell>Начало работы</TableCell>
-              <TableCell>Статус</TableCell>
-              <TableCell align="right">Действия</TableCell>
+              <TableCell sx={{ width: 260 }}>Организация</TableCell>
+              <TableCell sx={{ width: 100 }}>ИНН</TableCell>
+              <TableCell sx={{ width: 130 }}>№ договора</TableCell>
+              <TableCell sx={{ width: 110 }}>Дата договора</TableCell>
+              <TableCell sx={{ width: 130 }}>Дата окончания</TableCell>
+              <TableCell sx={{ width: 150 }}>Срок договора</TableCell>
+              <TableCell sx={{ width: 90 }}>Статус</TableCell>
+              <TableCell>Комментарий</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {clients.map((client) => (
-              <TableRow key={client.id} hover>
-                <TableCell>{client.nameShort || client.nameFull}</TableCell>
+            {filteredClients.map((client) => (
+              <TableRow
+                key={client.id}
+                hover
+                title="Двойной клик откроет карточку клиента"
+                onDoubleClick={() => openEdit(client)}
+                sx={{ cursor: 'pointer' }}
+              >
+                <TableCell sx={{ fontWeight: 600 }}>{client.nameShort || client.nameFull}</TableCell>
                 <TableCell>{client.inn}</TableCell>
-                <TableCell>
-                  {client.contractNumber
-                    ? `${client.contractNumber}${client.contractDate ? ` от ${client.contractDate}` : ''}`
-                    : '—'}
-                </TableCell>
-                <TableCell>
-                  <Stack spacing={0.5} alignItems="flex-start">
-                    <Typography variant="body2">{client.contractEndDate || 'Не указан'}</Typography>
-                    <Chip
-                      size="small"
-                      color={
-                        client.contractStatus === 'expired'
-                          ? 'error'
-                          : client.contractStatus === 'expiring'
-                            ? 'warning'
-                            : client.contractStatus === 'active'
-                              ? 'success'
-                              : 'default'
-                      }
-                      label={
-                        client.contractStatus === 'expired'
-                          ? 'Истёк'
-                          : client.contractStatus === 'expiring'
-                            ? `Истекает через ${client.contractDaysRemaining} дн.`
-                            : client.contractStatus === 'active'
-                              ? 'Действует'
-                              : 'Срок не указан'
-                      }
-                    />
-                  </Stack>
-                </TableCell>
-                <TableCell>{client.serviceStartDate || '—'}</TableCell>
-                <TableCell>
-                  <Chip
-                    size="small"
-                    color={client.isActive ? 'success' : 'default'}
-                    label={client.isActive ? 'Активен' : 'Отключён'}
-                  />
-                </TableCell>
-                <TableCell align="right">
-                  <Tooltip title="Настроить клиента">
-                    <IconButton size="small" onClick={() => openEdit(client)}>
-                      <Edit fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </TableCell>
+                <TableCell>{client.contractNumber || '—'}</TableCell>
+                <TableCell>{client.contractDate || '—'}</TableCell>
+                <TableCell>{client.contractEndDate || '—'}</TableCell>
+                <TableCell>{contractStatusText(client)}</TableCell>
+                <TableCell>{client.isActive ? 'Активен' : 'Отключён'}</TableCell>
+                <TableCell>{client.notes || '—'}</TableCell>
               </TableRow>
             ))}
-            {clients.length === 0 && (
+            {filteredClients.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 5, color: 'text.secondary' }}>
-                  Клиенты склада ещё не добавлены
+                <TableCell colSpan={8} align="center" sx={{ py: 5, color: 'text.secondary' }}>
+                  Клиенты склада не найдены
                 </TableCell>
               </TableRow>
             )}
@@ -323,13 +382,6 @@ export default function WarehouseClientsPanel({
               helperText="За 30 дней до этой даты система покажет предупреждение."
             />
             <TextField
-              type="date"
-              label="Дата начала обслуживания"
-              InputLabelProps={{ shrink: true }}
-              value={form.serviceStartDate || ''}
-              onChange={(event) => setForm((current) => ({ ...current, serviceStartDate: event.target.value }))}
-            />
-            <TextField
               multiline
               minRows={2}
               label="Комментарий"
@@ -356,4 +408,6 @@ export default function WarehouseClientsPanel({
       </Dialog>
     </Stack>
   );
-}
+});
+
+export default WarehouseClientsPanel;

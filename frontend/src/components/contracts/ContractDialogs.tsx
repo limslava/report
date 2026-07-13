@@ -38,6 +38,8 @@ type PreviewDialogProps = {
 type HistoryDialogProps = {
   open: boolean;
   contractNumber: string;
+  importedWithoutWorkflow?: boolean;
+  documentKind?: ContractRecord['documentKind'];
   loading: boolean;
   events: DecisionHistoryEvent[];
   onClose: () => void;
@@ -139,10 +141,18 @@ export function PreviewDialog({
 export function HistoryDialog({
   open,
   contractNumber,
+  importedWithoutWorkflow = false,
+  documentKind = 'master',
   loading,
   events,
   onClose,
 }: HistoryDialogProps) {
+  const emptyMessage = importedWithoutWorkflow
+    ? documentKind === 'addendum'
+      ? 'Данное доп. соглашение было импортировано как ранее подписанное. Маршрут согласования и история виз по нему не формировались.'
+      : 'Данный договор был импортирован как ранее подписанный. Маршрут согласования и история виз по нему не формировались.'
+    : 'История решений пока отсутствует. Визы, сохраненные до добавления журнала, здесь не отображаются.';
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle>История решений по договору № {contractNumber || '—'}</DialogTitle>
@@ -155,7 +165,7 @@ export function HistoryDialog({
         )}
         {!loading && !events.length && (
           <Typography variant="body2" color="text.secondary">
-            История решений пока отсутствует. Визы, сохраненные до добавления журнала, здесь не отображаются.
+            {emptyMessage}
           </Typography>
         )}
         {!loading && Boolean(events.length) && (

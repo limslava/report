@@ -47,6 +47,7 @@ type ContractWizardProps = {
     counterpartyShortName?: string | null;
     contractType: 'expense' | 'income';
   }>;
+  documentKindLocked?: boolean;
   isInnValidLength: boolean;
   isInnInvalidLength: boolean;
   requiresAttachmentStep: boolean;
@@ -76,6 +77,7 @@ export function ContractWizard({
   existingFiles,
   files,
   parentContracts,
+  documentKindLocked = false,
   isInnValidLength,
   isInnInvalidLength,
   requiresAttachmentStep,
@@ -169,21 +171,29 @@ export function ContractWizard({
                 Если ФНС не вернет данные, заполните реквизиты вручную.
               </Typography>
             )}
-            <FormControl fullWidth>
-              <InputLabel>Вид документа</InputLabel>
-              <Select
+            {documentKindLocked ? (
+              <TextField
                 label="Вид документа"
-                value={wizard.documentKind}
-                onChange={(event) => setWizard({
-                  ...wizard,
-                  documentKind: event.target.value as ContractWizardForm['documentKind'],
-                  parentContractId: event.target.value === 'master' ? '' : wizard.parentContractId,
-                })}
-              >
-                <MenuItem value="master">Основной договор</MenuItem>
-                <MenuItem value="addendum">Доп. соглашение</MenuItem>
-              </Select>
-            </FormControl>
+                value={wizard.documentKind === 'addendum' ? 'Доп. соглашение' : 'Основной договор'}
+                disabled
+              />
+            ) : (
+              <FormControl fullWidth>
+                <InputLabel>Вид документа</InputLabel>
+                <Select
+                  label="Вид документа"
+                  value={wizard.documentKind}
+                  onChange={(event) => setWizard({
+                    ...wizard,
+                    documentKind: event.target.value as ContractWizardForm['documentKind'],
+                    parentContractId: event.target.value === 'master' ? '' : wizard.parentContractId,
+                  })}
+                >
+                  <MenuItem value="master">Основной договор</MenuItem>
+                  <MenuItem value="addendum">Доп. соглашение</MenuItem>
+                </Select>
+              </FormControl>
+            )}
             {isAddendum && (
               <FormControl fullWidth>
                 <InputLabel>К основному договору</InputLabel>
@@ -369,15 +379,21 @@ export function ContractWizard({
 
                 <Typography variant="subtitle2">Подписант</Typography>
                 <TextField
-                  label="Должность подписанта в договоре"
+                  label="Должность подписанта в родительном падеже"
                   value={wizard.counterpartySignerPosition}
                   onChange={(event) => setWizard({ ...wizard, counterpartySignerPosition: event.target.value })}
-                  helperText="Например: Генерального директора"
+                  helperText="Используется во фразе: в лице Генерального директора..."
                 />
                 <TextField
                   label="ФИО подписанта"
                   value={wizard.counterpartySignerName}
                   onChange={(event) => setWizard({ ...wizard, counterpartySignerName: event.target.value })}
+                />
+                <TextField
+                  label="ФИО подписанта в родительном падеже"
+                  value={wizard.counterpartySignerNameGenitive}
+                  onChange={(event) => setWizard({ ...wizard, counterpartySignerNameGenitive: event.target.value })}
+                  helperText="Например: Денеги Евгении Вячеславовны"
                 />
                 <TextField
                   label="Основание полномочий"
@@ -391,6 +407,7 @@ export function ContractWizard({
                   label="Расчетный счет"
                   value={wizard.counterpartyBankAccount}
                   onChange={(event) => setWizard({ ...wizard, counterpartyBankAccount: event.target.value.replace(/\D/g, '').slice(0, 20) })}
+                  helperText={`${wizard.counterpartyBankAccount.length}/20 цифр`}
                 />
                 <TextField
                   label="Банк"
@@ -401,11 +418,13 @@ export function ContractWizard({
                   label="Корреспондентский счет"
                   value={wizard.counterpartyCorrespondentAccount}
                   onChange={(event) => setWizard({ ...wizard, counterpartyCorrespondentAccount: event.target.value.replace(/\D/g, '').slice(0, 20) })}
+                  helperText={`${wizard.counterpartyCorrespondentAccount.length}/20 цифр`}
                 />
                 <TextField
                   label="БИК"
                   value={wizard.counterpartyBankBik}
                   onChange={(event) => setWizard({ ...wizard, counterpartyBankBik: event.target.value.replace(/\D/g, '').slice(0, 9) })}
+                  helperText={`${wizard.counterpartyBankBik.length}/9 цифр`}
                 />
                 <TextField
                   label="Телефон"

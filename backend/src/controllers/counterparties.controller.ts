@@ -7,10 +7,100 @@ import {
   fetchCounterpartyFromFnsByInn,
   fetchCounterpartyFromFnsByName,
   FnsServiceUnavailableError,
+  normalizeFnsSignerName,
 } from '../services/fns-egrul.service';
 
 const counterpartyRepository = AppDataSource.getRepository(Counterparty);
 const contractRepository = AppDataSource.getRepository(Contract);
+
+const signerNameFromSourcePayload = (payload: Record<string, unknown> | null | undefined): string | null => {
+  const raw = typeof payload?.g === 'string' ? payload.g : '';
+  return normalizeFnsSignerName(raw);
+};
+
+const hasSuspiciousAddress = (address: string | null | undefined): boolean => (
+  !address || /,\s*,/.test(address)
+);
+
+const shouldRefreshCounterpartyFromFns = (counterparty: Counterparty): boolean => (
+  hasSuspiciousAddress(counterparty.address)
+  || !counterparty.ogrn
+  || !counterparty.kpp
+  || !signerNameFromSourcePayload(counterparty.sourcePayload)
+);
+
+async function tryFetchCounterpartyFromFns(query: string) {
+  try {
+    return await fetchCounterpartyFromFnsByInn(query);
+  } catch (error) {
+    if (error instanceof FnsServiceUnavailableError) return null;
+    throw error;
+  }
+}
+
+async function enrichLocalCounterpartyFromFns(counterparty: Counterparty): Promise<{ counterparty: Counterparty; signerName: string | null }> {
+  if (!shouldRefreshCounterpartyFromFns(counterparty)) {
+    return {
+      counterparty,
+      signerName: signerNameFromSourcePayload(counterparty.sourcePayload),
+    };
+  }
+
+  const fns = await tryFetchCounterpartyFromFns(counterparty.inn);
+  if (!fns) {
+    return {
+      counterparty,
+      signerName: signerNameFromSourcePayload(counterparty.sourcePayload),
+    };
+  }
+
+  const saved = await counterpartyRepository.save(counterpartyRepository.merge(counterparty, {
+    nameFull: counterparty.nameFull || fns.nameFull,
+    nameShort: counterparty.nameShort || fns.nameShort,
+    counterpartyForm: counterparty.counterpartyForm || fns.counterpartyForm,
+    ogrn: counterparty.ogrn || fns.ogrn,
+    kpp: counterparty.kpp || fns.kpp,
+    address: hasSuspiciousAddress(counterparty.address) ? fns.address : counterparty.address,
+    source: 'fns',
+    sourcePayload: fns.sourcePayload,
+  }));
+
+  return {
+    counterparty: saved,
+    signerName: fns.signerName,
+  };
+}
+
+async function saveFnsCounterparty(fns: Awaited<ReturnType<typeof fetchCounterpartyFromFnsByInn>>): Promise<Counterparty> {
+  if (!fns) {
+    throw new Error('FNS counterparty is required');
+  }
+  const existingByInn = await counterpartyRepository.findOne({ where: { inn: fns.inn } });
+  const entity = existingByInn
+    ? counterpartyRepository.merge(existingByInn, {
+        nameFull: fns.nameFull,
+        nameShort: fns.nameShort,
+        counterpartyForm: fns.counterpartyForm,
+        ogrn: fns.ogrn,
+        kpp: fns.kpp,
+        address: fns.address,
+        source: 'fns',
+        sourcePayload: fns.sourcePayload,
+      })
+    : counterpartyRepository.create({
+        inn: fns.inn,
+        nameFull: fns.nameFull,
+        nameShort: fns.nameShort,
+        counterpartyForm: fns.counterpartyForm,
+        ogrn: fns.ogrn,
+        kpp: fns.kpp,
+        address: fns.address,
+        source: 'fns',
+        sourcePayload: fns.sourcePayload,
+      });
+
+  return counterpartyRepository.save(entity);
+}
 
 export const resolveCounterpartyByInn = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -21,18 +111,22 @@ export const resolveCounterpartyByInn = async (req: Request, res: Response, next
       throw error;
     }
 
-    const local = await counterpartyRepository.findOne({ where: { inn } });
+    const local = await counterpartyRepository.findOne({
+      where: inn.length === 13 || inn.length === 15 ? { ogrn: inn } : { inn },
+    });
     if (local) {
+      const enriched = await enrichLocalCounterpartyFromFns(local);
       res.json({
-        source: 'directory',
+        source: enriched.counterparty.source === 'fns' ? 'fns' : 'directory',
         data: {
-          inn: local.inn,
-          nameFull: local.nameFull,
-          nameShort: local.nameShort,
-          counterpartyForm: local.counterpartyForm,
-          ogrn: local.ogrn,
-          kpp: local.kpp,
-          address: local.address,
+          inn: enriched.counterparty.inn,
+          nameFull: enriched.counterparty.nameFull,
+          nameShort: enriched.counterparty.nameShort,
+          counterpartyForm: enriched.counterparty.counterpartyForm,
+          ogrn: enriched.counterparty.ogrn,
+          kpp: enriched.counterparty.kpp,
+          address: enriched.counterparty.address,
+          signerName: enriched.signerName,
         },
       });
       return;
@@ -43,16 +137,21 @@ export const resolveCounterpartyByInn = async (req: Request, res: Response, next
       order: { updatedAt: 'DESC' },
     });
     if (fromContracts) {
+      const fns = await tryFetchCounterpartyFromFns(inn);
+      if (fns) {
+        await saveFnsCounterparty(fns);
+      }
       res.json({
-        source: 'contracts',
+        source: fns ? 'fns' : 'contracts',
         data: {
-          inn: fromContracts.counterpartyInn,
-          nameFull: fromContracts.counterpartyName,
-          nameShort: fromContracts.counterpartyShortName,
-          counterpartyForm: fromContracts.counterpartyForm,
-          ogrn: null,
-          kpp: null,
-          address: null,
+          inn: fns?.inn ?? fromContracts.counterpartyInn,
+          nameFull: fns?.nameFull ?? fromContracts.counterpartyName,
+          nameShort: fns?.nameShort ?? fromContracts.counterpartyShortName,
+          counterpartyForm: fns?.counterpartyForm ?? fromContracts.counterpartyForm,
+          ogrn: fns?.ogrn ?? fromContracts.counterpartyOgrn,
+          kpp: fns?.kpp ?? fromContracts.counterpartyKpp,
+          address: fns?.address ?? fromContracts.counterpartyLegalAddress,
+          signerName: fns?.signerName ?? fromContracts.counterpartySignerName,
         },
       });
       return;
@@ -73,17 +172,7 @@ export const resolveCounterpartyByInn = async (req: Request, res: Response, next
       return;
     }
 
-    const saved = await counterpartyRepository.save(counterpartyRepository.create({
-      inn: fns.inn,
-      nameFull: fns.nameFull,
-      nameShort: fns.nameShort,
-      counterpartyForm: fns.counterpartyForm,
-      ogrn: fns.ogrn,
-      kpp: fns.kpp,
-      address: fns.address,
-      source: 'fns',
-      sourcePayload: fns.sourcePayload,
-    }));
+    const saved = await saveFnsCounterparty(fns);
 
     res.json({
       source: 'fns',
@@ -95,6 +184,7 @@ export const resolveCounterpartyByInn = async (req: Request, res: Response, next
         ogrn: saved.ogrn,
         kpp: saved.kpp,
         address: saved.address,
+        signerName: fns.signerName,
       },
     });
   } catch (error) {
@@ -119,16 +209,18 @@ export const resolveCounterpartyByName = async (req: Request, res: Response, nex
       order: { updatedAt: 'DESC' },
     });
     if (local) {
+      const enriched = await enrichLocalCounterpartyFromFns(local);
       res.json({
-        source: 'directory',
+        source: enriched.counterparty.source === 'fns' ? 'fns' : 'directory',
         data: {
-          inn: local.inn,
-          nameFull: local.nameFull,
-          nameShort: local.nameShort,
-          counterpartyForm: local.counterpartyForm,
-          ogrn: local.ogrn,
-          kpp: local.kpp,
-          address: local.address,
+          inn: enriched.counterparty.inn,
+          nameFull: enriched.counterparty.nameFull,
+          nameShort: enriched.counterparty.nameShort,
+          counterpartyForm: enriched.counterparty.counterpartyForm,
+          ogrn: enriched.counterparty.ogrn,
+          kpp: enriched.counterparty.kpp,
+          address: enriched.counterparty.address,
+          signerName: enriched.signerName,
         },
       });
       return;
@@ -152,6 +244,7 @@ export const resolveCounterpartyByName = async (req: Request, res: Response, nex
           ogrn: null,
           kpp: null,
           address: null,
+          signerName: contractMatch.counterpartySignerName,
         },
       });
       return;
@@ -172,31 +265,7 @@ export const resolveCounterpartyByName = async (req: Request, res: Response, nex
       return;
     }
 
-    const existingByInn = await counterpartyRepository.findOne({ where: { inn: fns.inn } });
-    const entity = existingByInn
-      ? counterpartyRepository.merge(existingByInn, {
-          nameFull: fns.nameFull,
-          nameShort: fns.nameShort,
-          counterpartyForm: fns.counterpartyForm,
-          ogrn: fns.ogrn,
-          kpp: fns.kpp,
-          address: fns.address,
-          source: 'fns',
-          sourcePayload: fns.sourcePayload,
-        })
-      : counterpartyRepository.create({
-          inn: fns.inn,
-          nameFull: fns.nameFull,
-          nameShort: fns.nameShort,
-          counterpartyForm: fns.counterpartyForm,
-          ogrn: fns.ogrn,
-          kpp: fns.kpp,
-          address: fns.address,
-          source: 'fns',
-          sourcePayload: fns.sourcePayload,
-        });
-
-    const saved = await counterpartyRepository.save(entity);
+    const saved = await saveFnsCounterparty(fns);
     res.json({
       source: 'fns',
       data: {
@@ -207,6 +276,7 @@ export const resolveCounterpartyByName = async (req: Request, res: Response, nex
         ogrn: saved.ogrn,
         kpp: saved.kpp,
         address: saved.address,
+        signerName: fns.signerName,
       },
     });
   } catch (error) {

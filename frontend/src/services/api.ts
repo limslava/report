@@ -153,6 +153,7 @@ export const createContract = (data: {
   counterpartyEmail?: string | null;
   counterpartySignerPosition?: string | null;
   counterpartySignerName?: string | null;
+  counterpartySignerNameGenitive?: string | null;
   counterpartySignerAuthority?: string | null;
   counterpartyBankName?: string | null;
   counterpartyBankBik?: string | null;

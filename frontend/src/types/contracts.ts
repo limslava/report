@@ -25,6 +25,7 @@ export type ContractRecord = {
   counterpartyEmail?: string | null;
   counterpartySignerPosition?: string | null;
   counterpartySignerName?: string | null;
+  counterpartySignerNameGenitive?: string | null;
   counterpartySignerAuthority?: string | null;
   counterpartyBankName?: string | null;
   counterpartyBankBik?: string | null;
@@ -58,6 +59,7 @@ export type ContractWizardPrefill = {
   counterpartyOgrn?: string | null;
   counterpartyKpp?: string | null;
   counterpartyLegalAddress?: string | null;
+  counterpartySignerName?: string | null;
 };
 
 export type ContractWizardForm = {
@@ -82,6 +84,7 @@ export type ContractWizardForm = {
   counterpartyEmail: string;
   counterpartySignerPosition: string;
   counterpartySignerName: string;
+  counterpartySignerNameGenitive: string;
   counterpartySignerAuthority: string;
   counterpartyBankName: string;
   counterpartyBankBik: string;

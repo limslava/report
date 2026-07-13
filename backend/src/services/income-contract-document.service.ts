@@ -72,8 +72,32 @@ function textFromParagraph(paragraphXml: string): string {
 function paragraphWithText(originalParagraphXml: string, text: string): string {
   const paragraphOpen = originalParagraphXml.match(/^<w:p\b[^>]*>/)?.[0] ?? '<w:p>';
   const paragraphProperties = originalParagraphXml.match(/<w:pPr[\s\S]*?<\/w:pPr>/)?.[0] ?? '';
+  const runProperties = nonBoldRunProperties(originalParagraphXml);
   const preserve = /^\s|\s$/.test(text) ? ' xml:space="preserve"' : '';
-  return `${paragraphOpen}${paragraphProperties}<w:r><w:t${preserve}>${escapeXml(text)}</w:t></w:r></w:p>`;
+  return `${paragraphOpen}${paragraphProperties}<w:r>${runProperties}<w:t${preserve}>${escapeXml(text)}</w:t></w:r></w:p>`;
+}
+
+function paragraphWithLines(originalParagraphXml: string, lines: string[]): string {
+  const paragraphOpen = originalParagraphXml.match(/^<w:p\b[^>]*>/)?.[0] ?? '<w:p>';
+  const paragraphProperties = originalParagraphXml.match(/<w:pPr[\s\S]*?<\/w:pPr>/)?.[0] ?? '';
+  const runProperties = nonBoldRunProperties(originalParagraphXml);
+  const runs = lines.map((line, index) => {
+    const breakXml = index === 0 ? '' : '<w:br/>';
+    const preserve = /^\s|\s$/.test(line) ? ' xml:space="preserve"' : '';
+    return `<w:r>${runProperties}${breakXml}<w:t${preserve}>${escapeXml(line)}</w:t></w:r>`;
+  }).join('');
+  return `${paragraphOpen}${paragraphProperties}${runs}</w:p>`;
+}
+
+function nonBoldRunProperties(paragraphXml: string): string {
+  const runProperties = paragraphXml.match(/<w:rPr[\s\S]*?<\/w:rPr>/)?.[0];
+  if (!runProperties) return '<w:rPr><w:b w:val="0"/><w:bCs w:val="0"/></w:rPr>';
+  const withoutBold = runProperties
+    .replace(/<w:b(?:\s[^>]*)?\/>/g, '')
+    .replace(/<w:b>[\s\S]*?<\/w:b>/g, '')
+    .replace(/<w:bCs(?:\s[^>]*)?\/>/g, '')
+    .replace(/<w:bCs>[\s\S]*?<\/w:bCs>/g, '');
+  return withoutBold.replace('</w:rPr>', '<w:b w:val="0"/><w:bCs w:val="0"/></w:rPr>');
 }
 
 function formatRuDate(value: Date | string | null | undefined): string {
@@ -112,9 +136,30 @@ function customerNameFull(contract: Contract): string {
   return normalizeText(contract.counterpartyName);
 }
 
+function signerPositionForSignature(contract: Contract): string {
+  const position = normalizeText(contract.counterpartySignerPosition);
+  const normalized = position.toLowerCase();
+  if (normalized === 'генерального директора') return 'Генеральный директор';
+  if (normalized === 'директора') return 'Директор';
+  if (normalized === 'индивидуального предпринимателя') return 'Индивидуальный предприниматель';
+  return position;
+}
+
+function customerSignatureBlock(contract: Contract): string[] {
+  const position = signerPositionForSignature(contract);
+  const organization = customerName(contract);
+  return [
+    position,
+    organization,
+    '',
+    `_______________ / ${signatureName(contract.counterpartySignerName)}`,
+    'м.п.',
+  ].filter((line, index) => index === 2 || Boolean(line));
+}
+
 function customerSignerLine(contract: Contract): string {
   const position = normalizeText(contract.counterpartySignerPosition);
-  const name = normalizeText(contract.counterpartySignerName);
+  const name = normalizeText(contract.counterpartySignerNameGenitive || contract.counterpartySignerName);
   const authority = normalizeText(contract.counterpartySignerAuthority);
   if (!position && !name && !authority) return '';
   return `в лице ${position} ${name}, действующего на основании ${authority}`;
@@ -132,7 +177,7 @@ function buildAttorneyIntro(contract: Contract): string {
   const ogrn = normalizeText(contract.counterpartyOgrn);
   const address = normalizeText(contract.counterpartyLegalAddress);
   const signerPosition = normalizeText(contract.counterpartySignerPosition);
-  const signerName = normalizeText(contract.counterpartySignerName);
+  const signerName = normalizeText(contract.counterpartySignerNameGenitive || contract.counterpartySignerName);
   const authority = normalizeText(contract.counterpartySignerAuthority);
   return `${customer} (ИНН ${inn}${ogrn ? `/ ОГРН ${ogrn}` : ''}${address ? `/ адрес места нахождения: ${address}` : ''}), являющееся получателем груза, в лице ${signerPosition} ${signerName}, действующего на основании ${authority}, именуемое далее Доверитель, настоящим уполномочивает ООО «СИМПЛ ВЭЙ» (ОГРН 1222500007047, ИНН 2543164502   КПП 254301001, юридический адрес: 690012, Приморский край, г. Владивосток, ул Артековская, дом 1, квартира 135, в лице Генерального директора Васильковского Марка Олеговича, действующего на основании Устава, на следующие действия:`;
 }
@@ -177,7 +222,7 @@ function patchDocumentXml(xml: string, contract: Contract): string {
     }
     if (text === 'Заказчик:') {
       inCustomerRequisites = true;
-      return paragraphXml;
+      return paragraphWithLines(paragraphXml, ['Заказчик:', customerName(contract)]);
     }
 
     if (inCustomerRequisites) {
@@ -213,13 +258,19 @@ function patchDocumentXml(xml: string, contract: Contract): string {
       }
       if (!customerSignaturePatched && text === '_______________ /') {
         customerSignaturePatched = true;
-        return paragraphWithText(paragraphXml, `_______________ / ${signatureName(contract.counterpartySignerName)}`);
+        return paragraphWithLines(paragraphXml, customerSignatureBlock(contract));
       }
       if (text.startsWith('Приложение №1')) {
         inCustomerRequisites = false;
       }
     }
 
+    if (text.includes('Экспедитор ООО «Симпл Вэй»') && text.includes('Заказчик ООО')) {
+      return paragraphWithText(paragraphXml, `Экспедитор ООО «Симпл Вэй»                                       Заказчик ${customerName(contract)}`);
+    }
+    if (text.includes('Экспедитор') && text.includes('Заказчик') && text.includes('_____')) {
+      return paragraphWithText(paragraphXml, `Экспедитор _____          Заказчик ${customerName(contract)} _____`);
+    }
     if (text === 'Клиент ООО «_________________»') {
       return paragraphWithText(paragraphXml, `Клиент ${customerName(contract)}`);
     }
@@ -227,12 +278,19 @@ function patchDocumentXml(xml: string, contract: Contract): string {
       return paragraphWithText(paragraphXml, buildAttorneyIntro(contract));
     }
     if (text === 'ООО _____________________________             /___________________/') {
-      return paragraphWithText(paragraphXml, `${customerName(contract)}             /${signatureName(contract.counterpartySignerName)}/`);
+      return paragraphWithLines(paragraphXml, [
+        signerPositionForSignature(contract),
+        `${customerName(contract)}             /${signatureName(contract.counterpartySignerName)}/`,
+        'м.п.',
+      ]);
     }
     if (text.includes('___________________ /_____________/') && text.includes('_____________________/_______________ /')) {
       appendixSignaturesPatched += 1;
-      return paragraphWithText(paragraphXml, `Экспедитор ООО «Симпл Вэй»                                       Заказчик ${customerName(contract)}
-___________________ /_____________/                           _____________________/${signatureName(contract.counterpartySignerName)}/`);
+      return paragraphWithText(paragraphXml, `___________________ /_____________/                           _____________________/${signatureName(contract.counterpartySignerName)}/`);
+    }
+    if (text.includes('___________________ /_____________/') && text.includes('___________________/_______________')) {
+      appendixSignaturesPatched += 1;
+      return paragraphWithText(paragraphXml, `___________________ /_____________/                           _____________________/${signatureName(contract.counterpartySignerName)}/`);
     }
 
     return paragraphXml;

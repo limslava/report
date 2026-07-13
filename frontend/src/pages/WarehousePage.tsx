@@ -1,9 +1,6 @@
 import {
   Add,
-  DirectionsCar,
-  Edit,
   EventRepeat,
-  LocalShipping,
   Logout,
   MiscellaneousServices,
   PhotoCamera,
@@ -40,9 +37,8 @@ import {
   TextField,
   Tabs,
   Tooltip,
-  Typography,
 } from '@mui/material';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   createWarehouseVehicle,
@@ -58,7 +54,7 @@ import {
   WarehouseVehicleType,
 } from '../services/warehouse.api';
 import WarehousePhotoDialog from '../components/warehouse/WarehousePhotoDialog';
-import WarehouseClientsPanel from '../components/warehouse/WarehouseClientsPanel';
+import WarehouseClientsPanel, { WarehouseClientsPanelHandle } from '../components/warehouse/WarehouseClientsPanel';
 import WarehouseServicesDialog from '../components/warehouse/WarehouseServicesDialog';
 import WarehouseTariffsPanel from '../components/warehouse/WarehouseTariffsPanel';
 import WarehouseBillingPanel from '../components/warehouse/WarehouseBillingPanel';
@@ -167,6 +163,7 @@ export default function WarehousePage() {
   const [form, setForm] = useState<WarehouseVehiclePayload>(emptyForm);
   const [photoVehicle, setPhotoVehicle] = useState<WarehouseVehicle | null>(null);
   const [servicesVehicle, setServicesVehicle] = useState<WarehouseVehicle | null>(null);
+  const clientsPanelRef = useRef<WarehouseClientsPanelHandle>(null);
   const [dateCorrectionVehicle, setDateCorrectionVehicle] = useState<WarehouseVehicle | null>(null);
   const [dateCorrection, setDateCorrection] = useState({
     receivedAt: '',
@@ -338,8 +335,8 @@ export default function WarehousePage() {
   };
 
   return (
-    <Box sx={{ p: { xs: 1.5, md: 3 } }}>
-      <Stack spacing={2.5}>
+    <Box sx={{ px: { xs: 0.125, sm: 0.25 }, py: { xs: 0.25, sm: 0.375 } }}>
+      <Stack spacing={0.5}>
         {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
         {success && <Alert severity="success" onClose={() => setSuccess(null)}>{success}</Alert>}
         {user?.role === 'counterparty_user'
@@ -358,12 +355,12 @@ export default function WarehousePage() {
         )}
 
         <Card variant="outlined">
-          <CardContent sx={{ py: 1.25, '&:last-child': { pb: 1.25 } }}>
+          <CardContent sx={{ px: 1, py: 0.75, '&:last-child': { pb: 0.75 } }}>
             <Stack
               direction={{ xs: 'column', md: 'row' }}
               justifyContent="space-between"
               alignItems={{ xs: 'stretch', md: 'center' }}
-              gap={2}
+              gap={1}
             >
               {showTabs ? (
                 <Tabs
@@ -372,12 +369,12 @@ export default function WarehousePage() {
                   variant="scrollable"
                   scrollButtons="auto"
                   allowScrollButtonsMobile
-                  sx={{ minHeight: 40 }}
+                  sx={{ minHeight: 34 }}
                 >
-                  <Tab value="registry" label="Реестр ТС" sx={{ minHeight: 40 }} />
-                  {canManageClients && <Tab value="clients" label="Клиенты склада" sx={{ minHeight: 40 }} />}
-                  {canManageTariffs && <Tab value="tariffs" label="Услуги и тарифы" sx={{ minHeight: 40 }} />}
-                  {canViewBilling && <Tab value="billing" label="Начисления и акты" sx={{ minHeight: 40 }} />}
+                  <Tab value="registry" label="Реестр ТС" sx={{ minHeight: 34, py: 0.5 }} />
+                  {canManageClients && <Tab value="clients" label="Клиенты склада" sx={{ minHeight: 34, py: 0.5 }} />}
+                  {canManageTariffs && <Tab value="tariffs" label="Услуги и тарифы" sx={{ minHeight: 34, py: 0.5 }} />}
+                  {canViewBilling && <Tab value="billing" label="Начисления и акты" sx={{ minHeight: 34, py: 0.5 }} />}
                 </Tabs>
               ) : (
                 <Box />
@@ -387,12 +384,21 @@ export default function WarehousePage() {
                   Принять ТС
                 </Button>
               )}
+              {canManageClients && tab === 'clients' && (
+                <Button
+                  variant="contained"
+                  startIcon={<Add />}
+                  onClick={() => clientsPanelRef.current?.openCreate()}
+                >
+                  Добавить клиента
+                </Button>
+              )}
             </Stack>
           </CardContent>
         </Card>
 
         {tab === 'clients' && canManageClients ? (
-          <WarehouseClientsPanel onClientsChanged={() => void loadCounterparties()} />
+          <WarehouseClientsPanel ref={clientsPanelRef} onClientsChanged={() => void loadCounterparties()} />
         ) : tab === 'tariffs' && canManageTariffs ? (
           <WarehouseTariffsPanel />
         ) : tab === 'billing' && canViewBilling ? (
@@ -402,8 +408,8 @@ export default function WarehousePage() {
           />
         ) : (
           <>
-        <Paper variant="outlined" sx={{ p: 2 }}>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+        <Paper variant="outlined" sx={{ px: 0.75, py: 0.75 }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
             <TextField
               fullWidth
               size="small"
@@ -449,84 +455,119 @@ export default function WarehousePage() {
         </Paper>
 
         <TableContainer component={Paper} variant="outlined">
-          <Table size="small">
+          <Table
+            size="small"
+            sx={{
+              minWidth: 1450,
+              tableLayout: 'fixed',
+              '& th, & td': {
+                borderColor: '#d0d7de',
+                borderRight: '1px solid #d0d7de',
+                fontSize: '10px',
+                lineHeight: 1.25,
+                py: '6px',
+                px: '8px',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              },
+              '& th:last-of-type, & td:last-of-type': {
+                borderRight: 0,
+              },
+              '& thead th': {
+                backgroundColor: '#f4f7fb',
+                color: '#27364b',
+                fontWeight: 700,
+              },
+              '& tbody tr:nth-of-type(odd) td': {
+                backgroundColor: '#f8fbff',
+              },
+              '& tbody tr:hover td': {
+                backgroundColor: '#eef5ff',
+              },
+            }}
+          >
             <TableHead>
               <TableRow>
-                <TableCell>Складской №</TableCell>
-                <TableCell>Контрагент</TableCell>
-                <TableCell>ТС</TableCell>
-                <TableCell>VIN / госномер</TableCell>
-                <TableCell>Принято</TableCell>
-                <TableCell>Выдано</TableCell>
-                <TableCell align="right">Суток</TableCell>
-                <TableCell>Статус</TableCell>
-                <TableCell align="right">Действия</TableCell>
+                <TableCell sx={{ width: 112 }}>Складской №</TableCell>
+                <TableCell sx={{ width: 220 }}>Контрагент</TableCell>
+                <TableCell>Тип ТС</TableCell>
+                <TableCell>Марка</TableCell>
+                <TableCell>Модель</TableCell>
+                <TableCell sx={{ width: 126 }}>VIN</TableCell>
+                <TableCell sx={{ width: 78 }}>Госномер</TableCell>
+                <TableCell sx={{ width: 104 }}>Принято</TableCell>
+                <TableCell sx={{ width: 104 }}>Выдано</TableCell>
+                <TableCell align="right" sx={{ width: 58 }}>Суток</TableCell>
+                <TableCell sx={{ width: 86 }}>Статус</TableCell>
+                <TableCell align="right" sx={{ width: 176 }}>Действия</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={9} align="center" sx={{ py: 6 }}>
+                  <TableCell colSpan={12} align="center" sx={{ py: 6 }}>
                     <CircularProgress size={28} />
                   </TableCell>
                 </TableRow>
               )}
               {!loading && vehicles.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                  <TableCell colSpan={12} align="center" sx={{ py: 6, color: 'text.secondary' }}>
                     В реестре пока нет транспортных средств
                   </TableCell>
                 </TableRow>
               )}
-              {!loading && vehicles.map((vehicle) => (
-                <TableRow key={vehicle.id} hover>
-                  <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+              {!loading && vehicles.map((vehicle) => {
+                const canOpenVehicleCard = canOperateWarehouse && vehicle.status !== 'issued';
+
+                return (
+                <TableRow
+                  key={vehicle.id}
+                  hover
+                  title={canOpenVehicleCard ? 'Двойной клик откроет карточку ТС' : undefined}
+                  onDoubleClick={() => {
+                    if (canOpenVehicleCard) {
+                      openEditDialog(vehicle);
+                    }
+                  }}
+                  sx={{ cursor: canOpenVehicleCard ? 'pointer' : 'default' }}
+                >
+                  <TableCell sx={{ width: 112, fontWeight: 600 }}>
                     {vehicle.warehouseNumber}
                   </TableCell>
-                  <TableCell>
-                    <Typography variant="body2">
-                      {vehicle.counterparty.nameShort || vehicle.counterparty.nameFull}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      ИНН {vehicle.counterparty.inn}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Stack spacing={0.5} alignItems="flex-start">
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        {['truck', 'trailer', 'special'].includes(vehicle.vehicleType)
-                          ? <LocalShipping fontSize="small" color="action" />
-                          : <DirectionsCar fontSize="small" color="action" />}
-                        <span>{vehicle.brand} {vehicle.model}</span>
-                      </Stack>
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        label={warehouseVehicleTypeLabel(vehicle.vehicleType)}
-                      />
-                    </Stack>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2">{vehicle.vin || '—'}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {vehicle.registrationNumber || 'Без госномера'}
-                    </Typography>
-                  </TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                  <TableCell sx={{ width: 220 }}>{vehicle.counterparty.nameShort || vehicle.counterparty.nameFull}</TableCell>
+                  <TableCell>{warehouseVehicleTypeLabel(vehicle.vehicleType)}</TableCell>
+                  <TableCell>{vehicle.brand}</TableCell>
+                  <TableCell>{vehicle.model}</TableCell>
+                  <TableCell sx={{ width: 126 }}>{vehicle.vin || '—'}</TableCell>
+                  <TableCell sx={{ width: 78 }}>{vehicle.registrationNumber || '—'}</TableCell>
+                  <TableCell sx={{ width: 104 }}>
                     {formatOperationDateTime(vehicle.receivedAt)}
                   </TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                  <TableCell sx={{ width: 104 }}>
                     {formatOperationDateTime(vehicle.issuedAt)}
                   </TableCell>
-                  <TableCell align="right">{vehicle.storageDays}</TableCell>
+                  <TableCell align="right" sx={{ width: 58 }}>{vehicle.storageDays}</TableCell>
                   <TableCell>
                     <Chip
                       size="small"
                       label={statusLabels[vehicle.status]}
                       color={vehicle.status === 'on_site' ? 'success' : vehicle.status === 'issued' ? 'default' : 'warning'}
+                      sx={{
+                        height: 18,
+                        fontSize: 10,
+                        '& .MuiChip-label': {
+                          px: 0.75,
+                        },
+                      }}
                     />
                   </TableCell>
-                  <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                  <TableCell
+                    align="right"
+                    onDoubleClick={(event) => event.stopPropagation()}
+                    sx={{ width: 176, whiteSpace: 'nowrap' }}
+                  >
                     <Tooltip title="Дополнительные услуги">
                       <IconButton
                         size="small"
@@ -545,11 +586,6 @@ export default function WarehousePage() {
                     </Tooltip>
                     {canOperateWarehouse && vehicle.status !== 'issued' && (
                       <>
-                        <Tooltip title="Редактировать карточку">
-                          <IconButton size="small" onClick={() => openEditDialog(vehicle)}>
-                            <Edit fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
                         <Tooltip title="Оформить выдачу">
                           <IconButton
                             size="small"
@@ -574,7 +610,8 @@ export default function WarehousePage() {
                     )}
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>

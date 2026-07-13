@@ -6,6 +6,7 @@ function readDocumentText(buffer: Buffer): string {
   const zip = new PizZip(buffer);
   const xml = zip.file('word/document.xml')?.asText() ?? '';
   return xml
+    .replace(/<w:br\s*\/>/g, ' ')
     .replace(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g, '$1')
     .replace(/<[^>]+>/g, '')
     .replace(/&quot;/g, '"')
@@ -31,6 +32,7 @@ describe('income contract document generation', () => {
       counterpartyEmail: 'test@example.com',
       counterpartySignerPosition: 'Генерального директора',
       counterpartySignerName: 'Иванов Иван Иванович',
+      counterpartySignerNameGenitive: 'Иванова Ивана Ивановича',
       counterpartySignerAuthority: 'Устава',
       counterpartyBankName: 'АО Тест Банк',
       counterpartyBankBik: '040507000',
@@ -51,5 +53,9 @@ describe('income contract document generation', () => {
     expect(text).toContain('р/с 40702810000000000001');
     expect(text).toContain('АО Тест Банк');
     expect(text).toContain('БИК 040507000');
+    expect(text).toContain('Заказчик: ООО "Тест"');
+    expect(text).toContain('Генеральный директор ООО "Тест" _______________ / Иванов И.И. м.п.');
+    expect(text).toContain('Экспедитор ООО «Симпл Вэй» Заказчик ООО "Тест"');
+    expect(text).toContain('___________________ /_____________/ _____________________/Иванов И.И./');
   });
 });

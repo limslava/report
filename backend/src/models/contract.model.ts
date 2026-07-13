@@ -104,6 +104,9 @@ export class Contract {
   @Column({ name: 'counterparty_signer_name', type: 'varchar', length: 255, nullable: true })
   counterpartySignerName!: string | null;
 
+  @Column({ name: 'counterparty_signer_name_genitive', type: 'varchar', length: 255, nullable: true })
+  counterpartySignerNameGenitive!: string | null;
+
   @Column({ name: 'counterparty_signer_authority', type: 'varchar', length: 255, nullable: true })
   counterpartySignerAuthority!: string | null;
 

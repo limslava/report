@@ -20,6 +20,7 @@ const requiredIncomeStandardPlaceholders = [
   'bankAccount',
   'correspondentAccount',
   'signerName',
+  'signerNameGenitive',
 ];
 
 describe('contract template service', () => {
