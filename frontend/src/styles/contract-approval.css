@@ -86,18 +86,19 @@
 
 .contract-secretary-task-body {
   display: grid;
-  grid-template-columns: minmax(260px, 1.4fr) minmax(190px, 1fr) auto;
+  grid-template-columns: minmax(240px, 1.1fr) minmax(180px, 0.8fr) minmax(260px, 1fr) auto;
   align-items: end;
   gap: 10px;
   padding-top: 10px;
 }
 
 .contract-secretary-task--compact .contract-secretary-task-body {
-  grid-template-columns: minmax(260px, 1fr) auto;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(260px, 1fr) auto;
 }
 
 .contract-secretary-task-instruction,
-.contract-secretary-task-files {
+.contract-secretary-task-files,
+.contract-secretary-task-decision {
   min-width: 0;
 }
 
@@ -133,6 +134,12 @@
 
 .contract-secretary-task-files .contract-process-files {
   margin-top: 0;
+}
+
+.contract-secretary-task-decision {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.8fr) minmax(150px, 1fr);
+  gap: 8px;
 }
 
 .contract-secretary-task-button {
@@ -216,6 +223,149 @@
 .contract-registry-table tbody tr.contract-registry-addendum-row td {
   background: #eef6ff;
   color: #1f2937;
+}
+
+.contract-discussion-panel {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #d0d7de;
+  background: #f8fbff;
+}
+
+.contract-discussion-title {
+  font-weight: 700 !important;
+  color: #25364d;
+}
+
+.contract-discussion-badge .MuiBadge-badge {
+  font-size: 10px;
+  height: 16px;
+  min-width: 16px;
+}
+
+.contract-discussion-messages {
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.contract-discussion-empty {
+  padding: 10px 0;
+  color: #64748b;
+}
+
+.contract-discussion-readonly {
+  margin-bottom: 8px !important;
+  padding: 7px 9px;
+  border: 1px solid #dbe4ef;
+  background: #f3f6fb;
+  color: #64748b;
+}
+
+.contract-discussion-message {
+  padding: 8px 10px;
+  border: 1px solid #dbe4ef;
+  background: #ffffff;
+}
+
+.contract-discussion-author {
+  font-weight: 700 !important;
+  color: #25364d;
+}
+
+.contract-discussion-time {
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.contract-discussion-body {
+  margin-top: 4px !important;
+  color: #1f2937;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.contract-discussion-inline-mention {
+  display: inline;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: #e8f1ff;
+  color: #1d4f91;
+  font-weight: 700;
+}
+
+.contract-discussion-input-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+}
+
+.contract-discussion-mention-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 4px);
+  z-index: 20;
+  max-height: 190px;
+  overflow: auto;
+  border: 1px solid #c8d3e1;
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
+}
+
+.contract-discussion-mention-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 0;
+  border-bottom: 1px solid #eef2f7;
+  background: #ffffff;
+  color: #1f2937;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.contract-discussion-mention-option:hover {
+  background: #eaf3ff;
+}
+
+.contract-discussion-mention-option small {
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.contract-discussion-file {
+  justify-content: flex-start !important;
+  min-width: 0 !important;
+  padding: 1px 0 !important;
+  text-transform: none !important;
+}
+
+.contract-discussion-selected-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 260px;
+  padding: 2px 4px 2px 8px;
+  border: 1px solid #d0d7de;
+  background: #ffffff;
+}
+
+.contract-discussion-selected-file .MuiTypography-root {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contract-discussion-attach-button,
+.contract-discussion-send-button {
+  height: 40px;
+  white-space: nowrap;
 }
 
 .contract-registry-table tbody tr.contract-registry-addendum-row td:first-child {

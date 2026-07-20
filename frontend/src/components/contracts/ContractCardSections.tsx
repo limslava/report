@@ -257,6 +257,8 @@ export function ContractApprovalActionSection({
   const hasSignedContractFile = Boolean(activeStep.attachments?.length);
   const isSecretaryOwner = currentUserRole === 'secretary' || activeStep.approverUserId === currentUserId;
   const isSigningFallback = !isSecretaryOwner && sheet?.contract.initiator?.id === currentUserId;
+  const secretaryRejectSelected = approvalDecision === 'rejected';
+  const secretaryApproveSelected = approvalDecision === 'approved';
 
   return (
     <Box className={`contract-card-section contract-secretary-task${isSigningFallback ? ' contract-secretary-task--compact' : ''}`}>
@@ -301,14 +303,50 @@ export function ContractApprovalActionSection({
           <Typography variant="caption">Подписанный экземпляр</Typography>
           {sheet && renderStepFiles(activeStep, sheet.contract.id)}
         </Box>
+        <Box className="contract-secretary-task-decision">
+          <FormControl fullWidth size="small">
+            <InputLabel shrink>Результат подписи</InputLabel>
+            <Select
+              label="Результат подписи"
+              value={approvalDecision}
+              displayEmpty
+              onChange={(event) => setApprovalDecision(event.target.value as ApprovalDecisionValue)}
+              renderValue={(value) => value
+                ? ({
+                  approved: 'Подписан',
+                  approved_with_remarks: 'Подписан',
+                  rejected: 'Не согласован',
+                }[value] ?? value)
+                : <Typography component="span" color="text.secondary">Выберите результат</Typography>}
+            >
+              <MenuItem value="" disabled>Выберите результат</MenuItem>
+              <MenuItem value="approved">Подписан</MenuItem>
+              <MenuItem value="rejected">Не согласован</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            size="small"
+            label={secretaryRejectSelected ? 'Комментарий *' : 'Комментарий'}
+            required={secretaryRejectSelected}
+            error={secretaryRejectSelected && !approvalComment.trim()}
+            value={approvalComment}
+            onChange={(event) => setApprovalComment(event.target.value)}
+            placeholder={secretaryRejectSelected ? 'Укажите причину, почему ГД не согласовал договор' : 'Комментарий при необходимости'}
+          />
+        </Box>
         <Button
           className="contract-secretary-task-button"
           variant="contained"
           size="small"
-          disabled={approvalDecisionBusy || !hasSignedContractFile}
+          disabled={
+            approvalDecisionBusy
+            || !approvalDecision
+            || (secretaryApproveSelected && !hasSignedContractFile)
+            || (secretaryRejectSelected && !approvalComment.trim())
+          }
           onClick={onSubmitDecision}
         >
-          {approvalDecisionBusy ? 'Сохранение...' : 'Завершить подписание'}
+          {approvalDecisionBusy ? 'Сохранение...' : secretaryRejectSelected ? 'Зафиксировать отказ' : 'Завершить подписание'}
         </Button>
       </Box>
     </Box>

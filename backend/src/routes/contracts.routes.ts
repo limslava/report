@@ -5,17 +5,21 @@ import { adminOnly, roleOrAdmin } from '../middleware/admin-only.middleware';
 import { handleValidationErrors } from '../middleware/express-validator.middleware';
 import {
   createContract,
+  createContractDiscussionMessage,
   importSignedContract,
   decideContractApprovalStep,
   deleteContractAttachment,
   deleteDraftContract,
   downloadContractAttachment,
+  downloadContractDiscussionAttachment,
   downloadContractPrintPackage,
   findContractDuplicates,
   getContractReferences,
   getContractDecisionHistory,
+  getContractDiscussionUnreadCount,
   getContractSlaRules,
   getContractApprovalSheet,
+  listContractDiscussion,
   listMyApprovalInbox,
   getMyApprovalDashboard,
   getWorkCalendar,
@@ -23,6 +27,7 @@ import {
   listContracts,
   listSecurityInbox,
   listMasterContracts,
+  markContractDiscussionRead,
   prepareContractRevision,
   previewContractAttachment,
   securityVisaDecision,
@@ -91,7 +96,32 @@ router.post(
 router.get('/attachments/:attachmentId/download', [param('attachmentId').isUUID()], handleValidationErrors, downloadContractAttachment);
 router.get('/attachments/:attachmentId/preview', [param('attachmentId').isUUID()], handleValidationErrors, previewContractAttachment);
 router.delete('/attachments/:attachmentId', [param('attachmentId').isUUID()], handleValidationErrors, deleteContractAttachment);
+router.get(
+  '/discussion-attachments/:attachmentId/download',
+  [param('attachmentId').isUUID()],
+  handleValidationErrors,
+  downloadContractDiscussionAttachment,
+);
 router.get('/:id/decision-history', [param('id').isUUID()], handleValidationErrors, getContractDecisionHistory);
+router.get('/:id/discussion', [param('id').isUUID()], handleValidationErrors, listContractDiscussion);
+router.get('/:id/discussion/unread-count', [param('id').isUUID()], handleValidationErrors, getContractDiscussionUnreadCount);
+router.post('/:id/discussion/read', [param('id').isUUID()], handleValidationErrors, markContractDiscussionRead);
+router.post(
+  '/:id/discussion',
+  [
+    param('id').isUUID(),
+    body('body').optional({ nullable: true }).isString().trim().isLength({ max: 4000 }),
+    body('mentionedUserIds').optional({ nullable: true }).isArray({ max: 20 }),
+    body('mentionedUserIds.*').isUUID(),
+    body('files').optional({ nullable: true }).isArray({ max: 5 }),
+    body('files.*.name').isString().trim().notEmpty().isLength({ max: 255 }),
+    body('files.*.mimeType').optional({ nullable: true }).isString().isLength({ max: 120 }),
+    body('files.*.contentBase64').isString().notEmpty(),
+    body('files.*.size').optional().isInt({ min: 1 }),
+  ],
+  handleValidationErrors,
+  createContractDiscussionMessage,
+);
 router.get('/:id/approval-sheet', [param('id').isUUID()], handleValidationErrors, getContractApprovalSheet);
 router.get('/:id/print-package', [param('id').isUUID()], handleValidationErrors, downloadContractPrintPackage);
 router.get('/:id/attachments', [param('id').isUUID()], handleValidationErrors, listContractAttachments);

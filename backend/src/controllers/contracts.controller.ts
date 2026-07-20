@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { EntityManager, In, IsNull } from 'typeorm';
+import { EntityManager, In, IsNull, MoreThan, Not } from 'typeorm';
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
@@ -21,6 +21,9 @@ import {
 import { ContractApprovalDecision, ContractApprovalStep } from '../models/contract-approval-step.model';
 import { ContractApprovalDecisionEvent } from '../models/contract-approval-decision-event.model';
 import { ContractAttachment } from '../models/contract-attachment.model';
+import { ContractDiscussionAttachment } from '../models/contract-discussion-attachment.model';
+import { ContractDiscussionMessage } from '../models/contract-discussion-message.model';
+import { ContractDiscussionRead } from '../models/contract-discussion-read.model';
 import { User } from '../models/user.model';
 import { COUNTERPARTY_FORMS, COUNTERPARTY_FORM_MAP } from '../constants/counterparty-forms';
 import {
@@ -68,6 +71,9 @@ const contractRepository = AppDataSource.getRepository(Contract);
 const stepRepository = AppDataSource.getRepository(ContractApprovalStep);
 const decisionEventRepository = AppDataSource.getRepository(ContractApprovalDecisionEvent);
 const attachmentRepository = AppDataSource.getRepository(ContractAttachment);
+const discussionMessageRepository = AppDataSource.getRepository(ContractDiscussionMessage);
+const discussionAttachmentRepository = AppDataSource.getRepository(ContractDiscussionAttachment);
+const discussionReadRepository = AppDataSource.getRepository(ContractDiscussionRead);
 const userRepository = AppDataSource.getRepository(User);
 const execFileAsync = promisify(execFile);
 
@@ -131,6 +137,64 @@ function serializeAttachment(item: ContractAttachment) {
     context: item.context,
     revisionNo: item.revisionNo || 1,
   };
+}
+
+function serializeDiscussionAttachment(item: ContractDiscussionAttachment) {
+  return {
+    id: item.id,
+    originalName: item.originalName,
+    sizeBytes: item.sizeBytes,
+    mimeType: item.mimeType,
+    createdAt: item.createdAt,
+    uploadedByUserId: item.uploadedByUserId,
+  };
+}
+
+function serializeDiscussionMessage(item: ContractDiscussionMessage) {
+  return {
+    id: item.id,
+    contractId: item.contractId,
+    body: item.body,
+    mentionedUserIds: item.mentionedUserIds ?? [],
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    author: {
+      id: item.authorUserId,
+      fullName: item.authorUser?.fullName || item.authorNameSnapshot,
+      role: item.authorUser?.role || null,
+    },
+    attachments: (item.attachments ?? []).map(serializeDiscussionAttachment),
+  };
+}
+
+async function assertDiscussionAccess(contractId: string, userId?: string, role?: string): Promise<Contract> {
+  const contract = await contractRepository.findOne({ where: { id: contractId } });
+  if (!contract) {
+    const error: any = new Error('Договор не найден');
+    error.statusCode = 404;
+    throw error;
+  }
+  const routeSteps = await stepRepository.find({ where: { contractId } });
+  assertContractDetailAccess(contract, routeSteps, userId, role);
+  return contract;
+}
+
+async function upsertContractDiscussionRead(
+  contractId: string,
+  userId: string,
+  readAt: Date,
+  manager?: EntityManager,
+): Promise<void> {
+  const executor = manager ?? AppDataSource;
+  await executor.query(
+    `
+      INSERT INTO contract_discussion_reads (contract_id, user_id, read_at)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (contract_id, user_id)
+      DO UPDATE SET read_at = EXCLUDED.read_at, updated_at = now()
+    `,
+    [contractId, userId, readAt],
+  );
 }
 
 function contractRevisionKey(contractId: string, revisionNo: number): string {
@@ -259,6 +323,54 @@ async function persistContractAttachments(params: {
       storagePath: fullPath,
     });
     await attachmentRepository.save(attachment);
+    uploaded += 1;
+  }
+
+  return uploaded;
+}
+
+async function persistContractDiscussionAttachments(params: {
+  contractId: string;
+  messageId: string;
+  files: any[];
+  uploadedByUserId?: string | null;
+  manager?: EntityManager;
+}): Promise<number> {
+  const {
+    contractId,
+    messageId,
+    files,
+    uploadedByUserId = null,
+    manager,
+  } = params;
+  const repository = manager?.getRepository(ContractDiscussionAttachment) ?? discussionAttachmentRepository;
+  const uploadsRoot = path.join(getContractsUploadRoot(contractId), 'discussion');
+  await fs.mkdir(uploadsRoot, { recursive: true });
+
+  let uploaded = 0;
+  for (const file of files) {
+    const originalName = normalizeFilename(String(file?.name || 'document'));
+    const contentBase64 = String(file?.contentBase64 || '');
+    if (!contentBase64) continue;
+
+    const buffer = Buffer.from(contentBase64, 'base64');
+    assertAllowedContractFile(file, originalName, buffer);
+
+    const ext = path.extname(originalName);
+    const storedName = `${Date.now()}-${crypto.randomUUID()}${ext}`;
+    const fullPath = path.join(uploadsRoot, storedName);
+    await fs.writeFile(fullPath, buffer);
+
+    const attachment = repository.create({
+      contractId,
+      messageId,
+      uploadedByUserId,
+      originalName,
+      mimeType: file?.mimeType ? String(file.mimeType) : null,
+      sizeBytes: buffer.length,
+      storagePath: fullPath,
+    });
+    await repository.save(attachment);
     uploaded += 1;
   }
 
@@ -406,6 +518,42 @@ async function resolveAttachmentForUser(attachmentId: string, userId?: string, r
   }
 
   return { item, readablePath };
+}
+
+async function resolveDiscussionAttachmentForUser(attachmentId: string, userId?: string, role?: string) {
+  const item = await discussionAttachmentRepository.findOne({ where: { id: attachmentId }, relations: ['contract'] as any });
+  if (!item) {
+    const error: any = new Error('Файл обсуждения не найден');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const contract = item.contract ?? await contractRepository.findOne({ where: { id: item.contractId } });
+  if (!contract) {
+    const error: any = new Error('Договор для файла обсуждения не найден');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const routeSteps = await stepRepository.find({ where: { contractId: contract.id } });
+  if (!hasContractDetailAccess(contract, routeSteps, userId, role)) {
+    const error: any = new Error('Нет доступа к обсуждению договора');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  try {
+    const stat = await fs.stat(item.storagePath);
+    if (!stat.isFile()) {
+      throw new Error('not a file');
+    }
+  } catch {
+    const error: any = new Error('Файл обсуждения не найден в хранилище');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return { item, readablePath: item.storagePath };
 }
 
 async function getDocxPdfPreviewPath(readablePath: string): Promise<string> {
@@ -2230,6 +2378,157 @@ export const deleteContractAttachment = async (req: Request, res: Response, next
     await attachmentRepository.remove(item);
     notifyContractApprovalUpdated(item.contractId, req.user?.id);
     res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const listContractDiscussion = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    await assertDiscussionAccess(id, req.user?.id, req.user?.role);
+
+    const messages = await discussionMessageRepository.find({
+      where: { contractId: id },
+      relations: ['authorUser', 'attachments'],
+      order: { createdAt: 'ASC' },
+    });
+
+    res.json(messages.map(serializeDiscussionMessage));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getContractDiscussionUnreadCount = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const currentUserId = req.user?.id;
+    if (!currentUserId) {
+      const error: any = new Error('Пользователь не авторизован');
+      error.statusCode = 401;
+      throw error;
+    }
+    await assertDiscussionAccess(id, currentUserId, req.user?.role);
+
+    const readState = await discussionReadRepository.findOne({
+      where: { contractId: id, userId: currentUserId },
+    });
+    const where: any = {
+      contractId: id,
+      authorUserId: Not(currentUserId),
+    };
+    if (readState?.readAt) {
+      where.createdAt = MoreThan(readState.readAt);
+    }
+    const count = await discussionMessageRepository.count({ where });
+    res.json({ count });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const markContractDiscussionRead = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const currentUserId = req.user?.id;
+    if (!currentUserId) {
+      const error: any = new Error('Пользователь не авторизован');
+      error.statusCode = 401;
+      throw error;
+    }
+    await assertDiscussionAccess(id, currentUserId, req.user?.role);
+
+    const readAt = new Date();
+    await upsertContractDiscussionRead(id, currentUserId, readAt);
+
+    res.json({ ok: true, readAt: readAt.toISOString() });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createContractDiscussionMessage = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const bodyText = String(req.body?.body ?? '').trim();
+    const files = Array.isArray(req.body?.files) ? req.body.files : [];
+    const requestedMentionIds = Array.isArray(req.body?.mentionedUserIds)
+      ? [...new Set(req.body.mentionedUserIds.map((value: unknown) => String(value)).filter(Boolean))]
+      : [];
+    if (!bodyText && !files.length) {
+      const error: any = new Error('Добавьте текст сообщения или файл');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const contract = await contractRepository.findOne({ where: { id } });
+    if (!contract) {
+      const error: any = new Error('Договор не найден');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (contract.status === ContractStatus.APPROVED || contract.status === ContractStatus.REJECTED) {
+      const error: any = new Error('Процесс по договору завершен. Обсуждение доступно только для чтения');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const routeSteps = await stepRepository.find({ where: { contractId: id } });
+    assertContractDetailAccess(contract, routeSteps, req.user?.id, req.user?.role);
+    const mentionedUsers = requestedMentionIds.length
+      ? await userRepository.find({
+        where: { id: In(requestedMentionIds), isActive: true },
+        select: ['id'],
+      })
+      : [];
+    const mentionedUserIds = mentionedUsers
+      .map((user) => user.id)
+      .filter((userId) => userId !== req.user?.id);
+
+    const saved = await AppDataSource.transaction(async (manager) => {
+      const messageRepository = manager.getRepository(ContractDiscussionMessage);
+      const message = messageRepository.create({
+        contractId: id,
+        authorUserId: req.user?.id ?? null,
+        authorNameSnapshot: req.user?.fullName || 'Пользователь',
+        body: bodyText || 'Файл без комментария',
+        mentionedUserIds,
+      });
+      const savedMessage = await messageRepository.save(message);
+      if (req.user?.id) {
+        await upsertContractDiscussionRead(id, req.user.id, new Date(), manager);
+      }
+      if (files.length) {
+        await persistContractDiscussionAttachments({
+          contractId: id,
+          messageId: savedMessage.id,
+          files,
+          uploadedByUserId: req.user?.id ?? null,
+          manager,
+        });
+      }
+      return savedMessage;
+    });
+
+    const messageWithRelations = await discussionMessageRepository.findOne({
+      where: { id: saved.id },
+      relations: ['authorUser', 'attachments'],
+    });
+    notifyContractApprovalUpdated(id, req.user?.id);
+    res.status(201).json(messageWithRelations ? serializeDiscussionMessage(messageWithRelations) : { id: saved.id });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const downloadContractDiscussionAttachment = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { attachmentId } = req.params;
+    const { item, readablePath } = await resolveDiscussionAttachmentForUser(attachmentId, req.user?.id, req.user?.role);
+    res.setHeader('Content-Type', item.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', buildAttachmentDisposition(item.originalName, 'attachment'));
+    res.sendFile(readablePath);
   } catch (error) {
     next(error);
   }

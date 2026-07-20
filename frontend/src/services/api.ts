@@ -191,6 +191,18 @@ export const previewContractAttachment = (attachmentId: string) =>
   api.get(`/contracts/attachments/${attachmentId}/preview`, { responseType: 'blob' });
 export const deleteContractAttachment = (attachmentId: string) =>
   api.delete(`/contracts/attachments/${attachmentId}`);
+export const getContractDiscussion = (contractId: string) =>
+  api.get(`/contracts/${contractId}/discussion`);
+export const getContractDiscussionUnreadCount = (contractId: string) =>
+  api.get<{ count: number }>(`/contracts/${contractId}/discussion/unread-count`);
+export const markContractDiscussionRead = (contractId: string) =>
+  api.post(`/contracts/${contractId}/discussion/read`);
+export const createContractDiscussionMessage = (
+  contractId: string,
+  data: { body?: string | null; files?: ContractFilePayload[]; mentionedUserIds?: string[] }
+) => api.post(`/contracts/${contractId}/discussion`, data);
+export const downloadContractDiscussionAttachment = (attachmentId: string) =>
+  api.get(`/contracts/discussion-attachments/${attachmentId}/download`, { responseType: 'blob' });
 export const getSecurityContractInbox = (view: 'active' | 'processed' | 'completed_month' | 'all' = 'active') =>
   api.get('/contracts/security/inbox', { params: { view } });
 export const decideSecurityContractVisa = (

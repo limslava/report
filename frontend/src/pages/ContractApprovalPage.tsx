@@ -26,16 +26,22 @@ import {
 import { useLocation } from 'react-router-dom';
 import {
   createContract,
+  createContractDiscussionMessage,
   decideContractApprovalStep,
   deleteContractAttachment,
   deleteDraftContract,
   decideSecurityContractVisa,
   downloadContractAttachment,
+  downloadContractDiscussionAttachment,
   downloadContractPrintPackage,
+  getContractDiscussion,
+  getContractDiscussionUnreadCount,
   getContractApprovalSheet,
   getContractDecisionHistory,
   getContractDuplicates,
+  getUsersDirectory,
   importSignedContract,
+  markContractDiscussionRead,
   prepareContractRevision,
   previewContractAttachment,
   resolveCounterpartyByInn,
@@ -52,6 +58,7 @@ import { useSecurityInbox } from '../hooks/useSecurityInbox';
 import { useAuthStore } from '../store/auth-store';
 import { downloadBlob } from '../utils/download';
 import { ContractApprovalSheet } from '../components/contracts/ContractApprovalSheet';
+import { ContractDiscussionPanel } from '../components/contracts/ContractDiscussionPanel';
 import {
   ContractApprovalActionSection,
   ContractCardDetails,
@@ -82,6 +89,8 @@ import {
 import type {
   ApprovalDecisionValue,
   ContractAttachmentRef,
+  ContractDiscussionAttachmentRef,
+  ContractDiscussionMessage,
   ContractRecord,
   ContractSection,
   ContractWizardForm,
@@ -92,6 +101,7 @@ import type {
   SecurityInboxItem,
   SecurityVisaValue,
   SheetStep,
+  UserDirectoryItem,
 } from '../types/contracts';
 import '../styles/contract-approval.css';
 
@@ -279,6 +289,15 @@ export default function ContractApprovalPage() {
   const [previewAttachmentId, setPreviewAttachmentId] = useState<string | null>(null);
   const [sheetModalOpen, setSheetModalOpen] = useState(false);
   const [sheetModalLoading, setSheetModalLoading] = useState(false);
+  const [discussionMessages, setDiscussionMessages] = useState<ContractDiscussionMessage[]>([]);
+  const [discussionLoading, setDiscussionLoading] = useState(false);
+  const [discussionSending, setDiscussionSending] = useState(false);
+  const [discussionText, setDiscussionText] = useState('');
+  const [discussionFiles, setDiscussionFiles] = useState<File[]>([]);
+  const [discussionMentionedUserIds, setDiscussionMentionedUserIds] = useState<string[]>([]);
+  const [discussionUnreadCount, setDiscussionUnreadCount] = useState(0);
+  const [mentionableUsers, setMentionableUsers] = useState<UserDirectoryItem[]>([]);
+  const mentionableUsersLoadedRef = useRef(false);
   const [resumeWizardAfterSheet, setResumeWizardAfterSheet] = useState(false);
   const [securityCardOpen, setSecurityCardOpen] = useState(false);
   const [securityCardLoading, setSecurityCardLoading] = useState(false);
@@ -312,6 +331,100 @@ export default function ContractApprovalPage() {
       setHistoryLoading(false);
     }
   };
+
+  const loadMentionableUsers = async () => {
+    if (mentionableUsersLoadedRef.current) return;
+    try {
+      const response = await getUsersDirectory();
+      setMentionableUsers(Array.isArray(response.data) ? response.data : []);
+      mentionableUsersLoadedRef.current = true;
+    } catch {
+      setMentionableUsers([]);
+      mentionableUsersLoadedRef.current = true;
+    }
+  };
+
+  const loadDiscussion = async (contractId: string) => {
+    if (!contractId) return;
+    setDiscussionLoading(true);
+    try {
+      await loadMentionableUsers();
+      const unreadResponse = await getContractDiscussionUnreadCount(contractId);
+      setDiscussionUnreadCount(Number(unreadResponse.data?.count || 0));
+      const response = await getContractDiscussion(contractId);
+      setDiscussionMessages(Array.isArray(response.data) ? response.data : []);
+      await markContractDiscussionRead(contractId);
+      setDiscussionUnreadCount(0);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || 'Не удалось загрузить обсуждение');
+    } finally {
+      setDiscussionLoading(false);
+    }
+  };
+
+  const sendDiscussionMessage = async () => {
+    if (!sheet?.contract.id || discussionSending) return;
+    if (sheet.contract.status === 'approved' || sheet.contract.status === 'rejected') {
+      return;
+    }
+    const body = discussionText.trim();
+    if (!body && !discussionFiles.length) return;
+    setError(null);
+    setSuccess(null);
+    try {
+      setDiscussionSending(true);
+      const filesPayload = await Promise.all(discussionFiles.map(fileToUploadPayload));
+      const response = await createContractDiscussionMessage(sheet.contract.id, {
+        body,
+        files: filesPayload,
+        mentionedUserIds: discussionMentionedUserIds,
+      });
+      setDiscussionMessages((prev) => [...prev, response.data]);
+      setDiscussionText('');
+      setDiscussionFiles([]);
+      setDiscussionMentionedUserIds([]);
+      setDiscussionUnreadCount(0);
+      setSuccess('Сообщение добавлено в обсуждение');
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || 'Не удалось отправить сообщение');
+    } finally {
+      setDiscussionSending(false);
+    }
+  };
+
+  const downloadDiscussionFile = async (file: ContractDiscussionAttachmentRef) => {
+    setError(null);
+    try {
+      const response = await downloadContractDiscussionAttachment(file.id);
+      downloadBlob(response.data, file.originalName || 'discussion-file');
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || 'Не удалось скачать файл обсуждения');
+    }
+  };
+
+  const renderDiscussionPanel = () => (
+    <ContractDiscussionPanel
+      messages={discussionMessages}
+      loading={discussionLoading}
+      sending={discussionSending}
+      unreadCount={discussionUnreadCount}
+      mentionableUsers={mentionableUsers}
+      mentionedUserIds={discussionMentionedUserIds}
+      readOnly={sheet?.contract.status === 'approved' || sheet?.contract.status === 'rejected'}
+      readOnlyReason={sheet?.contract.status === 'approved'
+        ? 'Договор подписан. Обсуждение доступно только для чтения.'
+        : sheet?.contract.status === 'rejected'
+          ? 'Договор не согласован. Обсуждение доступно только для чтения.'
+          : undefined}
+      text={discussionText}
+      files={discussionFiles}
+      onMentionedUserIdsChange={setDiscussionMentionedUserIds}
+      onTextChange={setDiscussionText}
+      onFilesChange={setDiscussionFiles}
+      onSend={() => { void sendDiscussionMessage(); }}
+      onDownloadAttachment={(file) => { void downloadDiscussionFile(file); }}
+    />
+  );
 
   const resetWizard = () => {
     setWizardStep(0);
@@ -827,9 +940,11 @@ export default function ContractApprovalPage() {
       refreshVisibleData();
       if (event.contractId && sheetModalOpen && selectedContractId === event.contractId) {
         void loadSheet(event.contractId);
+        void loadDiscussion(event.contractId);
       }
       if (event.contractId && securityCardOpen && securityCardContractId === event.contractId) {
         void loadSheet(event.contractId);
+        void loadDiscussion(event.contractId);
       }
     });
     window.addEventListener('focus', refreshVisibleData);
@@ -851,6 +966,7 @@ export default function ContractApprovalPage() {
   useEffect(() => {
     if (tab === 1 && selectedContractId) {
       void loadSheet(selectedContractId);
+      void loadDiscussion(selectedContractId);
     }
   }, [loadSheet, selectedContractId, tab]);
 
@@ -982,7 +1098,7 @@ export default function ContractApprovalPage() {
     ?? null;
 
   useEffect(() => {
-    if (!activeMyApprovalStep || activeMyApprovalStep.roleCode === 'secretary') {
+    if (!activeMyApprovalStep) {
       setApprovalDecision('');
       setApprovalComment('');
       return;
@@ -1002,8 +1118,12 @@ export default function ContractApprovalPage() {
   const submitMyApprovalDecision = async () => {
     if (!sheet || !activeMyApprovalStep || approvalDecisionBusy) return;
     const isSecretaryTask = activeMyApprovalStep.roleCode === 'secretary';
-    if (!isSecretaryTask && !approvalDecision) {
+    if (!approvalDecision) {
       setError('Выберите решение');
+      return;
+    }
+    if (isSecretaryTask && approvalDecision === 'rejected' && !approvalComment.trim()) {
+      setError('Для отказа в подписании укажите комментарий');
       return;
     }
     if (approvalDecision === 'approved_with_remarks' && !approvalComment.trim()) {
@@ -1011,7 +1131,7 @@ export default function ContractApprovalPage() {
       return;
     }
     const decision = isSecretaryTask
-      ? 'approve'
+      ? approvalDecision === 'rejected' ? 'reject' : 'approve'
       : approvalDecision === 'rejected' ? 'reject' : 'approve';
     setError(null);
     setSuccess(null);
@@ -1101,6 +1221,11 @@ export default function ContractApprovalPage() {
   const closeSheetModal = () => {
     setSheetModalOpen(false);
     setSheetModalLoading(false);
+    setDiscussionMessages([]);
+    setDiscussionText('');
+    setDiscussionFiles([]);
+    setDiscussionMentionedUserIds([]);
+    setDiscussionUnreadCount(0);
     if (resumeWizardAfterSheet) {
       setResumeWizardAfterSheet(false);
       setWizardOpen(true);
@@ -1111,6 +1236,11 @@ export default function ContractApprovalPage() {
     setSecurityCardOpen(false);
     setSecurityCardLoading(false);
     setSecurityCardContractId(null);
+    setDiscussionMessages([]);
+    setDiscussionText('');
+    setDiscussionFiles([]);
+    setDiscussionMentionedUserIds([]);
+    setDiscussionUnreadCount(0);
   };
 
   const openSheetModal = async (contractId: string) => {
@@ -1119,7 +1249,7 @@ export default function ContractApprovalPage() {
     setSheetModalLoading(true);
     setError(null);
     try {
-      await loadSheet(contractId);
+      await Promise.all([loadSheet(contractId), loadDiscussion(contractId)]);
       setSelectedContractId(contractId);
     } finally {
       setSheetModalLoading(false);
@@ -1139,7 +1269,7 @@ export default function ContractApprovalPage() {
       },
     }));
     try {
-      await loadSheet(item.contractId);
+      await Promise.all([loadSheet(item.contractId), loadDiscussion(item.contractId)]);
       setSelectedContractId(item.contractId);
     } finally {
       setSecurityCardLoading(false);
@@ -1616,28 +1746,31 @@ export default function ContractApprovalPage() {
           </Stack>
 
           {sheet && (
-            <ContractApprovalSheet
-              sheet={sheet}
-              actionSlot={(
-                <ContractApprovalActionSection
-                  activeStep={activeMyApprovalStep}
-                  approvalDecision={approvalDecision}
-                  setApprovalDecision={setApprovalDecision}
-                  approvalComment={approvalComment}
-                  setApprovalComment={setApprovalComment}
-                  approvalDecisionBusy={approvalDecisionBusy}
-                  currentUserId={currentUser?.id}
-                  currentUserRole={currentUser?.role}
-                  sheet={sheet}
-                  printPackageBusy={printPackageBusy}
-                  onPrintDocumentPackage={() => { void printDocumentPackage(); }}
-                  onSubmitDecision={() => { void submitMyApprovalDecision(); }}
-                  renderStepFiles={renderStepFiles}
-                />
-              )}
-              renderStepFiles={renderStepFiles}
-              onOpenAttachmentPreview={onOpenAttachmentPreview}
-            />
+            <>
+              <ContractApprovalSheet
+                sheet={sheet}
+                actionSlot={(
+                  <ContractApprovalActionSection
+                    activeStep={activeMyApprovalStep}
+                    approvalDecision={approvalDecision}
+                    setApprovalDecision={setApprovalDecision}
+                    approvalComment={approvalComment}
+                    setApprovalComment={setApprovalComment}
+                    approvalDecisionBusy={approvalDecisionBusy}
+                    currentUserId={currentUser?.id}
+                    currentUserRole={currentUser?.role}
+                    sheet={sheet}
+                    printPackageBusy={printPackageBusy}
+                    onPrintDocumentPackage={() => { void printDocumentPackage(); }}
+                    onSubmitDecision={() => { void submitMyApprovalDecision(); }}
+                    renderStepFiles={renderStepFiles}
+                  />
+                )}
+                renderStepFiles={renderStepFiles}
+                onOpenAttachmentPreview={onOpenAttachmentPreview}
+              />
+              {renderDiscussionPanel()}
+            </>
           )}
 
         </Paper>
@@ -1762,6 +1895,7 @@ export default function ContractApprovalPage() {
                   renderProcessStep={renderProcessStep}
                 />
               )}
+              {renderDiscussionPanel()}
             </Stack>
           )}
         </DialogContent>
@@ -1868,38 +2002,42 @@ export default function ContractApprovalPage() {
                 onOpenFile={onOpenAttachmentPreview}
                 renderProcessStep={renderProcessStep}
               />
+              {renderDiscussionPanel()}
             </Stack>
           )}
           {!sheetModalLoading && sheet && !isApprovalWorkRole && (
-            <ContractApprovalSheet
-              sheet={sheet}
-              actionSlot={(
-                <ContractApprovalActionSection
-                  activeStep={activeMyApprovalStep}
-                  approvalDecision={approvalDecision}
-                  setApprovalDecision={setApprovalDecision}
-                  approvalComment={approvalComment}
-                  setApprovalComment={setApprovalComment}
-                  approvalDecisionBusy={approvalDecisionBusy}
-                  currentUserId={currentUser?.id}
-                  currentUserRole={currentUser?.role}
-                  sheet={sheet}
-                  printPackageBusy={printPackageBusy}
-                  onPrintDocumentPackage={() => { void printDocumentPackage(); }}
-                  onSubmitDecision={() => { void submitMyApprovalDecision(); }}
-                  renderStepFiles={renderStepFiles}
-                />
-              )}
-              footerSlot={(
-                <ContractPreviousRevisions
-                  sheet={sheet}
-                  onOpenFile={onOpenAttachmentPreview}
-                  renderProcessStep={renderProcessStep}
-                />
-              )}
-              renderStepFiles={renderStepFiles}
-              onOpenAttachmentPreview={onOpenAttachmentPreview}
-            />
+            <>
+              <ContractApprovalSheet
+                sheet={sheet}
+                actionSlot={(
+                  <ContractApprovalActionSection
+                    activeStep={activeMyApprovalStep}
+                    approvalDecision={approvalDecision}
+                    setApprovalDecision={setApprovalDecision}
+                    approvalComment={approvalComment}
+                    setApprovalComment={setApprovalComment}
+                    approvalDecisionBusy={approvalDecisionBusy}
+                    currentUserId={currentUser?.id}
+                    currentUserRole={currentUser?.role}
+                    sheet={sheet}
+                    printPackageBusy={printPackageBusy}
+                    onPrintDocumentPackage={() => { void printDocumentPackage(); }}
+                    onSubmitDecision={() => { void submitMyApprovalDecision(); }}
+                    renderStepFiles={renderStepFiles}
+                  />
+                )}
+                footerSlot={(
+                  <ContractPreviousRevisions
+                    sheet={sheet}
+                    onOpenFile={onOpenAttachmentPreview}
+                    renderProcessStep={renderProcessStep}
+                  />
+                )}
+                renderStepFiles={renderStepFiles}
+                onOpenAttachmentPreview={onOpenAttachmentPreview}
+              />
+              {renderDiscussionPanel()}
+            </>
           )}
         </DialogContent>
         <DialogActions className={isApprovalWorkRole ? 'contract-card-actions' : undefined}>

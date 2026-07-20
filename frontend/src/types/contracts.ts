@@ -108,6 +108,36 @@ export type ContractAttachmentRef = {
   revisionNo?: number;
 };
 
+export type ContractDiscussionAttachmentRef = {
+  id: string;
+  originalName: string;
+  sizeBytes: number;
+  mimeType: string | null;
+  createdAt?: string;
+  uploadedByUserId?: string | null;
+};
+
+export type ContractDiscussionMessage = {
+  id: string;
+  contractId: string;
+  body: string;
+  mentionedUserIds: string[];
+  createdAt: string;
+  updatedAt: string;
+  author: {
+    id: string | null;
+    fullName: string;
+    role: string | null;
+  };
+  attachments: ContractDiscussionAttachmentRef[];
+};
+
+export type UserDirectoryItem = {
+  id: string;
+  fullName: string;
+  role: string;
+};
+
 export type SheetStep = {
   id: string;
   roleCode: string;
