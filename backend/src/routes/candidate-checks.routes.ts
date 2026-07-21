@@ -17,7 +17,7 @@ router.get(
   '/',
   [
     query('q').optional({ nullable: true }).isString().isLength({ max: 255 }),
-    query('status').optional({ nullable: true }).isIn(['pending_security', 'approved', 'approved_with_remarks', 'rejected']),
+    query('status').optional({ nullable: true, checkFalsy: true }).isIn(['pending_security', 'approved', 'approved_with_remarks', 'rejected']),
   ],
   handleValidationErrors,
   listCandidateChecks,

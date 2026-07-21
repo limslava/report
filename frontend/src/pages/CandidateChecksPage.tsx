@@ -132,7 +132,10 @@ export default function CandidateChecksPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await getCandidateChecks({ q: q.trim() || undefined, status });
+      const response = await getCandidateChecks({
+        q: q.trim() || undefined,
+        status: status || undefined,
+      });
       setItems(response.data);
       const candidateCheckId = searchParams.get('candidateCheckId');
       if (candidateCheckId) {

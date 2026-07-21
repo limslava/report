@@ -136,7 +136,7 @@ export type CandidateCheck = {
   attachments: CandidateCheckAttachment[];
 };
 
-export const getCandidateChecks = (params?: { q?: string; status?: CandidateCheckStatus | '' }) =>
+export const getCandidateChecks = (params?: { q?: string; status?: CandidateCheckStatus }) =>
   api.get<CandidateCheck[]>('/candidate-checks', { params });
 
 export const createCandidateCheck = (data: {
