@@ -91,6 +91,10 @@ export function canAccessContractApproval(role?: string | null): boolean {
   return Boolean(role && CONTRACT_APPROVAL_ACCESS_ROLES.has(role));
 }
 
+export function canAccessCandidateChecks(role?: string | null): boolean {
+  return role === 'admin' || role === 'security' || role === 'head_hr' || role === 'hr_specialist';
+}
+
 export function canViewBPDashboard(role?: string | null): boolean {
   return role === 'security' || role === 'lawyer' || role === 'chief_accountant' || role === 'financer' || role === 'secretary';
 }

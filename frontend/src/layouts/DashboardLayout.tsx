@@ -44,12 +44,14 @@ import {
   ExpandMore,
   AccountTree,
   Warehouse,
+  PersonSearch,
 } from '@mui/icons-material';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/auth-store';
 import {
   canAccessBillOfLading,
+  canAccessCandidateChecks,
   canAccessContractApproval,
   canAccessAdmin,
   canAccessOperationsPreview,
@@ -175,8 +177,17 @@ const DashboardLayout = () => {
       ? '/operations-preview?location=ktk_mow&section=containers'
       : '/operations-preview?location=ktk_vvo&section=containers';
   const canOpenContractApproval = canAccessContractApproval(user?.role);
+  const canOpenCandidateChecks = canAccessCandidateChecks(user?.role);
   const canOpenBillOfLading = canAccessBillOfLading(user?.role);
   const showBPDashboardMenu = canShowBPDashboardMenu(user?.role);
+  const canOpenBusinessProcesses = canOpenContractApproval || canOpenCandidateChecks || canOpenBillOfLading || showBPDashboardMenu;
+  const defaultBusinessProcessRoute = canOpenContractApproval
+    ? '/business-processes/contract-approval'
+    : canOpenCandidateChecks
+      ? '/business-processes/candidate-checks'
+      : canOpenBillOfLading
+        ? '/business-processes/bill-of-lading'
+        : '/business-processes/dashboard';
   const homeRoute = user?.role === 'warehouse_manager'
     || user?.role === 'counterparty_user'
     ? '/warehouse'
@@ -186,10 +197,10 @@ const DashboardLayout = () => {
     ? '/sw-tech-dashboard'
     : (canViewPlansMenu && canViewPlans(user?.role))
       ? '/plans'
-      : canViewBPDashboard(user?.role)
+    : canViewBPDashboard(user?.role)
         ? '/business-processes/dashboard'
-        : canOpenContractApproval
-          ? '/business-processes/contract-approval'
+        : canOpenBusinessProcesses
+          ? defaultBusinessProcessRoute
           : defaultScheduleRoute;
   const serviceHealth = useServiceHealth();
   const idleTimeoutRef = useRef<number | null>(null);
@@ -980,7 +991,7 @@ const DashboardLayout = () => {
             )}
           </>
         )}
-        {canOpenContractApproval && (
+        {canOpenBusinessProcesses && (
           <>
             <ListItem disablePadding>
               <Tooltip title={!isPinnedOpen ? 'Бизнес процесс' : ''} placement="right">
@@ -990,7 +1001,7 @@ const DashboardLayout = () => {
                     const nextOpen = !isBusinessProcessSubmenuOpen;
                     setIsBusinessProcessSubmenuOpen(nextOpen);
                     if (nextOpen && !location.pathname.startsWith('/business-processes')) {
-                      handleNavigate('/business-processes/contract-approval');
+                      handleNavigate(defaultBusinessProcessRoute);
                     }
                   }}
                 >
@@ -1015,15 +1026,31 @@ const DashboardLayout = () => {
                     </ListItemButton>
                   </ListItem>
                 )}
-                <ListItem disablePadding sx={{ pl: 4 }}>
-                  <ListItemButton
-                    selected={location.pathname === '/business-processes/contract-approval'}
-                    onClick={() => handleNavigate('/business-processes/contract-approval')}
-                    sx={{ py: 0.5, minHeight: 34 }}
-                  >
-                    <ListItemText primary="Согласование договоров" primaryTypographyProps={{ fontSize: 14 }} />
-                  </ListItemButton>
-                </ListItem>
+                {canOpenContractApproval && (
+                  <ListItem disablePadding sx={{ pl: 4 }}>
+                    <ListItemButton
+                      selected={location.pathname === '/business-processes/contract-approval'}
+                      onClick={() => handleNavigate('/business-processes/contract-approval')}
+                      sx={{ py: 0.5, minHeight: 34 }}
+                    >
+                      <ListItemText primary="Согласование договоров" primaryTypographyProps={{ fontSize: 14 }} />
+                    </ListItemButton>
+                  </ListItem>
+                )}
+                {canOpenCandidateChecks && (
+                  <ListItem disablePadding sx={{ pl: 4 }}>
+                    <ListItemButton
+                      selected={location.pathname === '/business-processes/candidate-checks'}
+                      onClick={() => handleNavigate('/business-processes/candidate-checks')}
+                      sx={{ py: 0.5, minHeight: 34 }}
+                    >
+                      <ListItemIcon sx={{ minWidth: 30 }}>
+                        <PersonSearch fontSize="small" />
+                      </ListItemIcon>
+                      <ListItemText primary="Проверка кандидатов" primaryTypographyProps={{ fontSize: 14 }} />
+                    </ListItemButton>
+                  </ListItem>
+                )}
                 {canOpenBillOfLading && (
                   <ListItem disablePadding sx={{ pl: 4 }}>
                     <ListItemButton
@@ -1108,6 +1135,7 @@ const DashboardLayout = () => {
               {location.pathname.includes('/summary-report') && 'Сводный отчет'}
               {location.pathname.includes('/admin') && 'Администрирование'}
               {location.pathname.includes('/business-processes/contract-approval') && 'Согласование договоров'}
+              {location.pathname.includes('/business-processes/candidate-checks') && 'Проверка кандидатов'}
               {location.pathname.includes('/business-processes/bill-of-lading') && 'Коносамент'}
               {location.pathname.includes('/business-processes/dashboard') && 'Согласование договоров'}
               {location.pathname.startsWith('/warehouse') && 'Склад ТС'}

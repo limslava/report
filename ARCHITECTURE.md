@@ -41,6 +41,7 @@
 - **email.routes** – расписания email‑рассылки
 - **smtp-config.routes** – настройки SMTP
 - **contracts.routes** – договоры, реестр, задачи согласования, вложения и печатный пакет
+- **candidate-checks.routes** – бизнес-процесс проверки кандидатов, анкеты и решение СБ
 - **health endpoints** – `/health/*` (db/redis/scheduler)
 
 ### 2. Контроллеры
@@ -53,6 +54,7 @@
 - **SmtpConfigController** – настройки SMTP и тест подключения
 - **AdminController** – `getUsers`, `inviteUser`, `updateUser`, `getAuditLog`, `getSystemStats`
 - **ContractsController** – черновики договоров, запуск маршрута, визы, вложения, лист согласования, PDF-пакет для подписи
+- **CandidateChecksController** – заявки HR на проверку кандидатов, анкеты, решение руководителя СБ и уведомления
 
 ### 3. Сервисы (бизнес-логика)
 - **PlanningV2Service** – доступ и права по сегментам, работа с данными
@@ -75,6 +77,7 @@
 - **AppSetting / PlanHistory** – настройки приложения и история сохранений
 - **AuditLog** – журнал действий
 - **Contract / ContractApprovalStep / ContractAttachment** – договор, этапы визирования и документы процесса
+- **CandidateCheck / CandidateCheckAttachment** – проверка кандидата и анкеты, отделённые от договорных файлов
 
 ### 5. Middleware
 - **authenticate** – проверка JWT-токена
@@ -207,6 +210,19 @@
 - Ранее подписанный договор можно импортировать в реестр без запуска маршрута.
 - Дополнительные соглашения хранятся как отдельные документы с `parentContractId` и отображаются деревом под основным договором.
 - Email-уведомления содержат deep link на конкретную задачу; frontend сохраняет `returnTo` при логине и открывает нужную карточку после авторизации.
+
+## Проверка кандидатов
+
+Подробная функциональная документация: `docs/CANDIDATE_CHECKS_MODULE.md`.
+
+- API: `/api/candidate-checks/*`.
+- UI: `/business-processes/candidate-checks`.
+- Таблицы: `candidate_checks`, `candidate_check_attachments`.
+- Файлы анкет хранятся отдельно от договоров в `uploads/candidate-checks/{candidateCheckId}`.
+- HR-роли `head_hr` и `hr_specialist` создают проверки и прикрепляют анкеты.
+- Роль `security` принимает решение: `Согласован`, `Согласован с замечаниями`, `Не согласован`.
+- `admin` имеет режим просмотра без операций создания и решения.
+- Email-уведомления используют общий SMTP-сервис: письмо СБ при создании проверки и письмо HR после решения. Анкеты не вкладываются в email; письмо содержит deep link на карточку.
 
 ## Склад ТС
 

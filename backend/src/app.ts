@@ -14,6 +14,7 @@ import { planningV2Router } from './routes/planning-v2.routes';
 import { financialPlanRouter } from './routes/financial-plan.routes';
 import { operationsPreviewRouter } from './routes/operations-preview.routes';
 import { contractsRouter } from './routes/contracts.routes';
+import { candidateChecksRouter } from './routes/candidate-checks.routes';
 import { counterpartiesRouter } from './routes/counterparties.routes';
 import { carriersRouter } from './routes/carriers.routes';
 import { warehouseRouter } from './routes/warehouse.routes';
@@ -121,6 +122,7 @@ export function createApp() {
   app.use('/api/notes', notesRouter);
   app.use('/api/operations-preview', operationsPreviewRouter);
   app.use('/api/contracts', contractsRouter);
+  app.use('/api/candidate-checks', candidateChecksRouter);
   app.use('/api/counterparties', counterpartiesRouter);
   app.use('/api/carriers', carriersRouter);
   app.use('/api/warehouse', warehouseRouter);

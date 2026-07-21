@@ -105,6 +105,56 @@ export const uploadContractTemplateVersion = (data: {
 export const activateContractTemplateVersion = (id: string) =>
   api.post<ContractTemplateVersion>(`/admin/contract-templates/${id}/activate`);
 export const getUsersDirectory = () => api.get('/users/directory');
+
+export type CandidateCheckStatus = 'pending_security' | 'approved' | 'approved_with_remarks' | 'rejected';
+
+export type CandidateCheckAttachment = {
+  id: string;
+  originalName: string;
+  sizeBytes: number;
+  mimeType: string | null;
+  createdAt: string;
+  uploadedByUserId: string | null;
+};
+
+export type CandidateCheck = {
+  id: string;
+  candidateFullName: string;
+  position: string | null;
+  phone: string | null;
+  email: string | null;
+  hrComment: string | null;
+  status: CandidateCheckStatus;
+  securityComment: string | null;
+  createdByUserId: string | null;
+  createdByName: string | null;
+  decidedByUserId: string | null;
+  decidedByName: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  attachments: CandidateCheckAttachment[];
+};
+
+export const getCandidateChecks = (params?: { q?: string; status?: CandidateCheckStatus | '' }) =>
+  api.get<CandidateCheck[]>('/candidate-checks', { params });
+
+export const createCandidateCheck = (data: {
+  candidateFullName: string;
+  position?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  hrComment?: string | null;
+  files: ContractFilePayload[];
+}) => api.post<CandidateCheck>('/candidate-checks', data);
+
+export const decideCandidateCheck = (
+  id: string,
+  data: { decision: Exclude<CandidateCheckStatus, 'pending_security'>; securityComment?: string | null },
+) => api.post<CandidateCheck>(`/candidate-checks/${id}/decision`, data);
+export const downloadCandidateCheckAttachment = (attachmentId: string) =>
+  api.get(`/candidate-checks/attachments/${attachmentId}/download`, { responseType: 'blob' });
+
 export const getContracts = () => api.get('/contracts');
 export const getMasterContracts = () => api.get('/contracts/masters');
 export const getContractReferences = () => api.get('/contracts/reference');

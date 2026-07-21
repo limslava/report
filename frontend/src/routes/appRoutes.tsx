@@ -4,6 +4,7 @@ import RouteAccessGuard from '../components/auth/RouteAccessGuard';
 import {
   canAccessAdmin,
   canAccessBillOfLading,
+  canAccessCandidateChecks,
   canAccessContractApproval,
   canAccessOperationsPreview,
   canAccessWarehouse,
@@ -20,6 +21,7 @@ import { getDefaultAuthenticatedRoute } from './defaultAuthenticatedRoute';
 const AdminPage = lazy(() => import('../pages/AdminPage'));
 const BPApprovalDashboardPage = lazy(() => import('../pages/BPApprovalDashboardPage'));
 const CalendarPage = lazy(() => import('../pages/CalendarPage'));
+const CandidateChecksPage = lazy(() => import('../pages/CandidateChecksPage'));
 const ContractApprovalPage = lazy(() => import('../pages/ContractApprovalPage'));
 const OperationsPreview = lazy(() => import('../pages/OperationsPreview'));
 const OperationsScheduleReportsPage = lazy(() => import('../pages/OperationsScheduleReportsPage'));
@@ -113,6 +115,11 @@ export const authenticatedRoutes: AppRoute[] = [
     path: 'business-processes/contract-approval',
     allow: canAccessContractApproval,
     element: () => withSuspense(<ContractApprovalPage />),
+  },
+  {
+    path: 'business-processes/candidate-checks',
+    allow: canAccessCandidateChecks,
+    element: () => withSuspense(<CandidateChecksPage />),
   },
   {
     path: 'business-processes/bill-of-lading',
