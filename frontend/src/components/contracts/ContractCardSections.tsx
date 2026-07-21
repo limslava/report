@@ -106,7 +106,7 @@ export function SecurityDecisionEditor({
           </Typography>
         )}
       </Box>
-      <Box className="contract-visa-fields">
+      <Box className="decision-row">
         <FormControl fullWidth size="small">
           <InputLabel shrink>Решение</InputLabel>
           <Select
@@ -144,14 +144,8 @@ export function SecurityDecisionEditor({
             comment: event.target.value,
           })}
         />
-      </Box>
-      <Box className="contract-visa-footer">
-        <Typography variant="caption" className={commentRequired ? 'contract-visa-hint contract-visa-hint--required' : 'contract-visa-hint'}>
-          {commentRequired
-            ? 'Для этого решения комментарий обязателен.'
-            : 'Комментарий можно добавить при необходимости.'}
-        </Typography>
         <Button
+          className="decision-submit"
           variant="contained"
           size="small"
           onClick={onSubmit}
@@ -159,6 +153,13 @@ export function SecurityDecisionEditor({
         >
           Сохранить решение
         </Button>
+      </Box>
+      <Box className="contract-visa-footer">
+        <Typography variant="caption" className={commentRequired ? 'contract-visa-hint contract-visa-hint--required' : 'contract-visa-hint'}>
+          {commentRequired
+            ? 'Для этого решения комментарий обязателен.'
+            : 'Комментарий можно добавить при необходимости.'}
+        </Typography>
       </Box>
     </Box>
   );
@@ -200,7 +201,7 @@ export function ContractApprovalActionSection({
             </Typography>
           )}
         </Box>
-        <Box className="contract-visa-fields">
+        <Box className="decision-row">
           <FormControl size="small">
             <InputLabel shrink>Решение</InputLabel>
             <Select
@@ -231,6 +232,15 @@ export function ContractApprovalActionSection({
             onChange={(event) => setApprovalComment(event.target.value)}
             placeholder={commentRequired ? 'Укажите замечания к договору' : 'Добавьте комментарий при необходимости'}
           />
+          <Button
+            className="decision-submit"
+            variant="contained"
+            size="small"
+            disabled={approvalDecisionBusy || !approvalDecision || (commentRequired && !approvalComment.trim())}
+            onClick={onSubmitDecision}
+          >
+            {approvalDecisionBusy ? 'Сохранение...' : 'Сохранить решение'}
+          </Button>
         </Box>
         <Box className="contract-visa-footer">
           <Typography
@@ -241,14 +251,6 @@ export function ContractApprovalActionSection({
               ? 'Для этого решения комментарий обязателен.'
               : 'Комментарий можно добавить при необходимости.'}
           </Typography>
-          <Button
-            variant="contained"
-            size="small"
-            disabled={approvalDecisionBusy || !approvalDecision || (commentRequired && !approvalComment.trim())}
-            onClick={onSubmitDecision}
-          >
-            {approvalDecisionBusy ? 'Сохранение...' : 'Сохранить решение'}
-          </Button>
         </Box>
       </Box>
     );

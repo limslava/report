@@ -9,7 +9,6 @@ import {
   FormControl,
   InputLabel,
   MenuItem,
-  Paper,
   Select,
   Stack,
   TextField,
@@ -24,6 +23,7 @@ import {
   previewCandidateCheckAttachment,
 } from '../../services/api';
 import { PreviewDialog } from '../contracts/ContractDialogs';
+import { ContractCardDetails } from '../contracts/ContractCardSections';
 import {
   candidateDecisionLabels,
   candidateErrorMessage,
@@ -132,47 +132,42 @@ export function CandidateCheckDialog({ check, canDecide, onClose, onDecided, onE
       <Dialog open={Boolean(check)} onClose={onClose} maxWidth="md" fullWidth>
         {check && (
           <>
-            <DialogTitle>Проверка кандидата: {check.candidateFullName}</DialogTitle>
-            <DialogContent>
-              <Stack spacing={1.5} sx={{ pt: 1 }}>
-                <Paper variant="outlined" sx={{ p: 1.5 }}>
-                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1.5 }}>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Должность</Typography>
-                      <Typography>{check.position || '—'}</Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Статус</Typography>
-                      <Typography>{candidateStatusLabels[check.status]}</Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Телефон</Typography>
-                      <Typography>{check.phone || '—'}</Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Email</Typography>
-                      <Typography>{check.email || '—'}</Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Инициатор</Typography>
-                      <Typography>{check.createdByName || '—'}</Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Создано</Typography>
-                      <Typography>{formatCandidateDateTime(check.createdAt)}</Typography>
-                    </Box>
-                  </Box>
-                </Paper>
+            <DialogTitle sx={{ py: 1.25 }}>
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
+                <Box>
+                  <Typography sx={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2 }}>
+                    Проверка кандидата: {check.candidateFullName}
+                  </Typography>
+                </Box>
+                <Box
+                  component="span"
+                  sx={{ flex: 'none', px: 1, py: '2px', borderRadius: '6px', fontSize: 12, fontWeight: 650, whiteSpace: 'nowrap', ...candidateStatusChip(check.status) }}
+                >
+                  {candidateStatusLabels[check.status]}
+                </Box>
+              </Box>
+            </DialogTitle>
+            <DialogContent dividers className="contract-card-content candidate-card-content">
+              <Stack spacing={1}>
+                <ContractCardDetails
+                  details={[
+                    { label: 'Должность', value: check.position || '—', wide: true },
+                    { label: 'Телефон', value: check.phone || '—' },
+                    { label: 'Email', value: check.email || '—' },
+                    { label: 'Инициатор', value: check.createdByName || '—' },
+                    { label: 'Создано', value: formatCandidateDateTime(check.createdAt) },
+                  ]}
+                />
 
-                <Paper variant="outlined" sx={{ p: 1.5 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Комментарий HR</Typography>
-                  <Typography color={check.hrComment ? 'text.primary' : 'text.secondary'}>
+                <Box className="contract-card-section">
+                  <Typography variant="body2" className="contract-card-section-title">Комментарий HR</Typography>
+                  <Typography variant="body2" color={check.hrComment ? 'text.primary' : 'text.secondary'}>
                     {check.hrComment || 'Комментарий не указан.'}
                   </Typography>
-                </Paper>
+                </Box>
 
-                <Paper variant="outlined" sx={{ p: 1.5 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 0.75 }}>Анкета кандидата</Typography>
+                <Box className="contract-card-section">
+                  <Typography variant="body2" className="contract-card-section-title">Анкета кандидата</Typography>
                   {check.attachments?.length ? (
                     <Stack spacing={0.75}>
                       {check.attachments.map((attachment) => (
@@ -199,13 +194,13 @@ export function CandidateCheckDialog({ check, canDecide, onClose, onDecided, onE
                       ))}
                     </Stack>
                   ) : (
-                    <Typography color="text.secondary">Анкета не приложена.</Typography>
+                    <Typography variant="body2" color="text.secondary">Анкета не приложена.</Typography>
                   )}
-                </Paper>
+                </Box>
 
                 {check.status !== 'pending_security' && (
-                  <Paper variant="outlined" sx={{ p: 1.5 }}>
-                    <Typography variant="subtitle2" sx={{ mb: 0.75 }}>Решение СБ</Typography>
+                  <Box className="contract-card-section">
+                    <Typography variant="body2" className="contract-card-section-title">Решение СБ</Typography>
                     <Box
                       component="span"
                       sx={{ display: 'inline-block', px: 1, py: '2px', borderRadius: '6px', fontWeight: 650, fontSize: 13, ...candidateStatusChip(check.status) }}
@@ -215,20 +210,20 @@ export function CandidateCheckDialog({ check, canDecide, onClose, onDecided, onE
                     {check.securityComment && (
                       <Box sx={{ mt: 1.25 }}>
                         <Typography variant="caption" color="text.secondary">Комментарий</Typography>
-                        <Typography>{check.securityComment}</Typography>
+                        <Typography variant="body2">{check.securityComment}</Typography>
                       </Box>
                     )}
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.25 }}>
                       Решение принял: {formatSurnameInitials(check.decidedByName)} · {formatCandidateDateTime(check.decidedAt)}
                     </Typography>
-                  </Paper>
+                  </Box>
                 )}
 
                 {canDecide && check.status === 'pending_security' && (
-                  <Paper variant="outlined" sx={{ p: 1.5, borderColor: '#c7d7ef', bgcolor: '#f7faff' }}>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Решение по кандидату</Typography>
-                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems="flex-start">
-                      <FormControl size="small" sx={{ minWidth: 240, flex: 'none' }}>
+                  <Box className="contract-card-section contract-visa-editor">
+                    <Typography variant="body2" className="contract-card-section-title">Решение по кандидату</Typography>
+                    <Box className="decision-row" sx={{ mt: 1.5 }}>
+                      <FormControl size="small">
                         <InputLabel>Решение</InputLabel>
                         <Select
                           label="Решение"
@@ -245,25 +240,30 @@ export function CandidateCheckDialog({ check, canDecide, onClose, onDecided, onE
                         label="Комментарий"
                         value={securityComment}
                         onChange={(event) => setSecurityComment(event.target.value)}
-                        multiline
-                        minRows={2}
                         fullWidth
                       />
-                    </Stack>
-                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1.5 }}>
                       <Button
+                        className="decision-submit"
                         variant="contained"
                         onClick={handleDecision}
                         disabled={
                           submitting
                           || !decision
-                          || ((decision === 'approved_with_remarks' || decision === 'rejected') && !securityComment.trim())
+                          || (decision === 'approved_with_remarks' && !securityComment.trim())
                         }
                       >
                         Сохранить решение
                       </Button>
                     </Box>
-                  </Paper>
+                    <Typography
+                      variant="caption"
+                      sx={{ display: 'block', mt: 1, color: decision === 'approved_with_remarks' ? '#b45309' : '#6b7280' }}
+                    >
+                      {decision === 'approved_with_remarks'
+                        ? 'Для этого решения комментарий обязателен.'
+                        : 'Комментарий можно добавить при необходимости.'}
+                    </Typography>
+                  </Box>
                 )}
               </Stack>
             </DialogContent>

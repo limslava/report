@@ -329,42 +329,60 @@ export default function CandidateChecksPage() {
       </Paper>
 
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Новая проверка кандидата</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ pt: 1 }}>
-            <TextField
-              label="ФИО кандидата"
-              value={createForm.candidateFullName}
-              onChange={(event) => setCreateForm((prev) => ({ ...prev, candidateFullName: event.target.value }))}
-              required
-              fullWidth
-            />
-            <TextField
-              label="Должность"
-              value={createForm.position}
-              onChange={(event) => setCreateForm((prev) => ({ ...prev, position: event.target.value }))}
-              fullWidth
-            />
-            <TextField
-              label="Телефон"
-              value={createForm.phone}
-              onChange={(event) => setCreateForm((prev) => ({ ...prev, phone: event.target.value }))}
-              fullWidth
-            />
-            <TextField
-              label="Email"
-              value={createForm.email}
-              onChange={(event) => setCreateForm((prev) => ({ ...prev, email: event.target.value }))}
-              fullWidth
-            />
-            <TextField
-              label="Комментарий HR"
-              value={createForm.hrComment}
-              onChange={(event) => setCreateForm((prev) => ({ ...prev, hrComment: event.target.value }))}
-              multiline
-              minRows={3}
-              fullWidth
-            />
+        <DialogTitle sx={{ py: 1.25 }}>
+          <Typography sx={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2 }}>Новая проверка кандидата</Typography>
+        </DialogTitle>
+        <DialogContent dividers className="contract-card-content candidate-card-content">
+          <Stack spacing={1}>
+            <Box className="contract-card-section">
+              <Typography variant="body2" className="contract-card-section-title">Данные кандидата</Typography>
+              <Stack spacing={2} sx={{ mt: 1 }}>
+                <TextField
+                  label="ФИО кандидата"
+                  value={createForm.candidateFullName}
+                  onChange={(event) => setCreateForm((prev) => ({ ...prev, candidateFullName: event.target.value }))}
+                  required
+                  fullWidth
+                  size="small"
+                />
+                <TextField
+                  label="Должность"
+                  value={createForm.position}
+                  onChange={(event) => setCreateForm((prev) => ({ ...prev, position: event.target.value }))}
+                  fullWidth
+                  size="small"
+                />
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+                  <TextField
+                    label="Телефон"
+                    value={createForm.phone}
+                    onChange={(event) => setCreateForm((prev) => ({ ...prev, phone: event.target.value }))}
+                    fullWidth
+                    size="small"
+                  />
+                  <TextField
+                    label="Email"
+                    value={createForm.email}
+                    onChange={(event) => setCreateForm((prev) => ({ ...prev, email: event.target.value }))}
+                    fullWidth
+                    size="small"
+                  />
+                </Box>
+              </Stack>
+            </Box>
+
+            <Box className="contract-card-section">
+              <Typography variant="body2" className="contract-card-section-title">Комментарий и файлы</Typography>
+              <Stack spacing={2} sx={{ mt: 1 }}>
+                <TextField
+                  label="Комментарий HR"
+                  value={createForm.hrComment}
+                  onChange={(event) => setCreateForm((prev) => ({ ...prev, hrComment: event.target.value }))}
+                  multiline
+                  minRows={3}
+                  fullWidth
+                  size="small"
+                />
             <Button
               component="label"
               variant="outlined"
@@ -447,6 +465,8 @@ export default function CandidateChecksPage() {
                   Прикрепите один или несколько файлов: PDF, DOC, DOCX, PNG или JPG.
                 </Typography>
               )}
+            </Box>
+              </Stack>
             </Box>
           </Stack>
         </DialogContent>

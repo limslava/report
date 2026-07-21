@@ -600,6 +600,11 @@
   background: #f5f5f5;
 }
 
+/* Карточка кандидата короче договора — не тянем окно до 420px */
+.candidate-card-content {
+  min-height: 0;
+}
+
 .contract-card-loading {
   min-height: 300px;
   justify-content: center;
@@ -727,9 +732,9 @@
 }
 
 .contract-visa-editor {
-  padding: 8px 10px;
-  background: #f9fbfd;
-  border-color: #c9d7e7;
+  padding: 12px 14px;
+  background: #f7faff;
+  border-color: #c7d7ef;
 }
 
 .contract-visa-header {
@@ -751,34 +756,39 @@
   font-weight: 600 !important;
 }
 
-.contract-visa-fields {
+/* Единый блок решения — используется в карточке договора и в карточке кандидата */
+.decision-row {
   display: grid;
-  grid-template-columns: 270px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr) auto;
   gap: 10px;
-  align-items: start;
+  align-items: stretch;
 }
 
-.contract-visa-editor .MuiInputBase-root {
+.decision-row .MuiInputBase-root {
+  height: 40px;
+}
+
+.decision-row .MuiInputBase-input {
+  font-size: 14px;
+}
+
+.decision-row .MuiInputLabel-root {
   font-size: 13px;
 }
 
-.contract-visa-editor .MuiInputLabel-root {
-  font-size: 13px;
-}
-
-.contract-visa-editor .MuiOutlinedInput-input {
-  padding-top: 8px;
-  padding-bottom: 8px;
+.decision-submit {
+  align-self: stretch;
+  min-width: 190px;
+  height: 40px !important;
+  white-space: nowrap;
 }
 
 .contract-visa-footer {
   display: flex;
   gap: 12px;
   align-items: center;
-  justify-content: space-between;
-  margin-top: 7px;
-  padding-top: 6px;
-  border-top: 1px solid #e6ecf3;
+  justify-content: flex-start;
+  margin-top: 8px;
 }
 
 .contract-visa-hint {
@@ -789,12 +799,6 @@
 
 .contract-visa-hint--required {
   color: #b45309;
-}
-
-.contract-visa-footer .MuiButton-root {
-  flex-shrink: 0;
-  min-height: 30px;
-  font-size: 12px;
 }
 
 .contract-process {
@@ -962,8 +966,12 @@
     grid-column: auto;
   }
 
-  .contract-visa-fields {
+  .decision-row {
     grid-template-columns: 1fr;
+  }
+
+  .decision-submit {
+    width: 100%;
   }
 
   .contract-process-step-summary {

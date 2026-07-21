@@ -305,11 +305,8 @@ export const decideCandidateCheck = async (req: Request, res: Response, next: Ne
     }
 
     const securityComment = normalizeNullable(req.body.securityComment);
-    if (
-      (decision === CandidateCheckStatus.APPROVED_WITH_REMARKS || decision === CandidateCheckStatus.REJECTED)
-      && !securityComment
-    ) {
-      const error: any = new Error('Для решения с замечаниями или отказа нужен комментарий');
+    if (decision === CandidateCheckStatus.APPROVED_WITH_REMARKS && !securityComment) {
+      const error: any = new Error('Для решения «Согласован с замечаниями» нужен комментарий');
       error.statusCode = 400;
       throw error;
     }
