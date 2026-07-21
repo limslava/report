@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -36,6 +36,7 @@ import {
   downloadContractPrintPackage,
   getContractDiscussion,
   getContractDiscussionUnreadCount,
+  getContractDiscussionUnreadCounts,
   getContractApprovalSheet,
   getContractDecisionHistory,
   getContractDuplicates,
@@ -56,6 +57,7 @@ import { useContractSheet } from '../hooks/useContractSheet';
 import { useContractsRegistry } from '../hooks/useContractsRegistry';
 import { useSecurityInbox } from '../hooks/useSecurityInbox';
 import { useAuthStore } from '../store/auth-store';
+import { requestContractUnreadRefresh } from '../store/contract-unread-store';
 import { downloadBlob } from '../utils/download';
 import { ContractApprovalSheet } from '../components/contracts/ContractApprovalSheet';
 import { ContractDiscussionPanel } from '../components/contracts/ContractDiscussionPanel';
@@ -76,9 +78,11 @@ import {
 import { ApprovalContractInboxTable, SecurityContractInboxTable } from '../components/contracts/ContractInboxTables';
 import { ContractProcessTimeline } from '../components/contracts/ContractProcessTimeline';
 import { ContractRegistryTable } from '../components/contracts/ContractRegistryTable';
+import { ContractArchiveTable } from '../components/contracts/ContractArchiveTable';
 import { ContractWizard } from '../components/contracts/ContractWizard';
 import {
   CONTRACT_STATUS_LABELS,
+  isAwaitingSignature,
   buildPrintFileName,
   formatContractTypeLabel,
   formatDateTime,
@@ -159,11 +163,14 @@ export default function ContractApprovalPage() {
   const isReadOnlyRegistry = currentUser?.role === 'general_director';
   const canUseMyContracts = !isReadOnlyRegistry && currentUser?.role !== 'lawyer';
   const canUseInbox = isSecurity || isApprovalWorkRole;
-  const initialSection: ContractSection = canUseInbox ? 'inbox' : (isAdmin || isReadOnlyRegistry || !canUseMyContracts) ? 'registry' : 'mine';
+  const initialSection: ContractSection = canUseInbox ? 'inbox' : (isReadOnlyRegistry || !canUseMyContracts) ? 'registry' : 'mine';
   const [tab, setTab] = useState(0);
   const [contractSection, setContractSection] = useState<ContractSection>(initialSection);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [registryStatusFilter, setRegistryStatusFilter] = useState<string>('all');
+  const [registryTypeFilter, setRegistryTypeFilter] = useState<string>('all');
+  const [registryUnreadOnly, setRegistryUnreadOnly] = useState(false);
   const {
     sheet,
     setSheet,
@@ -297,6 +304,7 @@ export default function ContractApprovalPage() {
   const [discussionFiles, setDiscussionFiles] = useState<File[]>([]);
   const [discussionMentionedUserIds, setDiscussionMentionedUserIds] = useState<string[]>([]);
   const [discussionUnreadCount, setDiscussionUnreadCount] = useState(0);
+  const [unreadByContract, setUnreadByContract] = useState<Record<string, number>>({});
   const [mentionableUsers, setMentionableUsers] = useState<UserDirectoryItem[]>([]);
   const mentionableUsersLoadedRef = useRef(false);
   const [resumeWizardAfterSheet, setResumeWizardAfterSheet] = useState(false);
@@ -356,6 +364,10 @@ export default function ContractApprovalPage() {
       setDiscussionMessages(Array.isArray(response.data) ? response.data : []);
       await markContractDiscussionRead(contractId);
       setDiscussionUnreadCount(0);
+      // Мгновенно убираем значок в строке таблицы, не дожидаясь перезагрузки…
+      setUnreadByContract((prev) => (prev[contractId] ? { ...prev, [contractId]: 0 } : prev));
+      // …и просим обновить общий счётчик в меню + пересчитать значки в таблицах.
+      requestContractUnreadRefresh();
     } catch (e: any) {
       setError(e?.response?.data?.message || e?.message || 'Не удалось загрузить обсуждение');
     } finally {
@@ -972,7 +984,7 @@ export default function ContractApprovalPage() {
   }, [loadSheet, selectedContractId, tab]);
 
   useEffect(() => {
-    setContractSection(canUseInbox ? 'inbox' : (isAdmin || isReadOnlyRegistry || !canUseMyContracts) ? 'registry' : 'mine');
+    setContractSection(canUseInbox ? 'inbox' : (isReadOnlyRegistry || !canUseMyContracts) ? 'registry' : 'mine');
     if (isSecurity) {
       setTab(2);
     } else if (isApprovalWorkRole) {
@@ -1411,9 +1423,24 @@ export default function ContractApprovalPage() {
     .join(' ')
     .toLowerCase();
 
-  const registryBaseContracts = contractSection === 'mine' && canUseMyContracts
+  const registryScopedContracts = contractSection === 'mine' && canUseMyContracts
     ? contracts.filter((contract) => contract.initiator?.id === currentUser?.id)
     : contracts;
+  const registryBaseContracts = registryScopedContracts.filter((contract) => {
+    if (registryStatusFilter !== 'all') {
+      if (registryStatusFilter === 'signing') {
+        if (!isAwaitingSignature(contract)) return false;
+      } else if (registryStatusFilter === 'in_approval') {
+        // «На согласовании» — без тех, кто уже ушёл на подпись.
+        if (contract.status !== 'in_approval' || isAwaitingSignature(contract)) return false;
+      } else if (contract.status !== registryStatusFilter) {
+        return false;
+      }
+    }
+    if (registryTypeFilter !== 'all' && contract.contractType !== registryTypeFilter) return false;
+    if (registryUnreadOnly && !((unreadByContract[contract.id] ?? 0) > 0)) return false;
+    return true;
+  });
   const registrySearchQuery = registrySearch.trim().toLowerCase();
   const filteredRegistryContracts = registrySearchQuery
     ? (() => {
@@ -1440,6 +1467,55 @@ export default function ContractApprovalPage() {
       return registryBaseContracts.filter((contract) => matchedIds.has(contract.id) || Boolean(contract.parentContractId && byId.has(contract.parentContractId) && matchedIds.has(contract.parentContractId)));
     })()
     : registryBaseContracts;
+
+  const unreadIdsKey = useMemo(() => {
+    const ids = new Set<string>();
+    filteredSecurityInbox.forEach((item) => item.contractId && ids.add(item.contractId));
+    filteredApprovalInbox.forEach((item) => item.contractId && ids.add(item.contractId));
+    // Считаем непрочитанные по всему набору договоров секции (до фильтров),
+    // иначе фильтр «только с непрочитанными» скрывал бы новые сообщения от самого себя.
+    registryScopedContracts.forEach((contract) => contract.id && ids.add(contract.id));
+    return Array.from(ids).sort().join(',');
+  }, [filteredSecurityInbox, filteredApprovalInbox, registryScopedContracts]);
+
+  const unreadIdsRef = useRef<string[]>([]);
+  const unreadReqIdRef = useRef(0);
+
+  const refreshUnreadCounts = useCallback(() => {
+    const ids = unreadIdsRef.current;
+    if (!ids.length) {
+      setUnreadByContract({});
+      return;
+    }
+    const reqId = unreadReqIdRef.current + 1;
+    unreadReqIdRef.current = reqId;
+    getContractDiscussionUnreadCounts(ids)
+      .then((response) => {
+        if (reqId === unreadReqIdRef.current) setUnreadByContract(response.data?.counts ?? {});
+      })
+      .catch(() => {
+        // при ошибке оставляем прежние значения — обновится на следующем тике
+      });
+  }, []);
+
+  // Первичная загрузка и пересчёт при смене набора договоров в таблицах.
+  useEffect(() => {
+    unreadIdsRef.current = unreadIdsKey ? unreadIdsKey.split(',') : [];
+    refreshUnreadCounts();
+  }, [unreadIdsKey, refreshUnreadCounts]);
+
+  // Пересчёт при возврате на вкладку и после отметки чата прочитанным
+  // (событие шлёт requestContractUnreadRefresh), чтобы значок пропадал без перезагрузки.
+  useEffect(() => {
+    const onRefresh = () => refreshUnreadCounts();
+    const onFocus = () => { if (document.visibilityState === 'visible') refreshUnreadCounts(); };
+    window.addEventListener('contract-unread:refresh', onRefresh);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('contract-unread:refresh', onRefresh);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [refreshUnreadCounts]);
 
   const mapDecisionToVisa = (
     decision: SecurityInboxItem['securityDecision'],
@@ -1580,13 +1656,13 @@ export default function ContractApprovalPage() {
 
           <Box
             sx={{
-              display: contractSection === 'registry' ? 'flex' : 'grid',
+              display: contractSection === 'inbox' ? 'grid' : 'flex',
               gridTemplateColumns: { xs: '1fr', sm: '210px 230px' },
               flexWrap: 'wrap',
               alignItems: 'center',
               justifyContent: 'flex-end',
               gap: 0.75,
-              width: { xs: '100%', lg: contractSection === 'registry' ? 'min(100%, 1180px)' : 'auto' },
+              width: { xs: '100%', lg: contractSection === 'inbox' ? 'auto' : 'min(100%, 1180px)' },
               '& .MuiInputBase-root': {
                 height: 36,
                 fontSize: 13,
@@ -1693,6 +1769,54 @@ export default function ContractApprovalPage() {
                 <Box />
               )}
             </Box>
+            {contractSection !== 'inbox' && (
+              <FormControl size="small" sx={{ minWidth: 168 }}>
+                <InputLabel id="registry-status-label">Статус</InputLabel>
+                <Select
+                  labelId="registry-status-label"
+                  label="Статус"
+                  value={registryStatusFilter}
+                  onChange={(e) => setRegistryStatusFilter(e.target.value)}
+                  MenuProps={{ PaperProps: { sx: { '& .MuiMenuItem-root': { minHeight: 32, fontSize: 13 } } } }}
+                >
+                  <MenuItem value="all">Все статусы</MenuItem>
+                  <MenuItem value="draft">{CONTRACT_STATUS_LABELS.draft}</MenuItem>
+                  <MenuItem value="in_approval">{CONTRACT_STATUS_LABELS.in_approval}</MenuItem>
+                  <MenuItem value="signing">На подписании</MenuItem>
+                  <MenuItem value="rework">{CONTRACT_STATUS_LABELS.rework}</MenuItem>
+                  <MenuItem value="approved">{CONTRACT_STATUS_LABELS.approved}</MenuItem>
+                  <MenuItem value="rejected">{CONTRACT_STATUS_LABELS.rejected}</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+            {contractSection !== 'inbox' && (
+              <FormControl size="small" sx={{ minWidth: 140 }}>
+                <InputLabel id="registry-type-label">Тип</InputLabel>
+                <Select
+                  labelId="registry-type-label"
+                  label="Тип"
+                  value={registryTypeFilter}
+                  onChange={(e) => setRegistryTypeFilter(e.target.value)}
+                  MenuProps={{ PaperProps: { sx: { '& .MuiMenuItem-root': { minHeight: 32, fontSize: 13 } } } }}
+                >
+                  <MenuItem value="all">Все типы</MenuItem>
+                  <MenuItem value="income">Доходный</MenuItem>
+                  <MenuItem value="expense">Расходный</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+            {contractSection === 'mine' && (
+              <Button
+                size="small"
+                variant={registryUnreadOnly ? 'contained' : 'outlined'}
+                color={registryUnreadOnly ? 'error' : 'inherit'}
+                onClick={() => setRegistryUnreadOnly((value) => !value)}
+                sx={{ whiteSpace: 'nowrap' }}
+                title="Показать только договоры с непрочитанными сообщениями"
+              >
+                Непрочитанные
+              </Button>
+            )}
             <TextField
               size="small"
               label="Поиск"
@@ -1723,12 +1847,23 @@ export default function ContractApprovalPage() {
         </Stack>
       </Paper>
 
-      {contractSection !== 'inbox' && tab === 0 && (
+      {contractSection === 'mine' && tab === 0 && (
         <ContractRegistryTable
           contracts={filteredRegistryContracts}
           contractSection={contractSection}
           selectedContractId={selectedContractId}
+          unreadByContract={unreadByContract}
+          showUnreadColumn
           onOpenContract={(contractId) => { void openSheetModal(contractId); }}
+        />
+      )}
+
+      {contractSection === 'registry' && tab === 0 && (
+        <ContractArchiveTable
+          contracts={filteredRegistryContracts}
+          selectedContractId={selectedContractId}
+          onOpenContract={(contractId) => { void openSheetModal(contractId); }}
+          onOpenFile={(attachmentId, fileName) => { void onOpenAttachmentPreview(attachmentId, fileName); }}
         />
       )}
 
@@ -1781,6 +1916,7 @@ export default function ContractApprovalPage() {
         <SecurityContractInboxTable
           items={filteredSecurityInbox}
           totalItems={securityInbox.length}
+          unreadByContract={unreadByContract}
           onOpenItem={(item) => { void openSecurityCard(item); }}
         />
       )}
@@ -1790,6 +1926,7 @@ export default function ContractApprovalPage() {
           items={filteredApprovalInbox}
           totalItems={approvalInbox.length}
           isChiefAccountant={isChiefAccountant}
+          unreadByContract={unreadByContract}
           onOpenContract={(contractId) => { void openSheetModal(contractId); }}
         />
       )}

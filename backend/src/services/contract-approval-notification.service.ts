@@ -1,5 +1,5 @@
 import { AppDataSource } from '../config/data-source';
-import { Contract } from '../models/contract.model';
+import { Contract, ContractStatus } from '../models/contract.model';
 import { ContractApprovalDecision, ContractApprovalStep } from '../models/contract-approval-step.model';
 import { User } from '../models/user.model';
 import { sendEmailWithAttachment } from './email.service';
@@ -28,6 +28,12 @@ function counterpartyLabel(contract: Contract): string {
 function contractTaskUrl(contractId: string, stepId: string): string {
   const frontendBaseUrl = (process.env.FRONTEND_URL || 'https://report-limslava.amvera.io').replace(/\/+$/, '');
   const params = new URLSearchParams({ contractId, stepId, source: 'email' });
+  return `${frontendBaseUrl}/business-processes/contract-approval?${params.toString()}`;
+}
+
+function contractCardUrl(contractId: string): string {
+  const frontendBaseUrl = (process.env.FRONTEND_URL || 'https://report-limslava.amvera.io').replace(/\/+$/, '');
+  const params = new URLSearchParams({ contractId, source: 'email' });
   return `${frontendBaseUrl}/business-processes/contract-approval?${params.toString()}`;
 }
 
@@ -136,4 +142,50 @@ export async function notifyDecisionChanged(
     </div>
   `;
   await sendEmailToUsers(recipientSteps.map((step) => step.approverUserId), subject, html);
+}
+
+// Инициатору: все визы получены, договор передан офис-менеджеру на подписание.
+export async function notifyInitiatorReadyForSignature(contract: Contract): Promise<void> {
+  if (!contract.initiatorId) return;
+  const shortCounterparty = counterpartyLabel(contract);
+  const subject = `Договор согласован, ожидает подписания: № ${contract.contractNumber} - ${shortCounterparty}`;
+  const url = contractCardUrl(contract.id);
+  const html = `
+    <div style="font-family:Arial,sans-serif;color:#25324a;font-size:14px;line-height:1.45">
+      <p>По вашему договору получены все визы согласующих. Договор передан офис-менеджеру на подписание.</p>
+      ${contractSummary(contract)}
+      <p>Сейчас ожидается подписание и информация от офис-менеджера. Дополнительных действий от вас не требуется — о финальном результате вы получите отдельное уведомление. Ход подписания можно отслеживать в карточке договора.</p>
+      ${openContractButton(url)}
+    </div>
+  `;
+  await sendEmailToUsers([contract.initiatorId], subject, html);
+}
+
+// Инициатору: финальный результат по договору — согласован / не согласован / на доработку.
+export async function notifyInitiatorFinalResult(contract: Contract): Promise<void> {
+  if (!contract.initiatorId) return;
+  const shortCounterparty = counterpartyLabel(contract);
+  const url = contractCardUrl(contract.id);
+  let subject: string;
+  let intro: string;
+  if (contract.status === ContractStatus.APPROVED) {
+    subject = `Договор согласован и подписан: № ${contract.contractNumber} - ${shortCounterparty}`;
+    intro = '<p>Ваш договор полностью согласован и подписан. Согласование завершено.</p>';
+  } else if (contract.status === ContractStatus.REJECTED) {
+    subject = `Договор не согласован: № ${contract.contractNumber} - ${shortCounterparty}`;
+    intro = '<p>По вашему договору принято отрицательное решение — договор <strong>не согласован</strong>. Подробности и комментарии участников доступны в карточке договора.</p>';
+  } else if (contract.status === ContractStatus.REWORK) {
+    subject = `Договор возвращён на доработку: № ${contract.contractNumber} - ${shortCounterparty}`;
+    intro = '<p>Ваш договор <strong>возвращён на доработку</strong>. Ознакомьтесь с замечаниями в карточке договора, внесите правки и повторно направьте документ на согласование.</p>';
+  } else {
+    return;
+  }
+  const html = `
+    <div style="font-family:Arial,sans-serif;color:#25324a;font-size:14px;line-height:1.45">
+      ${intro}
+      ${contractSummary(contract)}
+      ${openContractButton(url)}
+    </div>
+  `;
+  await sendEmailToUsers([contract.initiatorId], subject, html);
 }

@@ -10,6 +10,7 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
+import { ChatBubbleOutline } from '@mui/icons-material';
 import type { ApprovalInboxItem, SecurityInboxItem } from '../../types/contracts';
 import {
   formatContractTypeLabel,
@@ -20,6 +21,45 @@ import {
   getSecurityVisaLabel,
   normalizeCounterpartyName,
 } from '../../utils/contract-approval';
+
+// Иконка чата в заголовке выделенной колонки непрочитанных.
+export function UnreadChatHeaderIcon() {
+  return (
+    <ChatBubbleOutline
+      titleAccess="Непрочитанные сообщения в чатах"
+      sx={{ fontSize: 14, color: '#57606a', verticalAlign: 'middle' }}
+    />
+  );
+}
+
+// Бейдж для отдельной колонки: по центру ячейки, без левого отступа.
+export function UnreadChatCell({ count }: { count?: number }) {
+  if (!count) return null;
+  return (
+    <Box
+      component="span"
+      title={`${count} новых сообщений в чате`}
+      sx={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '2px',
+        minWidth: 24,
+        height: 17,
+        px: '5px',
+        borderRadius: '999px',
+        bgcolor: '#e53935',
+        color: '#fff',
+        fontSize: 11,
+        fontWeight: 700,
+        lineHeight: 1,
+      }}
+    >
+      <ChatBubbleOutline sx={{ fontSize: 12 }} />
+      {count}
+    </Box>
+  );
+}
 
 const SECURITY_INBOX_COLUMNS = [
   { key: 'idx', label: '№', width: 48 },
@@ -32,6 +72,7 @@ const SECURITY_INBOX_COLUMNS = [
   { key: 'initiator', label: 'Инициатор', width: 190 },
   { key: 'deadline', label: 'Дедлайн', width: 104 },
   { key: 'visa', label: 'Виза руководителя СБ', width: 180 },
+  { key: 'chat', label: '', width: 40 },
 ] as const;
 
 const APPROVAL_INBOX_COLUMNS = [
@@ -45,6 +86,7 @@ const APPROVAL_INBOX_COLUMNS = [
   { key: 'initiator', label: 'Инициатор', width: 190 },
   { key: 'deadline', label: 'Дедлайн', width: 104 },
   { key: 'decision', label: 'Мое решение', width: 170 },
+  { key: 'chat', label: '', width: 40 },
 ] as const;
 
 const ACCOUNTANT_SIGNING_COLUMN = { key: 'signing', label: 'Способ подписания', width: 134 } as const;
@@ -62,6 +104,7 @@ const textCellSx = {
 type SecurityContractInboxTableProps = {
   items: SecurityInboxItem[];
   totalItems: number;
+  unreadByContract?: Record<string, number>;
   onOpenItem: (item: SecurityInboxItem) => void;
 };
 
@@ -69,6 +112,7 @@ type ApprovalContractInboxTableProps = {
   items: ApprovalInboxItem[];
   totalItems: number;
   isChiefAccountant: boolean;
+  unreadByContract?: Record<string, number>;
   onOpenContract: (contractId: string) => void;
 };
 
@@ -83,9 +127,9 @@ function InboxHeader({ columns }: { columns: readonly { key: string; label: stri
       <TableHead>
         <TableRow>
           {columns.map((column) => (
-            <TableCell key={column.key}>
-              <Box className="registry-header-cell">
-                <span>{column.label}</span>
+            <TableCell key={column.key} sx={column.key === 'chat' ? { textAlign: 'center' } : undefined}>
+              <Box className="registry-header-cell" sx={column.key === 'chat' ? { justifyContent: 'center' } : undefined}>
+                {column.key === 'chat' ? <UnreadChatHeaderIcon /> : <span>{column.label}</span>}
               </Box>
             </TableCell>
           ))}
@@ -107,6 +151,7 @@ function InboxCardField({ label, value }: { label: string; value: React.ReactNod
 export function SecurityContractInboxTable({
   items,
   totalItems,
+  unreadByContract,
   onOpenItem,
 }: SecurityContractInboxTableProps) {
   return (
@@ -160,6 +205,9 @@ export function SecurityContractInboxTable({
                       {getSecurityVisaLabel(item)}
                     </Typography>
                   </TableCell>
+                  <TableCell sx={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                    <UnreadChatCell count={unreadByContract?.[item.contractId]} />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -206,6 +254,7 @@ export function ApprovalContractInboxTable({
   items,
   totalItems,
   isChiefAccountant,
+  unreadByContract,
   onOpenContract,
 }: ApprovalContractInboxTableProps) {
   const columns = isChiefAccountant
@@ -255,6 +304,9 @@ export function ApprovalContractInboxTable({
                     >
                       {getApprovalInboxDecisionLabel(item)}
                     </Typography>
+                  </TableCell>
+                  <TableCell sx={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                    <UnreadChatCell count={unreadByContract?.[item.contractId]} />
                   </TableCell>
                 </TableRow>
               ))}

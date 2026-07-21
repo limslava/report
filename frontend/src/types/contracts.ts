@@ -40,6 +40,7 @@ export type ContractRecord = {
   currentStageLabel?: string | null;
   statusDetail?: string | null;
   needsSignedAttachment?: boolean;
+  signedFile?: { id: string; originalName: string; mimeType: string | null } | null;
   initiator?: { id: string; fullName: string; role: string } | null;
 };
 

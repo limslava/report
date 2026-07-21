@@ -16,6 +16,22 @@ export function hasContractDetailAccess(
   return steps.some((step) => step.approverUserId === userId || step.roleCode === userRole);
 }
 
+// Прикреплённые к листу согласования файлы (сам договор и вложения по шагам)
+// видят только эти роли. Остальные (инициатор, юрист, офис-менеджер, менеджеры)
+// карточку и чат видят, но файлы листа согласования — нет. Файлы чата не ограничены.
+export const CONTRACT_ATTACHMENT_VIEW_ROLES = new Set<string>([
+  'admin',
+  'general_director',
+  'security',
+  'financer',
+  'chief_accountant',
+  'lawyer',
+]);
+
+export function canViewContractAttachments(userRole?: string | null): boolean {
+  return Boolean(userRole && CONTRACT_ATTACHMENT_VIEW_ROLES.has(userRole));
+}
+
 export function assertContractDetailAccess(
   contract: Contract,
   steps: ContractApprovalStep[],

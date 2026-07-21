@@ -15,6 +15,7 @@ export const ROLE_VALUES = [
   'head_ktk_mow',
   'head_hr',
   'hr_specialist',
+  'hr_recruiter',
   'garage_head_vvo',
   'garage_head',
   'manager_auto',

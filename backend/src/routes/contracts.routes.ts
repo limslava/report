@@ -17,6 +17,8 @@ import {
   getContractReferences,
   getContractDecisionHistory,
   getContractDiscussionUnreadCount,
+  getContractDiscussionUnreadCounts,
+  getContractDiscussionUnreadTotal,
   getContractSlaRules,
   getContractApprovalSheet,
   listContractDiscussion,
@@ -105,6 +107,8 @@ router.get(
 router.get('/:id/decision-history', [param('id').isUUID()], handleValidationErrors, getContractDecisionHistory);
 router.get('/:id/discussion', [param('id').isUUID()], handleValidationErrors, listContractDiscussion);
 router.get('/:id/discussion/unread-count', [param('id').isUUID()], handleValidationErrors, getContractDiscussionUnreadCount);
+router.post('/discussion/unread-counts', getContractDiscussionUnreadCounts);
+router.get('/discussion/unread-total', getContractDiscussionUnreadTotal);
 router.post('/:id/discussion/read', [param('id').isUUID()], handleValidationErrors, markContractDiscussionRead);
 router.post(
   '/:id/discussion',

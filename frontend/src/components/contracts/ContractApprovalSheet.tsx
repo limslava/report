@@ -38,6 +38,16 @@ export function ContractApprovalSheet({
     .flatMap((step) => step.attachments);
   const contractAttachments = sheet.contract.attachments ?? [];
 
+  // ГД подписывает на бумаге, а секретарь фиксирует итог — показываем его решение в строке ГД.
+  const secretaryStep = sheet.steps.find((step) => step.roleCode === 'secretary') ?? null;
+  const gdDecisionLabel = secretaryStep?.decision === 'approve'
+    ? 'Согласован'
+    : secretaryStep?.decision === 'reject'
+      ? 'Не согласован'
+      : secretaryStep?.assignedAt
+        ? 'Ожидает подписания'
+        : 'Ожидает';
+
   return (
     <Box className="approval-sheet-print">
       {actionSlot}
@@ -131,11 +141,11 @@ export function ContractApprovalSheet({
             <TableRow key="general-director-signature">
               <TableCell>Генеральный директор</TableCell>
               <TableCell>Васильковский М.О.</TableCell>
-              <TableCell></TableCell>
-              <TableCell></TableCell>
-              <TableCell></TableCell>
-              <TableCell></TableCell>
-              <TableCell></TableCell>
+              <TableCell>{gdDecisionLabel}</TableCell>
+              <TableCell>{formatDateTime(secretaryStep?.acceptedAt || secretaryStep?.assignedAt || null)}</TableCell>
+              <TableCell>{formatDateTime(secretaryStep?.signedAt || null)}</TableCell>
+              <TableCell>{secretaryStep?.comment || '—'}</TableCell>
+              <TableCell>—</TableCell>
             </TableRow>
           </TableBody>
         </Table>

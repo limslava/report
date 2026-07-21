@@ -28,3 +28,19 @@ describe('warehouse route access', () => {
     expect(route!.allow(role)).toBe(expected);
   });
 });
+
+describe('candidate check route access', () => {
+  it.each([
+    ['business-processes/candidate-checks', 'admin', true],
+    ['business-processes/candidate-checks', 'security', true],
+    ['business-processes/candidate-checks', 'hr_recruiter', true],
+    ['business-processes/candidate-checks', 'head_hr', false],
+    ['business-processes/candidate-checks', 'hr_specialist', false],
+    ['business-processes/dashboard', 'hr_recruiter', true],
+  ])('%s access for %s is %s', (path, role, expected) => {
+    const route = routeByPath.get(path);
+
+    expect(route, `missing route ${path}`).toBeDefined();
+    expect(route!.allow(role)).toBe(expected);
+  });
+});

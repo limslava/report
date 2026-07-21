@@ -2,7 +2,6 @@ import { NextFunction, Request, Response } from 'express';
 import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
-import { In } from 'typeorm';
 import { AppDataSource } from '../config/data-source';
 import { CandidateCheckAttachment } from '../models/candidate-check-attachment.model';
 import { CandidateCheck, CandidateCheckStatus } from '../models/candidate-check.model';
@@ -10,10 +9,11 @@ import { User } from '../models/user.model';
 import { sendEmailWithAttachment } from '../services/email.service';
 import { logger } from '../utils/logger';
 import { buildContentDisposition } from '../utils/content-disposition';
+import { getDocxPdfPreviewPath, isDocxFile } from '../services/docx-pdf-preview.service';
 
-const HR_ROLES = new Set(['admin', 'head_hr', 'hr_specialist']);
+const HR_RECRUITER_ROLES = new Set(['admin', 'hr_recruiter']);
 const SECURITY_DECISION_ROLES = new Set(['admin', 'security']);
-const CANDIDATE_CHECK_ROLES = new Set(['security', ...HR_ROLES]);
+const CANDIDATE_CHECK_ROLES = new Set(['security', ...HR_RECRUITER_ROLES]);
 const MAX_CANDIDATE_FILE_BYTES = 20 * 1024 * 1024;
 const ALLOWED_CANDIDATE_FILE_EXTENSIONS = new Set(['.pdf', '.doc', '.docx', '.png', '.jpg', '.jpeg']);
 
@@ -96,7 +96,7 @@ const ensureCandidateCheckAccess = (req: Request) => {
 };
 
 const ensureHrWriteAccess = (req: Request) => {
-  if (!req.user || !HR_ROLES.has(req.user.role)) {
+  if (!req.user || !HR_RECRUITER_ROLES.has(req.user.role)) {
     const error: any = new Error('Создавать проверки кандидатов может только HR или администратор');
     error.statusCode = 403;
     throw error;
@@ -285,7 +285,9 @@ export const createCandidateCheck = async (req: Request, res: Response, next: Ne
     await persistCandidateCheckAttachments(item.id, files, req.user!.id);
 
     const saved = await loadCandidateCheck(item.id);
-    await notifySecurityAssigned(saved);
+    // Уведомление СБ отправляем в фоне: медленный/недоступный SMTP не должен
+    // подвешивать ответ на создание проверки.
+    void notifySecurityAssigned(saved).catch((error) => logger.error('notifySecurityAssigned failed:', error));
     res.status(201).json(serializeCandidateCheck(saved));
   } catch (error) {
     next(error);
@@ -326,14 +328,25 @@ export const decideCandidateCheck = async (req: Request, res: Response, next: Ne
       throw error;
     }
 
-    item.status = decision;
-    item.securityComment = securityComment;
-    item.decidedByUserId = req.user!.id;
-    item.decidedAt = new Date();
-    await repository.save(item);
+    // Условный UPDATE по статусу: при одновременных решениях выигрывает только одно,
+    // второе получает 409 вместо тихой перезаписи.
+    const updateResult = await repository.update(
+      { id: item.id, status: CandidateCheckStatus.PENDING_SECURITY },
+      {
+        status: decision,
+        securityComment,
+        decidedByUserId: req.user!.id,
+        decidedAt: new Date(),
+      },
+    );
+    if (!updateResult.affected) {
+      const error: any = new Error('По этой проверке уже принято решение');
+      error.statusCode = 409;
+      throw error;
+    }
 
     const saved = await loadCandidateCheck(item.id);
-    await notifyHrDecision(saved);
+    void notifyHrDecision(saved).catch((error) => logger.error('notifyHrDecision failed:', error));
     res.json(serializeCandidateCheck(saved));
   } catch (error) {
     next(error);
@@ -353,11 +366,7 @@ export const downloadCandidateCheckAttachment = async (req: Request, res: Respon
       error.statusCode = 404;
       throw error;
     }
-    const allowedCheckIds = await AppDataSource.getRepository(CandidateCheck).find({
-      where: { id: In([item.candidateCheckId]) },
-      select: ['id'],
-    });
-    if (!allowedCheckIds.length) {
+    if (!item.candidateCheck) {
       const error: any = new Error('Проверка кандидата не найдена');
       error.statusCode = 404;
       throw error;
@@ -365,6 +374,44 @@ export const downloadCandidateCheckAttachment = async (req: Request, res: Respon
     const data = await fs.readFile(item.storagePath);
     res.setHeader('Content-Type', item.mimeType || 'application/octet-stream');
     res.setHeader('Content-Disposition', buildContentDisposition(item.originalName));
+    res.send(data);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const previewCandidateCheckAttachment = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    ensureCandidateCheckAccess(req);
+    const repository = AppDataSource.getRepository(CandidateCheckAttachment);
+    const item = await repository.findOne({
+      where: { id: req.params.attachmentId },
+      relations: { candidateCheck: true },
+    });
+    if (!item) {
+      const error: any = new Error('Файл анкеты не найден');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (!item.candidateCheck) {
+      const error: any = new Error('Проверка кандидата не найдена');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // DOCX показываем как PDF (как в договорах); остальное — inline с исходным типом.
+    if (isDocxFile(item.originalName, item.mimeType)) {
+      const previewPath = await getDocxPdfPreviewPath(item.storagePath);
+      const previewName = `${path.basename(item.originalName, path.extname(item.originalName))}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', buildContentDisposition(previewName, 'inline', 'attachment'));
+      res.send(await fs.readFile(previewPath));
+      return;
+    }
+
+    const data = await fs.readFile(item.storagePath);
+    res.setHeader('Content-Type', item.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', buildContentDisposition(item.originalName, 'inline', 'attachment'));
     res.send(data);
   } catch (error) {
     next(error);

@@ -12,8 +12,10 @@ import {
   Typography,
 } from '@mui/material';
 import type { ContractRecord, ContractSection } from '../../types/contracts';
+import { UnreadChatCell, UnreadChatHeaderIcon } from './ContractInboxTables';
 import {
-  CONTRACT_STATUS_LABELS,
+  getContractDisplayStatus,
+  getContractStatusLabel,
   formatContractTypeLabel,
   normalizeCounterpartyName,
 } from '../../utils/contract-approval';
@@ -31,6 +33,9 @@ const REGISTRY_COLUMNS = [
   { key: 'stage', label: 'Ход согласования', width: 190 },
 ] as const;
 
+// Колонка непрочитанных сообщений — только в «Мои договоры», в самом конце.
+const CHAT_COLUMN = { key: 'chat', label: '', width: 40 } as const;
+
 type RegistryDisplayRow = {
   contract: ContractRecord;
   depth: 0 | 1;
@@ -43,6 +48,8 @@ type ContractRegistryTableProps = {
   contracts: ContractRecord[];
   contractSection: ContractSection;
   selectedContractId: string;
+  unreadByContract?: Record<string, number>;
+  showUnreadColumn?: boolean;
   onOpenContract: (contractId: string) => void;
 };
 
@@ -50,8 +57,11 @@ export function ContractRegistryTable({
   contracts,
   contractSection,
   selectedContractId,
+  unreadByContract,
+  showUnreadColumn = false,
   onOpenContract,
 }: ContractRegistryTableProps) {
+  const columns = showUnreadColumn ? [...REGISTRY_COLUMNS, CHAT_COLUMN] : REGISTRY_COLUMNS;
   const [collapsedMasters, setCollapsedMasters] = useState<Set<string>>(() => new Set());
   const addendumsByParentId = useMemo(() => {
     const grouped = new Map<string, ContractRecord[]>();
@@ -136,16 +146,16 @@ export function ContractRegistryTable({
       <TableContainer className="contract-registry-table-wrap">
         <Table size="small" className="contract-registry-table">
           <colgroup>
-            {REGISTRY_COLUMNS.map((column) => (
+            {columns.map((column) => (
               <col key={column.key} style={{ width: `${column.width}px` }} />
             ))}
           </colgroup>
           <TableHead>
             <TableRow>
-              {REGISTRY_COLUMNS.map((column) => (
-                <TableCell key={column.key}>
-                  <Box className="registry-header-cell">
-                    <span>{column.label}</span>
+              {columns.map((column) => (
+                <TableCell key={column.key} sx={column.key === 'chat' ? { textAlign: 'center' } : undefined}>
+                  <Box className="registry-header-cell" sx={column.key === 'chat' ? { justifyContent: 'center' } : undefined}>
+                    {column.key === 'chat' ? <UnreadChatHeaderIcon /> : <span>{column.label}</span>}
                   </Box>
                 </TableCell>
               ))}
@@ -201,12 +211,17 @@ export function ContractRegistryTable({
                 <TableCell>
                   <Typography
                     variant="body2"
-                    className={`contract-registry-status contract-registry-status--${row.status}`}
+                    className={`contract-registry-status contract-registry-status--${getContractDisplayStatus(row)}`}
                   >
-                    {CONTRACT_STATUS_LABELS[row.status]}
+                    {getContractStatusLabel(row)}
                   </Typography>
                 </TableCell>
                 <TableCell>{row.needsSignedAttachment ? 'Нет подписанного файла' : (row.statusDetail || row.currentStageLabel || '—')}</TableCell>
+                {showUnreadColumn && (
+                  <TableCell sx={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                    <UnreadChatCell count={unreadByContract?.[row.id]} />
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>

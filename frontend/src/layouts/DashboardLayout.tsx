@@ -44,7 +44,7 @@ import {
   ExpandMore,
   AccountTree,
   Warehouse,
-  PersonSearch,
+  SpaceDashboard,
 } from '@mui/icons-material';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -70,6 +70,7 @@ import { getHasUnsavedChanges, getUnsavedHandlers, setHasUnsavedChanges } from '
 import { getRuntimeAppSettings } from '../services/api';
 import { useServiceHealth } from '../hooks/useServiceHealth';
 import useNotesUnreadStore from '../store/notes-unread-store';
+import useContractUnreadStore from '../store/contract-unread-store';
 
 const expandedDrawerWidth = 280;
 const collapsedDrawerWidth = 86;
@@ -96,6 +97,9 @@ const DashboardLayout = () => {
   const unreadNotesCount = useNotesUnreadStore((state) => state.unreadCount);
   const startUnreadSync = useNotesUnreadStore((state) => state.start);
   const stopUnreadSync = useNotesUnreadStore((state) => state.stop);
+  const contractUnreadCount = useContractUnreadStore((state) => state.unreadCount);
+  const startContractUnreadSync = useContractUnreadStore((state) => state.start);
+  const stopContractUnreadSync = useContractUnreadStore((state) => state.stop);
   const [isWorkSubmenuOpen, setIsWorkSubmenuOpen] = useState(false);
   const [isPlansSubmenuOpen, setIsPlansSubmenuOpen] = useState(true);
   const [isAdminWorkSubmenuOpen, setIsAdminWorkSubmenuOpen] = useState(false);
@@ -180,7 +184,7 @@ const DashboardLayout = () => {
   const canOpenCandidateChecks = canAccessCandidateChecks(user?.role);
   const canOpenBillOfLading = canAccessBillOfLading(user?.role);
   const showBPDashboardMenu = canShowBPDashboardMenu(user?.role);
-  const canOpenBusinessProcesses = canOpenContractApproval || canOpenCandidateChecks || canOpenBillOfLading || showBPDashboardMenu;
+  const canOpenBusinessProcesses = canOpenContractApproval || canOpenCandidateChecks || canOpenBillOfLading;
   const defaultBusinessProcessRoute = canOpenContractApproval
     ? '/business-processes/contract-approval'
     : canOpenCandidateChecks
@@ -325,6 +329,32 @@ const DashboardLayout = () => {
     <TableChart />
   );
 
+  const contractUnreadLabel = contractUnreadCount > 99 ? '99+' : contractUnreadCount;
+  const contractUnreadPill = (
+    <Box
+      component="span"
+      title={`${contractUnreadCount} новых сообщений в чатах договоров`}
+      sx={{
+        ml: 1,
+        minWidth: 18,
+        height: 18,
+        px: '5px',
+        borderRadius: '999px',
+        bgcolor: '#e53935',
+        color: '#fff',
+        fontSize: 11,
+        fontWeight: 700,
+        lineHeight: 1,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+      }}
+    >
+      {contractUnreadLabel}
+    </Box>
+  );
+
   const menuItems = [
     canAccessWarehouse(user?.role)
       ? {
@@ -373,6 +403,17 @@ const DashboardLayout = () => {
       stopUnreadSync();
     };
   }, [user?.id, user?.role, startUnreadSync, stopUnreadSync]);
+
+  useEffect(() => {
+    if (!user?.id || !canAccessContractApproval(user.role)) {
+      stopContractUnreadSync();
+      return;
+    }
+    startContractUnreadSync(user.id);
+    return () => {
+      stopContractUnreadSync();
+    };
+  }, [user?.id, user?.role, startContractUnreadSync, stopContractUnreadSync]);
 
   useEffect(() => {
     if (!user) {
@@ -557,6 +598,21 @@ const DashboardLayout = () => {
       </Toolbar>
       <Divider />
       <List>
+        {showBPDashboardMenu && (
+          <ListItem disablePadding key="bp-dashboard">
+            <Tooltip title={!isPinnedOpen ? 'Дашборд' : ''} placement="right">
+              <ListItemButton
+                selected={location.pathname === '/business-processes/dashboard'}
+                onClick={() => handleNavigate('/business-processes/dashboard')}
+              >
+                <ListItemIcon sx={{ minWidth: isPinnedOpen ? 40 : 0, justifyContent: 'center' }}>
+                  <SpaceDashboard />
+                </ListItemIcon>
+                {isPinnedOpen && <ListItemText primary="Дашборд" />}
+              </ListItemButton>
+            </Tooltip>
+          </ListItem>
+        )}
         {canViewPlansMenu && (
         <ListItem disablePadding key="plans">
           <Tooltip title={!isPinnedOpen ? (isKtkDispatchRole ? 'Диспетчерский отдел' : 'Показатели') : ''} placement="right">
@@ -996,7 +1052,7 @@ const DashboardLayout = () => {
             <ListItem disablePadding>
               <Tooltip title={!isPinnedOpen ? 'Бизнес процесс' : ''} placement="right">
                 <ListItemButton
-                  selected={location.pathname.startsWith('/business-processes')}
+                  selected={location.pathname.startsWith('/business-processes') && location.pathname !== '/business-processes/dashboard'}
                   onClick={() => {
                     const nextOpen = !isBusinessProcessSubmenuOpen;
                     setIsBusinessProcessSubmenuOpen(nextOpen);
@@ -1006,26 +1062,22 @@ const DashboardLayout = () => {
                   }}
                 >
                   <ListItemIcon sx={{ minWidth: isPinnedOpen ? 40 : 0, justifyContent: 'center' }}>
-                    <AccountTree />
+                    <Badge
+                      color="error"
+                      badgeContent={contractUnreadLabel}
+                      invisible={isPinnedOpen || contractUnreadCount <= 0}
+                    >
+                      <AccountTree />
+                    </Badge>
                   </ListItemIcon>
                   {isPinnedOpen && <ListItemText primary="Бизнес процесс" />}
+                  {isPinnedOpen && contractUnreadCount > 0 && !isBusinessProcessSubmenuOpen && contractUnreadPill}
                   {isPinnedOpen ? (isBusinessProcessSubmenuOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />) : null}
                 </ListItemButton>
               </Tooltip>
             </ListItem>
             {isPinnedOpen && isBusinessProcessSubmenuOpen && (
               <>
-                {showBPDashboardMenu && (
-                  <ListItem disablePadding sx={{ pl: 4 }}>
-                    <ListItemButton
-                      selected={location.pathname === '/business-processes/dashboard'}
-                      onClick={() => handleNavigate('/business-processes/dashboard')}
-                      sx={{ py: 0.5, minHeight: 34 }}
-                    >
-                      <ListItemText primary="Дашборд" primaryTypographyProps={{ fontSize: 14 }} />
-                    </ListItemButton>
-                  </ListItem>
-                )}
                 {canOpenContractApproval && (
                   <ListItem disablePadding sx={{ pl: 4 }}>
                     <ListItemButton
@@ -1034,6 +1086,7 @@ const DashboardLayout = () => {
                       sx={{ py: 0.5, minHeight: 34 }}
                     >
                       <ListItemText primary="Согласование договоров" primaryTypographyProps={{ fontSize: 14 }} />
+                      {contractUnreadCount > 0 && contractUnreadPill}
                     </ListItemButton>
                   </ListItem>
                 )}
@@ -1044,9 +1097,6 @@ const DashboardLayout = () => {
                       onClick={() => handleNavigate('/business-processes/candidate-checks')}
                       sx={{ py: 0.5, minHeight: 34 }}
                     >
-                      <ListItemIcon sx={{ minWidth: 30 }}>
-                        <PersonSearch fontSize="small" />
-                      </ListItemIcon>
                       <ListItemText primary="Проверка кандидатов" primaryTypographyProps={{ fontSize: 14 }} />
                     </ListItemButton>
                   </ListItem>
@@ -1137,7 +1187,7 @@ const DashboardLayout = () => {
               {location.pathname.includes('/business-processes/contract-approval') && 'Согласование договоров'}
               {location.pathname.includes('/business-processes/candidate-checks') && 'Проверка кандидатов'}
               {location.pathname.includes('/business-processes/bill-of-lading') && 'Коносамент'}
-              {location.pathname.includes('/business-processes/dashboard') && 'Согласование договоров'}
+              {location.pathname.includes('/business-processes/dashboard') && 'Дашборд'}
               {location.pathname.startsWith('/warehouse') && 'Склад ТС'}
               {location.pathname.includes('/settings') && 'Настройки'}
             </Typography>

@@ -143,8 +143,9 @@
 }
 
 .contract-secretary-task-button {
-  min-width: 170px !important;
-  height: 31px;
+  min-width: 200px !important;
+  height: 40px;
+  align-self: stretch;
   font-size: 11px !important;
   text-transform: uppercase !important;
   white-space: nowrap;
@@ -454,6 +455,58 @@
 
 .contract-registry-status--approved {
   color: #2e7d32;
+}
+
+.contract-registry-status--signing {
+  color: #1565c0;
+}
+
+.contract-archive-master-cell,
+.contract-archive-addendum-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.contract-archive-addendum-cell {
+  padding-left: 22px;
+}
+
+.contract-archive-parent-ref {
+  color: #8c959f;
+  font-size: 10px;
+}
+
+.contract-archive-ds-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: #e8eefc;
+  color: #1c5cab;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.contract-archive-ds-badge:hover {
+  background: #dbe6fb;
+}
+
+.contract-archive-file-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px !important;
+  color: #1c5cab !important;
+  cursor: pointer;
+}
+
+.contract-archive-file-empty {
+  color: #c0c6cc;
 }
 
 .contract-clickable-row {

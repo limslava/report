@@ -68,7 +68,7 @@ export function createApp() {
   };
   app.all('/api/warehouse/uploads', authenticate, authorizeRole(...WAREHOUSE_STAFF_ROLES), handleWarehouseTusUpload);
   app.all('/api/warehouse/uploads/*', authenticate, authorizeRole(...WAREHOUSE_STAFF_ROLES), handleWarehouseTusUpload);
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true }));
   app.use('/api', (req, res, next) => {
     if (req.path.startsWith('/warehouse/uploads')) {

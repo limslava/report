@@ -189,6 +189,7 @@ const ROLE_LABELS: Record<string, string> = {
   head_ktk_mow: 'Руководитель КТК Мск',
   head_hr: 'Руководитель отдела кадров',
   hr_specialist: 'Специалист отдела кадров',
+  hr_recruiter: 'HR-рекрутер',
   garage_head_vvo: 'Начальник гаража Влд',
   garage_head: 'Начальник гаража Влд',
   warehouse_manager_vvo: 'Заведующий складом Владивосток',

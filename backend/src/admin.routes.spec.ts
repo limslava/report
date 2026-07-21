@@ -23,6 +23,9 @@ jest.mock('./controllers/admin.controller', () => ({
   updateAppSettings: jest.fn((_req, res) => res.json({ ok: true })),
   getContractWorkSchedules: jest.fn((_req, res) => res.json([])),
   upsertContractWorkSchedules: jest.fn((_req, res) => res.json({ ok: true })),
+  getContractTemplateVersions: jest.fn((_req, res) => res.json([])),
+  uploadContractTemplateVersion: jest.fn((_req, res) => res.json({ ok: true })),
+  activateContractTemplate: jest.fn((_req, res) => res.json({ ok: true })),
 }));
 
 jest.mock('./middleware/authenticate', () => ({

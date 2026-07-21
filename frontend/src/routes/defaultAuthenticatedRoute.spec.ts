@@ -12,6 +12,8 @@ describe('getDefaultAuthenticatedRoute', () => {
     ['warehouse_manager_vvo', '/operations-preview?location=garage_vvo&section=warehouse_staff'],
     ['manager_to', '/plans'],
     ['head_hr', '/operations-preview?location=ktk_vvo&section=containers'],
+    ['hr_specialist', '/operations-preview?location=ktk_vvo&section=containers'],
+    ['hr_recruiter', '/business-processes/dashboard'],
     ['warehouse_keeper', '/warehouse/operations'],
     ['warehouse_manager', '/warehouse'],
     ['counterparty_user', '/warehouse'],

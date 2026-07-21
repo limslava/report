@@ -1,8 +1,9 @@
 import {
   Add,
   AttachFile,
-  Download,
+  Close,
   Search,
+  Visibility,
 } from '@mui/icons-material';
 import {
   Alert,
@@ -27,18 +28,29 @@ import {
   TableRow,
   TextField,
   Typography,
+  IconButton,
 } from '@mui/material';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   CandidateCheck,
   CandidateCheckStatus,
   createCandidateCheck,
-  decideCandidateCheck,
-  downloadCandidateCheckAttachment,
   getCandidateChecks,
 } from '../services/api';
+import { CandidateCheckDialog } from '../components/candidate-checks/CandidateCheckDialog';
+import { PreviewDialog } from '../components/contracts/ContractDialogs';
+import { candidateStatusChip } from '../utils/candidate-checks';
 import { useAuthStore } from '../store/auth-store';
+import '../styles/contract-approval.css';
+
+const canPreviewLocally = (file: File): boolean => {
+  const name = file.name.toLowerCase();
+  return (file.type || '').startsWith('image/')
+    || file.type === 'application/pdf'
+    || name.endsWith('.pdf')
+    || /\.(png|jpe?g)$/.test(name);
+};
 
 const statusLabels: Record<CandidateCheckStatus, string> = {
   pending_security: 'Проверка СБ',
@@ -47,10 +59,17 @@ const statusLabels: Record<CandidateCheckStatus, string> = {
   rejected: 'Не согласован',
 };
 
-const decisionLabels: Record<Exclude<CandidateCheckStatus, 'pending_security'>, string> = {
-  approved: 'Согласован',
-  approved_with_remarks: 'Согласован с замечаниями',
-  rejected: 'Не согласован',
+const formatSurnameInitials = (fullName?: string | null): string => {
+  const raw = String(fullName ?? '').trim().replace(/\s+/g, ' ');
+  if (!raw) return '—';
+  const parts = raw.split(' ');
+  if (parts.length === 1) return parts[0];
+  const [surname, ...rest] = parts;
+  const initials = rest
+    .filter(Boolean)
+    .map((part) => `${part[0].toUpperCase()}.`)
+    .join(' ');
+  return `${surname} ${initials}`.trim();
 };
 
 const formatDateTime = (value: string | null) => {
@@ -99,37 +118,59 @@ const fileToPayload = (file: File): Promise<{
   reader.readAsDataURL(file);
 });
 
-const downloadBlob = (blob: Blob, filename: string) => {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-};
-
 export default function CandidateChecksPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const user = useAuthStore((state) => state.user);
   const isAdmin = user?.role === 'admin';
-  const isHr = isAdmin || user?.role === 'head_hr' || user?.role === 'hr_specialist';
+  const isHr = isAdmin || user?.role === 'hr_recruiter';
   const isSecurity = isAdmin || user?.role === 'security';
   const [items, setItems] = useState<CandidateCheck[]>([]);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<CandidateCheckStatus | ''>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
   const [createFiles, setCreateFiles] = useState<File[]>([]);
   const [selected, setSelected] = useState<CandidateCheck | null>(null);
-  const [decision, setDecision] = useState<Exclude<CandidateCheckStatus, 'pending_security'> | ''>('');
-  const [securityComment, setSecurityComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [localPreview, setLocalPreview] = useState<{ url: string; name: string; mime: string | null } | null>(null);
 
+  const openLocalPreview = (file: File) => {
+    if (localPreview) URL.revokeObjectURL(localPreview.url);
+    setLocalPreview({ url: URL.createObjectURL(file), name: file.name, mime: file.type || null });
+  };
+  const closeLocalPreview = () => {
+    if (localPreview) URL.revokeObjectURL(localPreview.url);
+    setLocalPreview(null);
+  };
+
+  useEffect(() => {
+    const statusParam = searchParams.get('status');
+    const nextStatus = (
+      statusParam === 'pending_security'
+      || statusParam === 'approved'
+      || statusParam === 'approved_with_remarks'
+      || statusParam === 'rejected'
+    ) ? statusParam : '';
+    setStatus(nextStatus);
+  }, [searchParams]);
+
+  // Открыть форму создания по прямой ссылке (кнопка «Новая проверка» с дашборда),
+  // затем сразу убрать параметр из адреса, чтобы перезагрузка не открывала форму заново.
+  useEffect(() => {
+    if (isHr && searchParams.get('new') === '1') {
+      setCreateOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('new');
+      setSearchParams(next, { replace: true });
+    }
+  }, [isHr, searchParams, setSearchParams]);
+
+  const requestIdRef = useRef(0);
   const loadItems = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -137,6 +178,9 @@ export default function CandidateChecksPage() {
         q: q.trim() || undefined,
         status: status || undefined,
       });
+      // Применяем результат только последнего запроса (защита от гонки при
+      // переходе с фильтром в адресе — иначе «пустой» ответ может перетереть отфильтрованный).
+      if (requestId !== requestIdRef.current) return;
       setItems(response.data);
       const candidateCheckId = searchParams.get('candidateCheckId');
       if (candidateCheckId) {
@@ -144,9 +188,11 @@ export default function CandidateChecksPage() {
         if (match) setSelected(match);
       }
     } catch (loadError) {
-      setError(errorMessage(loadError, 'Не удалось загрузить проверки кандидатов'));
+      if (requestId === requestIdRef.current) {
+        setError(errorMessage(loadError, 'Не удалось загрузить проверки кандидатов'));
+      }
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   }, [q, searchParams, status]);
 
@@ -154,22 +200,19 @@ export default function CandidateChecksPage() {
     loadItems();
   }, [loadItems]);
 
-  const canDecideSelected = useMemo(
-    () => Boolean(isSecurity && selected?.status === 'pending_security'),
-    [isSecurity, selected],
-  );
-
   const handleCreate = async () => {
     setSubmitting(true);
     setError(null);
     try {
       const files = await Promise.all(createFiles.map(fileToPayload));
       const response = await createCandidateCheck({ ...createForm, files });
+      // Закрываем форму и возвращаемся к списку (новая строка уже сверху),
+      // без автооткрытия карточки — показываем короткое подтверждение.
       setItems((prev) => [response.data, ...prev]);
       setCreateOpen(false);
       setCreateForm(emptyCreateForm);
       setCreateFiles([]);
-      setSelected(response.data);
+      setSuccess(`Проверка кандидата «${response.data.candidateFullName}» отправлена.`);
     } catch (createError) {
       setError(errorMessage(createError, 'Не удалось создать проверку кандидата'));
     } finally {
@@ -177,56 +220,25 @@ export default function CandidateChecksPage() {
     }
   };
 
-  const handleDownloadAttachment = async (attachmentId: string, filename: string) => {
-    setError(null);
-    try {
-      const response = await downloadCandidateCheckAttachment(attachmentId);
-      downloadBlob(response.data, filename);
-    } catch (downloadError) {
-      setError(errorMessage(downloadError, 'Не удалось скачать анкету'));
-    }
-  };
-
-  const handleDecision = async () => {
-    if (!selected || !decision) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const response = await decideCandidateCheck(selected.id, {
-        decision,
-        securityComment,
-      });
-      setItems((prev) => prev.map((item) => (item.id === response.data.id ? response.data : item)));
-      setSelected(response.data);
-      setDecision('');
-      setSecurityComment('');
-    } catch (decisionError) {
-      setError(errorMessage(decisionError, 'Не удалось сохранить решение'));
-    } finally {
-      setSubmitting(false);
-    }
+  const handleDecided = (updated: CandidateCheck) => {
+    setItems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    setSelected(updated);
   };
 
   return (
-    <Box sx={{ p: 2 }}>
+    <Box sx={{ px: { xs: 0.125, sm: 0.25 }, py: { xs: 0.25, sm: 0.375 }, display: 'grid', gap: 0.5 }}>
       {error && (
-        <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 1.5 }}>
+        <Alert severity="error" onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
+      {success && (
+        <Alert severity="success" onClose={() => setSuccess(null)}>
+          {success}
+        </Alert>
+      )}
 
-      <Paper sx={{ mb: 1.5, p: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
-        <Typography variant="h6" sx={{ fontWeight: 600 }}>
-          Проверка кандидатов
-        </Typography>
-        {isHr && (
-          <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
-            Новая проверка
-          </Button>
-        )}
-      </Paper>
-
-      <Paper sx={{ mb: 1.5, p: 1, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 260px' }, gap: 1 }}>
+      <Paper sx={{ p: 1, display: 'grid', gridTemplateColumns: { xs: '1fr', md: `1fr 220px${isHr ? ' auto' : ''}` }, gap: 1, alignItems: 'center' }}>
         <TextField
           size="small"
           label="Поиск"
@@ -254,65 +266,67 @@ export default function CandidateChecksPage() {
             ))}
           </Select>
         </FormControl>
+        {isHr && (
+          <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)} sx={{ whiteSpace: 'nowrap' }}>
+            Новая проверка
+          </Button>
+        )}
       </Paper>
 
-      <TableContainer component={Paper}>
-        <Table size="small" sx={{ '& th, & td': { borderRight: '1px solid #d6dee8' } }}>
-          <TableHead>
-            <TableRow sx={{ bgcolor: '#f3f6fb' }}>
-              <TableCell sx={{ width: 70, fontWeight: 700 }}>№</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Кандидат</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Должность</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Контакты</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>HR</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Создано</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Анкета</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Статус</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Решение СБ</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {items.map((item, index) => (
-              <TableRow
-                key={item.id}
-                hover
-                onDoubleClick={() => setSelected(item)}
-                sx={{ bgcolor: index % 2 === 0 ? '#eef4fd' : '#fff', cursor: 'pointer' }}
-              >
-                <TableCell>{index + 1}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{item.candidateFullName}</TableCell>
-                <TableCell>{item.position || '—'}</TableCell>
-                <TableCell>
-                  {[item.phone, item.email].filter(Boolean).join(', ') || '—'}
-                </TableCell>
-                <TableCell>{item.createdByName || '—'}</TableCell>
-                <TableCell>{formatDateTime(item.createdAt)}</TableCell>
-                <TableCell>{item.attachments?.length ? `${item.attachments.length} файл(а)` : '—'}</TableCell>
-                <TableCell>{statusLabels[item.status]}</TableCell>
-                <TableCell>
-                  {item.decidedByName
-                    ? `${item.decidedByName}, ${formatDateTime(item.decidedAt)}`
-                    : '—'}
-                </TableCell>
-              </TableRow>
-            ))}
-            {!loading && items.length === 0 && (
+      <Paper sx={{ px: 0.25, py: 0.5 }}>
+        <TableContainer className="contract-registry-table-wrap">
+          <Table size="small" className="contract-registry-table">
+            <TableHead>
               <TableRow>
-                <TableCell colSpan={9} align="center" sx={{ py: 3, color: 'text.secondary' }}>
-                  Проверок кандидатов пока нет.
-                </TableCell>
+                <TableCell sx={{ width: 40 }}>№</TableCell>
+                <TableCell>Кандидат</TableCell>
+                <TableCell>Должность</TableCell>
+                <TableCell>Телефон</TableCell>
+                <TableCell>Email</TableCell>
+                <TableCell>Комментарий</TableCell>
+                <TableCell>Инициатор</TableCell>
+                <TableCell>Создано</TableCell>
+                <TableCell align="center">Файлы</TableCell>
+                <TableCell>Статус</TableCell>
               </TableRow>
-            )}
-            {loading && (
-              <TableRow>
-                <TableCell colSpan={9} align="center" sx={{ py: 3, color: 'text.secondary' }}>
-                  Загрузка...
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+            </TableHead>
+            <TableBody>
+              {items.map((item, index) => (
+                <TableRow key={item.id} hover onClick={() => setSelected(item)} sx={{ cursor: 'pointer' }}>
+                  <TableCell>{index + 1}</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }} title={item.candidateFullName}>{item.candidateFullName}</TableCell>
+                  <TableCell title={item.position || ''}>{item.position || '—'}</TableCell>
+                  <TableCell>{item.phone || '—'}</TableCell>
+                  <TableCell>{item.email || '—'}</TableCell>
+                  <TableCell title={item.hrComment || ''}>{item.hrComment || '—'}</TableCell>
+                  <TableCell title={item.createdByName || ''}>{formatSurnameInitials(item.createdByName)}</TableCell>
+                  <TableCell>{formatDateTime(item.createdAt)}</TableCell>
+                  <TableCell align="center">{item.attachments?.length || '—'}</TableCell>
+                  <TableCell>
+                    <Box component="span" sx={{ display: 'inline-block', px: 0.75, py: '1px', borderRadius: '5px', fontWeight: 650, ...candidateStatusChip(item.status) }}>
+                      {statusLabels[item.status]}
+                    </Box>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {!loading && items.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={10} align="center" sx={{ py: 3, color: 'text.secondary' }}>
+                    Проверок кандидатов пока нет.
+                  </TableCell>
+                </TableRow>
+              )}
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={10} align="center" sx={{ py: 3, color: 'text.secondary' }}>
+                    Загрузка...
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
 
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Новая проверка кандидата</DialogTitle>
@@ -357,29 +371,80 @@ export default function CandidateChecksPage() {
               startIcon={<AttachFile />}
               sx={{ alignSelf: 'flex-start' }}
             >
-              Прикрепить анкету
+              Прикрепить файлы
               <input
                 type="file"
                 hidden
                 multiple
                 accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
                 onChange={(event) => {
-                  const files = Array.from(event.target.files ?? []);
-                  setCreateFiles(files);
+                  const picked = Array.from(event.target.files ?? []);
+                  setCreateFiles((prev) => {
+                    const merged = [...prev];
+                    for (const file of picked) {
+                      if (!merged.some((existing) => existing.name === file.name && existing.size === file.size)) {
+                        merged.push(file);
+                      }
+                    }
+                    return merged.slice(0, 10);
+                  });
                   event.target.value = '';
                 }}
               />
             </Button>
             <Box>
               {createFiles.length ? (
-                createFiles.map((file) => (
-                  <Typography variant="body2" key={`${file.name}-${file.size}`} sx={{ color: 'text.secondary' }}>
-                    {file.name}
+                <Stack spacing={0.5}>
+                  {createFiles.map((file) => {
+                    const canPreview = canPreviewLocally(file);
+                    return (
+                      <Stack
+                        key={`${file.name}-${file.size}`}
+                        direction="row"
+                        alignItems="center"
+                        justifyContent="space-between"
+                        spacing={1}
+                        sx={{ bgcolor: '#f4f6fa', borderRadius: 1, px: 1, py: 0.5 }}
+                      >
+                        <Typography
+                          variant="body2"
+                          onClick={canPreview ? () => openLocalPreview(file) : undefined}
+                          sx={{
+                            color: canPreview ? 'primary.main' : 'text.secondary',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            cursor: canPreview ? 'pointer' : 'default',
+                            '&:hover': canPreview ? { textDecoration: 'underline' } : undefined,
+                          }}
+                          title={canPreview ? 'Открыть предпросмотр' : 'Предпросмотр DOC/DOCX доступен после сохранения'}
+                        >
+                          {file.name}
+                        </Typography>
+                        <Stack direction="row" spacing={0.25} sx={{ flex: 'none' }}>
+                          {canPreview && (
+                            <IconButton size="small" aria-label="Просмотр" onClick={() => openLocalPreview(file)}>
+                              <Visibility fontSize="small" />
+                            </IconButton>
+                          )}
+                          <IconButton
+                            size="small"
+                            aria-label="Удалить файл"
+                            onClick={() => setCreateFiles((prev) => prev.filter((f) => !(f.name === file.name && f.size === file.size)))}
+                          >
+                            <Close fontSize="small" />
+                          </IconButton>
+                        </Stack>
+                      </Stack>
+                    );
+                  })}
+                  <Typography variant="caption" color="text.secondary">
+                    Можно прикрепить несколько файлов (до 10). Форматы: PDF, DOC, DOCX, PNG, JPG. Предпросмотр DOC/DOCX — после сохранения.
                   </Typography>
-                ))
+                </Stack>
               ) : (
                 <Typography variant="body2" color="text.secondary">
-                  Анкета обязательна: PDF, DOC, DOCX, PNG или JPG.
+                  Прикрепите один или несколько файлов: PDF, DOC, DOCX, PNG или JPG.
                 </Typography>
               )}
             </Box>
@@ -392,145 +457,30 @@ export default function CandidateChecksPage() {
             onClick={handleCreate}
             disabled={submitting || !createForm.candidateFullName.trim() || createFiles.length === 0}
           >
-            Отправить в СБ
+            {submitting ? 'Отправка…' : 'Отправить'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(selected)} onClose={() => setSelected(null)} maxWidth="md" fullWidth>
-        {selected && (
-          <>
-            <DialogTitle>
-              Проверка кандидата: {selected.candidateFullName}
-            </DialogTitle>
-            <DialogContent>
-              <Stack spacing={1.5} sx={{ pt: 1 }}>
-                <Paper variant="outlined" sx={{ p: 1.5 }}>
-                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1.5 }}>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Должность</Typography>
-                      <Typography>{selected.position || '—'}</Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Статус</Typography>
-                      <Typography>{statusLabels[selected.status]}</Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Телефон</Typography>
-                      <Typography>{selected.phone || '—'}</Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Email</Typography>
-                      <Typography>{selected.email || '—'}</Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">HR</Typography>
-                      <Typography>{selected.createdByName || '—'}</Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Создано</Typography>
-                      <Typography>{formatDateTime(selected.createdAt)}</Typography>
-                    </Box>
-                  </Box>
-                </Paper>
+      <CandidateCheckDialog
+        check={selected}
+        canDecide={isSecurity}
+        onClose={() => setSelected(null)}
+        onDecided={handleDecided}
+        onError={setError}
+      />
 
-                <Paper variant="outlined" sx={{ p: 1.5 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Комментарий HR</Typography>
-                  <Typography color={selected.hrComment ? 'text.primary' : 'text.secondary'}>
-                    {selected.hrComment || 'Комментарий не указан.'}
-                  </Typography>
-                </Paper>
-
-                <Paper variant="outlined" sx={{ p: 1.5 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Анкета кандидата</Typography>
-                  {selected.attachments?.length ? (
-                    <Stack spacing={0.5}>
-                      {selected.attachments.map((attachment) => (
-                        <Box
-                          key={attachment.id}
-                          sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}
-                        >
-                          <Typography>{attachment.originalName}</Typography>
-                          <Button
-                            size="small"
-                            startIcon={<Download />}
-                            onClick={() => handleDownloadAttachment(attachment.id, attachment.originalName)}
-                          >
-                            Скачать
-                          </Button>
-                        </Box>
-                      ))}
-                    </Stack>
-                  ) : (
-                    <Typography color="text.secondary">Анкета не приложена.</Typography>
-                  )}
-                </Paper>
-
-                <Paper variant="outlined" sx={{ p: 1.5 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Решение СБ</Typography>
-                  {selected.status === 'pending_security' ? (
-                    <Typography color="text.secondary">Решение ещё не принято.</Typography>
-                  ) : (
-                    <>
-                      <Typography>{statusLabels[selected.status]}</Typography>
-                      <Typography color="text.secondary">
-                        {selected.decidedByName || '—'}, {formatDateTime(selected.decidedAt)}
-                      </Typography>
-                      <Typography sx={{ mt: 1 }}>
-                        {selected.securityComment || 'Комментарий не указан.'}
-                      </Typography>
-                    </>
-                  )}
-                </Paper>
-
-                {canDecideSelected && (
-                  <Paper variant="outlined" sx={{ p: 1.5 }}>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Ваша задача: проверка кандидата</Typography>
-                    <Stack spacing={1.5}>
-                      <FormControl fullWidth>
-                        <InputLabel>Решение</InputLabel>
-                        <Select
-                          label="Решение"
-                          value={decision}
-                          onChange={(event) => setDecision(event.target.value as Exclude<CandidateCheckStatus, 'pending_security'>)}
-                        >
-                          {Object.entries(decisionLabels).map(([value, label]) => (
-                            <MenuItem value={value} key={value}>{label}</MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                      <TextField
-                        label="Комментарий"
-                        value={securityComment}
-                        onChange={(event) => setSecurityComment(event.target.value)}
-                        multiline
-                        minRows={3}
-                        fullWidth
-                      />
-                      <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        <Button
-                          variant="contained"
-                          onClick={handleDecision}
-                          disabled={
-                            submitting
-                            || !decision
-                            || ((decision === 'approved_with_remarks' || decision === 'rejected') && !securityComment.trim())
-                          }
-                        >
-                          Сохранить решение
-                        </Button>
-                      </Box>
-                    </Stack>
-                  </Paper>
-                )}
-              </Stack>
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={() => setSelected(null)}>Закрыть</Button>
-            </DialogActions>
-          </>
-        )}
-      </Dialog>
+      <PreviewDialog
+        open={Boolean(localPreview)}
+        fileName={localPreview?.name || ''}
+        previewUrl={localPreview?.url || null}
+        mimeType={localPreview?.mime || null}
+        attachmentId={null}
+        loading={false}
+        error={null}
+        onClose={closeLocalPreview}
+        onDownloadOriginal={() => {}}
+      />
     </Box>
   );
 }

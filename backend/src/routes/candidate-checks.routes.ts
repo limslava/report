@@ -5,6 +5,7 @@ import {
   decideCandidateCheck,
   downloadCandidateCheckAttachment,
   listCandidateChecks,
+  previewCandidateCheckAttachment,
 } from '../controllers/candidate-checks.controller';
 import { authenticate } from '../middleware/authenticate';
 import { handleValidationErrors } from '../middleware/express-validator.middleware';
@@ -46,6 +47,13 @@ router.get(
   [param('attachmentId').isUUID()],
   handleValidationErrors,
   downloadCandidateCheckAttachment,
+);
+
+router.get(
+  '/attachments/:attachmentId/preview',
+  [param('attachmentId').isUUID()],
+  handleValidationErrors,
+  previewCandidateCheckAttachment,
 );
 
 router.post(

@@ -152,6 +152,8 @@ export const decideCandidateCheck = (
   id: string,
   data: { decision: Exclude<CandidateCheckStatus, 'pending_security'>; securityComment?: string | null },
 ) => api.post<CandidateCheck>(`/candidate-checks/${id}/decision`, data);
+export const previewCandidateCheckAttachment = (attachmentId: string) =>
+  api.get(`/candidate-checks/attachments/${attachmentId}/preview`, { responseType: 'blob' });
 export const downloadCandidateCheckAttachment = (attachmentId: string) =>
   api.get(`/candidate-checks/attachments/${attachmentId}/download`, { responseType: 'blob' });
 
@@ -245,6 +247,10 @@ export const getContractDiscussion = (contractId: string) =>
   api.get(`/contracts/${contractId}/discussion`);
 export const getContractDiscussionUnreadCount = (contractId: string) =>
   api.get<{ count: number }>(`/contracts/${contractId}/discussion/unread-count`);
+export const getContractDiscussionUnreadCounts = (contractIds: string[]) =>
+  api.post<{ counts: Record<string, number> }>(`/contracts/discussion/unread-counts`, { contractIds });
+export const getContractDiscussionUnreadTotal = () =>
+  api.get<{ total: number }>(`/contracts/discussion/unread-total`);
 export const markContractDiscussionRead = (contractId: string) =>
   api.post(`/contracts/${contractId}/discussion/read`);
 export const createContractDiscussionMessage = (

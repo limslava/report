@@ -48,6 +48,7 @@ export function canViewTotalsInPlans(role?: string | null): boolean {
     && role !== 'secretary'
     && role !== 'head_hr'
     && role !== 'hr_specialist'
+    && role !== 'hr_recruiter'
     && role !== 'garage_head'
     && role !== 'garage_head_vvo'
     && role !== 'warehouse_manager_vvo'
@@ -64,6 +65,7 @@ export function canViewPlans(role?: string | null): boolean {
     && role !== 'secretary'
     && role !== 'head_hr'
     && role !== 'hr_specialist'
+    && role !== 'hr_recruiter'
     && role !== 'garage_head'
     && role !== 'garage_head_vvo'
     && role !== 'warehouse_manager_vvo'
@@ -92,16 +94,23 @@ export function canAccessContractApproval(role?: string | null): boolean {
 }
 
 export function canAccessCandidateChecks(role?: string | null): boolean {
-  return role === 'admin' || role === 'security' || role === 'head_hr' || role === 'hr_specialist';
+  return role === 'admin' || role === 'security' || role === 'hr_recruiter';
 }
 
 export function canViewBPDashboard(role?: string | null): boolean {
-  return role === 'security' || role === 'lawyer' || role === 'chief_accountant' || role === 'financer' || role === 'secretary';
+  return role === 'admin'
+    || role === 'security'
+    || role === 'lawyer'
+    || role === 'chief_accountant'
+    || role === 'financer'
+    || role === 'secretary'
+    || role === 'hr_recruiter';
 }
 
 export function canShowBPDashboardMenu(role?: string | null): boolean {
-  void role;
-  return false;
+  // Админ попадает на дашборд через клик по шапке/логотипу и при логине,
+  // поэтому отдельный пункт в левом меню показываем только не-админам с дашбордом.
+  return canViewBPDashboard(role) && role !== 'admin';
 }
 
 export function canAccessBillOfLading(role?: string | null): boolean {

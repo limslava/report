@@ -33,7 +33,7 @@ import {
 } from '../services/contract-approval-sla.service';
 import { calculateDeadlineBySchedule, resolveEffectiveWorkSchedule } from '../services/contract-work-schedule.service';
 import { listCalendarByYear, syncCalendarBySource, upsertCalendarDay } from '../services/workday-calendar.service';
-import { notifyDecisionChanged, notifyStepAssigned } from '../services/contract-approval-notification.service';
+import { notifyDecisionChanged, notifyInitiatorFinalResult, notifyInitiatorReadyForSignature, notifyStepAssigned } from '../services/contract-approval-notification.service';
 import { planWebSocketService } from '../services/websocket.service';
 import { logger } from '../utils/logger';
 import { buildContentDisposition } from '../utils/content-disposition';
@@ -52,7 +52,7 @@ import {
   isParallelSecretaryRoute,
   isPreSecretaryApprovalRole,
 } from '../services/contract-approval-route.service';
-import { assertContractDetailAccess, hasContractDetailAccess } from '../services/contract-approval-access.service';
+import { assertContractDetailAccess, canViewContractAttachments, hasContractDetailAccess } from '../services/contract-approval-access.service';
 import {
   applyApprovalDecision,
   assignApprovalStep,
@@ -414,6 +414,11 @@ function assertIncomeStandardGenerationDetails(contract: Contract): void {
 }
 
 async function replaceGeneratedIncomeStandardAttachment(contract: Contract, uploadedByUserId?: string | null): Promise<void> {
+  // Регенерация должна работать в рамках актуальной ревизии документов:
+  // при доработке (REWORK) файл сохраняется в ревизию N+1, а файлы прошлых
+  // ревизий не удаляются — история согласования остается неизменной.
+  const routeSteps = await stepRepository.find({ where: { contractId: contract.id } });
+  const targetRevisionNo = getNextRevisionForDocuments(contract.status, routeSteps);
   const replaced = await replaceGeneratedContractAttachment({
     contract,
     uploadedByUserId,
@@ -425,6 +430,7 @@ async function replaceGeneratedIncomeStandardAttachment(contract: Contract, uplo
           contractId,
           approvalStepId: IsNull(),
           context: 'contract',
+          revisionNo: targetRevisionNo,
         },
       }),
       resolveAttachmentPath,
@@ -434,6 +440,7 @@ async function replaceGeneratedIncomeStandardAttachment(contract: Contract, uplo
         contractId,
         uploadedByUserId: ownerId,
         files: [file],
+        revisionNo: targetRevisionNo,
       }).then(() => undefined),
     },
   });
@@ -506,6 +513,11 @@ async function resolveAttachmentForUser(attachmentId: string, userId?: string, r
   const routeSteps = await stepRepository.find({ where: { contractId: contract.id } });
   if (!hasContractDetailAccess(contract, routeSteps, userId, role)) {
     const error: any = new Error('Нет доступа к файлу договора');
+    error.statusCode = 403;
+    throw error;
+  }
+  if (!canViewContractAttachments(role)) {
+    const error: any = new Error('Просмотр файлов листа согласования доступен только СБ, финдиректору, главбуху, гендиректору и администратору');
     error.statusCode = 403;
     throw error;
   }
@@ -1231,14 +1243,22 @@ export const listContracts = async (_req: Request, res: Response, next: NextFunc
     const secretaryAttachments = secretaryStepIds.length
       ? await attachmentRepository.find({
         where: { approvalStepId: In(secretaryStepIds) },
-        select: ['approvalStepId'],
+        select: ['id', 'approvalStepId', 'originalName', 'mimeType', 'createdAt'],
+        order: { createdAt: 'DESC' },
       })
       : [];
-    const secretaryStepsWithFiles = new Set(
-      secretaryAttachments
-        .map((attachment) => attachment.approvalStepId)
-        .filter((stepId): stepId is string => Boolean(stepId)),
-    );
+    // Подписанный скан = последнее вложение секретарского шага. Держим ссылку для колонки «Файл» в реестре.
+    const signedFileByStep = new Map<string, { id: string; originalName: string; mimeType: string | null }>();
+    for (const attachment of secretaryAttachments) {
+      if (attachment.approvalStepId && !signedFileByStep.has(attachment.approvalStepId)) {
+        signedFileByStep.set(attachment.approvalStepId, {
+          id: attachment.id,
+          originalName: attachment.originalName,
+          mimeType: attachment.mimeType ?? null,
+        });
+      }
+    }
+    const secretaryStepsWithFiles = new Set(signedFileByStep.keys());
 
     res.json(contracts.map((contract) => {
       const contractSteps = stepsByContract.get(contract.id) ?? [];
@@ -1250,6 +1270,7 @@ export const listContracts = async (_req: Request, res: Response, next: NextFunc
           roleLabel: contractApprovalRoleLabel,
           secretaryHasSignedFile: secretaryStep ? secretaryStepsWithFiles.has(secretaryStep.id) : false,
         }),
+        signedFile: secretaryStep ? (signedFileByStep.get(secretaryStep.id) ?? null) : null,
         id: contract.id,
         contractNumber: contract.contractNumber,
         contractType: contract.contractType,
@@ -1302,6 +1323,11 @@ export const listSecurityInbox = async (req: Request, res: Response, next: NextF
     if (!currentUserId) {
       const error: any = new Error('Пользователь не авторизован');
       error.statusCode = 401;
+      throw error;
+    }
+    if (req.user?.role !== 'security' && req.user?.role !== 'admin') {
+      const error: any = new Error('Реестр проверок СБ доступен только службе безопасности');
+      error.statusCode = 403;
       throw error;
     }
 
@@ -1385,7 +1411,7 @@ export const listSecurityInbox = async (req: Request, res: Response, next: NextF
           securityDecision: step.decision,
           securitySignedAt: toIsoOrNull(step.signedAt),
           securityComment: step.comment,
-          attachments: files.map(serializeAttachment),
+          attachments: canViewContractAttachments(req.user?.role) ? files.map(serializeAttachment) : [],
         };
       });
 
@@ -1480,7 +1506,7 @@ export const listMyApprovalInbox = async (req: Request, res: Response, next: Nex
         stepComment: step.comment,
         roleCode: step.roleCode,
         roleLabel: contractApprovalRoleLabel(step.roleCode),
-        attachments: files.map(serializeAttachment),
+        attachments: canViewContractAttachments(currentUserRole) ? files.map(serializeAttachment) : [],
       };
     });
 
@@ -1514,7 +1540,7 @@ export const getMyApprovalDashboard = async (req: Request, res: Response, next: 
 
     const roleSteps = await stepRepository.find({
       where: currentUserRole ? { roleCode: currentUserRole } : { approverUserId: currentUserId },
-      relations: ['contract'],
+      relations: ['contract', 'contract.initiator', 'approverUser'],
       order: { assignedAt: 'DESC', createdAt: 'DESC' },
       take: 5000,
     });
@@ -1542,12 +1568,36 @@ export const getMyApprovalDashboard = async (req: Request, res: Response, next: 
     }).length;
 
     const overdue = activeRoleSteps.filter((step) => step.deadlineAt && new Date(step.deadlineAt) < now).length;
+    // «Дедлайн сегодня» — только еще не просроченные шаги, иначе KPI пересекаются
+    // и сумма плиток не сходится со списком.
     const dueToday = activeRoleSteps.filter((step) => {
       if (!step.deadlineAt) return false;
       const deadline = new Date(step.deadlineAt);
-      return deadline >= startOfToday && deadline <= endOfToday;
+      return deadline >= now && deadline <= endOfToday;
     }).length;
     const inWork = Math.max(activeRoleSteps.length - overdue, 0);
+
+    // Тренд просрочки за 14 дней восстанавливается из имеющихся дат шагов
+    // (assignedAt / deadlineAt / signedAt) — снапшоты не нужны, данные реальные.
+    const TREND_DAYS = 14;
+    const overdueTrend: number[] = [];
+    for (let offset = TREND_DAYS - 1; offset >= 0; offset -= 1) {
+      const dayEnd = offset === 0
+        ? now
+        : new Date(endOfToday.getTime() - offset * 24 * 60 * 60 * 1000);
+      const count = currentRoleSteps.filter((step) => {
+        if (!step.assignedAt || !step.deadlineAt) return false;
+        if (new Date(step.assignedAt).getTime() > dayEnd.getTime()) return false;
+        if (new Date(step.deadlineAt).getTime() > dayEnd.getTime()) return false;
+        if (step.signedAt && new Date(step.signedAt).getTime() <= dayEnd.getTime()) return false;
+        return true;
+      }).length;
+      overdueTrend.push(count);
+    }
+    // Последняя точка = текущее KPI, чтобы спарклайн и число совпадали.
+    overdueTrend[overdueTrend.length - 1] = overdue;
+    const overdueWeekAgo = overdueTrend.length >= 8 ? overdueTrend[overdueTrend.length - 8] : overdueTrend[0];
+    const overdueDeltaWeek = overdue - overdueWeekAgo;
 
     const completedMonthSteps = processedMySteps.filter((step) => {
       if (!step.signedAt) return false;
@@ -1555,15 +1605,57 @@ export const getMyApprovalDashboard = async (req: Request, res: Response, next: 
     });
     const completedMonth = completedMonthSteps.length;
 
-    const avgHours = completedMonthSteps.length
-      ? completedMonthSteps.reduce((sum, step) => {
-        if (!step.assignedAt || !step.signedAt) return sum;
-        const assignedAt = new Date(step.assignedAt).getTime();
-        const signedAt = new Date(step.signedAt).getTime();
-        if (signedAt <= assignedAt) return sum;
+    const measurableSteps = completedMonthSteps.filter((step) => {
+      if (!step.assignedAt || !step.signedAt) return false;
+      return new Date(step.signedAt).getTime() > new Date(step.assignedAt).getTime();
+    });
+    const avgHours = measurableSteps.length
+      ? measurableSteps.reduce((sum, step) => {
+        const assignedAt = new Date(step.assignedAt!).getTime();
+        const signedAt = new Date(step.signedAt!).getTime();
         return sum + ((signedAt - assignedAt) / (1000 * 60 * 60));
-      }, 0) / completedMonthSteps.length
+      }, 0) / measurableSteps.length
       : 0;
+
+    // Список ближайших дедлайнов для таблицы на дашборде: сначала просроченные
+    // (по возрастанию давности), затем ближайшие по сроку, безсрочные — в конце.
+    const MS_PER_DAY = 1000 * 60 * 60 * 24;
+    const upcomingDeadlines = activeRoleSteps
+      .slice()
+      .sort((a, b) => {
+        const da = a.deadlineAt ? new Date(a.deadlineAt).getTime() : Number.POSITIVE_INFINITY;
+        const db = b.deadlineAt ? new Date(b.deadlineAt).getTime() : Number.POSITIVE_INFINITY;
+        return da - db;
+      })
+      .slice(0, 7)
+      .map((step) => {
+        const deadline = step.deadlineAt ? new Date(step.deadlineAt) : null;
+        let status: 'overdue' | 'due_today' | 'on_track' = 'on_track';
+        let overdueDays = 0;
+        let daysLeft: number | null = null;
+        if (deadline) {
+          if (deadline.getTime() < now.getTime()) {
+            status = 'overdue';
+            overdueDays = Math.max(1, Math.ceil((now.getTime() - deadline.getTime()) / MS_PER_DAY));
+          } else if (deadline.getTime() <= endOfToday.getTime()) {
+            status = 'due_today';
+          } else {
+            status = 'on_track';
+            daysLeft = Math.max(1, Math.ceil((deadline.getTime() - now.getTime()) / MS_PER_DAY));
+          }
+        }
+        return {
+          contractId: step.contract.id,
+          contractNumber: step.contract.contractNumber,
+          contractType: step.contract.contractType,
+          counterpartyName: step.contract.counterpartyShortName || step.contract.counterpartyName,
+          initiatorName: step.contract.initiator?.fullName ?? '—',
+          deadlineAt: step.deadlineAt ? new Date(step.deadlineAt).toISOString() : null,
+          status,
+          overdueDays,
+          daysLeft,
+        };
+      });
 
     res.json({
       inWork,
@@ -1572,6 +1664,9 @@ export const getMyApprovalDashboard = async (req: Request, res: Response, next: 
       newRequests,
       completedMonth,
       avgProcessingHours: Number(avgHours.toFixed(1)),
+      overdueTrend,
+      overdueDeltaWeek,
+      upcomingDeadlines,
     });
   } catch (error) {
     next(error);
@@ -2233,6 +2328,10 @@ export const listContractAttachments = async (req: Request, res: Response, next:
     const steps = await stepRepository.find({ where: { contractId: id } });
     assertContractDetailAccess(contract, steps, req.user?.id, req.user?.role);
 
+    if (!canViewContractAttachments(req.user?.role)) {
+      res.json([]);
+      return;
+    }
     const rows = await attachmentRepository.find({ where: { contractId: id }, order: { createdAt: 'ASC' } });
     res.json(rows.map(serializeAttachment));
   } catch (error) {
@@ -2423,6 +2522,74 @@ export const getContractDiscussionUnreadCount = async (req: Request, res: Respon
     }
     const count = await discussionMessageRepository.count({ where });
     res.json({ count });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Пакетный подсчёт непрочитанных сообщений по списку договоров (для индикатора в списке).
+export const getContractDiscussionUnreadCounts = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const currentUserId = req.user?.id;
+    if (!currentUserId) {
+      const error: any = new Error('Пользователь не авторизован');
+      error.statusCode = 401;
+      throw error;
+    }
+    const rawIds = Array.isArray(req.body?.contractIds) ? req.body.contractIds : [];
+    const ids = [...new Set(rawIds.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0))].slice(0, 500);
+    if (!ids.length) {
+      res.json({ counts: {} });
+      return;
+    }
+    const rows = await discussionMessageRepository
+      .createQueryBuilder('m')
+      .select('m.contract_id', 'contractId')
+      .addSelect('COUNT(*)', 'count')
+      .leftJoin(ContractDiscussionRead, 'r', 'r.contract_id = m.contract_id AND r.user_id = :uid', { uid: currentUserId })
+      .where('m.contract_id IN (:...ids)', { ids })
+      .andWhere('m.author_user_id IS DISTINCT FROM :uid', { uid: currentUserId })
+      .andWhere('(r.read_at IS NULL OR m.created_at > r.read_at)')
+      .groupBy('m.contract_id')
+      .getRawMany<{ contractId: string; count: string }>();
+    const counts: Record<string, number> = {};
+    for (const row of rows) counts[row.contractId] = Number(row.count);
+    res.json({ counts });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Общий счётчик непрочитанных сообщений по «моим» договорам (инициатор или согласующий).
+export const getContractDiscussionUnreadTotal = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const currentUserId = req.user?.id;
+    if (!currentUserId) {
+      const error: any = new Error('Пользователь не авторизован');
+      error.statusCode = 401;
+      throw error;
+    }
+    const result = await discussionMessageRepository.query(
+      `SELECT COUNT(*)::int AS total
+         FROM contract_discussion_messages m
+         LEFT JOIN contract_discussion_reads r
+           ON r.contract_id = m.contract_id AND r.user_id = $1
+        WHERE m.author_user_id IS DISTINCT FROM $1
+          AND (r.read_at IS NULL OR m.created_at > r.read_at)
+          AND EXISTS (
+            SELECT 1 FROM contracts c
+             WHERE c.id = m.contract_id
+               AND (
+                 c.initiator_id = $1
+                 OR EXISTS (
+                   SELECT 1 FROM contract_approval_steps s
+                    WHERE s.contract_id = c.id AND s.approver_user_id = $1
+                 )
+               )
+          )`,
+      [currentUserId],
+    );
+    res.json({ total: Number(result?.[0]?.total || 0) });
   } catch (error) {
     next(error);
   }
@@ -2625,6 +2792,14 @@ export const securityVisaDecision = async (req: Request, res: Response, next: Ne
         logger.error('Failed to send step-assigned notification (securityVisaDecision):', error);
       });
     }
+    if (secretaryStep) {
+      void notifyInitiatorReadyForSignature(contract).catch((error) => {
+        logger.error('Failed to send initiator ready-for-signature notification (securityVisaDecision):', error);
+      });
+    }
+    void notifyInitiatorFinalResult(contract).catch((error) => {
+      logger.error('Failed to send initiator final-result notification (securityVisaDecision):', error);
+    });
     const securityDecisionChanged = Boolean(priorDecision)
       && (priorDecision !== decision || priorComment !== normalizedComment);
     if (securityDecisionChanged) {
@@ -2663,6 +2838,10 @@ export const getContractApprovalSheet = async (req: Request, res: Response, next
       order: { orderNo: 'ASC' },
     });
     assertContractDetailAccess(contract, allSteps, req.user?.id, req.user?.role);
+    const showContractAttachments = canViewContractAttachments(req.user?.role);
+    const serializeSheetAttachments = (files: ContractAttachment[]) => (
+      showContractAttachments ? files.map(serializeAttachment) : []
+    );
 
     const allContractFiles = await attachmentRepository.find({
       where: { contractId: id, approvalStepId: IsNull() },
@@ -2705,7 +2884,7 @@ export const getContractApprovalSheet = async (req: Request, res: Response, next
       slaWorkdays: step.slaWorkdays,
       assignedAt: toIsoOrNull(step.assignedAt),
       deadlineAt: toIsoOrNull(step.deadlineAt),
-      attachments: (filesByStep.get(step.id) ?? []).map(serializeAttachment),
+      attachments: serializeSheetAttachments(filesByStep.get(step.id) ?? []),
     });
     const previousRevisionNumbers = [...new Set(allSteps
       .map((step) => step.revisionNo || 1)
@@ -2742,7 +2921,7 @@ export const getContractApprovalSheet = async (req: Request, res: Response, next
         psrFlag: contract.psrFlag,
         signingMethod: contract.signingMethod,
         status: contract.status,
-        attachments: contractFiles.map(serializeAttachment),
+        attachments: serializeSheetAttachments(contractFiles),
         revisionNo: currentRevisionNo,
         initiator: contract.initiator ? { id: contract.initiator.id, fullName: contract.initiator.fullName } : null,
         assignedGeneralDirector: contract.assignedGeneralDirector
@@ -2753,9 +2932,8 @@ export const getContractApprovalSheet = async (req: Request, res: Response, next
       steps: steps.map(serializeStep),
       previousRevisions: previousRevisionNumbers.map((revisionNo) => ({
         revisionNo,
-        attachments: allContractFiles
-          .filter((file) => (file.revisionNo || 1) === revisionNo)
-          .map(serializeAttachment),
+        attachments: serializeSheetAttachments(allContractFiles
+          .filter((file) => (file.revisionNo || 1) === revisionNo)),
         steps: allSteps
           .filter((step) => (step.revisionNo || 1) === revisionNo)
           .map(serializeStep),
@@ -3104,6 +3282,9 @@ export const decideContractApprovalStep = async (req: Request, res: Response, ne
         void notifyStepAssigned(contract, secretaryStep).catch((error) => {
           logger.error('Failed to send secretary notification (decideContractApprovalStep):', error);
         });
+        void notifyInitiatorReadyForSignature(contract).catch((error) => {
+          logger.error('Failed to send initiator ready-for-signature notification (decideContractApprovalStep):', error);
+        });
         respondWithUpdate({
           message: hasRemarks
             ? 'Все визы получены, есть замечания. Договор направлен офис-менеджеру на подпись'
@@ -3127,6 +3308,7 @@ export const decideContractApprovalStep = async (req: Request, res: Response, ne
           : ContractStatus.APPROVED;
       }
       await contractRepository.save(contract);
+      void notifyInitiatorFinalResult(contract).catch((e) => logger.error('Failed to send initiator final-result notification:', e));
       respondWithUpdate({ message: 'Виза согласования обновлена' });
       return;
     }
@@ -3134,6 +3316,7 @@ export const decideContractApprovalStep = async (req: Request, res: Response, ne
     if (decision === ContractApprovalDecision.REWORK) {
       contract.status = ContractStatus.REWORK;
       await contractRepository.save(contract);
+      void notifyInitiatorFinalResult(contract).catch((e) => logger.error('Failed to send initiator final-result notification:', e));
       respondWithUpdate({ message: 'Договор возвращен на доработку' });
       return;
     }
@@ -3141,6 +3324,7 @@ export const decideContractApprovalStep = async (req: Request, res: Response, ne
     if (decision === ContractApprovalDecision.REJECT) {
       contract.status = ContractStatus.REJECTED;
       await contractRepository.save(contract);
+      void notifyInitiatorFinalResult(contract).catch((e) => logger.error('Failed to send initiator final-result notification:', e));
       respondWithUpdate({ message: 'Договор отклонен' });
       return;
     }
@@ -3149,6 +3333,7 @@ export const decideContractApprovalStep = async (req: Request, res: Response, ne
       if (step.roleCode === 'secretary') {
         contract.status = ContractStatus.APPROVED;
         await contractRepository.save(contract);
+      void notifyInitiatorFinalResult(contract).catch((e) => logger.error('Failed to send initiator final-result notification:', e));
         respondWithUpdate({ message: 'Подписание договора подтверждено' });
         return;
       }
@@ -3163,6 +3348,7 @@ export const decideContractApprovalStep = async (req: Request, res: Response, ne
     const hasPending = Boolean(nextPending);
     contract.status = hasPending ? ContractStatus.IN_APPROVAL : ContractStatus.APPROVED;
     await contractRepository.save(contract);
+      void notifyInitiatorFinalResult(contract).catch((e) => logger.error('Failed to send initiator final-result notification:', e));
 
     if (nextPending) {
       const assignedAt = new Date();

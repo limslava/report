@@ -15,6 +15,29 @@ export const CONTRACT_STATUS_LABELS: Record<ContractRecord['status'], string> = 
   rejected: 'Отклонен',
 };
 
+// Договор формально ещё in_approval, но все визы проставлены и он ушёл секретарю
+// на подпись — это отдельный этап «На подписании» (без отдельного статуса в БД).
+export function isAwaitingSignature(
+  contract: Pick<ContractRecord, 'status' | 'currentStageRole'>,
+): boolean {
+  return contract.status === 'in_approval' && contract.currentStageRole === 'secretary';
+}
+
+// Ключ для CSS-класса и логики фильтра: реальный статус, но с выделением этапа подписания.
+export type ContractDisplayStatus = ContractRecord['status'] | 'signing';
+
+export function getContractDisplayStatus(
+  contract: Pick<ContractRecord, 'status' | 'currentStageRole'>,
+): ContractDisplayStatus {
+  return isAwaitingSignature(contract) ? 'signing' : contract.status;
+}
+
+export function getContractStatusLabel(
+  contract: Pick<ContractRecord, 'status' | 'currentStageRole'>,
+): string {
+  return isAwaitingSignature(contract) ? 'На подписании' : CONTRACT_STATUS_LABELS[contract.status];
+}
+
 export function formatDecisionLabel(decision: DecisionHistoryEvent['newDecision'] | null, comment?: string | null): string {
   if (!decision) return 'Не выбрано';
   if (decision === 'reject') return 'Не согласован';

@@ -31,11 +31,13 @@ function matchesSecurityView(item: SecurityInboxItem, view: InboxView, now: Date
   const hasDeadline = deadline && !Number.isNaN(deadline.getTime());
 
   if (view === 'new') return Boolean(hasAssigned && isSameDate(assigned, now));
-  if (view === 'due_today') return Boolean(hasDeadline && isSameDate(deadline, now));
+  if (view === 'due_today') {
+    // Только еще не просроченные задачи с дедлайном сегодня — в соответствии с KPI дашборда.
+    return Boolean(hasDeadline && isSameDate(deadline, now) && deadline.getTime() >= now.getTime());
+  }
   if (view === 'overdue') {
     if (!hasDeadline) return false;
-    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-    return deadline <= endOfToday;
+    return deadline.getTime() < now.getTime();
   }
   if (view === 'completed_month') {
     const signedAt = item.securitySignedAt ? new Date(item.securitySignedAt) : null;

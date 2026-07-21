@@ -305,22 +305,22 @@ export function ContractApprovalActionSection({
         </Box>
         <Box className="contract-secretary-task-decision">
           <FormControl fullWidth size="small">
-            <InputLabel shrink>Результат подписи</InputLabel>
+            <InputLabel shrink>Итоговое решение</InputLabel>
             <Select
-              label="Результат подписи"
+              label="Итоговое решение"
               value={approvalDecision}
               displayEmpty
               onChange={(event) => setApprovalDecision(event.target.value as ApprovalDecisionValue)}
               renderValue={(value) => value
                 ? ({
-                  approved: 'Подписан',
-                  approved_with_remarks: 'Подписан',
+                  approved: 'Согласован',
+                  approved_with_remarks: 'Согласован',
                   rejected: 'Не согласован',
                 }[value] ?? value)
-                : <Typography component="span" color="text.secondary">Выберите результат</Typography>}
+                : <Typography component="span" color="text.secondary">Выберите решение</Typography>}
             >
-              <MenuItem value="" disabled>Выберите результат</MenuItem>
-              <MenuItem value="approved">Подписан</MenuItem>
+              <MenuItem value="" disabled>Выберите решение</MenuItem>
+              <MenuItem value="approved">Согласован</MenuItem>
               <MenuItem value="rejected">Не согласован</MenuItem>
             </Select>
           </FormControl>

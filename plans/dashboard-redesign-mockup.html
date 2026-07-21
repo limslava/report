@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Дашборд бизнес-процессов — макет редизайна</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page:           #f9f9f7;
+    --surface:        #fcfcfb;
+    --ink:            #0b0b0b;
+    --ink-2:          #52514e;
+    --muted:          #898781;
+    --hairline:       #e1e0d9;
+    --border:         rgba(11,11,11,0.10);
+    --critical:       #d03b3b;
+    --critical-wash:  rgba(208,59,59,0.07);
+    --warning:        #fab219;
+    --warning-ink:    #8a5b00;
+    --good:           #0ca30c;
+    --good-text:      #006300;
+    --good-wash:      rgba(12,163,12,0.07);
+    --accent:         #2a78d6;
+    --accent-wash:    rgba(42,120,214,0.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page:           #0d0d0d;
+      --surface:        #1a1a19;
+      --ink:            #ffffff;
+      --ink-2:          #c3c2b7;
+      --muted:          #898781;
+      --hairline:       #2c2c2a;
+      --border:         rgba(255,255,255,0.10);
+      --critical:       #d03b3b;
+      --critical-wash:  rgba(208,59,59,0.12);
+      --warning:        #fab219;
+      --warning-ink:    #fab219;
+      --good:           #0ca30c;
+      --good-text:      #0ca30c;
+      --good-wash:      rgba(12,163,12,0.10);
+      --accent:         #3987e5;
+      --accent-wash:    rgba(57,135,229,0.14);
+    }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  a { color: inherit; }
+
+  /* ── Шапка приложения ─────────────────────────────── */
+  .appbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--hairline);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 28px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; }
+  .brand-mark { width: 10px; height: 10px; border-radius: 3px; background: var(--accent); }
+  .brand span.divider { color: var(--muted); font-weight: 400; }
+  .brand .module { color: var(--ink-2); font-weight: 400; }
+  .user { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 13px; }
+  .avatar {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--accent-wash); color: var(--accent);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600;
+  }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 24px 28px 48px; }
+
+  /* ── Заголовок страницы ───────────────────────────── */
+  .page-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
+  .page-head h1 { font-size: 21px; font-weight: 650; letter-spacing: -0.01em; }
+  .updated { color: var(--muted); font-size: 12.5px; }
+
+  /* ── Полоса «требует действия» ────────────────────── */
+  .alert {
+    background: var(--critical-wash);
+    border: 1px solid rgba(208,59,59,0.25);
+    border-left: 4px solid var(--critical);
+    border-radius: 10px;
+    padding: 14px 18px;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+  .alert-icon { font-size: 18px; line-height: 1; }
+  .alert-text { flex: 1; min-width: 260px; }
+  .alert-text b { font-weight: 650; }
+  .alert-text .sub { color: var(--ink-2); font-size: 13px; margin-top: 2px; }
+  .alert-actions { display: flex; gap: 8px; }
+  .btn {
+    display: inline-block; padding: 7px 14px; border-radius: 8px;
+    font-size: 13px; font-weight: 550; text-decoration: none;
+    border: 1px solid var(--border); background: var(--surface);
+    cursor: pointer; transition: background .12s;
+  }
+  .btn:hover { background: var(--accent-wash); }
+  .btn.primary { background: var(--critical); border-color: var(--critical); color: #fff; }
+  .btn.primary:hover { filter: brightness(1.08); }
+
+  /* ── Секции ───────────────────────────────────────── */
+  .section { margin-bottom: 28px; }
+  .section-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .section-head h2 { font-size: 15px; font-weight: 650; }
+  .section-head a.more { color: var(--accent); font-size: 13px; text-decoration: none; }
+  .section-head a.more:hover { text-decoration: underline; }
+
+  /* ── Плитки ───────────────────────────────────────── */
+  .tiles { display: grid; gap: 12px; }
+  .tiles.primary { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
+  .tiles.secondary { grid-template-columns: repeat(4, minmax(150px, 1fr)); margin-top: 12px; }
+  @media (max-width: 800px) {
+    .tiles.primary, .tiles.secondary { grid-template-columns: repeat(2, 1fr); }
+  }
+  .tile {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    text-decoration: none; display: block;
+    transition: border-color .12s, box-shadow .12s;
+  }
+  a.tile:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+  .tile-label {
+    color: var(--ink-2); font-size: 13px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .dot.critical { background: var(--critical); }
+  .dot.warning  { background: var(--warning); }
+  .tile-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+  .tile-value { font-size: 30px; font-weight: 650; letter-spacing: -0.02em; margin-top: 4px; }
+  .tile.small .tile-value { font-size: 21px; }
+  .tile-value .unit { font-size: 15px; font-weight: 500; color: var(--ink-2); margin-left: 2px; }
+  .tile.zero .tile-value { color: var(--muted); font-weight: 550; }
+  .delta { font-size: 12.5px; margin-top: 2px; }
+  .delta.bad  { color: var(--critical); }
+  .delta.good { color: var(--good-text); }
+  .delta.flat { color: var(--muted); }
+  .spark { flex: none; margin-bottom: 6px; }
+  .spark polyline { fill: none; stroke: var(--muted); stroke-width: 1.5; opacity: .6; }
+  .spark circle { fill: var(--critical); }
+
+  /* ── Таблица дедлайнов ────────────────────────────── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  thead th {
+    text-align: left; font-weight: 550; color: var(--muted); font-size: 12px;
+    text-transform: uppercase; letter-spacing: .04em;
+    padding: 10px 16px; border-bottom: 1px solid var(--hairline);
+  }
+  tbody td { padding: 10px 16px; border-bottom: 1px solid var(--hairline); }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr { cursor: pointer; transition: background .1s; }
+  tbody tr:hover { background: var(--accent-wash); }
+  td.num { font-variant-numeric: tabular-nums; color: var(--ink-2); }
+  .doc-name { font-weight: 550; }
+  .doc-sub { color: var(--muted); font-size: 12.5px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 550;
+    white-space: nowrap;
+  }
+  .chip.overdue  { background: var(--critical-wash); color: var(--critical); }
+  .chip.today    { background: rgba(250,178,25,0.14); color: var(--warning-ink); }
+  .chip.ok       { background: var(--good-wash); color: var(--good-text); }
+
+  /* ── Состояние «всё хорошо» ───────────────────────── */
+  .allgood {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 13px 18px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .allgood .check {
+    width: 22px; height: 22px; border-radius: 50%; flex: none;
+    background: var(--good-wash); color: var(--good-text);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+  }
+  .allgood .msg { flex: 1; min-width: 220px; }
+  .allgood .msg b { font-weight: 600; }
+  .allgood .mini { color: var(--muted); font-size: 12.5px; }
+  .allgood .mini span { margin-left: 14px; }
+  .allgood .mini span:first-child { margin-left: 0; }
+
+  .footnote { color: var(--muted); font-size: 12px; margin-top: 28px; }
+</style>
+</head>
+<body>
+
+<header class="appbar">
+  <div class="brand">
+    <span class="brand-mark"></span>
+    Report
+    <span class="divider">/</span>
+    <span class="module">Бизнес-процессы</span>
+  </div>
+  <div class="user"><span class="avatar">T1</span> test1</div>
+</header>
+
+<main class="wrap">
+
+  <div class="page-head">
+    <h1>Дашборд</h1>
+    <span class="updated">Обновлено: 21 июл. 2026, 19:58 · автообновление</span>
+  </div>
+
+  <!-- Полоса «требует действия» -->
+  <div class="alert" role="alert">
+    <span class="alert-icon">⚠️</span>
+    <div class="alert-text">
+      <b>24 договора просрочено, ещё 3 нужно закрыть сегодня.</b>
+      <div class="sub">Самый старый просрочен на 12 дней · среднее время решения по договорам — <span style="white-space:nowrap">0.6 ч</span></div>
+    </div>
+    <div class="alert-actions">
+      <a class="btn primary" href="#">К просроченным (24)</a>
+      <a class="btn" href="#">Дедлайн сегодня (3)</a>
+    </div>
+  </div>
+
+  <!-- Договоры -->
+  <section class="section">
+    <div class="section-head">
+      <h2>Договоры</h2>
+      <a class="more" href="#">Все договоры →</a>
+    </div>
+
+    <div class="tiles primary">
+      <a class="tile" href="#">
+        <div class="tile-label"><span class="dot critical"></span>Просрочено</div>
+        <div class="tile-row">
+          <div>
+            <div class="tile-value">24</div>
+            <div class="delta bad">↑ +6 за неделю</div>
+          </div>
+          <svg class="spark" width="96" height="30" viewBox="0 0 96 30" aria-hidden="true">
+            <polyline points="2,22 14,20 26,21 38,17 50,18 62,14 74,12 86,8"/>
+            <circle cx="86" cy="8" r="3"/>
+          </svg>
+        </div>
+      </a>
+      <a class="tile" href="#">
+        <div class="tile-label"><span class="dot warning"></span>Дедлайн сегодня</div>
+        <div class="tile-row">
+          <div>
+            <div class="tile-value">3</div>
+            <div class="delta flat">нужно закрыть до конца дня</div>
+          </div>
+        </div>
+      </a>
+    </div>
+
+    <div class="tiles secondary">
+      <a class="tile small zero" href="#">
+        <div class="tile-label">Новые сегодня</div>
+        <div class="tile-value">0</div>
+      </a>
+      <a class="tile small zero" href="#">
+        <div class="tile-label">В работе без просрочки</div>
+        <div class="tile-value">0</div>
+      </a>
+      <a class="tile small" href="#">
+        <div class="tile-label">Завершено за месяц</div>
+        <div class="tile-value">1</div>
+      </a>
+      <div class="tile small">
+        <div class="tile-label">Среднее время решения</div>
+        <div class="tile-value">0.6<span class="unit">ч</span></div>
+        <div class="delta good">↓ −0.2 ч к прошлому месяцу</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Ближайшие дедлайны -->
+  <section class="section">
+    <div class="section-head">
+      <h2>Ближайшие дедлайны</h2>
+      <a class="more" href="#">Весь список →</a>
+    </div>
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Договор</th>
+            <th>Контрагент</th>
+            <th>Ответственный</th>
+            <th>Срок</th>
+            <th>Статус</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><div class="doc-name">Договор поставки № 214-П</div><div class="doc-sub">этап: юрист</div></td>
+            <td>ООО «Восток-Транс»</td>
+            <td>Иванова А.</td>
+            <td class="num">9 июл.</td>
+            <td><span class="chip overdue">просрочен 12 дн.</span></td>
+          </tr>
+          <tr>
+            <td><div class="doc-name">Договор перевозки № 198-Т</div><div class="doc-sub">этап: финансист</div></td>
+            <td>ИП Смирнов К. В.</td>
+            <td>Петров Д.</td>
+            <td class="num">14 июл.</td>
+            <td><span class="chip overdue">просрочен 7 дн.</span></td>
+          </tr>
+          <tr>
+            <td><div class="doc-name">Договор аренды склада № 231-А</div><div class="doc-sub">этап: гл. бухгалтер</div></td>
+            <td>АО «ДВ-Логистика»</td>
+            <td>Иванова А.</td>
+            <td class="num">18 июл.</td>
+            <td><span class="chip overdue">просрочен 3 дн.</span></td>
+          </tr>
+          <tr>
+            <td><div class="doc-name">Договор оказания услуг № 240-У</div><div class="doc-sub">этап: СБ</div></td>
+            <td>ООО «Приморье-Сервис»</td>
+            <td>Ким Е.</td>
+            <td class="num">сегодня</td>
+            <td><span class="chip today">дедлайн сегодня</span></td>
+          </tr>
+          <tr>
+            <td><div class="doc-name">Договор поставки № 243-П</div><div class="doc-sub">этап: юрист</div></td>
+            <td>ООО «Аврора Трейд»</td>
+            <td>Петров Д.</td>
+            <td class="num">сегодня</td>
+            <td><span class="chip today">дедлайн сегодня</span></td>
+          </tr>
+          <tr>
+            <td><div class="doc-name">Договор перевозки № 245-Т</div><div class="doc-sub">этап: директор</div></td>
+            <td>ООО «Морской путь»</td>
+            <td>Ким Е.</td>
+            <td class="num">сегодня</td>
+            <td><span class="chip today">дедлайн сегодня</span></td>
+          </tr>
+          <tr>
+            <td><div class="doc-name">Договор аренды техники № 246-А</div><div class="doc-sub">этап: финансист</div></td>
+            <td>ООО «ТехАренда ДВ»</td>
+            <td>Иванова А.</td>
+            <td class="num">24 июл.</td>
+            <td><span class="chip ok">в срок · 3 дн.</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Проверка кандидатов -->
+  <section class="section">
+    <div class="section-head">
+      <h2>Проверка кандидатов</h2>
+      <a class="more" href="#">К модулю →</a>
+    </div>
+    <div class="allgood">
+      <span class="check">✓</span>
+      <div class="msg"><b>Нет кандидатов в работе</b> — все проверки завершены.</div>
+      <div class="mini">
+        <span>Ожидают СБ: 0</span>
+        <span>С замечаниями: 0</span>
+        <span>Не согласованы: 0</span>
+        <span>За месяц: 0</span>
+      </div>
+    </div>
+  </section>
+
+  <p class="footnote">
+    Макет редизайна. Данные трендов («+6 за неделю», «−0.2 ч»), спарклайн и строки таблицы «Ближайшие дедлайны» —
+    демонстрационные; реальные значения подтягиваются из существующих API дашборда. Тёмная тема включается автоматически
+    по настройке системы.
+  </p>
+
+</main>
+
+</body>
+</html>
