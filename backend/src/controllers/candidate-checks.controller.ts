@@ -11,8 +11,9 @@ import { sendEmailWithAttachment } from '../services/email.service';
 import { logger } from '../utils/logger';
 import { buildContentDisposition } from '../utils/content-disposition';
 
-const HR_ROLES = new Set(['head_hr', 'hr_specialist']);
-const CANDIDATE_CHECK_ROLES = new Set(['admin', 'security', ...HR_ROLES]);
+const HR_ROLES = new Set(['admin', 'head_hr', 'hr_specialist']);
+const SECURITY_DECISION_ROLES = new Set(['admin', 'security']);
+const CANDIDATE_CHECK_ROLES = new Set(['security', ...HR_ROLES]);
 const MAX_CANDIDATE_FILE_BYTES = 20 * 1024 * 1024;
 const ALLOWED_CANDIDATE_FILE_EXTENSIONS = new Set(['.pdf', '.doc', '.docx', '.png', '.jpg', '.jpeg']);
 
@@ -96,15 +97,15 @@ const ensureCandidateCheckAccess = (req: Request) => {
 
 const ensureHrWriteAccess = (req: Request) => {
   if (!req.user || !HR_ROLES.has(req.user.role)) {
-    const error: any = new Error('Создавать проверки кандидатов может только HR');
+    const error: any = new Error('Создавать проверки кандидатов может только HR или администратор');
     error.statusCode = 403;
     throw error;
   }
 };
 
 const ensureSecurityWriteAccess = (req: Request) => {
-  if (!req.user || req.user.role !== 'security') {
-    const error: any = new Error('Решение по кандидату принимает только руководитель СБ');
+  if (!req.user || !SECURITY_DECISION_ROLES.has(req.user.role)) {
+    const error: any = new Error('Решение по кандидату принимает только руководитель СБ или администратор');
     error.statusCode = 403;
     throw error;
   }

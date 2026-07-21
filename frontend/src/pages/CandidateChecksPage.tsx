@@ -113,8 +113,9 @@ const downloadBlob = (blob: Blob, filename: string) => {
 export default function CandidateChecksPage() {
   const [searchParams] = useSearchParams();
   const user = useAuthStore((state) => state.user);
-  const isHr = user?.role === 'head_hr' || user?.role === 'hr_specialist';
-  const isSecurity = user?.role === 'security';
+  const isAdmin = user?.role === 'admin';
+  const isHr = isAdmin || user?.role === 'head_hr' || user?.role === 'hr_specialist';
+  const isSecurity = isAdmin || user?.role === 'security';
   const [items, setItems] = useState<CandidateCheck[]>([]);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<CandidateCheckStatus | ''>('');
