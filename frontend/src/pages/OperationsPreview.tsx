@@ -99,6 +99,14 @@ const isPersonnelDepartment = (department: Department): boolean =>
   department === 'Диспетчера' || department === 'Курьеры' || department === 'Автослесари' || department === 'Сотрудники склада' || department === 'Сторожа';
 const hasPersonalManualOrder = (department: Department): boolean =>
   department === 'Автослесари' || department === 'Сотрудники склада' || department === 'Сторожа';
+const CAN_FILL_FACT_FROM_PREVIOUS_MONTH = new Set<Department>(['Авто', 'Диспетчера', 'Курьеры']);
+
+const getDepartmentTransferLabel = (department: Department): string => {
+  if (department === 'Авто') return 'Автовозов';
+  if (department === 'Диспетчера') return 'Диспетчеров';
+  if (department === 'Курьеры') return 'Оперативников';
+  return department;
+};
 
 const getPersonnelNameLabel = (department: Department, location: PreviewLocation): string => {
   if (department === 'Диспетчера') return 'Диспетчер';
@@ -558,7 +566,7 @@ export default function OperationsPreview() {
   const canEditWarehouseStaffAsManager = isWarehouseStaffScheduleOperator && activeLocation === 'garage_vvo' && filter === 'Сотрудники склада';
   const canEditCurrentSchedule = !isHrScheduleRole || canManageVvoMechanics || canManageVvoWarehouseStaff || canManageVvoGuards || canEditWarehouseStaffAsManager || (effectiveMode === 'plan' && (filter === 'Контейнеры' || filter === 'Автослесари' || filter === 'Сотрудники склада' || filter === 'Сторожа'));
   const canEditRows = !isHrScheduleRole || canManageVvoMechanics || canManageVvoWarehouseStaff || canManageVvoGuards || canEditWarehouseStaffAsManager;
-  const canFillFactFromPreviousMonth = filter === 'Авто' && canEditRows;
+  const canFillFactFromPreviousMonth = filter !== 'Все' && CAN_FILL_FACT_FROM_PREVIOUS_MONTH.has(filter) && canEditRows;
   const canAddRows = canEditRows
     || (isHrScheduleRole && activeLocation === 'garage_vvo' && (addDepartment === 'Автослесари' || addDepartment === 'Сотрудники склада'))
     || (isHrScheduleRole && activeLocation === 'security_vvo' && addDepartment === 'Сторожа');
@@ -1295,14 +1303,15 @@ export default function OperationsPreview() {
   };
 
   const handleFillFactFromPreviousMonth = () => {
-    const factDepartment: Department | null = filter === 'Авто' ? filter : null;
+    const factDepartment: Department | null = filter !== 'Все' && CAN_FILL_FACT_FROM_PREVIOUS_MONTH.has(filter) ? filter : null;
     const prevMonth = getPrevMonthValue(monthValue);
     if (!factDepartment || !prevMonth) return;
 
+    const transferLabel = getDepartmentTransferLabel(factDepartment);
     const prevPeople = clonePeople(resolvePeopleForMonth(prevMonth, peopleByMonthRef.current))
       .filter((person) => person.department === factDepartment);
     if (prevPeople.length === 0) {
-      setCopyStatus({ type: 'error', text: 'В прошлом месяце нет строк Автовозов для переноса.' });
+      setCopyStatus({ type: 'error', text: `В прошлом месяце нет строк ${transferLabel} для переноса.` });
       return;
     }
 
@@ -1371,7 +1380,7 @@ export default function OperationsPreview() {
 
     setCopyStatus({
       type: 'success',
-      text: 'Факт Автовозов заполнен из прошлого месяца. Проверьте данные и нажмите «Сохранить».',
+      text: `Факт ${transferLabel} заполнен из прошлого месяца. Проверьте данные и нажмите «Сохранить».`,
     });
   };
 
