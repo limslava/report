@@ -481,11 +481,10 @@ export const resetUserPassword = async (req: Request, res: Response, next: NextF
     user.passwordHash = await bcrypt.hash(temporaryPassword, 12);
     await userRepository.save(user);
 
-    try {
-      await sendInvitationEmail(user.email, user.fullName, user.role, temporaryPassword);
-    } catch (mailError) {
-      logger.warn(`Password reset email failed for user ${user.id}`, mailError as any);
-    }
+    void sendInvitationEmail(user.email, user.fullName, user.role, temporaryPassword)
+      .catch((mailError) => {
+        logger.warn(`Password reset email failed for user ${user.id}`, mailError as any);
+      });
 
     await recordAuditLog({
       action: 'USER_PASSWORD_RESET',
