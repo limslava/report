@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import PizZip from 'pizzip';
-import { Contract, ContractIncomeSubtype, ContractType } from '../models/contract.model';
+import { Contract, ContractDocumentKind, ContractIncomeSubtype, ContractType } from '../models/contract.model';
 import { ContractTemplateType } from '../models/contract-template-version.model';
 import {
   buildContractTemplateValues,
@@ -20,13 +20,13 @@ type GeneratedContractDocument = {
   templateVersionId?: string | null;
 };
 
-function isIncomeStandardContract(contract: Contract): boolean {
+function isGeneratedIncomeContract(contract: Contract): boolean {
   return contract.contractType === ContractType.INCOME
-    && contract.incomeSubtype !== ContractIncomeSubtype.WITH_PSR;
+    && contract.documentKind !== ContractDocumentKind.ADDENDUM;
 }
 
 export function shouldGenerateIncomeStandardContract(contract: Contract): boolean {
-  return isIncomeStandardContract(contract);
+  return isGeneratedIncomeContract(contract);
 }
 
 export function isGeneratedIncomeStandardFileName(fileName: string): boolean {
@@ -299,7 +299,11 @@ function patchDocumentXml(xml: string, contract: Contract): string {
 
 export async function generateIncomeStandardContractDocument(contract: Contract): Promise<GeneratedContractDocument | null> {
   if (!shouldGenerateIncomeStandardContract(contract)) return null;
-  const activeTemplate = await getActiveContractTemplate(ContractTemplateType.INCOME_STANDARD);
+  const templateType = contract.incomeSubtype === ContractIncomeSubtype.WITH_PSR
+    ? ContractTemplateType.INCOME_WITH_PSR
+    : ContractTemplateType.INCOME_STANDARD;
+  const activeTemplate = await getActiveContractTemplate(templateType)
+    ?? await getActiveContractTemplate(ContractTemplateType.INCOME_STANDARD);
   if (activeTemplate) {
     const templateBuffer = await fs.readFile(activeTemplate.storagePath);
     return {

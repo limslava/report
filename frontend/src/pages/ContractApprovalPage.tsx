@@ -264,6 +264,7 @@ export default function ContractApprovalPage() {
   const isWizardInnInvalidLength = wizardInnInput.length > 0 && !isWizardInnValidLength;
   const isIncomeContractWizard = wizard.contractType === 'income';
   const isIncomeWithoutPsrWizard = isIncomeContractWizard && wizard.psrMode === 'without_psr';
+  const shouldGenerateIncomeWizard = isIncomeContractWizard && wizard.documentKind !== 'addendum' && !wizardImportSigned;
   const normalizedWizardInn = wizard.counterpartyInn.trim();
   const masterContractOptions = contracts
     .filter((contract) => (
@@ -725,7 +726,7 @@ export default function ContractApprovalPage() {
         return;
       }
 
-      if (isIncomeWithoutPsrWizard && !wizardImportSigned) {
+      if (shouldGenerateIncomeWizard) {
         const requiredDetails: Array<[keyof ContractWizardForm, string]> = [
           ['counterpartyOgrn', 'ОГРН/ОГРНИП'],
           ['counterpartyLegalAddress', 'юридический адрес'],
@@ -784,7 +785,7 @@ export default function ContractApprovalPage() {
         counterpartyBankBik: wizard.counterpartyBankBik.trim() || null,
         counterpartyBankAccount: wizard.counterpartyBankAccount.trim() || null,
         counterpartyCorrespondentAccount: wizard.counterpartyCorrespondentAccount.trim() || null,
-        subject: wizard.subject.trim() || (isIncomeWithoutPsrWizard ? 'Оказание транспортно-экспедиционных услуг и перевалке грузов' : ''),
+        subject: wizard.subject.trim() || (isIncomeContractWizard ? 'Оказание транспортно-экспедиционных услуг и перевалке грузов' : ''),
         contractDate: wizard.contractDate,
         psrFlag: wizard.psrMode === 'with_psr',
         signingMethod: wizard.signingMethod,

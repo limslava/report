@@ -94,8 +94,8 @@ export function ContractWizard({
   onRemoveFile,
 }: ContractWizardProps) {
   const isIncomeContract = wizard.contractType === 'income';
-  const isIncomeWithoutPsr = isIncomeContract && wizard.psrMode === 'without_psr';
   const isAddendum = wizard.documentKind === 'addendum';
+  const isGeneratedIncomeContract = isIncomeContract && !importSigned && !isAddendum;
 
   return (
     <Dialog
@@ -347,7 +347,7 @@ export function ContractWizard({
                 <MenuItem value="post">Почта</MenuItem>
               </Select>
             </FormControl>
-            {isIncomeWithoutPsr && (
+            {isGeneratedIncomeContract && (
               <>
                 <Typography variant="subtitle2">Данные из ФНС</Typography>
                 <TextField
@@ -444,6 +444,11 @@ export function ContractWizard({
         {step === 6 && (
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Typography variant="body1">Приложите файлы договора (можно перетащить в область ниже)</Typography>
+            {isIncomeContract && wizard.psrMode === 'with_psr' && !importSigned && !isAddendum && (
+              <Alert severity="info">
+                Договор будет сформирован автоматически по проформе. Здесь приложите ПСР клиента и другие сопроводительные файлы.
+              </Alert>
+            )}
             <Box
               sx={{
                 border: '1px dashed',

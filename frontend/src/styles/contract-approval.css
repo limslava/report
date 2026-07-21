@@ -227,9 +227,13 @@
 
 .contract-discussion-panel {
   margin-top: 12px;
-  padding: 12px;
+  padding: 10px 12px;
   border: 1px solid #d0d7de;
   background: #f8fbff;
+}
+
+.contract-discussion-header {
+  margin-bottom: 8px;
 }
 
 .contract-discussion-title {
@@ -244,13 +248,13 @@
 }
 
 .contract-discussion-messages {
-  max-height: 260px;
+  max-height: 240px;
   overflow: auto;
   padding-right: 4px;
 }
 
 .contract-discussion-empty {
-  padding: 10px 0;
+  padding: 4px 0 8px;
   color: #64748b;
 }
 
@@ -263,7 +267,7 @@
 }
 
 .contract-discussion-message {
-  padding: 8px 10px;
+  padding: 7px 9px;
   border: 1px solid #dbe4ef;
   background: #ffffff;
 }
@@ -279,7 +283,7 @@
 }
 
 .contract-discussion-body {
-  margin-top: 4px !important;
+  margin-top: 3px !important;
   color: #1f2937;
   white-space: pre-wrap;
   word-break: break-word;
@@ -296,8 +300,19 @@
 
 .contract-discussion-input-wrap {
   position: relative;
-  flex: 1 1 auto;
   width: 100%;
+}
+
+.contract-discussion-composer {
+  margin-top: 8px;
+}
+
+.contract-discussion-composer .MuiInputBase-root {
+  background: #ffffff;
+}
+
+.contract-discussion-actions {
+  flex-wrap: wrap;
 }
 
 .contract-discussion-mention-menu {
@@ -364,8 +379,13 @@
 
 .contract-discussion-attach-button,
 .contract-discussion-send-button {
-  height: 40px;
+  height: 32px;
   white-space: nowrap;
+}
+
+.contract-discussion-send-button.Mui-disabled {
+  background: #e5e9ef !important;
+  color: #94a3b8 !important;
 }
 
 .contract-registry-table tbody tr.contract-registry-addendum-row td:first-child {

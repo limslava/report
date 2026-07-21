@@ -407,7 +407,7 @@ function assertIncomeStandardGenerationDetails(contract: Contract): void {
   if (!contract.counterpartyBankAccount?.trim()) missing.push('расчетный счет');
   if (!contract.counterpartyCorrespondentAccount?.trim()) missing.push('корреспондентский счет');
   if (missing.length) {
-    const error: any = new Error(`Для формирования доходного договора без ПСР заполните: ${missing.join(', ')}`);
+    const error: any = new Error(`Для формирования доходного договора заполните: ${missing.join(', ')}`);
     error.statusCode = 400;
     throw error;
   }

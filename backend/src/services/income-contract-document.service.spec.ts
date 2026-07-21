@@ -58,4 +58,37 @@ describe('income contract document generation', () => {
     expect(text).toContain('Экспедитор ООО «Симпл Вэй» Заказчик ООО "Тест"');
     expect(text).toContain('___________________ /_____________/ _____________________/Иванов И.И./');
   });
+
+  it('generates a base income contract for contracts with PSR as well', async () => {
+    const contract = Object.assign(new Contract(), {
+      contractNumber: 'SW-2026-0011',
+      contractType: ContractType.INCOME,
+      incomeSubtype: ContractIncomeSubtype.WITH_PSR,
+      counterpartyName: 'ООО "ПСР Тест"',
+      counterpartyShortName: 'ООО "ПСР Тест"',
+      counterpartyInn: '7700000011',
+      counterpartyOgrn: '1234567890111',
+      counterpartyKpp: '770001011',
+      counterpartyLegalAddress: '690000, г. Владивосток, ул. ПСР, д. 1',
+      counterpartyPostalAddress: '690000, г. Владивосток, ул. ПСР, д. 1',
+      counterpartyPhone: '+7 423 000-00-11',
+      counterpartyEmail: 'psr@example.com',
+      counterpartySignerPosition: 'Генерального директора',
+      counterpartySignerName: 'Петров Петр Петрович',
+      counterpartySignerNameGenitive: 'Петрова Петра Петровича',
+      counterpartySignerAuthority: 'Устава',
+      counterpartyBankName: 'АО ПСР Банк',
+      counterpartyBankBik: '040507011',
+      counterpartyBankAccount: '40702810000000000011',
+      counterpartyCorrespondentAccount: '30101810000000000011',
+      contractDate: new Date('2026-07-11'),
+    });
+
+    const generated = await generateIncomeStandardContractDocument(contract);
+
+    expect(generated).not.toBeNull();
+    const text = readDocumentText(generated!.buffer);
+    expect(text).toContain('ДОГОВОР № SW-2026-0011');
+    expect(text).toContain('ООО "ПСР Тест"');
+  });
 });

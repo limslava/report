@@ -156,7 +156,7 @@ export function ContractDiscussionPanel({
 
   return (
     <Box className="contract-discussion-panel">
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" className="contract-discussion-header">
         <Badge
           color="primary"
           badgeContent={unreadCount}
@@ -176,7 +176,7 @@ export function ContractDiscussionPanel({
         </Typography>
       )}
 
-      <Stack spacing={1} className="contract-discussion-messages">
+      <Stack spacing={0.75} className="contract-discussion-messages">
         {!loading && messages.length === 0 && (
           <Typography variant="body2" className="contract-discussion-empty">
             Сообщений пока нет.
@@ -232,13 +232,13 @@ export function ContractDiscussionPanel({
         </Stack>
       )}
 
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="flex-end" sx={{ mt: 1 }}>
+      <Stack spacing={0.75} className="contract-discussion-composer">
         <Box className="contract-discussion-input-wrap">
           <TextField
             size="small"
             multiline
-            minRows={2}
-            maxRows={5}
+            minRows={1}
+            maxRows={4}
             fullWidth
             label="Сообщение"
             value={text}
@@ -277,37 +277,41 @@ export function ContractDiscussionPanel({
             </Box>
           )}
         </Box>
-        <Button
-          component="label"
-          variant="outlined"
-          startIcon={<AttachFile />}
-          disabled={sending || readOnly}
-          className="contract-discussion-attach-button"
-        >
-          Файлы
-          <input
-            hidden
-            multiple
-            type="file"
-            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-            onChange={(event) => {
-              const selected = Array.from(event.target.files ?? []);
-              if (selected.length) {
-                onFilesChange([...files, ...selected].slice(0, 5));
-              }
-              event.target.value = '';
-            }}
-          />
-        </Button>
-        <Button
-          variant="contained"
-          startIcon={sending ? <CircularProgress size={14} color="inherit" /> : <Send />}
-          disabled={!canSend || sending || readOnly}
-          onClick={onSend}
-          className="contract-discussion-send-button"
-        >
-          Отправить
-        </Button>
+        <Stack direction="row" spacing={1} justifyContent="flex-end" className="contract-discussion-actions">
+          <Button
+            component="label"
+            variant="outlined"
+            size="small"
+            startIcon={<AttachFile />}
+            disabled={sending || readOnly}
+            className="contract-discussion-attach-button"
+          >
+            Прикрепить
+            <input
+              hidden
+              multiple
+              type="file"
+              accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+              onChange={(event) => {
+                const selected = Array.from(event.target.files ?? []);
+                if (selected.length) {
+                  onFilesChange([...files, ...selected].slice(0, 5));
+                }
+                event.target.value = '';
+              }}
+            />
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={sending ? <CircularProgress size={14} color="inherit" /> : <Send />}
+            disabled={!canSend || sending || readOnly}
+            onClick={onSend}
+            className="contract-discussion-send-button"
+          >
+            Отправить
+          </Button>
+        </Stack>
       </Stack>
     </Box>
   );

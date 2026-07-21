@@ -42,7 +42,13 @@ export function createApp() {
     message: 'Слишком много запросов. Повторите позже.',
   });
 
-  app.use(helmet());
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        'frame-src': ["'self'", 'blob:'],
+      },
+    },
+  }));
   app.use(cors({
     origin: (origin, callback) => {
       if (!origin || allowedOrigins.includes(origin)) {
