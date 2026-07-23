@@ -12,6 +12,8 @@ import { User } from './user.model';
 export enum ContractTemplateType {
   INCOME_STANDARD = 'income_standard',
   INCOME_WITH_PSR = 'income_with_psr',
+  INCOME_AGENCY_STANDARD = 'income_agency_standard',
+  INCOME_AGENCY_WITH_PSR = 'income_agency_with_psr',
   EXPENSE = 'expense',
   ADDENDUM = 'addendum',
 }

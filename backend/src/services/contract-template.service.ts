@@ -7,8 +7,10 @@ import { Contract } from '../models/contract.model';
 import { ContractTemplateType, ContractTemplateVersion } from '../models/contract-template-version.model';
 
 export const CONTRACT_TEMPLATE_LABELS: Record<ContractTemplateType, string> = {
-  [ContractTemplateType.INCOME_STANDARD]: 'Доходный без ПСР',
-  [ContractTemplateType.INCOME_WITH_PSR]: 'Доходный с ПСР',
+  [ContractTemplateType.INCOME_STANDARD]: 'Доходный ТЭУ без ПСР',
+  [ContractTemplateType.INCOME_WITH_PSR]: 'Доходный ТЭУ с ПСР',
+  [ContractTemplateType.INCOME_AGENCY_STANDARD]: 'Доходный Агентский без ПСР',
+  [ContractTemplateType.INCOME_AGENCY_WITH_PSR]: 'Доходный Агентский с ПСР',
   [ContractTemplateType.EXPENSE]: 'Расходный',
   [ContractTemplateType.ADDENDUM]: 'Доп. соглашение',
 };
@@ -54,6 +56,20 @@ const REQUIRED_PLACEHOLDERS_BY_TYPE: Record<ContractTemplateType, string[]> = {
     'signerNameGenitive',
   ],
   [ContractTemplateType.INCOME_WITH_PSR]: ['contractNumber', 'contractDate', 'counterpartyName', 'inn'],
+  [ContractTemplateType.INCOME_AGENCY_STANDARD]: [
+    'contractNumber',
+    'contractDate',
+    'counterpartyName',
+    'inn',
+    'legalAddress',
+    'bankName',
+    'bankBik',
+    'bankAccount',
+    'correspondentAccount',
+    'signerName',
+    'signerNameGenitive',
+  ],
+  [ContractTemplateType.INCOME_AGENCY_WITH_PSR]: ['contractNumber', 'contractDate', 'counterpartyName', 'inn'],
   [ContractTemplateType.EXPENSE]: ['contractNumber', 'contractDate', 'counterpartyName', 'inn'],
   [ContractTemplateType.ADDENDUM]: ['contractNumber', 'contractDate', 'counterpartyName', 'inn'],
 };

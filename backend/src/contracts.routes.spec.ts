@@ -17,6 +17,7 @@ jest.mock('./controllers/contracts.controller', () => ({
   createContractDiscussionMessage: jest.fn((_req, res) => res.status(201).json({ id: 'message' })),
   importSignedContract,
   updateDraftContract,
+  adminDeleteContract: jest.fn((_req, res) => res.json({ ok: true })),
   decideContractApprovalStep: jest.fn((_req, res) => res.json({ ok: true })),
   deleteContractAttachment: jest.fn((_req, res) => res.json({ ok: true })),
   deleteDraftContract: jest.fn((_req, res) => res.json({ ok: true })),

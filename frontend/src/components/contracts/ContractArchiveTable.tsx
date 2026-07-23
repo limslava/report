@@ -9,6 +9,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   Typography,
 } from '@mui/material';
 import { AttachFile } from '@mui/icons-material';
@@ -16,20 +17,41 @@ import type { ContractRecord } from '../../types/contracts';
 import {
   getContractDisplayStatus,
   getContractStatusLabel,
-  formatContractTypeLabel,
+  formatContractBaseTypeLabel,
+  formatContractSubtypeLabel,
   normalizeCounterpartyName,
 } from '../../utils/contract-approval';
 
-const ARCHIVE_COLUMNS = [
+type ArchiveSortKey = 'counterparty' | 'inn' | 'type' | 'subtype' | 'number' | 'date' | 'status';
+type ArchiveSortDir = 'asc' | 'desc';
+
+// Порядок колонок согласован с реестром: №, Контрагент, ИНН, Тип, № документа, Дата, Статус.
+// Колонки, которых в архиве нет (Документ, Подтип, Предмет, Ход, Сообщения), не добавляем.
+// «Файл» — специфична для архива, остаётся в конце.
+const ARCHIVE_COLUMNS: { key: string; label: string; width: number; sortKey?: ArchiveSortKey }[] = [
   { key: 'idx', label: '№', width: 36 },
-  { key: 'number', label: '№ документа', width: 168 },
-  { key: 'date', label: 'Дата', width: 96 },
-  { key: 'type', label: 'Тип', width: 128 },
-  { key: 'counterparty', label: 'Контрагент', width: 210 },
-  { key: 'inn', label: 'ИНН', width: 120 },
-  { key: 'status', label: 'Статус', width: 116 },
+  { key: 'counterparty', label: 'Контрагент', width: 210, sortKey: 'counterparty' },
+  { key: 'inn', label: 'ИНН', width: 120, sortKey: 'inn' },
+  { key: 'type', label: 'Тип', width: 96, sortKey: 'type' },
+  { key: 'subtype', label: 'Подтип', width: 96, sortKey: 'subtype' },
+  { key: 'number', label: '№ документа', width: 168, sortKey: 'number' },
+  { key: 'date', label: 'Дата', width: 96, sortKey: 'date' },
+  { key: 'status', label: 'Статус', width: 116, sortKey: 'status' },
   { key: 'file', label: 'Файл', width: 96 },
-] as const;
+];
+
+function archiveSortText(contract: ContractRecord, key: ArchiveSortKey): string {
+  switch (key) {
+    case 'counterparty': return (contract.counterpartyShortName?.trim() || normalizeCounterpartyName(contract.counterpartyName)).toLowerCase();
+    case 'inn': return contract.counterpartyInn || '';
+    case 'type': return formatContractBaseTypeLabel(contract.contractType);
+    case 'subtype': return formatContractSubtypeLabel(contract.contractType, contract.incomeSubtype);
+    case 'number': return contract.contractNumber || '';
+    case 'date': return contract.contractDate || '';
+    case 'status': return getContractStatusLabel(contract);
+    default: return '';
+  }
+}
 
 type ArchiveDisplayRow = {
   contract: ContractRecord;
@@ -65,6 +87,25 @@ export function ContractArchiveTable({
 
   // В архиве допники по умолчанию свёрнуты — раскрываются кликом по бейджу «+ ДС (N)».
   const [expandedMasters, setExpandedMasters] = useState<Set<string>>(() => new Set());
+  const [sortKey, setSortKey] = useState<ArchiveSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<ArchiveSortDir>('asc');
+
+  const comparator = useMemo(() => {
+    if (!sortKey) return null;
+    const dir = sortDir === 'asc' ? 1 : -1;
+    return (a: ContractRecord, b: ContractRecord) => (
+      archiveSortText(a, sortKey).localeCompare(archiveSortText(b, sortKey), 'ru', { numeric: true }) * dir
+    );
+  }, [sortKey, sortDir]);
+
+  const handleSort = (key: ArchiveSortKey) => {
+    if (sortKey === key) {
+      setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
 
   const displayRows = useMemo<ArchiveDisplayRow[]>(() => {
     const rows: ArchiveDisplayRow[] = [];
@@ -72,37 +113,39 @@ export function ContractArchiveTable({
     const renderedAddendumIds = new Set<string>();
     let masterIndex = 0;
 
-    contracts.forEach((contract) => {
-      if (contract.documentKind === 'addendum') return;
+    const masters = contracts.filter((contract) => contract.documentKind !== 'addendum');
+    const sortedMasters = comparator ? [...masters].sort(comparator) : masters;
+
+    sortedMasters.forEach((contract) => {
       masterIndex += 1;
       const children = addendumsByParentId.get(contract.id) ?? [];
+      const orderedChildren = comparator ? [...children].sort(comparator) : children;
       const isCollapsed = children.length > 0 && !expandedMasters.has(contract.id);
       rows.push({ contract, depth: 0, rowNumber: String(masterIndex), childCount: children.length, isCollapsed });
       if (!isCollapsed) {
-        children.forEach((child, childIndex) => {
+        orderedChildren.forEach((child, childIndex) => {
           renderedAddendumIds.add(child.id);
           rows.push({ contract: child, depth: 1, rowNumber: `${masterIndex}.${childIndex + 1}`, childCount: 0, isCollapsed: false });
         });
       } else {
-        children.forEach((child) => renderedAddendumIds.add(child.id));
+        orderedChildren.forEach((child) => renderedAddendumIds.add(child.id));
       }
     });
 
     // Допники без видимого родителя показываем как самостоятельные строки.
-    contracts.forEach((contract) => {
-      if (
-        contract.documentKind !== 'addendum'
-        || renderedAddendumIds.has(contract.id)
-        || (contract.parentContractId && visibleIds.has(contract.parentContractId))
-      ) {
-        return;
-      }
+    const orphanAddendums = contracts.filter((contract) => (
+      contract.documentKind === 'addendum'
+      && !renderedAddendumIds.has(contract.id)
+      && !(contract.parentContractId && visibleIds.has(contract.parentContractId))
+    ));
+    const sortedOrphans = comparator ? [...orphanAddendums].sort(comparator) : orphanAddendums;
+    sortedOrphans.forEach((contract) => {
       masterIndex += 1;
       rows.push({ contract, depth: 0, rowNumber: String(masterIndex), childCount: 0, isCollapsed: false });
     });
 
     return rows;
-  }, [addendumsByParentId, contracts, expandedMasters]);
+  }, [addendumsByParentId, comparator, contracts, expandedMasters]);
 
   const toggleMaster = (contractId: string) => {
     setExpandedMasters((current) => {
@@ -151,7 +194,17 @@ export function ContractArchiveTable({
               {ARCHIVE_COLUMNS.map((column) => (
                 <TableCell key={column.key}>
                   <Box className="registry-header-cell">
-                    <span>{column.label}</span>
+                    {column.sortKey ? (
+                      <TableSortLabel
+                        active={sortKey === column.sortKey}
+                        direction={sortKey === column.sortKey ? sortDir : 'asc'}
+                        onClick={() => handleSort(column.sortKey as ArchiveSortKey)}
+                      >
+                        {column.label}
+                      </TableSortLabel>
+                    ) : (
+                      <span>{column.label}</span>
+                    )}
                   </Box>
                 </TableCell>
               ))}
@@ -168,6 +221,12 @@ export function ContractArchiveTable({
                 onDoubleClick={() => { onOpenContract(row.id); }}
               >
                 <TableCell>{rowNumber}</TableCell>
+                <TableCell title={row.counterpartyName}>
+                  {row.counterpartyShortName?.trim() || normalizeCounterpartyName(row.counterpartyName)}
+                </TableCell>
+                <TableCell>{row.counterpartyInn || '—'}</TableCell>
+                <TableCell>{formatContractBaseTypeLabel(row.contractType)}</TableCell>
+                <TableCell>{formatContractSubtypeLabel(row.contractType, row.incomeSubtype)}</TableCell>
                 <TableCell>
                   {depth === 1 ? (
                     <Box className="contract-archive-addendum-cell">
@@ -197,11 +256,6 @@ export function ContractArchiveTable({
                   )}
                 </TableCell>
                 <TableCell>{row.contractDate || '—'}</TableCell>
-                <TableCell>{formatContractTypeLabel(row.contractType, row.incomeSubtype)}</TableCell>
-                <TableCell title={row.counterpartyName}>
-                  {row.counterpartyShortName?.trim() || normalizeCounterpartyName(row.counterpartyName)}
-                </TableCell>
-                <TableCell>{row.counterpartyInn || '—'}</TableCell>
                 <TableCell>
                   <Typography
                     variant="body2"

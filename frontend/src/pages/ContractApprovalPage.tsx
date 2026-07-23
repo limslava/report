@@ -28,6 +28,7 @@ import {
   createContract,
   createContractDiscussionMessage,
   decideContractApprovalStep,
+  adminDeleteContract,
   deleteContractAttachment,
   deleteDraftContract,
   decideSecurityContractVisa,
@@ -69,6 +70,7 @@ import {
 } from '../components/contracts/ContractCardSections';
 import { ContractFileList } from '../components/contracts/ContractFileList';
 import {
+  AdminDeleteContractDialog,
   DeleteAttachmentDialog,
   DeleteDraftDialog,
   HistoryDialog,
@@ -157,11 +159,13 @@ export default function ContractApprovalPage() {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const currentUser = useAuthStore((state) => state.user);
   const isSecurity = currentUser?.role === 'security';
+  const isSecretary = currentUser?.role === 'secretary';
   const isApprovalWorkRole = ['lawyer', 'chief_accountant', 'financer', 'secretary'].includes(currentUser?.role ?? '');
   const isChiefAccountant = currentUser?.role === 'chief_accountant';
   const isAdmin = currentUser?.role === 'admin';
   const isReadOnlyRegistry = currentUser?.role === 'general_director';
-  const canUseMyContracts = !isReadOnlyRegistry && currentUser?.role !== 'lawyer';
+  // Офис-менеджеру (секретарю) вкладка «Мои договоры» не нужна — она только подписывает.
+  const canUseMyContracts = !isReadOnlyRegistry && currentUser?.role !== 'lawyer' && !isSecretary;
   const canUseInbox = isSecurity || isApprovalWorkRole;
   const initialSection: ContractSection = canUseInbox ? 'inbox' : (isReadOnlyRegistry || !canUseMyContracts) ? 'registry' : 'mine';
   const [tab, setTab] = useState(0);
@@ -171,6 +175,7 @@ export default function ContractApprovalPage() {
   const [registryStatusFilter, setRegistryStatusFilter] = useState<string>('all');
   const [registryTypeFilter, setRegistryTypeFilter] = useState<string>('all');
   const [registryUnreadOnly, setRegistryUnreadOnly] = useState(false);
+  const [inboxUnreadOnly, setInboxUnreadOnly] = useState(false);
   const {
     sheet,
     setSheet,
@@ -231,6 +236,8 @@ export default function ContractApprovalPage() {
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const [draftDeleteTarget, setDraftDeleteTarget] = useState<ContractRecord | null>(null);
   const [draftDeleting, setDraftDeleting] = useState(false);
+  const [adminDeleteTarget, setAdminDeleteTarget] = useState<ContractRecord | null>(null);
+  const [adminDeleting, setAdminDeleting] = useState(false);
   const [revisionTarget, setRevisionTarget] = useState<ContractRecord | null>(null);
   const [revisionPreparing, setRevisionPreparing] = useState(false);
   const [wizardPrefill, setWizardPrefill] = useState<ContractWizardPrefill | null>(null);
@@ -260,6 +267,7 @@ export default function ContractApprovalPage() {
     counterpartyInn: '',
     contractType: 'expense' as 'expense' | 'income',
     psrMode: 'without_psr' as 'with_psr' | 'without_psr',
+    incomeKind: 'teu' as 'teu' | 'agency',
     contractNumber: '',
     subject: '',
     contractDate: '',
@@ -325,6 +333,10 @@ export default function ContractApprovalPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryEvent[]>([]);
   const openedDeepLinkRef = useRef('');
+  // Как только пользователь сам меняет фильтр входящих, дип-линк из письма
+  // больше не должен авто-открывать карточку (иначе смена фильтра «вытаскивает»
+  // договор из письма и неожиданно открывает модалку).
+  const deepLinkDisabledRef = useRef(false);
 
   const openDecisionHistory = async () => {
     if (!sheet?.contract.id) return;
@@ -415,7 +427,10 @@ export default function ContractApprovalPage() {
     }
   };
 
-  const renderDiscussionPanel = () => (
+  const renderDiscussionPanel = () => {
+    // Офис-менеджеру чат не нужен — не показываем блок обсуждения в карточке.
+    if (isSecretary) return null;
+    return (
     <ContractDiscussionPanel
       messages={discussionMessages}
       loading={discussionLoading}
@@ -437,7 +452,8 @@ export default function ContractApprovalPage() {
       onSend={() => { void sendDiscussionMessage(); }}
       onDownloadAttachment={(file) => { void downloadDiscussionFile(file); }}
     />
-  );
+    );
+  };
 
   const resetWizard = () => {
     setWizardStep(0);
@@ -458,6 +474,7 @@ export default function ContractApprovalPage() {
       counterpartyInn: '',
       contractType: 'expense',
       psrMode: 'without_psr',
+      incomeKind: 'teu',
       contractNumber: '',
       subject: '',
       contractDate: '',
@@ -518,6 +535,7 @@ export default function ContractApprovalPage() {
       counterpartyForm: (draft.counterpartyForm || '') as ContractWizardForm['counterpartyForm'],
       contractType: draft.contractType,
       psrMode: draft.incomeSubtype === 'with_psr' || draft.psrFlag ? 'with_psr' : 'without_psr',
+      incomeKind: draft.incomeKind === 'agency' ? 'agency' : 'teu',
       contractNumber: draft.contractNumber,
       subject: draft.subject || '',
       contractDate: draft.contractDate || '',
@@ -582,6 +600,28 @@ export default function ContractApprovalPage() {
     }
   };
 
+  const removeContractPermanently = async () => {
+    if (!adminDeleteTarget || adminDeleting) return;
+    setError(null);
+    setSuccess(null);
+    try {
+      setAdminDeleting(true);
+      await adminDeleteContract(adminDeleteTarget.id);
+      if (selectedContractId === adminDeleteTarget.id) {
+        setSelectedContractId('');
+        setSheet(null);
+      }
+      const isAddendum = adminDeleteTarget.documentKind === 'addendum';
+      setAdminDeleteTarget(null);
+      await loadRegistry();
+      setSuccess(isAddendum ? 'Доп. соглашение удалено безвозвратно' : 'Договор удалён безвозвратно');
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || 'Не удалось удалить договор');
+    } finally {
+      setAdminDeleting(false);
+    }
+  };
+
   const prevWizardStep = () => {
     if (wizardStep === 4) {
       setWizardStep(0);
@@ -629,7 +669,11 @@ export default function ContractApprovalPage() {
       const typedId = wizard.counterpartyInn.trim();
       const [dupRes, resolveRes] = await Promise.allSettled([
         /^(\d{10}|\d{12})$/.test(typedId)
-          ? getContractDuplicates({ inn: typedId, contractType: wizard.contractType })
+          ? getContractDuplicates({
+            inn: typedId,
+            contractType: wizard.contractType,
+            incomeKind: wizard.contractType === 'income' ? wizard.incomeKind : null,
+          })
           : Promise.resolve({ data: [] as any[] }),
         resolveCounterpartyByInn(typedId),
       ]);
@@ -779,6 +823,7 @@ export default function ContractApprovalPage() {
         incomeSubtype: wizard.contractType === 'income'
           ? (wizard.psrMode === 'with_psr' ? 'with_psr' : 'standard')
           : null,
+        incomeKind: wizard.contractType === 'income' ? wizard.incomeKind : null,
         counterpartyName,
         counterpartyShortName: wizard.counterpartyShortName.trim() || resolved?.counterpartyShortName || null,
         counterpartyForm: wizard.counterpartyForm || resolved?.counterpartyForm || null,
@@ -951,6 +996,10 @@ export default function ContractApprovalPage() {
       if (event.type !== 'contract-approval:updated') return;
 
       refreshVisibleData();
+      // Значки непрочитанного в строках и общий счётчик в меню — обновляем сразу
+      // по тому же событию, а не ждём 60-секундный поллинг.
+      refreshUnreadCounts();
+      requestContractUnreadRefresh();
       if (event.contractId && sheetModalOpen && selectedContractId === event.contractId) {
         void loadSheet(event.contractId);
         void loadDiscussion(event.contractId);
@@ -1294,6 +1343,7 @@ export default function ContractApprovalPage() {
     const contractId = params.get('contractId')?.trim() || '';
     const stepId = params.get('stepId')?.trim() || '';
     if (!contractId) return;
+    if (deepLinkDisabledRef.current) return;
 
     const deepLinkKey = `${contractId}:${stepId}`;
     if (openedDeepLinkRef.current === deepLinkKey) return;
@@ -1408,7 +1458,7 @@ export default function ContractApprovalPage() {
     index + 1,
     contract.contractNumber,
     contract.contractDate,
-    formatContractTypeLabel(contract.contractType, contract.incomeSubtype),
+    formatContractTypeLabel(contract.contractType, contract.incomeSubtype, contract.incomeKind),
     contract.subject,
     contract.counterpartyShortName,
     contract.counterpartyName,
@@ -1477,6 +1527,15 @@ export default function ContractApprovalPage() {
     registryScopedContracts.forEach((contract) => contract.id && ids.add(contract.id));
     return Array.from(ids).sort().join(',');
   }, [filteredSecurityInbox, filteredApprovalInbox, registryScopedContracts]);
+
+  // Счётчики берём по всему отфильтрованному-по-виду списку (выше), а для показа
+  // при включённом «Непрочитанные» оставляем только договоры с новыми сообщениями.
+  const displaySecurityInbox = inboxUnreadOnly
+    ? filteredSecurityInbox.filter((item) => (unreadByContract[item.contractId] ?? 0) > 0)
+    : filteredSecurityInbox;
+  const displayApprovalInbox = inboxUnreadOnly
+    ? filteredApprovalInbox.filter((item) => (unreadByContract[item.contractId] ?? 0) > 0)
+    : filteredApprovalInbox;
 
   const unreadIdsRef = useRef<string[]>([]);
   const unreadReqIdRef = useRef(0);
@@ -1656,8 +1715,7 @@ export default function ContractApprovalPage() {
 
           <Box
             sx={{
-              display: contractSection === 'inbox' ? 'grid' : 'flex',
-              gridTemplateColumns: { xs: '1fr', sm: '210px 230px' },
+              display: 'flex',
               flexWrap: 'wrap',
               alignItems: 'center',
               justifyContent: 'flex-end',
@@ -1680,18 +1738,18 @@ export default function ContractApprovalPage() {
           >
             <Box
               sx={{
-                width: contractSection === 'inbox' ? '100%' : 'auto',
+                width: 'auto',
                 display: contractSection === 'registry' && isReadOnlyRegistry ? 'none' : 'block',
               }}
             >
               {contractSection === 'inbox' && isSecurity ? (
-                <FormControl size="small" fullWidth>
+                <FormControl size="small" sx={{ minWidth: 200 }}>
                   <InputLabel id="sb-view-label">Фильтр</InputLabel>
                   <Select
                     labelId="sb-view-label"
                     label="Фильтр"
                     value={securityInboxView}
-                    onChange={(e) => setSecurityInboxView(e.target.value as InboxView)}
+                    onChange={(e) => { deepLinkDisabledRef.current = true; setSecurityInboxView(e.target.value as InboxView); }}
                     MenuProps={{
                       PaperProps: {
                         sx: {
@@ -1710,13 +1768,13 @@ export default function ContractApprovalPage() {
                   </Select>
                 </FormControl>
               ) : contractSection === 'inbox' ? (
-                <FormControl size="small" fullWidth>
+                <FormControl size="small" sx={{ minWidth: 200 }}>
                   <InputLabel id="approval-view-label">Фильтр</InputLabel>
                   <Select
                     labelId="approval-view-label"
                     label="Фильтр"
                     value={approvalInboxView}
-                    onChange={(e) => setApprovalInboxView(e.target.value as InboxView)}
+                    onChange={(e) => { deepLinkDisabledRef.current = true; setApprovalInboxView(e.target.value as InboxView); }}
                     MenuProps={{
                       PaperProps: {
                         sx: {
@@ -1769,6 +1827,18 @@ export default function ContractApprovalPage() {
                 <Box />
               )}
             </Box>
+            {contractSection === 'inbox' && !isSecretary && (
+              <Button
+                size="small"
+                variant={inboxUnreadOnly ? 'contained' : 'outlined'}
+                color={inboxUnreadOnly ? 'error' : 'inherit'}
+                onClick={() => setInboxUnreadOnly((value) => !value)}
+                sx={{ whiteSpace: 'nowrap' }}
+                title="Показать только договоры с непрочитанными сообщениями"
+              >
+                Непрочитанные
+              </Button>
+            )}
             {contractSection !== 'inbox' && (
               <FormControl size="small" sx={{ minWidth: 168 }}>
                 <InputLabel id="registry-status-label">Статус</InputLabel>
@@ -1914,7 +1984,7 @@ export default function ContractApprovalPage() {
 
       {contractSection === 'inbox' && isSecurity && tab === 2 && (
         <SecurityContractInboxTable
-          items={filteredSecurityInbox}
+          items={displaySecurityInbox}
           totalItems={securityInbox.length}
           unreadByContract={unreadByContract}
           onOpenItem={(item) => { void openSecurityCard(item); }}
@@ -1923,10 +1993,11 @@ export default function ContractApprovalPage() {
 
       {contractSection === 'inbox' && isApprovalWorkRole && tab === 3 && (
         <ApprovalContractInboxTable
-          items={filteredApprovalInbox}
+          items={displayApprovalInbox}
           totalItems={approvalInbox.length}
           isChiefAccountant={isChiefAccountant}
           unreadByContract={unreadByContract}
+          showUnreadChat={!isSecretary}
           onOpenContract={(contractId) => { void openSheetModal(contractId); }}
         />
       )}
@@ -1998,7 +2069,7 @@ export default function ContractApprovalPage() {
               <ContractCardDetails
                 details={[
                   { label: 'Предмет договора', value: securityCardItem.subject || '—', wide: true },
-                  { label: 'Тип', value: formatContractTypeLabel(securityCardItem.contractType, securityCardItem.incomeSubtype) },
+                  { label: 'Тип', value: formatContractTypeLabel(securityCardItem.contractType, securityCardItem.incomeSubtype, securityCardItem.incomeKind) },
                   { label: 'Дата договора', value: securityCardItem.contractDate || '—' },
                   { label: 'ИНН', value: securityCardItem.counterpartyInn || '—' },
                   { label: 'Инициатор', value: securityCardItem.initiatorName },
@@ -2096,7 +2167,7 @@ export default function ContractApprovalPage() {
               <ContractCardDetails
                 details={[
                   { label: 'Предмет договора', value: sheet.contract.subject || '—', wide: true },
-                  { label: 'Тип', value: formatContractTypeLabel(sheet.contract.contractType, sheet.contract.incomeSubtype) },
+                  { label: 'Тип', value: formatContractTypeLabel(sheet.contract.contractType, sheet.contract.incomeSubtype, sheet.contract.incomeKind) },
                   { label: 'Дата договора', value: sheet.contract.contractDate || '—' },
                   { label: 'ИНН', value: sheet.contract.counterpartyInn || '—' },
                   { label: 'Инициатор', value: approvalCardItem?.initiatorName || sheet.contract.initiator?.fullName || '—' },
@@ -2214,6 +2285,17 @@ export default function ContractApprovalPage() {
               Новая редакция
             </Button>
           )}
+          {isAdmin && selectedRegistryContract && (
+            <Button
+              color="error"
+              onClick={() => {
+                closeSheetModal();
+                setAdminDeleteTarget(selectedRegistryContract);
+              }}
+            >
+              Удалить безвозвратно
+            </Button>
+          )}
           <Button onClick={closeSheetModal}>Закрыть</Button>
         </DialogActions>
       </Dialog>
@@ -2233,6 +2315,13 @@ export default function ContractApprovalPage() {
         deleting={draftDeleting}
         onClose={() => setDraftDeleteTarget(null)}
         onConfirm={() => { void removeDraft(); }}
+      />
+
+      <AdminDeleteContractDialog
+        target={adminDeleteTarget}
+        deleting={adminDeleting}
+        onClose={() => setAdminDeleteTarget(null)}
+        onConfirm={() => { void removeContractPermanently(); }}
       />
 
       <RevisionDialog

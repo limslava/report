@@ -240,6 +240,22 @@ export function ContractWizard({
             </FormControl>
             {wizard.contractType === 'income' && (
               <FormControl fullWidth>
+                <InputLabel>Вид договора</InputLabel>
+                <Select
+                  label="Вид договора"
+                  value={wizard.incomeKind}
+                  onChange={(event) => setWizard({
+                    ...wizard,
+                    incomeKind: event.target.value as ContractWizardForm['incomeKind'],
+                  })}
+                >
+                  <MenuItem value="teu">ТЭУ</MenuItem>
+                  <MenuItem value="agency">Агентский</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+            {wizard.contractType === 'income' && (
+              <FormControl fullWidth>
                 <InputLabel>Подтип доходного</InputLabel>
                 <Select
                   label="Подтип доходного"
@@ -263,7 +279,7 @@ export function ContractWizard({
             {checking && <Typography>Проверка дублей и данных контрагента...</Typography>}
             {!checking && duplicates.length > 0 && (
               <Alert severity="warning">
-                Найдены похожие договоры по ИНН и типу. Выберите: отменить или продолжить.
+                Найдены похожие договоры по ИНН и виду договора (расходный / доходный ТЭУ / доходный агентский). Выберите: отменить или продолжить.
               </Alert>
             )}
             {!checking && duplicates.length > 0 && (
@@ -319,7 +335,7 @@ export function ContractWizard({
                 onChange={(event) => setWizard({ ...wizard, contractNumber: event.target.value })}
               />
             )}
-            {!isAddendum && (
+            {!isAddendum && !isIncomeContract && (
               <TextField
                 label="Предмет договора"
                 value={wizard.subject}
@@ -556,7 +572,7 @@ export function ContractWizard({
           <Button
             variant="contained"
             onClick={requiresAttachmentStep ? onGoToFiles : onSubmit}
-            disabled={((requiresAttachmentStep && (!isIncomeContract || importSigned)) || isAddendum) && !wizard.contractNumber.trim() || (!isAddendum && !wizard.subject.trim()) || !wizard.contractDate || submitting}
+            disabled={((requiresAttachmentStep && (!isIncomeContract || importSigned)) || isAddendum) && !wizard.contractNumber.trim() || (!isAddendum && !isIncomeContract && !wizard.subject.trim()) || !wizard.contractDate || submitting}
           >
             {requiresAttachmentStep ? 'Далее' : submitting ? 'Отправка...' : 'Отправить'}
           </Button>

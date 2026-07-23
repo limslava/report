@@ -82,7 +82,7 @@ export const changePassword = (data: { currentPassword: string; newPassword: str
 export const getRuntimeAppSettings = () => api.get('/auth/app-settings');
 
 export const getUsers = (params?: any) => api.get('/admin/users', { params });
-export type ContractTemplateType = 'income_standard' | 'income_with_psr' | 'expense' | 'addendum';
+export type ContractTemplateType = 'income_standard' | 'income_with_psr' | 'income_agency_standard' | 'income_agency_with_psr' | 'expense' | 'addendum';
 export type ContractTemplateVersion = {
   id: string;
   templateType: ContractTemplateType;
@@ -173,7 +173,7 @@ export const syncWorkCalendar = (year: number, source: 'isdayoff' | 'weekend-def
   api.post('/contracts/work-calendar/sync', null, { params: { year, source } });
 export const upsertWorkCalendarDay = (date: string, payload: { isWorkday: boolean; comment?: string | null }) =>
   api.put(`/contracts/work-calendar/${date}`, payload);
-export const getContractDuplicates = (params: { inn: string; contractType: 'expense' | 'income' }) =>
+export const getContractDuplicates = (params: { inn: string; contractType: 'expense' | 'income'; incomeKind?: 'teu' | 'agency' | null }) =>
   api.get('/contracts/duplicates', { params });
 export const resolveCounterpartyByInn = (inn: string) => api.get('/counterparties/resolve', { params: { inn } });
 export const resolveCounterpartyByName = (name: string) => api.get('/counterparties/resolve-by-name', { params: { name } });
@@ -192,6 +192,7 @@ export const createContract = (data: {
   parentContractId?: string | null;
   contractType: 'expense' | 'income';
   incomeSubtype?: 'standard' | 'with_psr' | null;
+  incomeKind?: 'teu' | 'agency' | null;
   counterpartyName: string;
   counterpartyShortName?: string | null;
   ownershipForm?: string | null;
@@ -226,6 +227,8 @@ export const updateDraftContract = (
   data: Parameters<typeof createContract>[0]
 ) => api.put(`/contracts/${contractId}/draft`, data);
 export const deleteDraftContract = (contractId: string) => api.delete(`/contracts/${contractId}/draft`);
+// Админ: безвозвратное удаление любого договора с каскадом.
+export const adminDeleteContract = (contractId: string) => api.delete(`/contracts/${contractId}`);
 export const prepareContractRevision = (contractId: string) => api.post(`/contracts/${contractId}/new-revision`);
 export const uploadContractAttachments = (
   contractId: string,

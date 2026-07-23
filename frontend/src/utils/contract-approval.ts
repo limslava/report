@@ -86,9 +86,26 @@ export function formatDateOnly(value: string | null): string {
 export function formatContractTypeLabel(
   contractType: 'expense' | 'income',
   incomeSubtype: 'standard' | 'with_psr' | null,
+  incomeKind?: 'teu' | 'agency' | null,
 ): string {
   if (contractType === 'expense') return 'Расходный';
-  return `Доходный${incomeSubtype === 'with_psr' ? ' (с ПСР)' : ' (без ПСР)'}`;
+  const kindLabel = incomeKind === 'agency' ? 'Агентский' : 'ТЭУ';
+  const psrLabel = incomeSubtype === 'with_psr' ? 'с ПСР' : 'без ПСР';
+  return `Доходный · ${kindLabel} (${psrLabel})`;
+}
+
+// Базовый тип — только доходный / расходный (для колонки «Тип»).
+export function formatContractBaseTypeLabel(contractType: 'expense' | 'income'): string {
+  return contractType === 'income' ? 'Доходный' : 'Расходный';
+}
+
+// Подтип по ПСР — только для доходных (для колонки «Подтип»).
+export function formatContractSubtypeLabel(
+  contractType: 'expense' | 'income',
+  incomeSubtype: 'standard' | 'with_psr' | null,
+): string {
+  if (contractType !== 'income') return '—';
+  return incomeSubtype === 'with_psr' ? 'С ПСР' : 'Без ПСР';
 }
 
 export function getSecurityVisaLabel(item: Pick<SecurityInboxItem, 'securityDecision' | 'securityComment'>): string {

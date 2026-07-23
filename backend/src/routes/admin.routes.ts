@@ -125,7 +125,14 @@ router.get('/contract-templates', getContractTemplateVersions);
 router.post(
   '/contract-templates',
   [
-    body('templateType').isIn(['income_standard', 'income_with_psr', 'expense', 'addendum']),
+    body('templateType').isIn([
+      'income_standard',
+      'income_with_psr',
+      'income_agency_standard',
+      'income_agency_with_psr',
+      'expense',
+      'addendum',
+    ]),
     body('originalName').isString().trim().notEmpty().isLength({ max: 255 }),
     body('contentBase64').isString().notEmpty(),
   ],

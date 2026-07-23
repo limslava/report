@@ -107,8 +107,10 @@ const AdminPage = () => {
   };
 
   const contractTemplateTypes: Array<{ value: ContractTemplateType; label: string }> = [
-    { value: 'income_standard', label: 'Доходный без ПСР' },
-    { value: 'income_with_psr', label: 'Доходный с ПСР' },
+    { value: 'income_standard', label: 'Доходный ТЭУ без ПСР' },
+    { value: 'income_with_psr', label: 'Доходный ТЭУ с ПСР' },
+    { value: 'income_agency_standard', label: 'Доходный Агентский без ПСР' },
+    { value: 'income_agency_with_psr', label: 'Доходный Агентский с ПСР' },
     { value: 'expense', label: 'Расходный' },
     { value: 'addendum', label: 'Доп. соглашение' },
   ];
@@ -889,7 +891,8 @@ const AdminPage = () => {
               Уже созданные вложения договоров автоматически не меняются.
             </Alert>
             <Alert severity="warning" sx={{ mb: 2 }}>
-              Сейчас автогенерация подключена для типа «Доходный без ПСР». Остальные типы можно версионировать заранее,
+              Сейчас автогенерация подключена для доходных типов ТЭУ и Агентский (с ПСР и без ПСР) — нужный шаблон
+              выбирается автоматически по виду дохода и признаку ПСР. Остальные типы можно версионировать заранее,
               но они начнут применяться после подключения генераторов для этих видов документов.
             </Alert>
 

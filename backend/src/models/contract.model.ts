@@ -33,6 +33,13 @@ export enum ContractIncomeSubtype {
   WITH_PSR = 'with_psr',
 }
 
+// Вид доходного договора: ТЭУ (транспортно-экспедиционные услуги) или Агентский.
+// Ортогонально ПСР (incomeSubtype). Для расходных — null.
+export enum ContractIncomeKind {
+  TEU = 'teu',
+  AGENCY = 'agency',
+}
+
 export enum ContractSigningMethod {
   EDO = 'edo',
   POST = 'post',
@@ -64,6 +71,9 @@ export class Contract {
 
   @Column({ name: 'income_subtype', type: 'enum', enum: ContractIncomeSubtype, nullable: true })
   incomeSubtype!: ContractIncomeSubtype | null;
+
+  @Column({ name: 'income_kind', type: 'enum', enum: ContractIncomeKind, nullable: true })
+  incomeKind!: ContractIncomeKind | null;
 
   @Column({ name: 'counterparty_name', type: 'varchar', length: 255 })
   counterpartyName!: string;

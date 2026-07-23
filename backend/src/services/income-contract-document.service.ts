@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import PizZip from 'pizzip';
-import { Contract, ContractDocumentKind, ContractIncomeSubtype, ContractType } from '../models/contract.model';
+import { Contract, ContractDocumentKind, ContractIncomeKind, ContractIncomeSubtype, ContractType } from '../models/contract.model';
 import { ContractTemplateType } from '../models/contract-template-version.model';
 import {
   buildContractTemplateValues,
@@ -297,13 +297,42 @@ function patchDocumentXml(xml: string, contract: Contract): string {
   });
 }
 
+/**
+ * Подбирает активную проформу СТРОГО в рамках выбранного вида договора.
+ * Кросс-подстановки между ТЭУ и Агентским нет: агентский договор берёт только
+ * агентскую проформу, ТЭУ — только ТЭУ. Внутри вида допускается откат
+ * «с ПСР → без ПСР», т.к. это одна и та же проформа.
+ */
+export async function resolveActiveIncomeTemplate(contract: Contract) {
+  const isAgency = contract.incomeKind === ContractIncomeKind.AGENCY;
+  const withPsr = contract.incomeSubtype === ContractIncomeSubtype.WITH_PSR;
+  if (isAgency) {
+    return (await getActiveContractTemplate(
+      withPsr ? ContractTemplateType.INCOME_AGENCY_WITH_PSR : ContractTemplateType.INCOME_AGENCY_STANDARD,
+    )) ?? (await getActiveContractTemplate(ContractTemplateType.INCOME_AGENCY_STANDARD));
+  }
+  return (await getActiveContractTemplate(
+    withPsr ? ContractTemplateType.INCOME_WITH_PSR : ContractTemplateType.INCOME_STANDARD,
+  )) ?? (await getActiveContractTemplate(ContractTemplateType.INCOME_STANDARD));
+}
+
+/**
+ * Есть ли чем заполнить доходный договор выбранного вида.
+ * ТЭУ всегда имеет встроенную (бандловую) проформу, поэтому доступен всегда.
+ * Агентский требует загруженной и активированной проформы — встроенной нет,
+ * и подставлять вместо неё ТЭУ запрещено.
+ */
+export async function hasIncomeContractTemplate(contract: Contract): Promise<boolean> {
+  if (!shouldGenerateIncomeStandardContract(contract)) return true;
+  const isAgency = contract.incomeKind === ContractIncomeKind.AGENCY;
+  if (!isAgency) return true;
+  return Boolean(await resolveActiveIncomeTemplate(contract));
+}
+
 export async function generateIncomeStandardContractDocument(contract: Contract): Promise<GeneratedContractDocument | null> {
   if (!shouldGenerateIncomeStandardContract(contract)) return null;
-  const templateType = contract.incomeSubtype === ContractIncomeSubtype.WITH_PSR
-    ? ContractTemplateType.INCOME_WITH_PSR
-    : ContractTemplateType.INCOME_STANDARD;
-  const activeTemplate = await getActiveContractTemplate(templateType)
-    ?? await getActiveContractTemplate(ContractTemplateType.INCOME_STANDARD);
+  const isAgency = contract.incomeKind === ContractIncomeKind.AGENCY;
+  const activeTemplate = await resolveActiveIncomeTemplate(contract);
   if (activeTemplate) {
     const templateBuffer = await fs.readFile(activeTemplate.storagePath);
     return {
@@ -312,6 +341,12 @@ export async function generateIncomeStandardContractDocument(contract: Contract)
       buffer: renderDocxTemplate(templateBuffer, buildContractTemplateValues(contract)),
       templateVersionId: activeTemplate.id,
     };
+  }
+
+  // Для агентского договора встроенной проформы нет, а подставлять ТЭУ нельзя.
+  // Если активная агентская проформа не загружена — документ не формируем.
+  if (isAgency) {
+    return null;
   }
 
   const templateBuffer = await readTemplate();

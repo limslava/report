@@ -17,6 +17,7 @@ type ContractDeadlineRow = {
   status: 'overdue' | 'due_today' | 'on_track';
   overdueDays: number;
   daysLeft: number | null;
+  needsSignedFile?: boolean;
 };
 
 type DashboardData = {
@@ -25,6 +26,7 @@ type DashboardData = {
   overdue: number;
   newRequests: number;
   completedMonth: number;
+  needsSignedFile: number;
   avgProcessingHours: number;
   overdueTrend: number[];
   overdueDeltaWeek: number;
@@ -37,6 +39,7 @@ const EMPTY: DashboardData = {
   overdue: 0,
   newRequests: 0,
   completedMonth: 0,
+  needsSignedFile: 0,
   avgProcessingHours: 0,
   overdueTrend: [],
   overdueDeltaWeek: 0,
@@ -339,8 +342,11 @@ function ContractDeadlinesList({ rows, onOpen }: { rows: ContractDeadlineRow[]; 
             <Box sx={{ ...deadlineCellSx, minWidth: 0, display: { xs: 'none', md: 'block' }, ...ellipsisSx }} title={row.counterpartyName}>{row.counterpartyName}</Box>
             <Box sx={{ ...deadlineCellSx, minWidth: 0, display: { xs: 'none', md: 'block' }, color: '#455a64', ...ellipsisSx }} title={row.initiatorName}>{row.initiatorName}</Box>
             <Box sx={{ ...deadlineCellSx, fontVariantNumeric: 'tabular-nums', color: '#455a64', whiteSpace: 'nowrap' }}>{formatDeadline(row.deadlineAt)}</Box>
-            <Box sx={{ ...deadlineCellSx, borderRight: 0 }}>
+            <Box sx={{ ...deadlineCellSx, borderRight: 0, display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
               <Chip label={chip.label} size="small" sx={{ height: 22, borderRadius: '6px', bgcolor: chip.bg, color: chip.color, fontWeight: 650, fontSize: 11, '& .MuiChip-label': { px: 0.9 } }} />
+              {row.needsSignedFile && (
+                <Chip label="нужен скан" size="small" sx={{ height: 22, borderRadius: '6px', bgcolor: '#fff3d6', color: '#7a5200', fontWeight: 650, fontSize: 11, '& .MuiChip-label': { px: 0.9 } }} />
+              )}
             </Box>
           </Box>
         );
@@ -473,6 +479,7 @@ export default function BPApprovalDashboardPage() {
   };
   const openNewCandidateCheck = () => navigate('/business-processes/candidate-checks?new=1');
   const isSecurity = user?.role === 'security' || user?.role === 'admin';
+  const isSecretaryRole = user?.role === 'secretary';
 
   const handleCandidateDecided = (updated: CandidateCheck) => {
     setSelectedCandidate(updated);
@@ -494,6 +501,15 @@ export default function BPApprovalDashboardPage() {
           hint={`В работе ${data.inWork}. Среднее время решения: ${data.avgProcessingHours} ч.`}
           primaryAction={{ label: data.overdue > 0 ? `К просроченным (${data.overdue})` : `Дедлайн сегодня (${data.dueToday})`, onClick: () => navigate(`/business-processes/contract-approval?kpi=${data.overdue > 0 ? 'overdue' : 'due_today'}`) }}
           secondaryAction={data.overdue > 0 && data.dueToday > 0 ? { label: `Дедлайн сегодня (${data.dueToday})`, onClick: () => navigate('/business-processes/contract-approval?kpi=due_today') } : undefined}
+        />
+      )}
+
+      {isSecretaryRole && data.needsSignedFile > 0 && (
+        <AttentionBanner
+          severity="warning"
+          title={`${data.needsSignedFile} ${contractsWord(data.needsSignedFile)} ${data.needsSignedFile === 1 ? 'ждёт' : 'ждут'} скан подписанного экземпляра`}
+          hint="Приложите скан подписанного договора в карточке, чтобы завершить подписание."
+          primaryAction={{ label: 'К подписанию', onClick: () => navigate('/business-processes/contract-approval') }}
         />
       )}
 
@@ -522,9 +538,9 @@ export default function BPApprovalDashboardPage() {
 
       {canViewContractTasks(user?.role) && (
         <>
-          <SectionHeader title="Договоры" action={{ label: 'Все договоры', onClick: () => navigate('/business-processes/contract-approval') }} />
+          <SectionHeader title={isSecretaryRole ? 'Очередь на подписание' : 'Договоры'} action={{ label: 'Все договоры', onClick: () => navigate('/business-processes/contract-approval') }} />
           <Grid container spacing={1}>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={isSecretaryRole ? 4 : 6}>
               <MetricCard
                 title="Просрочено"
                 value={data.overdue}
@@ -536,7 +552,7 @@ export default function BPApprovalDashboardPage() {
                 onClick={() => navigate('/business-processes/contract-approval?kpi=overdue')}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={isSecretaryRole ? 4 : 6}>
               <MetricCard
                 title="Дедлайн сегодня"
                 value={data.dueToday}
@@ -546,6 +562,18 @@ export default function BPApprovalDashboardPage() {
                 onClick={() => navigate('/business-processes/contract-approval?kpi=due_today')}
               />
             </Grid>
+            {isSecretaryRole && (
+              <Grid item xs={12} md={4}>
+                <MetricCard
+                  title="Нужен скан"
+                  value={data.needsSignedFile}
+                  hint="Ждут подписанный экземпляр"
+                  color="#c77700"
+                  tone="warning"
+                  onClick={() => navigate('/business-processes/contract-approval')}
+                />
+              </Grid>
+            )}
           </Grid>
           <Grid container spacing={1}>
             <Grid item xs={6} sm={3} md={3}>

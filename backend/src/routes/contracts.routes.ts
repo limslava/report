@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/authenticate';
 import { adminOnly, roleOrAdmin } from '../middleware/admin-only.middleware';
 import { handleValidationErrors } from '../middleware/express-validator.middleware';
 import {
+  adminDeleteContract,
   createContract,
   createContractDiscussionMessage,
   importSignedContract,
@@ -151,6 +152,7 @@ router.post(
     body('contractNumber').isString().trim().notEmpty().isLength({ max: 100 }),
     body('contractType').isIn(['expense', 'income']),
     body('incomeSubtype').optional({ nullable: true }).isIn(['standard', 'with_psr']),
+    body('incomeKind').optional({ nullable: true }).isIn(['teu', 'agency']),
     body('counterpartyName').isString().trim().notEmpty().isLength({ max: 255 }),
     body('counterpartyShortName').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('ownershipForm').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
@@ -198,6 +200,7 @@ router.post(
     body('contractNumber').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
     body('contractType').isIn(['expense', 'income']),
     body('incomeSubtype').optional({ nullable: true }).isIn(['standard', 'with_psr']),
+    body('incomeKind').optional({ nullable: true }).isIn(['teu', 'agency']),
     body('counterpartyName').isString().trim().notEmpty().isLength({ max: 255 }),
     body('counterpartyShortName').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('ownershipForm').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
@@ -241,6 +244,7 @@ router.put(
     body('contractNumber').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
     body('contractType').isIn(['expense', 'income']),
     body('incomeSubtype').optional({ nullable: true }).isIn(['standard', 'with_psr']),
+    body('incomeKind').optional({ nullable: true }).isIn(['teu', 'agency']),
     body('counterpartyName').isString().trim().notEmpty().isLength({ max: 255 }),
     body('counterpartyShortName').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
     body('counterpartyForm').optional({ nullable: true }).isIn(['ooo', 'ao', 'pao', 'zao', 'ip']),
@@ -268,6 +272,8 @@ router.put(
   updateDraftContract,
 );
 router.delete('/:id/draft', writeContractAccess, [param('id').isUUID()], handleValidationErrors, deleteDraftContract);
+// Админ: безвозвратное удаление любого договора с каскадом (очистка тестовых данных).
+router.delete('/:id', adminOnly, [param('id').isUUID()], handleValidationErrors, adminDeleteContract);
 
 router.post('/:id/new-revision', writeContractAccess, [param('id').isUUID()], handleValidationErrors, prepareContractRevision);
 router.post('/:id/start-approval', writeContractAccess, [param('id').isUUID()], handleValidationErrors, startContractApproval);

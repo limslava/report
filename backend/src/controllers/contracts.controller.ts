@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { EntityManager, In, IsNull, MoreThan, Not } from 'typeorm';
+import { EntityManager, FindOptionsWhere, In, IsNull, MoreThan, Not } from 'typeorm';
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
@@ -12,6 +12,7 @@ import { AppDataSource } from '../config/data-source';
 import {
   Contract,
   ContractDocumentKind,
+  ContractIncomeKind,
   ContractIncomeSubtype,
   ContractSigningMethod,
   ContractStatus,
@@ -62,6 +63,7 @@ import {
 } from '../services/contract-approval-workflow.service';
 import {
   generateIncomeStandardContractDocument,
+  hasIncomeContractTemplate,
   isGeneratedIncomeStandardFileName,
   shouldGenerateIncomeStandardContract,
 } from '../services/income-contract-document.service';
@@ -413,6 +415,17 @@ function assertIncomeStandardGenerationDetails(contract: Contract): void {
   }
 }
 
+async function assertIncomeContractTemplateAvailable(contract: Contract): Promise<void> {
+  if (await hasIncomeContractTemplate(contract)) return;
+  const kindLabel = contract.incomeKind === ContractIncomeKind.AGENCY ? 'агентского' : 'ТЭУ';
+  const error: any = new Error(
+    `Нет активной проформы для доходного ${kindLabel} договора — договор не может быть заполнен автоматически. `
+    + 'Загрузите и активируйте проформу в панели администратора.',
+  );
+  error.statusCode = 400;
+  throw error;
+}
+
 async function replaceGeneratedIncomeStandardAttachment(contract: Contract, uploadedByUserId?: string | null): Promise<void> {
   // Регенерация должна работать в рамках актуальной ревизии документов:
   // при доработке (REWORK) файл сохраняется в ревизию N+1, а файлы прошлых
@@ -719,7 +732,9 @@ function formatPdfDateTime(value: Date | string | null | undefined): string {
 
 function formatPdfContractType(contract: Contract): string {
   if (contract.contractType === ContractType.EXPENSE) return 'Расходный';
-  return contract.incomeSubtype === ContractIncomeSubtype.WITH_PSR ? 'Доходный (с ПСР)' : 'Доходный (без ПСР)';
+  const kindLabel = contract.incomeKind === ContractIncomeKind.AGENCY ? 'Агентский' : 'ТЭУ';
+  const psrLabel = contract.incomeSubtype === ContractIncomeSubtype.WITH_PSR ? 'с ПСР' : 'без ПСР';
+  return `Доходный · ${kindLabel} (${psrLabel})`;
 }
 
 function formatPdfTemplateKind(contract: Contract): string {
@@ -1185,17 +1200,27 @@ export const findContractDuplicates = async (req: Request, res: Response, next: 
   try {
     const inn = String(req.query.inn ?? '').trim();
     const contractType = String(req.query.contractType ?? '').trim() as ContractType;
+    const rawIncomeKind = String(req.query.incomeKind ?? '').trim();
     if (!inn || (contractType !== ContractType.EXPENSE && contractType !== ContractType.INCOME)) {
       const error: any = new Error('Не переданы параметры поиска дублей');
       error.statusCode = 400;
       throw error;
     }
 
+    // Дубли ищем по «одинаковому виду» договора с этим контрагентом:
+    // расходный / доходный ТЭУ / доходный агентский — это три разных вида.
+    const duplicateWhere: FindOptionsWhere<Contract> = {
+      counterpartyInn: inn,
+      contractType,
+    };
+    if (contractType === ContractType.INCOME) {
+      duplicateWhere.incomeKind = rawIncomeKind === 'agency'
+        ? ContractIncomeKind.AGENCY
+        : ContractIncomeKind.TEU;
+    }
+
     const duplicates = await contractRepository.find({
-      where: {
-        counterpartyInn: inn,
-        contractType,
-      },
+      where: duplicateWhere,
       relations: ['initiator'],
       order: { createdAt: 'DESC' },
       take: 20,
@@ -1275,6 +1300,7 @@ export const listContracts = async (_req: Request, res: Response, next: NextFunc
         contractNumber: contract.contractNumber,
         contractType: contract.contractType,
         incomeSubtype: contract.incomeSubtype,
+        incomeKind: contract.incomeKind,
         counterpartyName: contract.counterpartyName,
         counterpartyShortName: contract.counterpartyShortName,
         ownershipForm: contract.ownershipForm,
@@ -1402,6 +1428,7 @@ export const listSecurityInbox = async (req: Request, res: Response, next: NextF
           counterpartyInn: step.contract.counterpartyInn,
           contractType: step.contract.contractType,
           incomeSubtype: step.contract.incomeSubtype,
+          incomeKind: step.contract.incomeKind,
           counterpartyName: step.contract.counterpartyName,
           subject: step.contract.subject,
           contractDate: toYmdOrNull(step.contract.contractDate),
@@ -1494,6 +1521,7 @@ export const listMyApprovalInbox = async (req: Request, res: Response, next: Nex
         counterpartyInn: step.contract.counterpartyInn,
         contractType: step.contract.contractType,
         incomeSubtype: step.contract.incomeSubtype,
+        incomeKind: step.contract.incomeKind,
         counterpartyName: step.contract.counterpartyName,
         subject: step.contract.subject,
         contractDate: toYmdOrNull(step.contract.contractDate),
@@ -1577,6 +1605,25 @@ export const getMyApprovalDashboard = async (req: Request, res: Response, next: 
     }).length;
     const inWork = Math.max(activeRoleSteps.length - overdue, 0);
 
+    // Для офис-менеджера (секретаря): какие из активных шагов ещё без приложенного
+    // скана подписанного экземпляра — это «очередь на подписание / нужен файл».
+    let stepsWithSignedFile = new Set<string>();
+    if (currentUserRole === 'secretary' && activeRoleSteps.length) {
+      const activeStepIds = activeRoleSteps.map((step) => step.id);
+      const activeAttachments = await attachmentRepository.find({
+        where: { approvalStepId: In(activeStepIds) },
+        select: ['approvalStepId'],
+      });
+      stepsWithSignedFile = new Set(
+        activeAttachments
+          .map((attachment) => attachment.approvalStepId)
+          .filter((stepId): stepId is string => Boolean(stepId)),
+      );
+    }
+    const needsSignedFile = currentUserRole === 'secretary'
+      ? activeRoleSteps.filter((step) => !stepsWithSignedFile.has(step.id)).length
+      : 0;
+
     // Тренд просрочки за 14 дней восстанавливается из имеющихся дат шагов
     // (assignedAt / deadlineAt / signedAt) — снапшоты не нужны, данные реальные.
     const TREND_DAYS = 14;
@@ -1654,6 +1701,7 @@ export const getMyApprovalDashboard = async (req: Request, res: Response, next: 
           status,
           overdueDays,
           daysLeft,
+          needsSignedFile: currentUserRole === 'secretary' ? !stepsWithSignedFile.has(step.id) : false,
         };
       });
 
@@ -1663,6 +1711,7 @@ export const getMyApprovalDashboard = async (req: Request, res: Response, next: 
       overdue,
       newRequests,
       completedMonth,
+      needsSignedFile,
       avgProcessingHours: Number(avgHours.toFixed(1)),
       overdueTrend,
       overdueDeltaWeek,
@@ -1702,6 +1751,7 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       contractNumber,
       contractType,
       incomeSubtype,
+      incomeKind,
       counterpartyName,
       counterpartyShortName,
       ownershipForm,
@@ -1733,6 +1783,7 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       contractNumber?: string | null;
       contractType: ContractType;
       incomeSubtype?: ContractIncomeSubtype | null;
+      incomeKind?: ContractIncomeKind | null;
       counterpartyName: string;
       counterpartyShortName?: string | null;
       ownershipForm?: string | null;
@@ -1800,6 +1851,12 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
     }
 
     const normalizedIncomeSubtype = contractType === ContractType.INCOME ? (incomeSubtype ?? ContractIncomeSubtype.STANDARD) : null;
+    const normalizedIncomeKind = contractType === ContractType.INCOME
+      ? (incomeKind === 'agency' ? ContractIncomeKind.AGENCY : ContractIncomeKind.TEU)
+      : null;
+    const normalizedSubject = contractType === ContractType.INCOME
+      ? (normalizedIncomeKind === ContractIncomeKind.AGENCY ? 'Агентский' : 'ТЭУ')
+      : (subject?.trim() || null);
     const parsedContractDate = contractDate
       ? new Date(contractDate)
       : isIncomeStandardContractInput(contractType, normalizedIncomeSubtype)
@@ -1820,18 +1877,22 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
     validateInnByCounterpartyForm(counterpartyInn.trim(), counterpartyForm ?? null);
 
     if (!allowDuplicate) {
+      const duplicateWhere: FindOptionsWhere<Contract> = {
+        counterpartyInn: counterpartyInn.trim(),
+        contractType,
+      };
+      if (contractType === ContractType.INCOME) {
+        duplicateWhere.incomeKind = normalizedIncomeKind ?? ContractIncomeKind.TEU;
+      }
       const duplicates = await contractRepository.find({
-        where: {
-          counterpartyInn: counterpartyInn.trim(),
-          contractType,
-        },
+        where: duplicateWhere,
         order: { createdAt: 'DESC' },
         take: 20,
       });
       if (duplicates.length > 0) {
         res.status(409).json({
           error: 'DUPLICATE_CONTRACTS_FOUND',
-          message: 'Найден(ы) договор(ы) с таким ИНН и типом договора',
+          message: 'Найден(ы) договор(ы) с таким ИНН и видом договора',
           duplicates: duplicates.map((item) => ({
             id: item.id,
             contractNumber: item.contractNumber,
@@ -1848,6 +1909,7 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       contractNumber: normalizedContractNumber,
       contractType,
       incomeSubtype: normalizedIncomeSubtype,
+      incomeKind: normalizedIncomeKind,
       counterpartyName: counterpartyName.trim(),
       counterpartyShortName: counterpartyShortName?.trim() || null,
       ownershipForm: ownershipForm?.trim() || null,
@@ -1868,7 +1930,7 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       counterpartyBankAccount: normalizeNullableString(counterpartyBankAccount),
       counterpartyCorrespondentAccount: normalizeNullableString(counterpartyCorrespondentAccount),
       templateKind: ContractTemplateKind.TYPICAL,
-      subject: subject?.trim() || null,
+      subject: normalizedSubject,
       contractDate: parsedContractDate,
       psrFlag: normalizedPsrFlag,
       signingMethod: signingMethod ?? ContractSigningMethod.POST,
@@ -1880,6 +1942,7 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       clientRequestId: normalizedClientRequestId,
     });
     assertIncomeStandardGenerationDetails(contract);
+    await assertIncomeContractTemplateAvailable(contract);
 
     const saved = await contractRepository.save(contract);
     await replaceGeneratedIncomeStandardAttachment(saved, req.user.id);
@@ -1897,6 +1960,7 @@ export const importSignedContract = async (req: Request, res: Response, next: Ne
       contractNumber,
       contractType,
       incomeSubtype,
+      incomeKind,
       counterpartyName,
       counterpartyShortName,
       ownershipForm,
@@ -1928,6 +1992,7 @@ export const importSignedContract = async (req: Request, res: Response, next: Ne
       contractNumber: string;
       contractType: ContractType;
       incomeSubtype?: ContractIncomeSubtype | null;
+      incomeKind?: ContractIncomeKind | null;
       counterpartyName: string;
       counterpartyShortName?: string | null;
       ownershipForm?: string | null;
@@ -1994,10 +2059,19 @@ export const importSignedContract = async (req: Request, res: Response, next: Ne
     }
 
     if (!allowDuplicate) {
+      const sameKindWhere: FindOptionsWhere<Contract> = {
+        counterpartyInn: counterpartyInn.trim(),
+        contractType,
+      };
+      if (contractType === ContractType.INCOME) {
+        sameKindWhere.incomeKind = incomeKind === 'agency'
+          ? ContractIncomeKind.AGENCY
+          : ContractIncomeKind.TEU;
+      }
       const duplicates = await contractRepository.find({
         where: [
           { contractNumber: normalizedContractNumber },
-          { counterpartyInn: counterpartyInn.trim(), contractType },
+          sameKindWhere,
         ],
         order: { createdAt: 'DESC' },
         take: 20,
@@ -2005,7 +2079,7 @@ export const importSignedContract = async (req: Request, res: Response, next: Ne
       if (duplicates.length > 0) {
         res.status(409).json({
           error: 'DUPLICATE_CONTRACTS_FOUND',
-          message: 'Найден(ы) договор(ы) с таким номером или ИНН и типом договора',
+          message: 'Найден(ы) договор(ы) с таким номером или ИНН и видом договора',
           duplicates: duplicates.map((item) => ({
             id: item.id,
             contractNumber: item.contractNumber,
@@ -2021,6 +2095,12 @@ export const importSignedContract = async (req: Request, res: Response, next: Ne
     const normalizedIncomeSubtype = contractType === ContractType.INCOME
       ? (incomeSubtype ?? ContractIncomeSubtype.STANDARD)
       : null;
+    const normalizedIncomeKind = contractType === ContractType.INCOME
+      ? (incomeKind === 'agency' ? ContractIncomeKind.AGENCY : ContractIncomeKind.TEU)
+      : null;
+    const normalizedSubject = contractType === ContractType.INCOME
+      ? (normalizedIncomeKind === ContractIncomeKind.AGENCY ? 'Агентский' : 'ТЭУ')
+      : (subject?.trim() || null);
     const normalizedPsrFlag = contractType === ContractType.INCOME && normalizedIncomeSubtype === ContractIncomeSubtype.WITH_PSR
       ? true
       : Boolean(psrFlag);
@@ -2029,6 +2109,7 @@ export const importSignedContract = async (req: Request, res: Response, next: Ne
       contractNumber: normalizedContractNumber,
       contractType,
       incomeSubtype: normalizedIncomeSubtype,
+      incomeKind: normalizedIncomeKind,
       counterpartyName: counterpartyName.trim(),
       counterpartyShortName: counterpartyShortName?.trim() || null,
       ownershipForm: ownershipForm?.trim() || null,
@@ -2049,7 +2130,7 @@ export const importSignedContract = async (req: Request, res: Response, next: Ne
       counterpartyBankAccount: normalizeNullableString(counterpartyBankAccount),
       counterpartyCorrespondentAccount: normalizeNullableString(counterpartyCorrespondentAccount),
       templateKind: ContractTemplateKind.NON_TYPICAL,
-      subject: subject?.trim() || null,
+      subject: normalizedSubject,
       contractDate: parsedContractDate,
       psrFlag: normalizedPsrFlag,
       signingMethod: signingMethod ?? ContractSigningMethod.POST,
@@ -2100,6 +2181,7 @@ export const updateDraftContract = async (req: Request, res: Response, next: Nex
       contractNumber,
       contractType,
       incomeSubtype,
+      incomeKind,
       counterpartyName,
       counterpartyShortName,
       counterpartyForm,
@@ -2126,6 +2208,7 @@ export const updateDraftContract = async (req: Request, res: Response, next: Nex
       contractNumber: string;
       contractType: ContractType;
       incomeSubtype?: ContractIncomeSubtype | null;
+      incomeKind?: ContractIncomeKind | null;
       counterpartyName: string;
       counterpartyShortName?: string | null;
       counterpartyForm?: string | null;
@@ -2161,11 +2244,18 @@ export const updateDraftContract = async (req: Request, res: Response, next: Nex
     const normalizedIncomeSubtype = contractType === ContractType.INCOME
       ? (incomeSubtype ?? ContractIncomeSubtype.STANDARD)
       : null;
+    const normalizedIncomeKind = contractType === ContractType.INCOME
+      ? (incomeKind === 'agency' ? ContractIncomeKind.AGENCY : ContractIncomeKind.TEU)
+      : null;
+    const normalizedSubject = contractType === ContractType.INCOME
+      ? (normalizedIncomeKind === ContractIncomeKind.AGENCY ? 'Агентский' : 'ТЭУ')
+      : (subject?.trim() || null);
     contract.contractNumber = normalizeNullableString(contractNumber)
       ?? contract.contractNumber
       ?? await generateNextContractNumber(parsedContractDate);
     contract.contractType = contractType;
     contract.incomeSubtype = normalizedIncomeSubtype;
+    contract.incomeKind = normalizedIncomeKind;
     contract.counterpartyName = counterpartyName.trim();
     contract.counterpartyShortName = counterpartyShortName?.trim() || null;
     contract.counterpartyForm = counterpartyForm || null;
@@ -2184,13 +2274,14 @@ export const updateDraftContract = async (req: Request, res: Response, next: Nex
     contract.counterpartyBankBik = normalizeNullableString(counterpartyBankBik);
     contract.counterpartyBankAccount = normalizeNullableString(counterpartyBankAccount);
     contract.counterpartyCorrespondentAccount = normalizeNullableString(counterpartyCorrespondentAccount);
-    contract.subject = subject?.trim() || null;
+    contract.subject = normalizedSubject;
     contract.contractDate = parsedContractDate;
     contract.psrFlag = contractType === ContractType.INCOME && normalizedIncomeSubtype === ContractIncomeSubtype.WITH_PSR
       ? true
       : Boolean(psrFlag);
     contract.signingMethod = signingMethod ?? ContractSigningMethod.POST;
     assertIncomeStandardGenerationDetails(contract);
+    await assertIncomeContractTemplateAvailable(contract);
 
     await contractRepository.save(contract);
     await replaceGeneratedIncomeStandardAttachment(contract, req.user?.id);
@@ -2200,6 +2291,17 @@ export const updateDraftContract = async (req: Request, res: Response, next: Nex
     next(error);
   }
 };
+
+// Полное удаление файлов договора с диска (вложения + файлы обсуждения лежат внутри
+// одного корня uploads/contracts/<id>, поэтому чистим весь каталог, включая legacy-путь).
+async function removeContractUploads(contractId: string): Promise<void> {
+  const configuredUploads = getContractsUploadRoot(contractId);
+  await fs.rm(configuredUploads, { recursive: true, force: true });
+  const legacyUploads = path.resolve(process.cwd(), 'uploads', 'contracts', contractId);
+  if (legacyUploads !== configuredUploads) {
+    await fs.rm(legacyUploads, { recursive: true, force: true });
+  }
+}
 
 export const deleteDraftContract = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -2222,14 +2324,40 @@ export const deleteDraftContract = async (req: Request, res: Response, next: Nex
     }
 
     await contractRepository.remove(contract);
-    const configuredUploads = getContractsUploadRoot(id);
-    await fs.rm(configuredUploads, { recursive: true, force: true });
-    const legacyUploads = path.resolve(process.cwd(), 'uploads', 'contracts', id);
-    if (legacyUploads !== configuredUploads) {
-      await fs.rm(legacyUploads, { recursive: true, force: true });
-    }
+    await removeContractUploads(id);
     notifyContractApprovalUpdated(id, req.user?.id);
     res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Админ: безвозвратное удаление ЛЮБОГО договора вместе с каскадом (этапы, визы/решения,
+// обсуждение, вложения, файлы на диске) — для очистки тестовых договоров.
+// Дочерние строки удаляются БД по FK ON DELETE CASCADE; допсоглашения (самоссылка
+// parent_contract_id) каскада не имеют, поэтому удаляем их явно перед основным договором.
+export const adminDeleteContract = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const contract = await contractRepository.findOne({ where: { id } });
+    if (!contract) {
+      const error: any = new Error('Договор не найден');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Если это основной договор — сначала удаляем его допсоглашения.
+    const addendums = await contractRepository.find({ where: { parentContractId: id } });
+    for (const addendum of addendums) {
+      await contractRepository.remove(addendum);
+      await removeContractUploads(addendum.id);
+    }
+
+    await contractRepository.remove(contract);
+    await removeContractUploads(id);
+
+    notifyContractApprovalUpdated(id, req.user?.id);
+    res.json({ ok: true, deletedContracts: addendums.length + 1 });
   } catch (error) {
     next(error);
   }
@@ -2897,6 +3025,7 @@ export const getContractApprovalSheet = async (req: Request, res: Response, next
         contractNumber: contract.contractNumber,
         contractType: contract.contractType,
         incomeSubtype: contract.incomeSubtype,
+        incomeKind: contract.incomeKind,
         templateKind: contract.templateKind,
         counterpartyName: contract.counterpartyName,
         counterpartyShortName: contract.counterpartyShortName,

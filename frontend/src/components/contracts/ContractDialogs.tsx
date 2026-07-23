@@ -230,6 +230,46 @@ export function DeleteDraftDialog({
   );
 }
 
+type AdminDeleteContractDialogProps = {
+  target: ContractRecord | null;
+  deleting: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+};
+export function AdminDeleteContractDialog({
+  target,
+  deleting,
+  onClose,
+  onConfirm,
+}: AdminDeleteContractDialogProps) {
+  const isAddendum = target?.documentKind === 'addendum';
+  return (
+    <Dialog open={Boolean(target)} onClose={() => !deleting && onClose()} maxWidth="xs" fullWidth>
+      <DialogTitle>Удалить {isAddendum ? 'доп. соглашение' : 'договор'} безвозвратно?</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" sx={{ mb: 1 }}>
+          {isAddendum ? 'Доп. соглашение' : 'Договор'} № {target?.contractNumber || '—'} будет удалён полностью и без
+          возможности восстановления: этапы согласования, визы и решения, переписка и все приложенные файлы.
+        </Typography>
+        {!isAddendum && (
+          <Typography variant="body2" color="error">
+            Вместе с договором будут удалены и все его доп. соглашения.
+          </Typography>
+        )}
+        <Typography variant="caption" color="text.secondary">
+          Действие доступно только администратору и предназначено для очистки тестовых договоров.
+        </Typography>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={deleting}>Отменить</Button>
+        <Button color="error" variant="contained" onClick={onConfirm} disabled={deleting}>
+          {deleting ? 'Удаление...' : 'Удалить безвозвратно'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 export function RevisionDialog({
   target,
   preparing,

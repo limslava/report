@@ -405,7 +405,8 @@ const DashboardLayout = () => {
   }, [user?.id, user?.role, startUnreadSync, stopUnreadSync]);
 
   useEffect(() => {
-    if (!user?.id || !canAccessContractApproval(user.role)) {
+    // Офис-менеджеру (секретарю) чат и счётчик непрочитанного не нужны.
+    if (!user?.id || !canAccessContractApproval(user.role) || user.role === 'secretary') {
       stopContractUnreadSync();
       return;
     }
