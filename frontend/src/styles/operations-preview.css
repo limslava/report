@@ -792,6 +792,11 @@
   text-overflow: ellipsis;
 }
 
+.ops-matrix__empty-label {
+  color: #94a3b8;
+  font-style: italic;
+}
+
 .ops-matrix__name small {
   font-size: 12px;
   color: #6b7280;

@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Alert, Box, MenuItem, Paper, Snackbar, TextField } from '@mui/material';
 import { useAuthStore } from '../store/auth-store';
@@ -570,6 +570,32 @@ export default function OperationsPreview() {
   const canAddRows = canEditRows
     || (isHrScheduleRole && activeLocation === 'garage_vvo' && (addDepartment === 'Автослесари' || addDepartment === 'Сотрудники склада'))
     || (isHrScheduleRole && activeLocation === 'security_vvo' && addDepartment === 'Сторожа');
+  const openPersonContextMenu = (
+    event: MouseEvent<HTMLElement>,
+    person: PersonRow,
+    target: 'name' | 'plate',
+    lane?: '1' | '2',
+  ) => {
+    event.preventDefault();
+    if (!canEditRows) return;
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      person,
+      target,
+      lane,
+    });
+  };
+  const openPersonEdit = (person: PersonRow) => {
+    if (!canEditRows) return;
+    setEditPerson(person);
+  };
+  const emptyNamePlaceholder = isPersonnelSection ? 'без сотрудника' : 'нет водителя';
+  const renderEditableLabel = (value: string | undefined, placeholder: string) => (
+    <span className={value?.trim() ? undefined : 'ops-matrix__empty-label'}>
+      {value?.trim() ? value : placeholder}
+    </span>
+  );
   const visibleCellCodes: CellCode[] = isPersonnelSection
     ? (filter === 'Автослесари' || filter === 'Сотрудники склада' || filter === 'Сторожа' ? ['W', 'V', 'O', 'B', 'N'] : ['W', 'V', 'O', 'B'])
     : filter === 'Авто'
@@ -2321,25 +2347,14 @@ export default function OperationsPreview() {
                           }}
                           onDragLeave={() => setDragOverMarker(null)}
                         >
-                          <div className={`ops-matrix__cell ops-matrix__cell--sticky ops-matrix__cell--name${selectedCellInCurrentView && selectedCell?.personId === person.id && selectedCell?.lane === lane ? ' ops-matrix__cell--name-selected' : ''}`}>
+                          <div
+                            className={`ops-matrix__cell ops-matrix__cell--sticky ops-matrix__cell--name${selectedCellInCurrentView && selectedCell?.personId === person.id && selectedCell?.lane === lane ? ' ops-matrix__cell--name-selected' : ''}`}
+                            onDoubleClick={() => openPersonEdit(person)}
+                            onContextMenu={(event) => openPersonContextMenu(event, person, 'name', lane)}
+                            title="Двойной щелчок для редактирования"
+                          >
                             <div className="ops-matrix__name">
-                              <span
-                                onDoubleClick={() => { if (canEditRows) setEditPerson(person); }}
-                                onContextMenu={(event) => {
-                                  event.preventDefault();
-                                  if (!canEditRows) return;
-                                  setContextMenu({
-                                    x: event.clientX,
-                                    y: event.clientY,
-                                    person,
-                                    target: 'name',
-                                    lane,
-                                  });
-                                }}
-                                title="Двойной щелчок для редактирования"
-                              >
-                                {name ?? ''}
-                              </span>
+                              {renderEditableLabel(name, emptyNamePlaceholder)}
                               {isPersonnelSection && !isSecond && renderRowMoveControls(person)}
                             </div>
                           </div>
@@ -2350,20 +2365,12 @@ export default function OperationsPreview() {
                               {!isSecond && (
                                 <div className="ops-matrix__plate">
                                   <span
-                                    onDoubleClick={() => { if (canEditRows) setEditPerson(person); }}
-                                    onContextMenu={(event) => {
-                                      event.preventDefault();
-                                      if (!canEditRows) return;
-                                  setContextMenu({
-                                    x: event.clientX,
-                                        y: event.clientY,
-                                        person,
-                                        target: 'plate',
-                                      });
-                                    }}
+                                    className={person.plate.trim() ? undefined : 'ops-matrix__empty-label'}
+                                    onDoubleClick={() => openPersonEdit(person)}
+                                    onContextMenu={(event) => openPersonContextMenu(event, person, 'plate')}
                                     title="Двойной щелчок для редактирования"
                                   >
-                                    {person.plate}
+                                    {person.plate.trim() ? person.plate : 'без Г/Н ТС'}
                                   </span>
                                   {renderRowMoveControls(person)}
                                 </div>
@@ -2542,56 +2549,35 @@ export default function OperationsPreview() {
                             <div
                               className={`ops-matrix__cell ops-matrix__cell--name ops-matrix__cell--sticky${selectedCellInCurrentView && selectedCell?.personId === person.id && selectedCell?.lane === '1' ? ' ops-matrix__cell--name-selected' : ''}`}
                               style={{ gridColumn: 1, gridRow: 1 }}
+                              onDoubleClick={() => openPersonEdit(person)}
+                              onContextMenu={(event) => openPersonContextMenu(event, person, 'name', '1')}
+                              title="Двойной щелчок для редактирования"
                             >
                               <div className="ops-matrix__name">
-                                <span
-                                  onDoubleClick={() => { if (canEditRows) setEditPerson(person); }}
-                                  onContextMenu={(event) => {
-                                    event.preventDefault();
-                                    if (!canEditRows) return;
-                                    setContextMenu({ x: event.clientX, y: event.clientY, person, target: 'name', lane: '1' });
-                                  }}
-                                  title="Двойной щелчок для редактирования"
-                                >
-                                  {person.name}
-                                </span>
+                                {renderEditableLabel(person.name, emptyNamePlaceholder)}
                                 {isPersonnelSection && renderRowMoveControls(person)}
                               </div>
                             </div>
                             <div
                               className={`ops-matrix__cell ops-matrix__cell--name ops-matrix__cell--row2 ops-matrix__cell--name-left ops-matrix__cell--sticky${selectedCellInCurrentView && selectedCell?.personId === person.id && selectedCell?.lane === '2' ? ' ops-matrix__cell--name-selected' : ''}`}
                               style={{ gridColumn: 1, gridRow: 2 }}
+                              onDoubleClick={() => openPersonEdit(person)}
+                              onContextMenu={(event) => openPersonContextMenu(event, person, 'name', '2')}
+                              title="Двойной щелчок для редактирования"
                             >
                               <div className="ops-matrix__name">
-                                <span
-                                  onDoubleClick={() => { if (canEditRows) setEditPerson(person); }}
-                                  onContextMenu={(event) => {
-                                    event.preventDefault();
-                                    if (!canEditRows) return;
-                                    setContextMenu({ x: event.clientX, y: event.clientY, person, target: 'name', lane: '2' });
-                                  }}
-                                  title="Двойной щелчок для редактирования"
-                                >
-                                  {person.secondName}
-                                </span>
+                                {renderEditableLabel(person.secondName, 'без второго водителя')}
                               </div>
                             </div>
                             <div
                               className="ops-matrix__cell ops-matrix__cell--merged ops-matrix__cell--sticky-second"
                               style={{ gridColumn: 2, gridRow: '1 / span 2' }}
+                              onDoubleClick={() => openPersonEdit(person)}
+                              onContextMenu={(event) => openPersonContextMenu(event, person, 'plate')}
+                              title="Двойной щелчок для редактирования"
                             >
                               <div className="ops-matrix__plate">
-                                <span
-                                  onDoubleClick={() => { if (canEditRows) setEditPerson(person); }}
-                                  onContextMenu={(event) => {
-                                    event.preventDefault();
-                                    if (!canEditRows) return;
-                                    setContextMenu({ x: event.clientX, y: event.clientY, person, target: 'plate' });
-                                  }}
-                                  title="Двойной щелчок для редактирования"
-                                  >
-                                    {person.plate}
-                                  </span>
+                                {renderEditableLabel(person.plate, 'без Г/Н ТС')}
                                   {!isPersonnelSection && renderRowMoveControls(person)}
                               </div>
                             </div>
