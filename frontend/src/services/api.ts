@@ -367,5 +367,29 @@ export const downloadOperationsPreviewReport = async (params: {
     },
     responseType: 'blob',
   });
+export const downloadAutoTripDirectionsReport = async (params: { year: number; month: number }) =>
+  api.get('/operations-preview/auto-directions-report', {
+    params,
+    responseType: 'blob',
+  });
+export type AutoTripDirectionsReportRow = {
+  fio: string;
+  plate: string;
+  note: string;
+  counts: Record<string, number>;
+  total: number;
+};
+export type AutoTripDirectionsReportData = {
+  year: number;
+  month: number;
+  directions: string[];
+  rows: AutoTripDirectionsReportRow[];
+  totals: number[];
+  grandTotal: number;
+};
+export const getAutoTripDirectionsReportData = async (params: { year: number; month: number }) =>
+  api.get<AutoTripDirectionsReportData>('/operations-preview/auto-directions-report/data', {
+    params,
+  });
 
 export default api;

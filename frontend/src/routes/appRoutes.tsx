@@ -25,6 +25,7 @@ const CandidateChecksPage = lazy(() => import('../pages/CandidateChecksPage'));
 const ContractApprovalPage = lazy(() => import('../pages/ContractApprovalPage'));
 const OperationsPreview = lazy(() => import('../pages/OperationsPreview'));
 const OperationsScheduleReportsPage = lazy(() => import('../pages/OperationsScheduleReportsPage'));
+const AutoTripDirectionsReportPage = lazy(() => import('../pages/AutoTripDirectionsReportPage'));
 const PlansPage = lazy(() => import('../pages/PlansPage'));
 const SettingsPage = lazy(() => import('../pages/SettingsPage'));
 const SinokorTestPage = lazy(() => import('../pages/SinokorTestPage'));
@@ -105,6 +106,11 @@ export const authenticatedRoutes: AppRoute[] = [
     path: 'operations-preview/reports',
     allow: (role) => role === 'admin' || role === 'head_hr' || role === 'hr_specialist',
     element: () => withSuspense(<OperationsScheduleReportsPage />),
+  },
+  {
+    path: 'operations-preview/auto-directions',
+    allow: (role) => role === 'admin' || role === 'manager_ktk_vvo' || role === 'head_ktk_vvo',
+    element: () => withSuspense(<AutoTripDirectionsReportPage />),
   },
   {
     path: 'sw-tech-dashboard',
