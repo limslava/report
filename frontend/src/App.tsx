@@ -24,6 +24,7 @@ import {
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
 const OperationsPreview = lazy(() => import('./pages/OperationsPreview'));
 const OperationsScheduleReportsPage = lazy(() => import('./pages/OperationsScheduleReportsPage'));
+const AutoTripDirectionsReportPage = lazy(() => import('./pages/AutoTripDirectionsReportPage'));
 
 function App() {
   const { token, user } = useAuthStore();
@@ -110,6 +111,16 @@ function App() {
               <RouteAccessGuard allow={user?.role === 'admin' || user?.role === 'head_hr' || user?.role === 'hr_specialist'}>
                 <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
                   <OperationsScheduleReportsPage />
+                </Suspense>
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="operations-preview/auto-directions"
+            element={(
+              <RouteAccessGuard allow={canAccessOperationsPreview(user?.role)}>
+                <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
+                  <AutoTripDirectionsReportPage />
                 </Suspense>
               </RouteAccessGuard>
             )}

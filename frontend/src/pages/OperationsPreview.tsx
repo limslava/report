@@ -1,6 +1,6 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Alert, Box, MenuItem, Paper, Snackbar, TextField } from '@mui/material';
+import { Alert, Autocomplete, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Paper, Snackbar, TextField } from '@mui/material';
 import { useAuthStore } from '../store/auth-store';
 import {
   downloadOperationsPreviewExcel,
@@ -133,12 +133,15 @@ type CellCode = 'W' | 'O' | 'B' | 'H' | 'S' | 'R' | 'N' | 'V' | 'E';
 type OverrideScopeKey = `${PreviewMode}|${string}`;
 type ScopedOverrides = Record<OverrideScopeKey, Record<string, CellCode>>;
 type PeopleByMonth = Record<string, PersonRow[]>;
+type AutoTripDirectionsByMonth = Record<string, Record<string, string>>;
 type PreviewPersistedState = {
   filter: 'Все' | Department;
   monthValue: string;
   mode: PreviewMode;
   overrides: ScopedOverrides;
   peopleByMonth: PeopleByMonth;
+  autoTripDirections?: AutoTripDirectionsByMonth;
+  autoDirectionDictionary?: string[];
   meta?: {
     overrideScopeVersions?: Record<string, string>;
     peopleMonthVersions?: Record<string, string>;
@@ -307,6 +310,16 @@ export default function OperationsPreview() {
     lane: '1' | '2';
     value: string;
   } | null>(null);
+  const [autoTripDirections, setAutoTripDirections] = useState<AutoTripDirectionsByMonth>({});
+  const autoTripDirectionsRef = useRef<AutoTripDirectionsByMonth>({});
+  const [autoDirectionDictionary, setAutoDirectionDictionary] = useState<string[]>([]);
+  const autoDirectionDictionaryRef = useRef<string[]>([]);
+  const [directionEdit, setDirectionEdit] = useState<{
+    cellKey: string;
+    personName: string;
+    day: number;
+    value: string;
+  } | null>(null);
 
   const [peopleByMonth, setPeopleByMonth] = useState<PeopleByMonth>({});
   const peopleByMonthRef = useRef<PeopleByMonth>({});
@@ -360,6 +373,14 @@ export default function OperationsPreview() {
   useEffect(() => {
     peopleByMonthRef.current = peopleByMonth;
   }, [peopleByMonth]);
+
+  useEffect(() => {
+    autoTripDirectionsRef.current = autoTripDirections;
+  }, [autoTripDirections]);
+
+  useEffect(() => {
+    autoDirectionDictionaryRef.current = autoDirectionDictionary;
+  }, [autoDirectionDictionary]);
 
   const baseRowIndexById = useMemo(() => {
     const map = new Map<string, number>();
@@ -570,6 +591,32 @@ export default function OperationsPreview() {
   const canAddRows = canEditRows
     || (isHrScheduleRole && activeLocation === 'garage_vvo' && (addDepartment === 'Автослесари' || addDepartment === 'Сотрудники склада'))
     || (isHrScheduleRole && activeLocation === 'security_vvo' && addDepartment === 'Сторожа');
+  const openPersonContextMenu = (
+    event: MouseEvent<HTMLElement>,
+    person: PersonRow,
+    target: 'name' | 'plate',
+    lane?: '1' | '2',
+  ) => {
+    event.preventDefault();
+    if (!canEditRows) return;
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      person,
+      target,
+      lane,
+    });
+  };
+  const openPersonEdit = (person: PersonRow) => {
+    if (!canEditRows) return;
+    setEditPerson(person);
+  };
+  const emptyNamePlaceholder = isPersonnelSection ? 'без сотрудника' : 'нет водителя';
+  const renderEditableLabel = (value: string | undefined, placeholder: string) => (
+    <span className={value?.trim() ? undefined : 'ops-matrix__empty-label'}>
+      {value?.trim() ? value : placeholder}
+    </span>
+  );
   const visibleCellCodes: CellCode[] = isPersonnelSection
     ? (filter === 'Автослесари' || filter === 'Сотрудники склада' || filter === 'Сторожа' ? ['W', 'V', 'O', 'B', 'N'] : ['W', 'V', 'O', 'B'])
     : filter === 'Авто'
@@ -669,8 +716,10 @@ export default function OperationsPreview() {
     () => ({
       overrides: allOverrides,
       peopleByMonth,
+      autoTripDirections,
+      autoDirectionDictionary,
     }),
-    [allOverrides, peopleByMonth]
+    [allOverrides, peopleByMonth, autoTripDirections, autoDirectionDictionary]
   );
   const currentSnapshot: PreviewPersistedState = useMemo(
     () => ({
@@ -679,8 +728,10 @@ export default function OperationsPreview() {
       mode,
       overrides: allOverrides,
       peopleByMonth,
+      autoTripDirections,
+      autoDirectionDictionary,
     }),
-    [filter, monthValue, mode, allOverrides, peopleByMonth]
+    [filter, monthValue, mode, allOverrides, peopleByMonth, autoTripDirections, autoDirectionDictionary]
   );
   const currentDataSignature = useMemo(() => JSON.stringify(currentDataSnapshot), [currentDataSnapshot]);
   const hasUnsavedChanges = hydrated && currentDataSignature !== lastSavedSignature;
@@ -958,6 +1009,8 @@ export default function OperationsPreview() {
       mode: 'fact',
       overrides: {} as ScopedOverrides,
       peopleByMonth: {},
+      autoTripDirections: {},
+      autoDirectionDictionary: [],
     };
 
     const restoreFromPayload = (payload: Partial<PreviewPersistedState> | null | undefined) => {
@@ -997,6 +1050,13 @@ export default function OperationsPreview() {
             ? (payload.overrides as ScopedOverrides)
             : fallback.overrides,
         peopleByMonth: restoredPeopleByMonth,
+        autoTripDirections:
+          payload?.autoTripDirections && typeof payload.autoTripDirections === 'object'
+            ? (payload.autoTripDirections as AutoTripDirectionsByMonth)
+            : fallback.autoTripDirections,
+        autoDirectionDictionary: Array.isArray(payload?.autoDirectionDictionary)
+          ? payload.autoDirectionDictionary.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+          : fallback.autoDirectionDictionary,
       };
 
       if (cancelled) return;
@@ -1015,11 +1075,15 @@ export default function OperationsPreview() {
       setMode(restored.mode);
       setAllOverrides(restored.overrides);
       setPeopleByMonth(restored.peopleByMonth);
+      setAutoTripDirections(restored.autoTripDirections ?? {});
+      setAutoDirectionDictionary(restored.autoDirectionDictionary ?? []);
       setLastSavedSnapshot(restored);
       setLastSavedSignature(
         JSON.stringify({
           overrides: restored.overrides,
           peopleByMonth: restored.peopleByMonth,
+          autoTripDirections: restored.autoTripDirections ?? {},
+          autoDirectionDictionary: restored.autoDirectionDictionary ?? [],
         })
       );
       setHydrated(true);
@@ -1135,6 +1199,67 @@ export default function OperationsPreview() {
       allOverridesRef.current = nextAllOverrides;
       return nextAllOverrides;
     });
+    if (department === 'Авто' && code !== 'H') {
+      setAutoTripDirections((prev) => {
+        const currentMonthDirections = prev[monthValue] ?? {};
+        if (!(key in currentMonthDirections)) return prev;
+        const nextMonthDirections = { ...currentMonthDirections };
+        delete nextMonthDirections[key];
+        const next = {
+          ...prev,
+          [monthValue]: nextMonthDirections,
+        };
+        autoTripDirectionsRef.current = next;
+        return next;
+      });
+    }
+  };
+
+  const getAutoTripDirection = (cellKey: string, targetMonth = monthValue): string =>
+    autoTripDirections[targetMonth]?.[cellKey] ?? '';
+
+  const openAutoDirectionEdit = (cell: {
+    key: string;
+    personName: string;
+    day: number;
+    department: Department;
+    value: CellCode;
+  }) => {
+    if (cell.department !== 'Авто' || cell.value !== 'H' || !canEditCurrentSchedule) return;
+    setDirectionEdit({
+      cellKey: cell.key,
+      personName: cell.personName,
+      day: cell.day,
+      value: getAutoTripDirection(cell.key),
+    });
+  };
+
+  const saveAutoDirectionEdit = () => {
+    if (!directionEdit) return;
+    const value = directionEdit.value.trim();
+    setAutoTripDirections((prev) => {
+      const monthDirections = { ...(prev[monthValue] ?? {}) };
+      if (value) {
+        monthDirections[directionEdit.cellKey] = value;
+      } else {
+        delete monthDirections[directionEdit.cellKey];
+      }
+      const next = {
+        ...prev,
+        [monthValue]: monthDirections,
+      };
+      autoTripDirectionsRef.current = next;
+      return next;
+    });
+    if (value) {
+      setAutoDirectionDictionary((prev) => {
+        const exists = prev.some((item) => item.localeCompare(value, 'ru', { sensitivity: 'base' }) === 0);
+        const next = exists ? prev : [...prev, value].sort((a, b) => a.localeCompare(b, 'ru'));
+        autoDirectionDictionaryRef.current = next;
+        return next;
+      });
+    }
+    setDirectionEdit(null);
   };
 
   const hasManualFactEditsForMonth = useMemo(() => {
@@ -1335,24 +1460,26 @@ export default function OperationsPreview() {
       }
     });
 
-    prevPeople.forEach((person, rowIndex) => {
-      monthDays.forEach((day) => {
-        if (day > prevDaysInMonth) return;
-        const lane1Key = `${person.id}-1-${day}`;
-        const lane1 = normalizeCellCode(prevFact[lane1Key] ?? getMonthlyCell(rowIndex, day, factDepartment));
-        if (lane1 !== 'E') {
-          nextFact[lane1Key] = lane1;
-        }
-
-        if (person.secondName) {
-          const lane2Key = `${person.id}-2-${day}`;
-          const lane2 = normalizeCellCode(prevFact[lane2Key] ?? getMonthlyCell(rowIndex + 50, day, factDepartment));
-          if (lane2 !== 'E') {
-            nextFact[lane2Key] = lane2;
+    if (factDepartment !== 'Авто') {
+      prevPeople.forEach((person, rowIndex) => {
+        monthDays.forEach((day) => {
+          if (day > prevDaysInMonth) return;
+          const lane1Key = `${person.id}-1-${day}`;
+          const lane1 = normalizeCellCode(prevFact[lane1Key] ?? getMonthlyCell(rowIndex, day, factDepartment));
+          if (lane1 !== 'E') {
+            nextFact[lane1Key] = lane1;
           }
-        }
+
+          if (person.secondName) {
+            const lane2Key = `${person.id}-2-${day}`;
+            const lane2 = normalizeCellCode(prevFact[lane2Key] ?? getMonthlyCell(rowIndex + 50, day, factDepartment));
+            if (lane2 !== 'E') {
+              nextFact[lane2Key] = lane2;
+            }
+          }
+        });
       });
-    });
+    }
 
     setPeopleByMonth((prev) => {
       const currentRows = clonePeople(resolvePeopleForMonth(monthValue, prev));
@@ -1376,11 +1503,30 @@ export default function OperationsPreview() {
       allOverridesRef.current = nextOverrides;
       return nextOverrides;
     });
+    if (factDepartment === 'Авто') {
+      const transferredIds = prevPeople.map((person) => person.id);
+      setAutoTripDirections((prev) => {
+        const monthDirections = prev[monthValue] ?? {};
+        const nextMonthDirections = Object.fromEntries(
+          Object.entries(monthDirections).filter(([cellKey]) =>
+            !transferredIds.some((personId) => cellKey.startsWith(`${personId}-`))
+          )
+        );
+        const next = {
+          ...prev,
+          [monthValue]: nextMonthDirections,
+        };
+        autoTripDirectionsRef.current = next;
+        return next;
+      });
+    }
     setMode('fact');
 
     setCopyStatus({
       type: 'success',
-      text: `Факт ${transferLabel} заполнен из прошлого месяца. Проверьте данные и нажмите «Сохранить».`,
+      text: factDepartment === 'Авто'
+        ? 'Автовозы перенесены из прошлого месяца без дневной легенды. Проверьте ФИО, Г/Н ТС, примечания и нажмите «Сохранить».'
+        : `Факт ${transferLabel} заполнен из прошлого месяца. Проверьте данные и нажмите «Сохранить».`,
     });
   };
 
@@ -1606,10 +1752,14 @@ export default function OperationsPreview() {
         code,
         department: selectedCell.department,
       });
-      setSelectedCell((prev) => (prev ? { ...prev, value: code } : prev));
+      const nextSelectedCell = { ...selectedCell, value: code };
+      setSelectedCell(nextSelectedCell);
       setSelectionRect(null);
       setPaintCode(code);
       setLastPaintKeyAt(Date.now());
+      if (code === 'H') {
+        openAutoDirectionEdit(nextSelectedCell);
+      }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
@@ -1658,6 +1808,8 @@ export default function OperationsPreview() {
       await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
       const latestAllOverrides = allOverridesRef.current;
       const latestPeopleByMonth = peopleByMonthRef.current;
+      const latestAutoTripDirections = autoTripDirectionsRef.current;
+      const latestAutoDirectionDictionary = autoDirectionDictionaryRef.current;
       const previousOverrides = lastSavedSnapshot?.overrides ?? {};
       const candidateScopeKeys = new Set<OverrideScopeKey>([
         ...Object.keys(latestAllOverrides),
@@ -1696,8 +1848,12 @@ export default function OperationsPreview() {
         return resolvePeopleForMonth(monthValue, byMonth);
       })();
       const peopleMonthChanged = JSON.stringify(currentMonthPeople) !== JSON.stringify(previousMonthPeople);
+      const autoTripDirectionsChanged =
+        JSON.stringify(latestAutoTripDirections) !== JSON.stringify(lastSavedSnapshot?.autoTripDirections ?? {});
+      const autoDirectionDictionaryChanged =
+        JSON.stringify(latestAutoDirectionDictionary) !== JSON.stringify(lastSavedSnapshot?.autoDirectionDictionary ?? []);
 
-      if (Object.keys(overridesPatch).length === 0 && !peopleMonthChanged) {
+      if (Object.keys(overridesPatch).length === 0 && !peopleMonthChanged && !autoTripDirectionsChanged && !autoDirectionDictionaryChanged) {
         return true;
       }
 
@@ -1711,6 +1867,8 @@ export default function OperationsPreview() {
               [monthValue]: currentMonthPeople,
             }
           : {},
+        autoTripDirections: latestAutoTripDirections,
+        autoDirectionDictionary: latestAutoDirectionDictionary,
       };
       const response = await saveOperationsPreviewState(
         {
@@ -1758,12 +1916,16 @@ export default function OperationsPreview() {
         mode,
         overrides: latestAllOverrides,
         peopleByMonth: latestPeopleByMonth,
+        autoTripDirections: latestAutoTripDirections,
+        autoDirectionDictionary: latestAutoDirectionDictionary,
       };
       setLastSavedSnapshot(nextSavedSnapshot);
       setLastSavedSignature(
         JSON.stringify({
           overrides: latestAllOverrides,
           peopleByMonth: latestPeopleByMonth,
+          autoTripDirections: latestAutoTripDirections,
+          autoDirectionDictionary: latestAutoDirectionDictionary,
         })
       );
       setCopyStatus((prev) => (prev?.type === 'error' ? prev : null));
@@ -1808,6 +1970,8 @@ export default function OperationsPreview() {
         setMode(lastSavedSnapshot.mode);
         setAllOverrides(lastSavedSnapshot.overrides);
         setPeopleByMonth(lastSavedSnapshot.peopleByMonth);
+        setAutoTripDirections(lastSavedSnapshot.autoTripDirections ?? {});
+        setAutoDirectionDictionary(lastSavedSnapshot.autoDirectionDictionary ?? []);
       },
     });
 
@@ -2125,6 +2289,56 @@ export default function OperationsPreview() {
           {copyStatus?.text}
         </Alert>
       </Snackbar>
+      <Dialog open={Boolean(directionEdit)} onClose={() => setDirectionEdit(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Направление погрузки</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            <Box sx={{ color: 'text.secondary', fontSize: 14 }}>
+              {directionEdit?.personName}, {String(directionEdit?.day ?? '').padStart(2, '0')}.{String(parsedMonth.month).padStart(2, '0')}.{parsedMonth.year}
+            </Box>
+            <Autocomplete
+              freeSolo
+              options={autoDirectionDictionary}
+              value={directionEdit?.value ?? ''}
+              onChange={(_, value) =>
+                setDirectionEdit((current) =>
+                  current ? { ...current, value: value ?? '' } : current
+                )
+              }
+              onInputChange={(_, value) =>
+                setDirectionEdit((current) =>
+                  current ? { ...current, value } : current
+                )
+              }
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Направление"
+                  autoFocus
+                  fullWidth
+                  placeholder="Например: Новосибирск"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      saveAutoDirectionEdit();
+                    }
+                  }}
+                />
+              )}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDirectionEdit(null)}>Отмена</Button>
+          <Button
+            color="inherit"
+            onClick={() => setDirectionEdit((current) => (current ? { ...current, value: '' } : current))}
+          >
+            Очистить
+          </Button>
+          <Button variant="contained" onClick={saveAutoDirectionEdit}>Сохранить</Button>
+        </DialogActions>
+      </Dialog>
 
       {!isEfficiencySection && (
       <section className="ops-preview__matrix" ref={matrixSectionRef}>
@@ -2321,25 +2535,14 @@ export default function OperationsPreview() {
                           }}
                           onDragLeave={() => setDragOverMarker(null)}
                         >
-                          <div className={`ops-matrix__cell ops-matrix__cell--sticky ops-matrix__cell--name${selectedCellInCurrentView && selectedCell?.personId === person.id && selectedCell?.lane === lane ? ' ops-matrix__cell--name-selected' : ''}`}>
+                          <div
+                            className={`ops-matrix__cell ops-matrix__cell--sticky ops-matrix__cell--name${selectedCellInCurrentView && selectedCell?.personId === person.id && selectedCell?.lane === lane ? ' ops-matrix__cell--name-selected' : ''}`}
+                            onDoubleClick={() => openPersonEdit(person)}
+                            onContextMenu={(event) => openPersonContextMenu(event, person, 'name', lane)}
+                            title="Двойной щелчок для редактирования"
+                          >
                             <div className="ops-matrix__name">
-                              <span
-                                onDoubleClick={() => { if (canEditRows) setEditPerson(person); }}
-                                onContextMenu={(event) => {
-                                  event.preventDefault();
-                                  if (!canEditRows) return;
-                                  setContextMenu({
-                                    x: event.clientX,
-                                    y: event.clientY,
-                                    person,
-                                    target: 'name',
-                                    lane,
-                                  });
-                                }}
-                                title="Двойной щелчок для редактирования"
-                              >
-                                {name ?? ''}
-                              </span>
+                              {renderEditableLabel(name, emptyNamePlaceholder)}
                               {isPersonnelSection && !isSecond && renderRowMoveControls(person)}
                             </div>
                           </div>
@@ -2350,20 +2553,12 @@ export default function OperationsPreview() {
                               {!isSecond && (
                                 <div className="ops-matrix__plate">
                                   <span
-                                    onDoubleClick={() => { if (canEditRows) setEditPerson(person); }}
-                                    onContextMenu={(event) => {
-                                      event.preventDefault();
-                                      if (!canEditRows) return;
-                                  setContextMenu({
-                                    x: event.clientX,
-                                        y: event.clientY,
-                                        person,
-                                        target: 'plate',
-                                      });
-                                    }}
+                                    className={person.plate.trim() ? undefined : 'ops-matrix__empty-label'}
+                                    onDoubleClick={() => openPersonEdit(person)}
+                                    onContextMenu={(event) => openPersonContextMenu(event, person, 'plate')}
                                     title="Двойной щелчок для редактирования"
                                   >
-                                    {person.plate}
+                                    {person.plate.trim() ? person.plate : 'без Г/Н ТС'}
                                   </span>
                                   {renderRowMoveControls(person)}
                                 </div>
@@ -2404,18 +2599,27 @@ export default function OperationsPreview() {
                           {monthDays.map((day, dayIndex) => {
                             const cell = getCellCode(rowIndex, day, person.id, person.department, lane);
                             const meta = CELL_META[cell];
+                            const cellKey = `${person.id}-${lane}-${day}`;
+                            const tripDirection = person.department === 'Авто' && cell === 'H' ? getAutoTripDirection(cellKey) : '';
                             return (
                               <div
-                                key={`${person.id}-${lane}-${day}`}
-                                className={`ops-matrix__cell ops-matrix__cell--${meta.css}${canEditCurrentSchedule ? ' ops-matrix__cell--editable' : ''}${getCrosshairClass(person.id, lane, day)}${(selectedCell?.key === `${person.id}-${lane}-${day}` || isKeyInSelection(person.id, lane, day)) ? ' ops-matrix__cell--selected' : ''}`}
+                                key={cellKey}
+                                className={`ops-matrix__cell ops-matrix__cell--${meta.css}${canEditCurrentSchedule ? ' ops-matrix__cell--editable' : ''}${tripDirection ? ' ops-matrix__cell--has-direction' : ''}${getCrosshairClass(person.id, lane, day)}${(selectedCell?.key === cellKey || isKeyInSelection(person.id, lane, day)) ? ' ops-matrix__cell--selected' : ''}`}
                                 style={{ gridColumn: dayColumnStart + dayIndex }}
-                                title={`${name}: ${meta.label}`}
+                                title={`${name}: ${meta.label}${tripDirection ? `, направление: ${tripDirection}` : ''}`}
                                 role="button"
                                 tabIndex={0}
+                                onDoubleClick={() => openAutoDirectionEdit({
+                                  key: cellKey,
+                                  personName: name ?? '',
+                                  day,
+                                  value: cell,
+                                  department: person.department,
+                                })}
                                 onMouseDown={(event) => {
                                   if (event.button !== 0) return;
                                   event.preventDefault();
-                                  const key = `${person.id}-${lane}-${day}`;
+                                  const key = cellKey;
                                   const anchor = selectionAnchor ?? {
                                     personId: selectedCell?.personId ?? person.id,
                                     lane: selectedCell?.lane ?? lane,
@@ -2464,7 +2668,7 @@ export default function OperationsPreview() {
                                   if (!canEditCurrentSchedule) return;
                                   if (!isPainting) return;
                                   if (!paintRow || paintRow.personId !== person.id || paintRow.lane !== lane) return;
-                                  const key = `${person.id}-${lane}-${day}`;
+                                  const key = cellKey;
                                   setCellCode({
                                     key,
                                     rowIndex,
@@ -2485,7 +2689,7 @@ export default function OperationsPreview() {
                                 }}
                                 onClick={() =>
                                   setSelectedCell({
-                                    key: `${person.id}-${lane}-${day}`,
+                                    key: cellKey,
                                     personName: name ?? '',
                                     day,
                                     value: cell,
@@ -2542,56 +2746,35 @@ export default function OperationsPreview() {
                             <div
                               className={`ops-matrix__cell ops-matrix__cell--name ops-matrix__cell--sticky${selectedCellInCurrentView && selectedCell?.personId === person.id && selectedCell?.lane === '1' ? ' ops-matrix__cell--name-selected' : ''}`}
                               style={{ gridColumn: 1, gridRow: 1 }}
+                              onDoubleClick={() => openPersonEdit(person)}
+                              onContextMenu={(event) => openPersonContextMenu(event, person, 'name', '1')}
+                              title="Двойной щелчок для редактирования"
                             >
                               <div className="ops-matrix__name">
-                                <span
-                                  onDoubleClick={() => { if (canEditRows) setEditPerson(person); }}
-                                  onContextMenu={(event) => {
-                                    event.preventDefault();
-                                    if (!canEditRows) return;
-                                    setContextMenu({ x: event.clientX, y: event.clientY, person, target: 'name', lane: '1' });
-                                  }}
-                                  title="Двойной щелчок для редактирования"
-                                >
-                                  {person.name}
-                                </span>
+                                {renderEditableLabel(person.name, emptyNamePlaceholder)}
                                 {isPersonnelSection && renderRowMoveControls(person)}
                               </div>
                             </div>
                             <div
                               className={`ops-matrix__cell ops-matrix__cell--name ops-matrix__cell--row2 ops-matrix__cell--name-left ops-matrix__cell--sticky${selectedCellInCurrentView && selectedCell?.personId === person.id && selectedCell?.lane === '2' ? ' ops-matrix__cell--name-selected' : ''}`}
                               style={{ gridColumn: 1, gridRow: 2 }}
+                              onDoubleClick={() => openPersonEdit(person)}
+                              onContextMenu={(event) => openPersonContextMenu(event, person, 'name', '2')}
+                              title="Двойной щелчок для редактирования"
                             >
                               <div className="ops-matrix__name">
-                                <span
-                                  onDoubleClick={() => { if (canEditRows) setEditPerson(person); }}
-                                  onContextMenu={(event) => {
-                                    event.preventDefault();
-                                    if (!canEditRows) return;
-                                    setContextMenu({ x: event.clientX, y: event.clientY, person, target: 'name', lane: '2' });
-                                  }}
-                                  title="Двойной щелчок для редактирования"
-                                >
-                                  {person.secondName}
-                                </span>
+                                {renderEditableLabel(person.secondName, 'без второго водителя')}
                               </div>
                             </div>
                             <div
                               className="ops-matrix__cell ops-matrix__cell--merged ops-matrix__cell--sticky-second"
                               style={{ gridColumn: 2, gridRow: '1 / span 2' }}
+                              onDoubleClick={() => openPersonEdit(person)}
+                              onContextMenu={(event) => openPersonContextMenu(event, person, 'plate')}
+                              title="Двойной щелчок для редактирования"
                             >
                               <div className="ops-matrix__plate">
-                                <span
-                                  onDoubleClick={() => { if (canEditRows) setEditPerson(person); }}
-                                  onContextMenu={(event) => {
-                                    event.preventDefault();
-                                    if (!canEditRows) return;
-                                    setContextMenu({ x: event.clientX, y: event.clientY, person, target: 'plate' });
-                                  }}
-                                  title="Двойной щелчок для редактирования"
-                                  >
-                                    {person.plate}
-                                  </span>
+                                {renderEditableLabel(person.plate, 'без Г/Н ТС')}
                                   {!isPersonnelSection && renderRowMoveControls(person)}
                               </div>
                             </div>
@@ -2651,22 +2834,33 @@ export default function OperationsPreview() {
                             </div>
                             {monthDays.map((day, idx) => {
                               const col = dayColumnStart + idx;
+                              const cellKey1 = `${person.id}-1-${day}`;
+                              const cellKey2 = `${person.id}-2-${day}`;
                               const cell1 = getCellCode(person.rowIndex, day, person.id, person.department, '1');
                               const meta1 = CELL_META[cell1];
                               const cell2 = getCellCode(person.rowIndex + 50, day, person.id, person.department, '2');
                               const meta2 = CELL_META[cell2];
+                              const tripDirection1 = person.department === 'Авто' && cell1 === 'H' ? getAutoTripDirection(cellKey1) : '';
+                              const tripDirection2 = person.department === 'Авто' && cell2 === 'H' ? getAutoTripDirection(cellKey2) : '';
                               return (
                                 <Fragment key={`grid-${person.id}-${day}`}>
                                   <div
-                                    className={`ops-matrix__cell ops-matrix__cell--${meta1.css}${canEditCurrentSchedule ? ' ops-matrix__cell--editable' : ''}${getCrosshairClass(person.id, '1', day)}${(selectedCell?.key === `${person.id}-1-${day}` || isKeyInSelection(person.id, '1', day)) ? ' ops-matrix__cell--selected' : ''}`}
+                                    className={`ops-matrix__cell ops-matrix__cell--${meta1.css}${canEditCurrentSchedule ? ' ops-matrix__cell--editable' : ''}${tripDirection1 ? ' ops-matrix__cell--has-direction' : ''}${getCrosshairClass(person.id, '1', day)}${(selectedCell?.key === cellKey1 || isKeyInSelection(person.id, '1', day)) ? ' ops-matrix__cell--selected' : ''}`}
                                     style={{ gridColumn: col, gridRow: 1 }}
-                                    title={`${person.name}: ${meta1.label}`}
+                                    title={`${person.name}: ${meta1.label}${tripDirection1 ? `, направление: ${tripDirection1}` : ''}`}
                                     role="button"
                                     tabIndex={0}
+                                    onDoubleClick={() => openAutoDirectionEdit({
+                                      key: cellKey1,
+                                      personName: person.name,
+                                      day,
+                                      value: cell1,
+                                      department: person.department,
+                                    })}
                                     onMouseDown={(event) => {
                                       if (event.button !== 0) return;
                                       event.preventDefault();
-                                      const key = `${person.id}-1-${day}`;
+                                      const key = cellKey1;
                                       const anchor = selectionAnchor ?? {
                                         personId: selectedCell?.personId ?? person.id,
                                         lane: selectedCell?.lane ?? '1',
@@ -2715,7 +2909,7 @@ export default function OperationsPreview() {
                                     if (!canEditCurrentSchedule) return;
                                     if (!isPainting) return;
                                     if (!paintRow || paintRow.personId !== person.id || paintRow.lane !== '1') return;
-                                    const key = `${person.id}-1-${day}`;
+                                    const key = cellKey1;
                                     setCellCode({
                                       key,
                                       rowIndex: person.rowIndex,
@@ -2736,7 +2930,7 @@ export default function OperationsPreview() {
                                     }}
                                     onClick={() =>
                                       setSelectedCell({
-                                        key: `${person.id}-1-${day}`,
+                                        key: cellKey1,
                                         personName: person.name,
                                         day,
                                         value: cell1,
@@ -2750,15 +2944,22 @@ export default function OperationsPreview() {
                                     {meta1.code}
                                   </div>
                                   <div
-                                    className={`ops-matrix__cell ops-matrix__cell--${meta2.css}${canEditCurrentSchedule ? ' ops-matrix__cell--editable' : ''} ops-matrix__cell--row2${getCrosshairClass(person.id, '2', day)}${(selectedCell?.key === `${person.id}-2-${day}` || isKeyInSelection(person.id, '2', day)) ? ' ops-matrix__cell--selected' : ''}`}
+                                    className={`ops-matrix__cell ops-matrix__cell--${meta2.css}${canEditCurrentSchedule ? ' ops-matrix__cell--editable' : ''} ops-matrix__cell--row2${tripDirection2 ? ' ops-matrix__cell--has-direction' : ''}${getCrosshairClass(person.id, '2', day)}${(selectedCell?.key === cellKey2 || isKeyInSelection(person.id, '2', day)) ? ' ops-matrix__cell--selected' : ''}`}
                                     style={{ gridColumn: col, gridRow: 2 }}
-                                    title={`${person.secondName}: ${meta2.label}`}
+                                    title={`${person.secondName}: ${meta2.label}${tripDirection2 ? `, направление: ${tripDirection2}` : ''}`}
                                     role="button"
                                     tabIndex={0}
+                                    onDoubleClick={() => openAutoDirectionEdit({
+                                      key: cellKey2,
+                                      personName: person.secondName ?? '',
+                                      day,
+                                      value: cell2,
+                                      department: person.department,
+                                    })}
                                     onMouseDown={(event) => {
                                       if (event.button !== 0) return;
                                       event.preventDefault();
-                                      const key = `${person.id}-2-${day}`;
+                                      const key = cellKey2;
                                       const anchor = selectionAnchor ?? {
                                         personId: selectedCell?.personId ?? person.id,
                                         lane: selectedCell?.lane ?? '2',
@@ -2807,7 +3008,7 @@ export default function OperationsPreview() {
                                     if (!canEditCurrentSchedule) return;
                                     if (!isPainting) return;
                                     if (!paintRow || paintRow.personId !== person.id || paintRow.lane !== '2') return;
-                                    const key = `${person.id}-2-${day}`;
+                                    const key = cellKey2;
                                     setCellCode({
                                       key,
                                       rowIndex: person.rowIndex + 50,
@@ -2828,7 +3029,7 @@ export default function OperationsPreview() {
                                     }}
                                     onClick={() =>
                                       setSelectedCell({
-                                        key: `${person.id}-2-${day}`,
+                                        key: cellKey2,
                                         personName: person.secondName ?? '',
                                         day,
                                         value: cell2,

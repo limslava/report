@@ -3,8 +3,10 @@ import { authenticate } from '../middleware/authenticate';
 import { authorizeRole } from '../middleware/authorize';
 import { asyncHandler } from '../middleware/error-handler';
 import {
+  downloadAutoTripDirectionsReport,
   downloadOperationsPreviewExcel,
   downloadOperationsPreviewReport,
+  getAutoTripDirectionsReportData,
   getOperationsPreviewState,
   saveOperationsPreviewState,
 } from '../controllers/operations-preview.controller';
@@ -75,6 +77,16 @@ router.get(
   '/report',
   authorizeRole('admin', 'head_hr', 'hr_specialist'),
   asyncHandler(downloadOperationsPreviewReport)
+);
+router.get(
+  '/auto-directions-report/data',
+  authorizeRole('admin', 'manager_ktk_vvo', 'head_ktk_vvo'),
+  asyncHandler(getAutoTripDirectionsReportData)
+);
+router.get(
+  '/auto-directions-report',
+  authorizeRole('admin', 'manager_ktk_vvo', 'head_ktk_vvo'),
+  asyncHandler(downloadAutoTripDirectionsReport)
 );
 
 export { router as operationsPreviewRouter };

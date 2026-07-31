@@ -619,6 +619,17 @@ const DashboardLayout = () => {
                         <ListItemText primary="Эффективность" primaryTypographyProps={{ fontSize: 13 }} />
                       </ListItemButton>
                     </ListItem>
+                    {isKtkVvoManager && (
+                      <ListItem disablePadding sx={{ pl: 6 }}>
+                        <ListItemButton
+                          selected={location.pathname === '/operations-preview/auto-directions'}
+                          onClick={() => handleNavigate('/operations-preview/auto-directions')}
+                          sx={{ py: 0.5, minHeight: 32 }}
+                        >
+                          <ListItemText primary="Направления автовозов" primaryTypographyProps={{ fontSize: 13 }} />
+                        </ListItemButton>
+                      </ListItem>
+                    )}
                   </>
                 )}
               </>
@@ -940,6 +951,17 @@ const DashboardLayout = () => {
                     </ListItemButton>
                   </ListItem>
                 )}
+                {(isAdmin || isKtkVvoManager) && (
+                  <ListItem disablePadding sx={{ pl: 4 }}>
+                    <ListItemButton
+                      selected={location.pathname === '/operations-preview/auto-directions'}
+                      onClick={() => handleNavigate('/operations-preview/auto-directions')}
+                      sx={{ py: 0.5, minHeight: 34 }}
+                    >
+                      <ListItemText primary="Направления автовозов" primaryTypographyProps={{ fontSize: 14 }} />
+                    </ListItemButton>
+                  </ListItem>
+                )}
               </>
             )}
           </>
@@ -983,6 +1005,8 @@ const DashboardLayout = () => {
                 (canUseWorkSchedule
                   ? (location.pathname === '/operations-preview' && location.search.includes('section=containers')
                       ? 'График работы - Контейнеровозы'
+                      : location.pathname === '/operations-preview/auto-directions'
+                      ? 'Отчет: Направление автовозов'
                       : location.pathname === '/operations-preview/reports'
                       ? 'График работы - Отчеты'
                       : location.pathname === '/operations-preview' && location.search.includes('section=auto')
