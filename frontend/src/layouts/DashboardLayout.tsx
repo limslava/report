@@ -1043,6 +1043,8 @@ const DashboardLayout = () => {
               {location.pathname.includes('/summary-report') && 'Сводный отчет'}
               {location.pathname.includes('/admin') && 'Администрирование'}
               {location.pathname.includes('/settings') && 'Настройки'}
+              {location.pathname.includes('/fuel') && 'Учёт топлива'}
+              {location.pathname.includes('/directories') && 'Справочники'}
             </Typography>
           )}
           {isTechDashboardRoute && (
