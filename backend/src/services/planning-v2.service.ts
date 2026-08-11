@@ -34,6 +34,10 @@ function isKtkVvoScopedRole(role: string): boolean {
   return role === PlanningRole.MANAGER_KTK_VVO || role === 'head_ktk_vvo';
 }
 
+function isKtkMowScopedRole(role: string): boolean {
+  return role === PlanningRole.MANAGER_KTK_MOW || role === 'head_ktk_mow';
+}
+
 function toIsoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -52,7 +56,7 @@ function hasSegmentAccess(role: string, segmentCode: PlanningSegmentCode): boole
     return true;
   }
 
-  if (segmentCode === PlanningSegmentCode.KTK_MOW && role === 'head_ktk_mow') {
+  if (segmentCode === PlanningSegmentCode.KTK_MOW && isKtkMowScopedRole(role)) {
     return true;
   }
 
@@ -60,8 +64,16 @@ function hasSegmentAccess(role: string, segmentCode: PlanningSegmentCode): boole
   return role === managerRole;
 }
 
-function isKtkVvoTrucksOnLineAutoFromPreviewPeriod(year: number, month: number): boolean {
+function isKtkTrucksOnLineAutoFromPreviewPeriod(segmentCode: PlanningSegmentCode, year: number, month: number): boolean {
+  if (segmentCode !== PlanningSegmentCode.KTK_VVO && segmentCode !== PlanningSegmentCode.KTK_MOW) {
+    return false;
+  }
+
   return year > 2026 || (year === 2026 && month >= 5);
+}
+
+function isKtkTrucksOnLineMetric(metricCode: string): boolean {
+  return metricCode === 'ktk_vvo_fact_trucks_on_line' || metricCode === 'ktk_mow_fact_trucks_on_line';
 }
 
 export class PlanningV2Service {
@@ -317,9 +329,8 @@ export class PlanningV2Service {
       const metric = metricByCode.get(update.metricCode);
       if (!metric?.isEditable) return false;
       if (
-        payload.segmentCode === PlanningSegmentCode.KTK_VVO
-        && update.metricCode === 'ktk_vvo_fact_trucks_on_line'
-        && isKtkVvoTrucksOnLineAutoFromPreviewPeriod(payload.year, payload.month)
+        isKtkTrucksOnLineAutoFromPreviewPeriod(payload.segmentCode, payload.year, payload.month)
+        && isKtkTrucksOnLineMetric(update.metricCode)
       ) {
         return false;
       }
@@ -377,6 +388,10 @@ export class PlanningV2Service {
     }
 
     if (segmentCode === PlanningSegmentCode.KTK_VVO && isKtkVvoScopedRole(role)) {
+      return true;
+    }
+
+    if (segmentCode === PlanningSegmentCode.KTK_MOW && isKtkMowScopedRole(role)) {
       return true;
     }
 

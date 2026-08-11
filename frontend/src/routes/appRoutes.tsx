@@ -22,6 +22,7 @@ import {
 import { getDefaultAuthenticatedRoute } from './defaultAuthenticatedRoute';
 
 const AdminPage = lazy(() => import('../pages/AdminPage'));
+const AutoTripDirectionsReportPage = lazy(() => import('../pages/AutoTripDirectionsReportPage'));
 const BPApprovalDashboardPage = lazy(() => import('../pages/BPApprovalDashboardPage'));
 const CalendarPage = lazy(() => import('../pages/CalendarPage'));
 const CandidateChecksPage = lazy(() => import('../pages/CandidateChecksPage'));
