@@ -723,6 +723,17 @@ const DashboardLayout = () => {
                         <ListItemText primary="Эффективность" primaryTypographyProps={{ fontSize: 13 }} />
                       </ListItemButton>
                     </ListItem>
+                    {isKtkVvoManager && (
+                      <ListItem disablePadding sx={{ pl: 6 }}>
+                        <ListItemButton
+                          selected={location.pathname === '/operations-preview/auto-directions'}
+                          onClick={() => handleNavigate('/operations-preview/auto-directions')}
+                          sx={{ py: 0.5, minHeight: 32 }}
+                        >
+                          <ListItemText primary="Направления автовозов" primaryTypographyProps={{ fontSize: 13 }} />
+                        </ListItemButton>
+                      </ListItem>
+                    )}
                   </>
                 )}
               </>

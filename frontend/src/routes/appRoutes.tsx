@@ -19,6 +19,7 @@ import {
 import { getDefaultAuthenticatedRoute } from './defaultAuthenticatedRoute';
 
 const AdminPage = lazy(() => import('../pages/AdminPage'));
+const AutoTripDirectionsReportPage = lazy(() => import('../pages/AutoTripDirectionsReportPage'));
 const BPApprovalDashboardPage = lazy(() => import('../pages/BPApprovalDashboardPage'));
 const CalendarPage = lazy(() => import('../pages/CalendarPage'));
 const CandidateChecksPage = lazy(() => import('../pages/CandidateChecksPage'));
@@ -105,6 +106,11 @@ export const authenticatedRoutes: AppRoute[] = [
     path: 'operations-preview/reports',
     allow: (role) => role === 'admin' || role === 'head_hr' || role === 'hr_specialist',
     element: () => withSuspense(<OperationsScheduleReportsPage />),
+  },
+  {
+    path: 'operations-preview/auto-directions',
+    allow: canAccessOperationsPreview,
+    element: () => withSuspense(<AutoTripDirectionsReportPage />),
   },
   {
     path: 'sw-tech-dashboard',

@@ -51,6 +51,8 @@ type PreviewPersistedState = {
   overrides?: Record<OverrideScopeKey, Record<string, CellCode>>;
   peopleByMonth?: Record<string, PersonRow[]>;
   peopleState?: PersonRow[];
+  autoTripDirections?: Record<string, Record<string, string>>;
+  autoDirectionDictionary?: string[];
   monthValue?: string;
   meta?: {
     overrideScopeVersions?: Record<string, string>;
@@ -123,6 +125,14 @@ const sanitizePayload = (payload: unknown): Record<string, unknown> => {
   if (Array.isArray(source.peopleState)) {
     result.peopleState = source.peopleState;
   }
+  if (source.autoTripDirections && typeof source.autoTripDirections === 'object' && !Array.isArray(source.autoTripDirections)) {
+    result.autoTripDirections = source.autoTripDirections;
+  }
+  if (Array.isArray(source.autoDirectionDictionary)) {
+    result.autoDirectionDictionary = source.autoDirectionDictionary
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      .map((item) => item.trim());
+  }
 
   return result;
 };
@@ -149,12 +159,20 @@ const mergePreviewPayload = (
     ...currentPeopleByMonth,
     ...incomingPeopleByMonth,
   };
+  const currentAutoTripDirections = (current.autoTripDirections ?? {}) as Record<string, Record<string, string>>;
+  const incomingAutoTripDirections = (incoming.autoTripDirections ?? {}) as Record<string, Record<string, string>>;
+  const mergedAutoTripDirections: Record<string, Record<string, string>> = {
+    ...currentAutoTripDirections,
+    ...incomingAutoTripDirections,
+  };
 
   return {
     ...current,
     ...incoming,
     overrides: mergedOverrides,
     peopleByMonth: mergedPeopleByMonth,
+    autoTripDirections: mergedAutoTripDirections,
+    autoDirectionDictionary: incoming.autoDirectionDictionary ?? current.autoDirectionDictionary ?? [],
     meta: {
       overrideScopeVersions: {
         ...(current.meta?.overrideScopeVersions ?? {}),
@@ -1471,6 +1489,189 @@ const makeSheetName = (workbook: ExcelJS.Workbook, rawName: string): string => {
     index += 1;
   }
   return name;
+};
+
+type AutoDirectionReportRow = {
+  fio: string;
+  plate: string;
+  note: string;
+  counts: Record<string, number>;
+  total: number;
+};
+
+const ensureAutoDirectionsReportAccess = (role: unknown) => {
+  if (role !== 'admin' && role !== 'manager_ktk_vvo' && role !== 'head_ktk_vvo') {
+    const error: any = new Error('Access denied for auto trip directions report');
+    error.statusCode = 403;
+    throw error;
+  }
+};
+
+const buildAutoTripDirectionsReportData = async (year: number, month: number) => {
+  const monthValue = `${year}-${String(month).padStart(2, '0')}`;
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const row = await operationsPreviewRepo.findOne({
+    where: { scopeKey: OPERATIONS_PREVIEW_SCOPE_BY_LOCATION.ktk_vvo },
+  });
+  const payload = (row?.payload ?? {}) as PreviewPersistedState;
+  const peopleByMonth = extractPeopleByMonth(payload);
+  const autoPeople = resolvePeopleForMonth(monthValue, peopleByMonth).filter((person) => person.department === 'Авто');
+  const overrides = (payload.overrides ?? {}) as Record<OverrideScopeKey, Record<string, CellCode>>;
+  const factScope = overrides[`fact|${monthValue}` as OverrideScopeKey] ?? {};
+  const directions = payload.autoTripDirections?.[monthValue] ?? {};
+  const dictionaryDirections = Array.isArray(payload.autoDirectionDictionary)
+    ? payload.autoDirectionDictionary
+      .map((item) => item.trim())
+      .filter(Boolean)
+    : [];
+
+  const rowMap = new Map<string, AutoDirectionReportRow>();
+  const directionSet = new Set<string>(dictionaryDirections);
+
+  const ensureReportRow = (key: string, fio: string, plate: string, note: string) => {
+    const existing = rowMap.get(key);
+    if (existing) return existing;
+    const created: AutoDirectionReportRow = { fio, plate, note, counts: {}, total: 0 };
+    rowMap.set(key, created);
+    return created;
+  };
+
+  autoPeople.forEach((person, rowIndex) => {
+    const lanes: Array<'1' | '2'> = person.secondName ? ['1', '2'] : ['1'];
+    lanes.forEach((lane) => {
+      const fio = lane === '1' ? person.name : person.secondName ?? '';
+      if (!fio.trim()) return;
+      const note = lane === '1' ? person.note ?? '' : person.secondNote ?? '';
+      const reportRow = ensureReportRow(`${person.id}-${lane}`, fio, person.plate, note);
+      const laneRowIndex = lane === '1' ? rowIndex : rowIndex + 50;
+      for (let day = 1; day <= daysInMonth; day += 1) {
+        const cellKey = `${person.id}-${lane}-${day}`;
+        const code = normalizeCellCode(factScope[cellKey] ?? getMonthlyCell(laneRowIndex, day, 'Авто'));
+        if (code !== 'H') continue;
+        const direction = directions[cellKey]?.trim();
+        if (!direction) continue;
+        directionSet.add(direction);
+        reportRow.counts[direction] = (reportRow.counts[direction] ?? 0) + 1;
+        reportRow.total += 1;
+      }
+    });
+  });
+
+  const directionColumns = Array.from(directionSet).sort((a, b) => a.localeCompare(b, 'ru'));
+  const reportRows = Array.from(rowMap.values())
+    .filter((item) => item.total > 0)
+    .sort((a, b) => {
+      const plateCompare = a.plate.localeCompare(b.plate, 'ru', { sensitivity: 'base' });
+      return plateCompare || a.fio.localeCompare(b.fio, 'ru', { sensitivity: 'base' });
+    });
+
+  return {
+    year,
+    month,
+    directions: directionColumns,
+    rows: reportRows,
+    totals: directionColumns.map((direction) =>
+      reportRows.reduce((sum, item) => sum + (item.counts[direction] ?? 0), 0)
+    ),
+    grandTotal: reportRows.reduce((sum, item) => sum + item.total, 0),
+  };
+};
+
+export const getAutoTripDirectionsReportData = async (req: Request, res: Response) => {
+  ensureAutoDirectionsReportAccess(req.user?.role);
+
+  const now = new Date();
+  const year = parseYear(req.query.year, now.getFullYear());
+  const month = parseMonth(req.query.month, now.getMonth() + 1);
+  const data = await buildAutoTripDirectionsReportData(year, month);
+  res.json(data);
+};
+
+export const downloadAutoTripDirectionsReport = async (req: Request, res: Response) => {
+  ensureAutoDirectionsReportAccess(req.user?.role);
+
+  const now = new Date();
+  const year = parseYear(req.query.year, now.getFullYear());
+  const month = parseMonth(req.query.month, now.getMonth() + 1);
+  const { directions: directionColumns, rows: reportRows } = await buildAutoTripDirectionsReportData(year, month);
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Logistics Reporting';
+  workbook.created = new Date();
+  const sheet = workbook.addWorksheet(makeSheetName(workbook, 'Направления автовозов'));
+
+  const title = `Отчет по направлениям автовозов за ${String(month).padStart(2, '0')}.${year}`;
+  sheet.mergeCells(1, 1, 1, Math.max(5, 4 + directionColumns.length + 1));
+  sheet.getCell(1, 1).value = title;
+  sheet.getCell(1, 1).font = { name: 'Arial', size: 14, bold: true, color: { argb: 'FF1F2937' } };
+  sheet.getCell(1, 1).alignment = { horizontal: 'left', vertical: 'middle' };
+
+  const headers = ['ФИО', 'Г/Н ТС', 'Примечание', ...directionColumns, 'Итого'];
+  const headerRow = sheet.addRow(headers);
+  headerRow.eachCell((cell) => {
+    cell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1F2937' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF2FF' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'FFD6DCE8' } },
+      left: { style: 'thin', color: { argb: 'FFD6DCE8' } },
+      bottom: { style: 'thin', color: { argb: 'FFD6DCE8' } },
+      right: { style: 'thin', color: { argb: 'FFD6DCE8' } },
+    };
+  });
+
+  reportRows.forEach((item) => {
+    const rowValues = [
+      item.fio,
+      item.plate,
+      item.note,
+      ...directionColumns.map((direction) => item.counts[direction] ?? 0),
+      item.total,
+    ];
+    const dataRow = sheet.addRow(rowValues);
+    dataRow.eachCell((cell, colNumber) => {
+      cell.font = { name: 'Arial', size: 11, color: { argb: 'FF1F2937' } };
+      cell.alignment = { horizontal: colNumber <= 3 ? 'left' : 'center', vertical: 'middle', wrapText: true };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+      };
+      if (colNumber > 3) {
+        cell.numFmt = '0';
+      }
+    });
+  });
+
+  const totalRow = sheet.addRow([
+    'Итого',
+    '',
+    '',
+    ...directionColumns.map((direction) => reportRows.reduce((sum, item) => sum + (item.counts[direction] ?? 0), 0)),
+    reportRows.reduce((sum, item) => sum + item.total, 0),
+  ]);
+  totalRow.eachCell((cell, colNumber) => {
+    cell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1F2937' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F4F9' } };
+    cell.alignment = { horizontal: colNumber <= 3 ? 'left' : 'center', vertical: 'middle' };
+  });
+
+  sheet.getColumn(1).width = 34;
+  sheet.getColumn(2).width = 14;
+  sheet.getColumn(3).width = 24;
+  directionColumns.forEach((_, index) => {
+    sheet.getColumn(4 + index).width = 16;
+  });
+  sheet.getColumn(4 + directionColumns.length).width = 12;
+  sheet.views = [{ state: 'frozen', xSplit: 3, ySplit: 2 }];
+
+  const reportMonthName = REPORT_MONTH_NAMES[month] ?? String(month).padStart(2, '0');
+  const filename = `Автовозы_направления_${reportMonthName}_${year}.xlsx`.normalize('NFC');
+  const buffer = await workbook.xlsx.writeBuffer();
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', buildContentDisposition(filename));
+  res.send(Buffer.from(buffer));
 };
 
 export const downloadOperationsPreviewReport = async (req: Request, res: Response) => {

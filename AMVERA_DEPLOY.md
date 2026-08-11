@@ -6,6 +6,10 @@
 - Ветка для production: `main`
 - CI уже настроен в `.github/workflows/ci.yml` (проверка сборки frontend/backend).
 
+Критично:
+- В Amvera production должно быть выбрано слежение за `main`.
+- Если Amvera фактически деплоит `master` (старый коммит), сайт может отдавать `502` даже при успешной сборке.
+
 ## 2) Что развернуть
 - Текущее приложение разворачивается как один Docker-сервис по корневому
   `Dockerfile`.
@@ -116,6 +120,10 @@ SMTP_FROM=<from-email>
 - `TRUST_PROXY=1`
 -->
 
+Проверка порта:
+- В `amvera.yml` и `amvera.yaml` должно быть `run.containerPort: 3000`.
+- `APP_PORT` и `containerPort` должны совпадать.
+
 ## 4) Переменные окружения frontend
 Для текущей Docker-схемы отдельные frontend-переменные не нужны: frontend
 использует относительный `/api`.
@@ -130,6 +138,7 @@ VITE_IDLE_TIMEOUT_MIN=60
 Не использовать `VITE_API_BASE_URL`: такой переменной в коде нет.
 
 ## 5) Минимальный post-deploy check
+0. В build-логе проверить `HEAD is now at <sha>` — это должен быть ожидаемый коммит.
 1. Открыть `/health` backend — должен быть `200`.
 2. Открыть `/health/db` — должен быть `200`.
 3. Открыть `/health/scheduler` — должен быть `200`.
@@ -145,6 +154,12 @@ VITE_IDLE_TIMEOUT_MIN=60
    - представитель контрагента видит только свои ТС.
 8. Если SMTP настроен: `Настройки` -> SMTP test -> тестовая отправка.
 9. Если scheduler нужен: проверить планировщик рассылки.
+
+Если видим `502`:
+1. Сверить ветку в настройках Amvera (`main` для production).
+2. Сверить SHA в build-логе с SHA в GitHub.
+3. Проверить `APP_PORT=3000` и `containerPort: 3000`.
+4. Учесть, что `npm error signal SIGTERM` при перезапуске обычно норма.
 
 ## 6) Рекомендация по релизам
 - Мержи в `main` только через Pull Request.
