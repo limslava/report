@@ -3,6 +3,8 @@ import { Navigate } from 'react-router-dom';
 import RouteAccessGuard from '../components/auth/RouteAccessGuard';
 import {
   canAccessAdmin,
+  canAccessDirectories,
+  canAccessFuel,
   canAccessBillOfLading,
   canAccessCandidateChecks,
   canAccessContractApproval,
@@ -20,6 +22,8 @@ import { getDefaultAuthenticatedRoute } from './defaultAuthenticatedRoute';
 
 const AdminPage = lazy(() => import('../pages/AdminPage'));
 const AutoTripDirectionsReportPage = lazy(() => import('../pages/AutoTripDirectionsReportPage'));
+const FuelPage = lazy(() => import('../pages/FuelPage'));
+const DirectoriesPage = lazy(() => import('../pages/DirectoriesPage'));
 const BPApprovalDashboardPage = lazy(() => import('../pages/BPApprovalDashboardPage'));
 const CalendarPage = lazy(() => import('../pages/CalendarPage'));
 const CandidateChecksPage = lazy(() => import('../pages/CandidateChecksPage'));
@@ -111,6 +115,16 @@ export const authenticatedRoutes: AppRoute[] = [
     path: 'operations-preview/auto-directions',
     allow: (role) => role === 'admin' || role === 'manager_ktk_vvo' || role === 'head_ktk_vvo',
     element: () => withSuspense(<AutoTripDirectionsReportPage />),
+  },
+  {
+    path: 'fuel',
+    allow: canAccessFuel,
+    element: () => withSuspense(<FuelPage />),
+  },
+  {
+    path: 'directories',
+    allow: canAccessDirectories,
+    element: () => withSuspense(<DirectoriesPage />),
   },
   {
     path: 'sw-tech-dashboard',

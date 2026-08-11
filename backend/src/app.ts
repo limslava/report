@@ -18,6 +18,8 @@ import { candidateChecksRouter } from './routes/candidate-checks.routes';
 import { counterpartiesRouter } from './routes/counterparties.routes';
 import { carriersRouter } from './routes/carriers.routes';
 import { warehouseRouter } from './routes/warehouse.routes';
+import { directoriesRouter } from './routes/directories.routes';
+import { fuelRouter } from './routes/fuel.routes';
 import { errorHandler } from './middleware/error-handler';
 import { logger } from './utils/logger';
 import { getAllowedCorsOrigins } from './config/env';
@@ -126,6 +128,8 @@ export function createApp() {
   app.use('/api/counterparties', counterpartiesRouter);
   app.use('/api/carriers', carriersRouter);
   app.use('/api/warehouse', warehouseRouter);
+  app.use('/api/directories', directoriesRouter);
+  app.use('/api/fuel', fuelRouter);
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });

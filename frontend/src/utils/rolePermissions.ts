@@ -54,7 +54,9 @@ export function canViewTotalsInPlans(role?: string | null): boolean {
     && role !== 'warehouse_manager_vvo'
     && role !== 'warehouse_manager'
     && role !== 'warehouse_keeper'
-    && role !== 'counterparty_user';
+    && role !== 'counterparty_user'
+    && role !== 'bdd_specialist_vvo'
+    && role !== 'bdd_specialist_mow';
 }
 
 export function canViewPlans(role?: string | null): boolean {
@@ -71,7 +73,41 @@ export function canViewPlans(role?: string | null): boolean {
     && role !== 'warehouse_manager_vvo'
     && role !== 'warehouse_manager'
     && role !== 'warehouse_keeper'
-    && role !== 'counterparty_user';
+    && role !== 'counterparty_user'
+    && role !== 'bdd_specialist_vvo'
+    && role !== 'bdd_specialist_mow';
+}
+
+export type FuelLocation = 'vvo' | 'mow';
+
+export function fuelLocationsForRole(role?: string | null): FuelLocation[] {
+  if (role === 'admin') return ['vvo', 'mow'];
+  if (role === 'bdd_specialist_vvo' || role === 'head_ktk_vvo') return ['vvo'];
+  if (role === 'bdd_specialist_mow' || role === 'head_ktk_mow') return ['mow'];
+  return [];
+}
+
+export function canAccessFuel(role?: string | null): boolean {
+  return fuelLocationsForRole(role).length > 0;
+}
+
+export function directoryLocationsForRole(role?: string | null): FuelLocation[] {
+  if (role === 'admin' || role === 'head_hr' || role === 'hr_specialist') return ['vvo', 'mow'];
+  if (role === 'head_ktk_vvo' || role === 'manager_ktk_vvo') return ['vvo'];
+  if (role === 'head_ktk_mow' || role === 'manager_ktk_mow') return ['mow'];
+  return [];
+}
+
+export function canAccessDirectories(role?: string | null): boolean {
+  return directoryLocationsForRole(role).length > 0;
+}
+
+export function canManageFuelNormsFrontend(role?: string | null): boolean {
+  return role === 'admin'
+    || role === 'bdd_specialist_vvo'
+    || role === 'bdd_specialist_mow'
+    || role === 'head_ktk_vvo'
+    || role === 'head_ktk_mow';
 }
 
 export function canEditTotalsPlan(role?: string | null): boolean {

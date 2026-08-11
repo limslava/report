@@ -193,6 +193,8 @@ const ROLE_LABELS: Record<string, string> = {
   garage_head_vvo: 'Начальник гаража Влд',
   garage_head: 'Начальник гаража Влд',
   warehouse_manager_vvo: 'Заведующий складом Владивосток',
+  bdd_specialist_vvo: 'Специалист по БДД Влд',
+  bdd_specialist_mow: 'Специалист по БДД Мск',
   manager_auto: 'Отдел перевозок автомобилей',
   manager_rail: 'Отдел Железнодорожных перевозок',
   manager_extra: 'Экспедирование',

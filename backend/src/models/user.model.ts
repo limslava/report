@@ -47,6 +47,8 @@ export class User {
     | 'warehouse_manager'
     | 'warehouse_keeper'
     | 'counterparty_user'
+    | 'bdd_specialist_vvo'
+    | 'bdd_specialist_mow'
     | 'financer'
     | 'chief_accountant'
     | 'lawyer'

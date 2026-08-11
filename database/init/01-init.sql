@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS users (
     'manager_sales', 'head_sales', 'manager_ktk_vvo', 'head_ktk_vvo', 'manager_ktk_mow',
     'head_ktk_mow', 'head_hr', 'hr_specialist', 'garage_head_vvo', 'garage_head',
     'manager_auto', 'manager_rail', 'manager_extra', 'manager_to',
-    'warehouse_manager_vvo', 'warehouse_manager', 'warehouse_keeper', 'counterparty_user'
+    'warehouse_manager_vvo', 'warehouse_manager', 'warehouse_keeper', 'counterparty_user',
+    'bdd_specialist_vvo', 'bdd_specialist_mow'
   )),
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMP DEFAULT NOW(),

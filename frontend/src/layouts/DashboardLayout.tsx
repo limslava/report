@@ -35,6 +35,8 @@ import {
   Logout,
   TableChart,
   CalendarMonth,
+  LocalGasStation,
+  FolderShared,
   ChevronLeft,
   ChevronRight,
   Close,
@@ -56,6 +58,8 @@ import {
   canAccessAdmin,
   canAccessOperationsPreview,
   canViewCalendar,
+  canAccessFuel,
+  canAccessDirectories,
   canViewOperationsEfficiency,
   canViewFinancialPlan,
   canViewPlans,
@@ -370,6 +374,12 @@ const DashboardLayout = () => {
       : null,
     canViewCalendar(user?.role)
       ? { key: 'calendar', label: 'Календарь', icon: calendarIcon, onClick: () => handleNavigate('/calendar'), active: location.pathname.includes('/calendar') }
+      : null,
+    canAccessFuel(user?.role)
+      ? { key: 'fuel', label: 'Топливо', icon: <LocalGasStation />, onClick: () => handleNavigate('/fuel'), active: location.pathname.includes('/fuel') }
+      : null,
+    canAccessDirectories(user?.role)
+      ? { key: 'directories', label: 'Справочники', icon: <FolderShared />, onClick: () => handleNavigate('/directories'), active: location.pathname.includes('/directories') }
       : null,
     canAccessAdmin(user?.role)
       ? { key: 'admin', label: 'Администрирование', icon: <People />, onClick: () => handleNavigate('/admin'), active: location.pathname.includes('/admin') }

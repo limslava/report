@@ -24,5 +24,8 @@ export function getDefaultAuthenticatedRoute(role?: string | null): string {
   if (role === 'head_hr' || role === 'hr_specialist') {
     return '/operations-preview?location=ktk_vvo&section=containers';
   }
+  if (role === 'bdd_specialist_vvo' || role === 'bdd_specialist_mow') {
+    return '/fuel';
+  }
   return '/plans';
 }
