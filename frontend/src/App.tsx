@@ -13,6 +13,8 @@ import SWTechDashboardPage from './pages/SWTechDashboardPage';
 import RouteAccessGuard from './components/auth/RouteAccessGuard';
 import {
   canAccessAdmin,
+  canAccessDirectories,
+  canAccessFuel,
   canAccessOperationsPreview,
   canViewOperationsEfficiency,
   canViewCalendar,
@@ -25,6 +27,8 @@ const CalendarPage = lazy(() => import('./pages/CalendarPage'));
 const OperationsPreview = lazy(() => import('./pages/OperationsPreview'));
 const OperationsScheduleReportsPage = lazy(() => import('./pages/OperationsScheduleReportsPage'));
 const AutoTripDirectionsReportPage = lazy(() => import('./pages/AutoTripDirectionsReportPage'));
+const FuelPage = lazy(() => import('./pages/FuelPage'));
+const DirectoriesPage = lazy(() => import('./pages/DirectoriesPage'));
 
 function App() {
   const { token, user } = useAuthStore();
@@ -42,6 +46,9 @@ function App() {
     }
     if (user?.role === 'head_hr' || user?.role === 'hr_specialist') {
       return '/operations-preview?location=ktk_vvo&section=containers';
+    }
+    if (user?.role === 'bdd_specialist_vvo' || user?.role === 'bdd_specialist_mow') {
+      return '/fuel';
     }
     return '/plans';
   })();
@@ -121,6 +128,26 @@ function App() {
               <RouteAccessGuard allow={canAccessOperationsPreview(user?.role)}>
                 <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
                   <AutoTripDirectionsReportPage />
+                </Suspense>
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="fuel"
+            element={(
+              <RouteAccessGuard allow={canAccessFuel(user?.role)}>
+                <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
+                  <FuelPage />
+                </Suspense>
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="directories"
+            element={(
+              <RouteAccessGuard allow={canAccessDirectories(user?.role)}>
+                <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
+                  <DirectoriesPage />
                 </Suspense>
               </RouteAccessGuard>
             )}

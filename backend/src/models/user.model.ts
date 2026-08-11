@@ -34,6 +34,8 @@ export class User {
     | 'manager_extra'
     | 'manager_to'
     | 'warehouse_manager_vvo'
+    | 'bdd_specialist_vvo'
+    | 'bdd_specialist_mow'
     | 'financer'
     | 'security'
     | 'director'

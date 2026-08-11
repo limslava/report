@@ -1,6 +1,28 @@
 # Changelog
 
 ## Unreleased
+- Fuel accounting module
+  - Added monthly fuel schedule (`Топливо`) for Vladivostok and Moscow with
+    per-vehicle rows: operator enters odometer reading, end fuel level and
+    refueled amount; mileage, start level, consumption and l/100km are computed.
+  - Computed fields (`Пробег по Одометру`, `Начальный уровень Топлива`) can be
+    manually overridden with a visual marker; vehicle baseline (start odometer
+    and fuel level) is entered once when a vehicle joins the module.
+  - Added per-model fuel norms (winter/summer) with configurable season bounds
+    and live deviation badges against the seasonal norm; Excel export of the
+    month with original indicator names.
+  - Added roles `Специалист по БДД Владивосток` / `Специалист по БДД Москва`;
+    fuel access: admin + BDD specialist + KTK head per region.
+- Directories (employees / vehicles / trailers / models)
+  - Added region-scoped directories maintained by KTK head/manager, HR and
+    admin. Employee card holds personal data (passport, address, driver
+    license) and vehicle+trailer assignment; PD access excludes BDD roles,
+    card copies are audit-logged.
+  - Added fixed-template driver card copy (`Скопировать данные водителя`) from
+    the employee card and from the containers/auto schedule context menu;
+    empty VIN renders as an empty line, template never changes.
+  - Added one-off admin bootstrap that fills directories from existing
+    schedule rows (unique names and plates).
 - SW Tech Dashboard
   - Added year/month period selectors in the top bar and period-aware data loading.
   - Updated monthly logic for widgets/charts:

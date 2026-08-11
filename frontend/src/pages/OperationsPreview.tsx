@@ -10,6 +10,8 @@ import {
 } from '../services/api';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import { downloadBlob } from '../utils/download';
+import { findEmployeeCardByName } from '../services/directories.api';
+import { directoryLocationsForRole } from '../utils/rolePermissions';
 import '../styles/operations-preview.css';
 
 type PreviewLocation = OperationsPreviewLocation;
@@ -607,6 +609,30 @@ export default function OperationsPreview() {
       lane,
     });
   };
+  const cardLocation = activeLocation === 'ktk_mow' || activeLocation === 'garage_mow' ? 'mow' : 'vvo';
+  const canCopyDriverCard = directoryLocationsForRole(userRole).includes(cardLocation);
+
+  const handleCopyDriverCard = async (person: PersonRow, lane?: '1' | '2') => {
+    const fullName = (lane === '2' ? person.secondName : person.name)?.trim();
+    if (!fullName) {
+      setCopyStatus({ type: 'error', text: 'В строке не указано ФИО' });
+      return;
+    }
+    try {
+      const { data } = await findEmployeeCardByName(cardLocation, fullName);
+      await navigator.clipboard.writeText(data.text);
+      setCopyStatus({ type: 'success', text: `Данные водителя «${fullName}» скопированы в буфер обмена` });
+    } catch (error) {
+      const status = (error as any)?.response?.status;
+      setCopyStatus({
+        type: 'error',
+        text: status === 404
+          ? `«${fullName}» не найден в справочнике сотрудников — заведите карточку в разделе «Справочники»`
+          : 'Не удалось получить данные водителя',
+      });
+    }
+  };
+
   const openPersonEdit = (person: PersonRow) => {
     if (!canEditRows) return;
     setEditPerson(person);
@@ -3611,6 +3637,18 @@ export default function OperationsPreview() {
             >
               Удалить
             </button>
+            {canCopyDriverCard && (contextMenu.person.department === 'Контейнеры' || contextMenu.person.department === 'Авто') && (
+              <button
+                type="button"
+                className="ops-context-item"
+                onClick={() => {
+                  void handleCopyDriverCard(contextMenu.person, contextMenu.lane);
+                  setContextMenu(null);
+                }}
+              >
+                Скопировать данные водителя
+              </button>
+            )}
           </div>
         </div>
       )}
