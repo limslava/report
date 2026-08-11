@@ -109,7 +109,7 @@ export const authenticatedRoutes: AppRoute[] = [
   },
   {
     path: 'operations-preview/auto-directions',
-    allow: canAccessOperationsPreview,
+    allow: (role) => role === 'admin' || role === 'manager_ktk_vvo' || role === 'head_ktk_vvo',
     element: () => withSuspense(<AutoTripDirectionsReportPage />),
   },
   {
