@@ -5,6 +5,8 @@ import { logger } from './utils/logger';
 import { planWebSocketService } from './services/websocket.service';
 import { assertProductionEnv, getAppPort } from './config/env';
 import { ensureDefaultAdmin } from './services/bootstrap.service';
+import { ensureDatabaseSchema } from './services/db-bootstrap.service';
+import { startHhBackgroundJobs } from './services/hh-background.service';
 import { planningV2Service } from './services/planning-v2.service';
 import { withRetry } from './utils/db-retry';
 import { createApp } from './app';
@@ -20,6 +22,7 @@ async function startServer() {
     assertProductionEnv();
     await withRetry(() => AppDataSource.initialize(), { attempts: 12, baseDelayMs: 1000, maxDelayMs: 10000 });
     logger.info('Database connected successfully');
+    await ensureDatabaseSchema();
     await ensureDefaultAdmin();
     try {
       await planningV2Service.bootstrapCatalog();
@@ -30,6 +33,7 @@ async function startServer() {
     await ensureWarehouseServiceCatalog();
     await ensureWarehousePhotoStorageReady();
     logger.info('Warehouse service catalog bootstrapped');
+    startHhBackgroundJobs();
 
     const app = createApp();
 

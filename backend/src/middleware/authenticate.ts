@@ -8,6 +8,8 @@ interface JwtPayload {
   id: string;
   email: string;
   role: string;
+  /** Служебные токены с ограниченной областью (например, farpost_import). */
+  scope?: string;
 }
 
 declare global {
@@ -29,6 +31,14 @@ export const authenticate = async (req: Request, _res: Response, next: NextFunct
 
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, getJwtSecret()) as JwtPayload;
+
+    // Токены с ограниченной областью (import-token расширения FarPost)
+    // действуют только на своих эндпоинтах и не открывают остальной API.
+    if (decoded.scope) {
+      const error: any = new Error('Служебный токен не даёт доступа к этому разделу');
+      error.statusCode = 401;
+      throw error;
+    }
 
     const userRepository = AppDataSource.getRepository(User);
     const user = await userRepository.findOne({ where: { id: decoded.id } });

@@ -46,6 +46,7 @@ import {
 import { financialPlanApi } from '../services/financial-plan.api';
 import { FinancialVatRate } from '../types/financial-plan.types';
 import { useAuthStore } from '../store/auth-store';
+import HhConnectionPanel from '../components/hr/HhConnectionPanel';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -607,6 +608,7 @@ const SettingsPage = () => {
     { label: 'Уведомления', show: isAdmin },
     { label: 'Почта', show: isAdmin },
     { label: 'НДС', show: isAdmin },
+    { label: 'Интеграция hh.ru', show: isAdmin },
   ];
   
   const visibleTabs = tabs.filter(tab => tab.show);
@@ -1151,6 +1153,9 @@ const SettingsPage = () => {
                   </List>
                 )}
               </Paper>
+            </TabPanel>
+            <TabPanel value={tabValue} index={4}>
+              <HhConnectionPanel />
             </TabPanel>
           </>
         )}

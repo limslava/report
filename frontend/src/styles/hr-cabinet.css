@@ -1,0 +1,1029 @@
+/* ============================================================================
+   Кабинет HR — единый стиль модуля (консолидировано из прежних 3 слоёв:
+   база → «скин по референсу» → REF-2 INTCH HUB). Правил-дублей больше нет:
+   у каждого селектора одно определение с итоговыми значениями. Палитра —
+   в :root-токенах ниже (единый источник). Действует только внутри .hr-page
+   и hr-компонентов, глобальный шелл Report не затрагивается.
+   ============================================================================ */
+
+:root {
+  /* Текст */
+  --hr-ink: #101216;            /* заголовки, strong (акцентный почти-чёрный) */
+  --hr-ink-soft: #16181d;       /* базовый текст страницы */
+  --hr-heading: #1a212b;        /* заголовки секций, метрики */
+  --hr-text: #27364b;           /* основной текст таблиц/карточек */
+  --hr-text-slate: #263238;     /* strong в матрице/доске/задачах */
+  --hr-text-secondary: #566579; /* подзаголовки, мета */
+  --hr-text-muted: #64748b;     /* подписи, вторичный текст */
+  --hr-text-faint: #8a94a6;     /* дата, лейблы, мелкие подписи */
+  --hr-text-faint2: #9aa1ab;    /* капс-подписи, small в строках */
+  --hr-text-cool: #546e7a;      /* подписи в воронке/доске */
+  --hr-th: #9aa4b2;             /* шапки таблиц */
+  --hr-brand: #315a97;          /* ссылки, время слота, текущий этап */
+
+  /* Границы */
+  --hr-border: #dbe4ef;         /* рамки карточек/секций */
+  --hr-border-soft: #eef0f4;    /* мягкие рамки карточек (референс) */
+  --hr-border-strong: #d0d7de;  /* рамки таблиц, недельной сетки */
+  --hr-border-accent: #c9d7ec;  /* рамки акцентных панелей */
+  --hr-td-border: #f0f2f5;      /* границы ячеек таблиц */
+  --hr-divider: #eef2f7;        /* тонкие разделители строк */
+
+  /* Поверхности */
+  --hr-surface: #fff;
+  --hr-tint: #f7faff;           /* фон акцентных панелей */
+  --hr-tint-2: #f8fbff;
+  --hr-hover: #eaf1fc;          /* ховер строк/чипов */
+  --hr-zebra: #fafbfd;          /* зебра таблиц */
+  --hr-soft: #fafbfc;           /* фон строк-карточек задач */
+
+  /* Тени */
+  --hr-shadow-card: 0 1px 3px rgba(16, 24, 40, .06);
+  --hr-shadow-drawer: -12px 0 28px rgba(39, 54, 75, 0.16);
+
+  /* Статусы */
+  --hr-ok-bg: #e8f5e9;   --hr-ok-fg: #2e7d32;   --hr-ok-bd: #bfe3c4;
+  --hr-warn-bg: #fff7e6; --hr-warn-fg: #9a5b00; --hr-warn-bd: #f3d19c;
+  --hr-danger-bg: #fdecea; --hr-danger-fg: #b3261e; --hr-danger-bd: #f5c6c2;
+  --hr-info-bg: #e9f1ff; --hr-info-fg: #315a97; --hr-info-bd: #c9d7ec;
+  --hr-neutral-bg: #eef2f8; --hr-neutral-fg: #64748b;
+}
+
+/* ─── Каркас страницы ─────────────────────────────────────────────────────── */
+.hr-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  color: var(--hr-ink-soft);
+}
+
+.hr-page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 4px 2px 0;
+}
+
+.hr-page__header-actions { display: flex; gap: 8px; }
+
+.hr-page__title {
+  margin: 0;
+  color: var(--hr-ink);
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.hr-page__subtitle {
+  margin: 2px 0 0;
+  color: var(--hr-text-secondary);
+  font-size: 12px;
+}
+
+.hr-page__date {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--hr-text-faint);
+  text-transform: none;
+}
+.hr-page__date::first-letter { text-transform: uppercase; }
+
+.hr-page__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+.hr-page__grid--wide { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.hr-page__grid--triple { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+/* Карточки одного семейства: мягкая рамка, радиус 16, лёгкая тень */
+.hr-page__card,
+.hr-matrix,
+.hr-tasks__col,
+.hr-request-card,
+.hr-board__col {
+  border-radius: 16px;
+  border: 1px solid var(--hr-border-soft);
+  box-shadow: var(--hr-shadow-card);
+}
+.hr-page__card { background: var(--hr-surface); padding: 18px 20px; }
+
+.hr-page__metric {
+  color: var(--hr-heading);
+  font-size: 30px;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.hr-page__label { margin-top: 2px; color: var(--hr-text-faint); font-size: 12px; }
+
+.hr-page__section-title {
+  color: var(--hr-heading);
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.hr-page__placeholder { padding: 12px; color: var(--hr-text-secondary); font-size: 12px; }
+.hr-page__empty { color: var(--hr-text-muted); font-size: 12px; padding: 9px; text-align: left; }
+
+.hr-page__stage-list { display: flex; flex-direction: column; gap: 2px; }
+.hr-page__stage-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--hr-divider);
+  color: var(--hr-text);
+  font-size: 12px;
+}
+.hr-page__stage-row:last-child { border-bottom: 0; }
+.hr-page__stage-row small,
+.hr-page__table small { display: block; color: var(--hr-text-muted); font-size: 10px; margin-top: 1px; }
+.hr-page__stage-row--person > span { display: inline-flex; align-items: center; gap: 8px; }
+
+.hr-page__actions,
+.hr-page__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.hr-page__filters .MuiFormControl-root { flex: 1 1 170px; min-width: 170px; }
+.hr-page__filters button { flex: 0 0 auto; min-width: 112px; }
+
+.hr-page__form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 6px;
+  align-items: start;
+  border: 1px solid var(--hr-border);
+  background: var(--hr-surface);
+  border-radius: 6px;
+  padding: 8px;
+}
+.hr-page__form-wide { grid-column: span 2; }
+
+/* Табличная оболочка */
+.hr-page__table-shell {
+  border: 1px solid var(--hr-border-strong);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--hr-surface);
+}
+
+/* MUI-примитивы внутри HR: плотнее + скруглённые кнопки-пилюли */
+.hr-page .MuiAlert-root { padding: 2px 10px; font-size: 12px; }
+.hr-page .MuiAlert-icon { padding: 5px 0; }
+.hr-page .MuiInputBase-root { font-size: 12px; }
+.hr-page .MuiInputBase-input { padding-top: 7px; padding-bottom: 7px; }
+.hr-page .MuiInputLabel-root { font-size: 12px; }
+.hr-page .MuiButton-root {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 11px;
+  text-transform: none;
+  box-shadow: none;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.hr-page .MuiButton-outlined { border-color: var(--hr-ink-soft); color: var(--hr-ink-soft); }
+.hr-page .MuiButton-outlined:hover { border-color: var(--hr-ink-soft); background: #f2f3f5; }
+.hr-page .MuiButton-contained { background: var(--hr-ink-soft); color: #fff; }
+.hr-page .MuiButton-contained:hover { background: #2b2f36; }
+
+/* ─── Статус-плашки ───────────────────────────────────────────────────────── */
+/* Универсальная «ожидающая» плашка (исторически .hr-page__status) */
+.hr-page__status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--hr-warn-bg);
+  color: var(--hr-warn-fg);
+  border: 1px solid var(--hr-warn-bd);
+  white-space: nowrap;
+}
+
+/* Read-only статус вакансий/заявок — цвет по значению; смена статуса в карточке */
+.hr-status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.hr-status--open,
+.hr-status--in_progress { background: var(--hr-ok-bg); color: var(--hr-ok-fg); border-color: var(--hr-ok-bd); }
+.hr-status--paused { background: var(--hr-warn-bg); color: var(--hr-warn-fg); border-color: var(--hr-warn-bd); }
+.hr-status--new { background: var(--hr-info-bg); color: var(--hr-info-fg); border-color: var(--hr-info-bd); }
+.hr-status--closed,
+.hr-status--cancelled { background: var(--hr-danger-bg); color: var(--hr-danger-fg); border-color: var(--hr-danger-bd); }
+.hr-status--draft,
+.hr-status--archived { background: var(--hr-neutral-bg); color: var(--hr-neutral-fg); border-color: var(--hr-border-strong); }
+/* Статус кандидата тем же языком: hired=зелёный, rejected=красный, reserve=янтарный */
+.hr-status--hired { background: var(--hr-ok-bg); color: var(--hr-ok-fg); border-color: var(--hr-ok-bd); }
+.hr-status--rejected { background: var(--hr-danger-bg); color: var(--hr-danger-fg); border-color: var(--hr-danger-bd); }
+.hr-status--reserve { background: var(--hr-warn-bg); color: var(--hr-warn-fg); border-color: var(--hr-warn-bd); }
+.hr-status--active { background: var(--hr-neutral-bg); color: var(--hr-neutral-fg); border-color: var(--hr-border-strong); }
+
+/* ─── Единая цветовая семантика этапов кандидата ──────────────────────────────
+   Один фиксированный цвет на этап — одинаковый на всех экранах (таблица,
+   доска, дашборд, интервью, матрица, воронка). Модификаторы задают ТОЛЬКО
+   цвет, поэтому композируются и с компактной плашкой .hr-stage, и с крупным
+   чипом .hr-chip. */
+.hr-stage {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.hr-stage--new                  { background: #dbeafe; color: #1d4ed8; border-color: #bcd3fb; }
+.hr-stage--screening            { background: #ede9fe; color: #6d28d9; border-color: #d9d0fb; }
+.hr-stage--phone_interview      { background: #d5f0ef; color: #0e7490; border-color: #b4e2e0; }
+.hr-stage--submitted_to_manager { background: #fdeccd; color: #a96a12; border-color: #f3dca6; }
+.hr-stage--manager_interview    { background: #fde2ec; color: #ad1457; border-color: #f7c9da; }
+.hr-stage--offer                { background: #eef3c7; color: #6f6a12; border-color: #e0e59f; }
+.hr-stage--hired                { background: #d7f0e0; color: #1d7a46; border-color: #b6e3c8; }
+.hr-stage--rejected             { background: #fde2e2; color: #b3392f; border-color: #f6c6c2; }
+
+/* Точка-акцент этапа (шапка колонки на доске) */
+.hr-dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; vertical-align: middle; margin-right: 2px; border: 1px solid transparent; }
+
+/* Полоса воронки — тот же цвет этапа (насыщённый вариант) */
+.hr-stage-fill--new                  { background: #93b4f7; }
+.hr-stage-fill--screening            { background: #b79bf0; }
+.hr-stage-fill--phone_interview      { background: #7cccca; }
+.hr-stage-fill--submitted_to_manager { background: #f0c877; }
+.hr-stage-fill--manager_interview    { background: #f0a6c2; }
+.hr-stage-fill--offer                { background: #d3dc86; }
+.hr-stage-fill--hired                { background: #8fd3ac; }
+.hr-stage-fill--rejected             { background: #f0a6a1; }
+
+/* ─── Таблицы (плотный реестр) ────────────────────────────────────────────── */
+.hr-page__table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.hr-page__table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  background: var(--hr-neutral-bg);
+  border-right: 1px solid var(--hr-border-strong);
+  border-bottom: 1px solid var(--hr-border-strong);
+  padding: 6px 8px;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--hr-th);
+}
+.hr-page__table th:last-child,
+.hr-page__table td:last-child { border-right: none; }
+.hr-page__table td {
+  border-right: 1px solid var(--hr-td-border);
+  border-bottom: 1px solid var(--hr-td-border);
+  color: var(--hr-text);
+  padding: 6px 8px;
+  vertical-align: middle;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hr-page__table tbody tr:nth-child(even) td { background: var(--hr-zebra); }
+.hr-page__table tbody tr:hover td { background: var(--hr-tint); }
+.hr-page__table-row--selected td,
+.hr-page__table tbody tr.hr-page__table-row--selected:hover td { background: var(--hr-hover); }
+.hr-page__table tr:last-child td { border-bottom: 0; }
+.hr-page__table select {
+  width: 100%;
+  min-width: 112px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: var(--hr-surface);
+  color: var(--hr-text);
+  font-size: 11px;
+  padding: 3px 6px;
+}
+
+/* Пагинация */
+.hr-page__paging {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 2px 0;
+  color: var(--hr-text-secondary);
+  font-size: 11px;
+}
+
+/* Индикатор «осталось дней» */
+.hr-page__days {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--hr-neutral-bg);
+  color: var(--hr-text);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.hr-page__days--soon { background: var(--hr-warn-bg); color: var(--hr-warn-fg); }
+.hr-page__days--overdue { background: var(--hr-danger-bg); color: var(--hr-danger-fg); }
+
+/* ─── Импорт FarPost ──────────────────────────────────────────────────────── */
+.hr-import {
+  border: 1px solid var(--hr-border-accent);
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.hr-import__summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 10px; }
+.hr-import__summary strong { display: block; color: var(--hr-text); font-size: 13px; }
+.hr-import__summary span,
+.hr-import__footer span,
+.hr-import__result span,
+.hr-import__result small { display: block; color: var(--hr-text-muted); font-size: 11px; }
+.hr-import__workspace { display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 8px; padding: 0 10px 10px; }
+.hr-import__panel {
+  position: relative;
+  border: 1px solid var(--hr-border);
+  background: var(--hr-surface);
+  border-radius: 6px;
+  padding: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.hr-import__panel--primary { min-height: 178px; }
+.hr-import__step {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--hr-info-bg);
+  color: var(--hr-brand);
+  font-size: 10px;
+  font-weight: 700;
+}
+.hr-import__panel-title { color: var(--hr-text); font-size: 12px; font-weight: 700; padding-right: 24px; }
+.hr-import__search-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; }
+.hr-import__text { width: 100%; }
+.hr-import__url {
+  border: 1px dashed #cbd5e1;
+  border-radius: 5px;
+  background: #f8fafc;
+  color: #526174;
+  font-size: 10px;
+  padding: 5px 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hr-import__install-row,
+.hr-import__install-box { display: flex; align-items: center; gap: 6px; }
+.hr-import__install-box { align-items: stretch; flex-direction: column; margin-top: 2px; }
+.hr-import__install-box span { color: var(--hr-text-muted); font-size: 11px; }
+.hr-import__install-box code {
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #f8fafc;
+  color: var(--hr-text);
+  font-size: 11px;
+  padding: 7px 8px;
+  word-break: break-all;
+}
+.hr-import__hint { color: var(--hr-text-muted); font-size: 11px; line-height: 1.35; }
+.hr-import__footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.hr-import__note {
+  grid-column: 1 / -1;
+  border: 1px solid #f0d7a4;
+  background: #fffaf0;
+  border-radius: 6px;
+  color: #7a5200;
+  font-size: 11px;
+  padding: 6px 8px;
+}
+.hr-import__manual {
+  grid-column: 1 / -1;
+  border: 1px solid var(--hr-border);
+  background: var(--hr-surface);
+  border-radius: 6px;
+  padding: 7px 8px;
+}
+.hr-import__manual summary { color: #41516a; cursor: pointer; font-size: 12px; font-weight: 700; }
+.hr-import__manual-form { display: flex; flex-direction: column; gap: 7px; margin-top: 8px; }
+.hr-import__result { border-top: 1px solid var(--hr-border); background: #f6fff9; padding: 7px 10px; }
+.hr-import__result strong { display: block; color: #176b3a; font-size: 12px; }
+
+/* ─── Выдвижная панель (карточка кандидата/вакансии/заявки) ───────────────── */
+.hr-resume-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 1200;
+  width: min(640px, calc(100vw - 64px));
+  height: 100vh;
+  border-left: 1px solid #cbd5e1;
+  background: #f8fafc;
+  box-shadow: var(--hr-shadow-drawer);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(calc(100% + 28px));
+  transition: transform 180ms ease;
+}
+.hr-resume-drawer__outside { position: fixed; inset: 0; z-index: 1190; border: 0; background: transparent; cursor: default; }
+.hr-resume-drawer--open { transform: translateX(0); }
+.hr-resume-drawer__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+  border-bottom: 1px solid var(--hr-border);
+  background: var(--hr-surface);
+  padding: 12px 14px;
+}
+.hr-resume-drawer__header strong { display: block; color: var(--hr-text); font-size: 15px; }
+.hr-resume-drawer__header span { display: block; color: var(--hr-text-muted); font-size: 12px; margin-top: 2px; }
+.hr-resume-drawer__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-bottom: 1px solid var(--hr-border);
+  background: var(--hr-surface);
+  padding: 0 14px 12px;
+}
+.hr-resume-drawer__meta span {
+  border: 1px solid var(--hr-border);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #41516a;
+  font-size: 11px;
+  padding: 3px 8px;
+}
+.hr-resume-drawer__body { overflow: auto; padding: 12px 14px 18px; }
+.hr-resume-drawer__body section { margin-bottom: 12px; }
+.hr-resume-drawer__body h2 { color: var(--hr-text); font-size: 13px; margin: 0 0 6px; }
+.hr-resume-drawer__body pre {
+  margin: 0;
+  border: 1px solid var(--hr-border);
+  border-radius: 6px;
+  background: var(--hr-surface);
+  color: #334155;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 10px;
+  white-space: pre-wrap;
+}
+
+.hr-vacancy-edit { display: flex; flex-direction: column; gap: 9px; }
+.hr-vacancy-edit__row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.hr-vacancy-edit__actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+
+.hr-candidate-action { display: flex; flex-direction: column; gap: 8px; }
+.hr-candidate-action .MuiButton-root { align-self: flex-start; }
+
+/* Управление статусом/вакансией и согласие на резерв в карточке */
+.hr-candidate-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px 4px; }
+.hr-retention-consent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--hr-border-accent);
+  background: var(--hr-tint);
+}
+.hr-request-vacancy { padding-bottom: 4px; }
+.hr-request-vacancy__actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* Полоса этапов воронки в карточке кандидата (стрелки, гориз. скролл) */
+.hr-stage-strip {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0;
+  margin: 0 14px;
+  border: 1px solid var(--hr-border-accent);
+  background: var(--hr-surface);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.hr-stage-strip__step {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 5px 10px 5px 16px;
+  border: none;
+  border-right: 1px solid var(--hr-border);
+  background: var(--hr-tint);
+  color: var(--hr-text-secondary);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 0 100%, 8px 50%);
+}
+.hr-stage-strip__step:first-child {
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 0 100%);
+  padding-left: 10px;
+}
+.hr-stage-strip__step:last-child {
+  border-right: none;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 8px 50%);
+}
+.hr-stage-strip__step:hover:not(:disabled) { background: var(--hr-hover); color: var(--hr-text); }
+.hr-stage-strip__step--current,
+.hr-stage-strip__step--current:disabled { background: var(--hr-brand); color: #fff; cursor: default; }
+
+/* Таймлайн-заготовка (article-вариант) */
+.hr-candidate-timeline { display: flex; flex-direction: column; gap: 8px; }
+.hr-candidate-timeline article { border: 1px solid var(--hr-border); border-radius: 6px; background: var(--hr-surface); padding: 8px 9px; }
+.hr-candidate-timeline strong { display: block; color: var(--hr-text); font-size: 12px; }
+.hr-candidate-timeline span,
+.hr-candidate-timeline small { display: block; color: var(--hr-text-muted); font-size: 10px; margin-top: 2px; }
+.hr-candidate-timeline p { margin: 6px 0 0; color: #334155; font-size: 11px; line-height: 1.45; white-space: pre-wrap; }
+
+/* Навыки-чипсы и чип причины отказа */
+.hr-skill-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.hr-skill-chip { background: var(--hr-divider); color: #37474f; border-radius: 999px; padding: 3px 10px; font-size: 11px; }
+.hr-reject-chip { align-self: flex-start; background: var(--hr-danger-bg); color: #c62828; border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 600; margin: 0 16px; }
+
+/* ─── Дашборд: раскладка ⅔ + ⅓ ───────────────────────────────────────────── */
+.hr-dash { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 18px; align-items: start; }
+.hr-dash__main { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.hr-dash__main:empty { display: none; }
+.hr-dash__side { display: flex; flex-direction: column; gap: 18px; }
+
+/* Заголовок карточки: крупный жирный + подпись капсом */
+.hr-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 10px; }
+.hr-card-head__title { display: flex; align-items: baseline; gap: 12px; }
+.hr-card-head__title h2 { margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -0.02em; color: var(--hr-ink); }
+.hr-caps { font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--hr-text-faint2); }
+
+/* Матрица «вакансия × этап» */
+.hr-matrix { background: var(--hr-surface); padding: 18px 20px; }
+.hr-matrix__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.hr-matrix--empty { display: flex; flex-direction: column; gap: 4px; padding: 14px 20px; }
+.hr-matrix--empty .hr-page__empty { margin: 0; }
+.hr-matrix__table-wrap { overflow-x: auto; }
+/* всю ширину карточки: узкая колонка вакансии + равные гибкие колонки этапов */
+.hr-matrix__table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 8px;
+  table-layout: fixed;
+}
+.hr-matrix__table th {
+  text-align: left;
+  padding: 2px 8px;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #6f7680;
+}
+.hr-matrix__table td { padding: 2px 8px; }
+.hr-matrix__table th:first-child,
+.hr-matrix__table td:first-child { width: 150px; }
+.hr-matrix__vacancy { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; background: none; border: none; cursor: pointer; padding: 2px 0; text-align: left; }
+.hr-matrix__vacancy strong { font-size: 13.5px; font-weight: 700; color: var(--hr-ink); }
+.hr-matrix__vacancy:hover strong { text-decoration: underline; }
+.hr-matrix__vacancy small { font-size: 10px; color: #90a4ae; }
+.hr-matrix__cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter .15s;
+  white-space: nowrap;
+}
+.hr-matrix__cell:hover { filter: brightness(.94); }
+.hr-matrix__cell--empty { width: 100%; min-width: 0; height: 42px; border-radius: 8px; background: #f1f3f5; cursor: default; }
+/* Легаси-цвета ячеек по коду этапа (оставлены для обратной совместимости) */
+.hr-matrix__cell--new { background: #e3eafc; color: #3949ab; }
+.hr-matrix__cell--screening { background: #fff3d6; color: #b26a00; }
+.hr-matrix__cell--manager { background: #fde2ec; color: #ad1457; }
+.hr-matrix__cell--offer { background: #f0f4c3; color: #827717; }
+.hr-matrix__cell--hired { background: #dcf2e3; color: #2e7d32; }
+/* Тон по строке вакансии (референс) */
+.hr-matrix__tone--0 { background: #fde2e2; color: #b3392f; }
+.hr-matrix__tone--1 { background: #fdeccd; color: #a96a12; }
+.hr-matrix__tone--2 { background: #dbeafe; color: #1d4ed8; }
+.hr-matrix__tone--3 { background: #f5f3c8; color: #8a7d0a; }
+.hr-matrix__tone--4 { background: #ead9fb; color: #7c3aed; }
+.hr-matrix__tone--5 { background: #d7f0e0; color: #1d7a46; }
+/* Цвет ячейки матрицы — по колонке-этапу (единый язык этапов) */
+.hr-matrix__cell--col-new       { background: #dbeafe; color: #1d4ed8; }
+.hr-matrix__cell--col-screening { background: #ede9fe; color: #6d28d9; }
+.hr-matrix__cell--col-manager   { background: #fde2ec; color: #ad1457; }
+.hr-matrix__cell--col-offer     { background: #eef3c7; color: #6f6a12; }
+.hr-matrix__cell--col-hired     { background: #d7f0e0; color: #1d7a46; }
+
+/* Пончик-сводка вакансий */
+.hr-donut__wrap { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.hr-donut__center { display: flex; justify-content: center; padding: 6px 0 14px; }
+.hr-donut { width: 168px; height: 168px; border-radius: 50%; position: relative; flex-shrink: 0; }
+.hr-donut--empty { background: none !important; border: 2px dashed #dfe4e8; }
+.hr-donut__hole {
+  position: absolute;
+  inset: 15px;
+  background: var(--hr-surface);
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.hr-donut__hole strong { font-size: 32px; line-height: 1; font-weight: 800; letter-spacing: -0.02em; }
+.hr-donut__hole small { font-size: 10px; color: #90a4ae; }
+.hr-donut__legend { display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: #37474f; }
+.hr-donut__legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
+.hr-donut__legend strong { font-size: 13px; }
+
+/* Легенда сеткой 2×2 */
+.hr-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+.hr-legend__item { display: flex; align-items: center; gap: 8px; }
+.hr-legend__item i { width: 4px; height: 22px; border-radius: 4px; flex-shrink: 0; }
+.hr-legend__item strong { font-size: 19px; font-weight: 800; letter-spacing: -0.02em; }
+.hr-legend__item em { font-style: normal; }
+
+/* Воронка горизонтальными барами */
+.hr-funnel { display: flex; flex-direction: column; gap: 6px; }
+.hr-funnel__row { display: grid; grid-template-columns: 128px 1fr 30px; gap: 8px; align-items: center; font-size: 12px; }
+.hr-funnel__row strong { text-align: right; }
+.hr-funnel__label { color: var(--hr-text-cool); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hr-funnel__bar { background: #f4f6f8; border-radius: 6px; height: 14px; overflow: hidden; display: block; }
+.hr-funnel__fill { display: block; height: 100%; border-radius: 6px; background: #dfe4e8; }
+
+/* Аватарки-инициалы */
+.hr-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #e8edf4;
+  color: #51606f;
+  font-size: 12px;
+  font-weight: 700;
+  font-style: normal;
+  flex-shrink: 0;
+}
+
+/* Кандидаты списком (как Employee): аватар + имя + чип этапа */
+.hr-people__list { display: flex; flex-direction: column; gap: 6px; }
+.hr-people__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: var(--hr-surface);
+  border: 1px solid #eceef1;
+  border-radius: 12px;
+  padding: 9px 12px;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.hr-people__row:hover { border-color: #c9ced6; }
+.hr-people__name { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 13px; font-weight: 700; color: var(--hr-ink); }
+.hr-people__name small { font-size: 11px; font-weight: 400; color: var(--hr-text-faint2); }
+.hr-chip { border-radius: 999px; padding: 4px 10px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+
+/* ─── Задачи «My Task» ────────────────────────────────────────────────────── */
+.hr-tasks { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.hr-tasks__col { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; background: var(--hr-surface); }
+.hr-tasks__col > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: var(--hr-text);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.hr-tasks__col header span { font-size: 15px; font-weight: 700; color: var(--hr-heading); text-transform: none; letter-spacing: 0; }
+.hr-tasks__count { padding: 2px 9px; border-radius: 999px; background: var(--hr-neutral-bg); color: var(--hr-text); font-size: 12px; min-width: 22px; height: 22px; }
+.hr-tasks__count--hot { background: var(--hr-danger-bg); color: var(--hr-danger-fg); }
+.hr-tasks__count--warm { background: var(--hr-warn-bg); color: var(--hr-warn-fg); }
+.hr-tasks__item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--hr-border);
+  font: inherit;
+  font-size: 11px;
+  color: var(--hr-text);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 12px;
+  background: var(--hr-soft);
+  padding: 10px 12px;
+  transition: background .15s, transform .1s;
+}
+.hr-tasks__item:hover { background: #f1f4f8; }
+.hr-tasks__item span { font-size: 13px; font-weight: 600; color: var(--hr-text-slate); }
+.hr-tasks__item small { color: var(--hr-text-faint); white-space: nowrap; font-size: 11px; }
+.hr-tasks__col--new .hr-tasks__item { border-left: 3px solid #e57373; }
+.hr-tasks__col--wait .hr-tasks__item { border-left: 3px solid #ffb74d; }
+.hr-tasks__col--today .hr-tasks__item { border-left: 3px solid #64b5f6; }
+
+/* Задачи строками: полоса-цвет + время + текст + стрелка в кружке */
+.hr-taskrows { display: flex; flex-direction: column; gap: 8px; }
+.hr-taskrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  background: var(--hr-surface);
+  border: 1px solid #eceef1;
+  border-radius: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.hr-taskrow:hover { border-color: #c9ced6; background: var(--hr-soft); }
+.hr-taskrow__bar { width: 4px; align-self: stretch; border-radius: 4px; flex-shrink: 0; }
+.hr-taskrow--req .hr-taskrow__bar { background: #f2aebf; }
+.hr-taskrow--wait .hr-taskrow__bar { background: #f2d17a; }
+.hr-taskrow--int .hr-taskrow__bar { background: #b8a7f2; }
+.hr-taskrow__time { font-size: 13px; font-weight: 700; color: var(--hr-ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hr-taskrow__text { flex: 1; font-size: 13.5px; font-weight: 600; color: var(--hr-ink-soft); display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.hr-taskrow__text small { font-size: 11px; font-weight: 400; color: var(--hr-text-faint2); }
+.hr-taskrow__go {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid #d6dae0;
+  color: #6f7680;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+  padding-bottom: 2px;
+}
+.hr-taskrow:hover .hr-taskrow__go { border-color: var(--hr-ink-soft); color: var(--hr-ink-soft); }
+
+/* ─── Канбан-доска кандидатов ─────────────────────────────────────────────── */
+.hr-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(190px, 1fr); gap: 10px; overflow-x: auto; padding-bottom: 8px; align-items: start; }
+.hr-board__col {
+  background: #f8fafc;
+  padding: 8px;
+  min-height: 120px;
+  transition: background .15s, border-color .15s;
+}
+.hr-board__col--over { background: #e8f1fd; border-color: #90caf9; }
+.hr-board__col--rejected { background: #fdf4f4; }
+.hr-board__col--rejected.hr-board__col--over { background: #fdeaea; border-color: #ef9a9a; }
+.hr-board__head { display: flex; justify-content: space-between; align-items: center; font-size: 11px; font-weight: 600; color: var(--hr-text-cool); text-transform: uppercase; letter-spacing: .03em; padding: 2px 4px 8px; }
+.hr-board__head strong { background: #eceff1; border-radius: 999px; min-width: 20px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; padding: 0 6px; }
+.hr-board__cards { display: flex; flex-direction: column; gap: 6px; }
+.hr-board__card {
+  background: var(--hr-surface);
+  border: 1px solid #e0e5ea;
+  border-radius: 12px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: grab;
+  text-align: left;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .06);
+}
+.hr-board__card:active { cursor: grabbing; }
+.hr-board__card:hover { border-color: #90a4ae; }
+.hr-board__card strong { font-size: 12px; color: var(--hr-text-slate); }
+.hr-board__card span { font-size: 11px; color: var(--hr-text-cool); }
+.hr-board__card small { font-size: 10px; color: #90a4ae; }
+.hr-board__placeholder { border: 1px dashed #cfd8dc; border-radius: 8px; padding: 14px 8px; text-align: center; font-size: 11px; color: #b0bec5; }
+.hr-board__cardhead { display: flex; align-items: center; gap: 8px; }
+.hr-board__cardhead .hr-avatar { width: 26px; height: 26px; font-size: 11px; }
+
+/* ─── Таймлайн истории кандидата ──────────────────────────────────────────── */
+.hr-timeline { display: flex; flex-direction: column; position: relative; padding-left: 18px; }
+.hr-timeline::before { content: ''; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 2px; background: #eceff1; border-radius: 2px; }
+.hr-timeline__item { position: relative; padding: 0 0 14px 0; }
+.hr-timeline__item:last-child { padding-bottom: 0; }
+.hr-timeline__dot { position: absolute; left: -18px; top: 3px; width: 12px; height: 12px; border-radius: 50%; background: #90caf9; border: 2px solid #fff; box-shadow: 0 0 0 1px #cfd8dc; }
+.hr-timeline__item--comment .hr-timeline__dot { background: #ffcc80; }
+.hr-timeline__item--interview_scheduled .hr-timeline__dot { background: #ce93d8; }
+.hr-timeline__item--stage_changed .hr-timeline__dot { background: #80cbc4; }
+.hr-timeline__item--status_changed .hr-timeline__dot { background: #ef9a9a; }
+.hr-timeline__item--imported .hr-timeline__dot, .hr-timeline__item--created .hr-timeline__dot { background: #a5d6a7; }
+.hr-timeline__item--email_sent .hr-timeline__dot { background: #b0bec5; }
+.hr-timeline__body header { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.hr-timeline__body header strong { font-size: 12px; color: var(--hr-text-slate); }
+.hr-timeline__body header time { font-size: 10px; color: #90a4ae; white-space: nowrap; }
+.hr-timeline__body small { display: block; font-size: 10px; color: #78909c; }
+.hr-timeline__body p { margin: 4px 0 0; font-size: 12px; color: #37474f; white-space: pre-wrap; }
+
+/* ─── Отправка кандидатов заказчику / сравнение / подбор ──────────────────── */
+.hr-submission { margin-bottom: 10px; padding: 8px 10px; border: 1px solid var(--hr-border-strong); background: var(--hr-surface); }
+.hr-submission__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--hr-border); }
+.hr-submission__header strong { display: block; color: var(--hr-text); font-size: 12px; }
+.hr-submission__header span { color: var(--hr-text-muted); font-size: 11px; }
+.hr-submission__status--ok { background: var(--hr-ok-bg) !important; color: var(--hr-ok-fg) !important; }
+.hr-submission__meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 0; color: var(--hr-text-secondary); font-size: 11px; }
+.hr-submission__photo { width: 44px; height: 44px; border-radius: 4px; border: 1px solid var(--hr-border-strong); object-fit: cover; }
+.hr-submission__note { margin: 4px 0; color: #314158; font-size: 11px; }
+.hr-submission__contacts { margin: 6px 0 0; color: var(--hr-text-muted); font-size: 10px; }
+.hr-submission details { margin-top: 4px; font-size: 11px; }
+.hr-submission summary { cursor: pointer; color: var(--hr-brand); }
+.hr-submission pre { margin: 4px 0 0; font-family: inherit; font-size: 11px; white-space: pre-wrap; color: #314158; }
+.hr-submission__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.hr-submissions__head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+
+.hr-compare { position: fixed; inset: 4% 6%; background: var(--hr-surface); border-radius: 12px; box-shadow: 0 12px 40px rgba(16, 24, 40, .28); z-index: 1310; display: flex; flex-direction: column; padding: 14px 16px; }
+.hr-compare__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.hr-compare__head strong { font-size: 14px; }
+.hr-compare__scroll { overflow: auto; flex: 1; }
+.hr-compare__table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.hr-compare__table th, .hr-compare__table td { border-bottom: 1px solid #eceff1; padding: 8px 10px; vertical-align: top; text-align: left; min-width: 160px; }
+.hr-compare__table tbody th[scope="row"] { width: 150px; min-width: 130px; color: #78909c; font-weight: 600; font-size: 11px; background: var(--hr-soft); position: sticky; left: 0; }
+.hr-compare__person { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.hr-compare__person img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
+.hr-compare__no-photo { width: 48px; height: 48px; border-radius: 50%; background: #eceff1; color: #78909c; display: inline-flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; }
+.hr-compare__person strong { font-size: 12px; }
+.hr-compare__person span { font-size: 11px; color: #78909c; font-weight: 400; }
+.hr-compare__text { margin: 0; white-space: pre-wrap; font: inherit; max-height: 130px; overflow: auto; color: #37474f; }
+.hr-compare__actions { display: flex; flex-direction: column; gap: 6px; }
+.hr-compare__decision td { background: var(--hr-soft); }
+
+.hr-picker__search { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.hr-picker__list { max-height: 220px; overflow-y: auto; border: 1px solid var(--hr-border-strong); background: var(--hr-surface); margin-bottom: 8px; }
+.hr-picker__item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-bottom: 1px solid var(--hr-divider); font-size: 11px; cursor: pointer; }
+.hr-picker__item:hover { background: var(--hr-tint); }
+.hr-picker__name { font-weight: 700; color: var(--hr-text); white-space: nowrap; }
+.hr-picker__meta { color: var(--hr-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hr-picker__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Диалог отказа кандидату */
+.hr-reject-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 1300;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(420px, calc(100vw - 40px));
+  padding: 14px;
+  border: 1px solid var(--hr-border-accent);
+  background: var(--hr-surface);
+  box-shadow: 0 8px 30px rgba(39, 54, 75, 0.25);
+}
+.hr-reject-dialog strong { color: var(--hr-text); font-size: 13px; }
+.hr-reject-dialog__actions { display: flex; gap: 8px; }
+
+/* ─── Заявки на подбор: карточки заявителя + строки задач ─────────────────── */
+.hr-request-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.hr-request-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+  background: var(--hr-tint);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.hr-request-card:hover { background: var(--hr-hover); }
+.hr-request-card__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.hr-request-card__top strong { color: var(--hr-text); font-size: 15px; }
+.hr-request-card__meta { color: var(--hr-text-secondary); font-size: 11px; }
+.hr-request-card__pending { align-self: flex-start; padding: 4px 10px; border-radius: 999px; background: var(--hr-warn-bg); color: var(--hr-warn-fg); font-size: 11px; font-weight: 700; }
+.hr-request-card__pending--overdue { color: #c62828; font-weight: 700; }
+.hr-request-card__done { color: var(--hr-ok-fg); font-size: 11px; font-weight: 700; }
+.hr-request-card__empty { color: var(--hr-text-muted); font-size: 11px; }
+
+/* ─── Недельная сетка интервью ────────────────────────────────────────────── */
+.hr-week__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--hr-border-accent);
+  background: var(--hr-tint);
+  color: var(--hr-text);
+  font-size: 11px;
+}
+.hr-week__count { margin-left: auto; color: var(--hr-text-secondary); }
+.hr-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.hr-week__day { display: flex; flex-direction: column; min-height: 132px; border: 1px solid var(--hr-border-strong); background: var(--hr-surface); }
+.hr-week__day--today { border-color: var(--hr-border-accent); background: var(--hr-tint-2); }
+.hr-week__day > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--hr-border-strong);
+  background: var(--hr-neutral-bg);
+  color: var(--hr-text);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.hr-week__day > header strong { font-size: 11px; letter-spacing: 0; }
+.hr-week__slots { display: flex; flex-direction: column; gap: 4px; padding: 6px; }
+.hr-week__empty { color: #94a3b8; font-size: 11px; text-align: center; }
+.hr-week__slot {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 6px;
+  border: 1px solid var(--hr-border-accent);
+  border-radius: 4px;
+  background: var(--hr-tint);
+  color: var(--hr-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.hr-week__slot:hover { background: var(--hr-hover); }
+.hr-week__slot-time { font-size: 10px; font-weight: 700; color: var(--hr-brand); }
+.hr-week__slot-name { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hr-week__slot-meta { font-size: 10px; color: var(--hr-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Вариант карточки под модификатором .hr-page--ref (выше по специфичности) */
+.hr-page--ref .hr-page__card { padding: 20px 22px; border-radius: 16px; }
+
+/* ─── Адаптив ─────────────────────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .hr-week { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hr-page__grid--triple { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 1000px) {
+  .hr-dash { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 760px) {
+  .hr-page__header { align-items: flex-start; flex-direction: column; }
+  .hr-page__form-wide { grid-column: 1; }
+  .hr-page__table-shell { overflow-x: auto; }
+  .hr-import__summary,
+  .hr-import__footer { align-items: stretch; flex-direction: column; }
+  .hr-import__workspace { grid-template-columns: 1fr; }
+  .hr-page__table { min-width: 760px; }
+  .hr-resume-drawer { width: calc(100vw - 18px); }
+  .hr-vacancy-edit__row { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 700px) {
+  .hr-page__filters { flex-wrap: wrap; }
+  .hr-request-cards { grid-template-columns: 1fr; }
+  .hr-request-card { padding: 14px; }
+  .hr-request-card__top strong { font-size: 15px; }
+  .hr-submission__actions { flex-direction: column; align-items: stretch; }
+  .hr-submission__actions .MuiButton-root { min-height: 44px; }
+  .hr-submission__actions .MuiTextField-root { width: 100%; }
+  .hr-resume-drawer { width: 100vw; }
+  .hr-reject-dialog { left: 4vw; right: 4vw; width: auto; transform: none; }
+  .hr-compare { inset: 2%; padding: 10px; }
+  .hr-compare__table th, .hr-compare__table td { min-width: 140px; padding: 6px; }
+  .hr-tasks { grid-template-columns: 1fr; }
+  .hr-page__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hr-board { grid-auto-columns: 78vw; }
+}

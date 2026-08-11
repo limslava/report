@@ -45,6 +45,7 @@ import {
   AccountTree,
   Warehouse,
   SpaceDashboard,
+  Work,
 } from '@mui/icons-material';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -65,12 +66,16 @@ import {
   canViewBPDashboard,
   canShowBPDashboardMenu,
   canAccessWarehouse,
+  canAccessHrCabinet,
+  canCreateHiringRequest,
+  canViewHrReports,
 } from '../utils/rolePermissions';
 import { getHasUnsavedChanges, getUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import { getRuntimeAppSettings } from '../services/api';
 import { useServiceHealth } from '../hooks/useServiceHealth';
 import useNotesUnreadStore from '../store/notes-unread-store';
 import useContractUnreadStore from '../store/contract-unread-store';
+import useHhBadgesStore from '../store/hh-badges-store';
 
 const expandedDrawerWidth = 280;
 const collapsedDrawerWidth = 86;
@@ -100,6 +105,9 @@ const DashboardLayout = () => {
   const contractUnreadCount = useContractUnreadStore((state) => state.unreadCount);
   const startContractUnreadSync = useContractUnreadStore((state) => state.start);
   const stopContractUnreadSync = useContractUnreadStore((state) => state.stop);
+  const hrBadges = useHhBadgesStore((state) => state.badges);
+  const startHhBadgesSync = useHhBadgesStore((state) => state.start);
+  const stopHhBadgesSync = useHhBadgesStore((state) => state.stop);
   const [isWorkSubmenuOpen, setIsWorkSubmenuOpen] = useState(false);
   const [isPlansSubmenuOpen, setIsPlansSubmenuOpen] = useState(true);
   const [isAdminWorkSubmenuOpen, setIsAdminWorkSubmenuOpen] = useState(false);
@@ -111,6 +119,7 @@ const DashboardLayout = () => {
   const [isMoscowGarageSubmenuOpen, setIsMoscowGarageSubmenuOpen] = useState(false);
   const [isWorkSecuritySubmenuOpen, setIsWorkSecuritySubmenuOpen] = useState(false);
   const [isBusinessProcessSubmenuOpen, setIsBusinessProcessSubmenuOpen] = useState(false);
+  const [isHrSubmenuOpen, setIsHrSubmenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
@@ -185,6 +194,11 @@ const DashboardLayout = () => {
   const canOpenBillOfLading = canAccessBillOfLading(user?.role);
   const showBPDashboardMenu = canShowBPDashboardMenu(user?.role);
   const canOpenBusinessProcesses = canOpenContractApproval || canOpenCandidateChecks || canOpenBillOfLading;
+  // Рекрутер и админ видят весь кабинет; руководитель-заявитель — только заявки.
+  const canOpenHrCabinet = canAccessHrCabinet(user?.role);
+  const canOpenHrRequests = canCreateHiringRequest(user?.role);
+  const canOpenHrModule = canOpenHrCabinet || canOpenHrRequests;
+  const canOpenHrReports = canViewHrReports(user?.role);
   const defaultBusinessProcessRoute = canOpenContractApproval
     ? '/business-processes/contract-approval'
     : canOpenCandidateChecks
@@ -355,6 +369,38 @@ const DashboardLayout = () => {
     </Box>
   );
 
+  // Бейджи задач подбора: красный — требует действия, синий — интервью сегодня.
+  const hrBadgesTotal = hrBadges.total;
+  const hrBadgesLabel = hrBadgesTotal > 99 ? '99+' : hrBadgesTotal;
+  const hrRequestsBadgeCount = hrBadges.role === 'recruiter' ? hrBadges.newRequests : hrBadges.pendingDecisions;
+  const hrRequestsBadgeTitle = hrBadges.role === 'recruiter'
+    ? `${hrBadges.newRequests} новых заявок на подбор`
+    : `${hrBadges.pendingDecisions} кандидатов ждут вашего решения`;
+  const hrPill = (count: number, title: string, color = '#e53935') => (
+    <Box
+      component="span"
+      title={title}
+      sx={{
+        ml: 1,
+        minWidth: 18,
+        height: 18,
+        px: '5px',
+        borderRadius: '999px',
+        bgcolor: color,
+        color: '#fff',
+        fontSize: 11,
+        fontWeight: 700,
+        lineHeight: 1,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+      }}
+    >
+      {count > 99 ? '99+' : count}
+    </Box>
+  );
+
   const menuItems = [
     canAccessWarehouse(user?.role)
       ? {
@@ -415,6 +461,18 @@ const DashboardLayout = () => {
       stopContractUnreadSync();
     };
   }, [user?.id, user?.role, startContractUnreadSync, stopContractUnreadSync]);
+
+  // Счётчики подбора: рекрутеру и заявителям, раз в минуту.
+  useEffect(() => {
+    if (!user?.id || !(canAccessHrCabinet(user.role) || canCreateHiringRequest(user.role))) {
+      stopHhBadgesSync();
+      return;
+    }
+    startHhBadgesSync(user.id);
+    return () => {
+      stopHhBadgesSync();
+    };
+  }, [user?.id, user?.role, startHhBadgesSync, stopHhBadgesSync]);
 
   useEffect(() => {
     if (!user) {
@@ -479,6 +537,7 @@ const DashboardLayout = () => {
         workGarage: boolean;
         moscowGarage: boolean;
         businessProcess: boolean;
+        hr: boolean;
       }>;
       if (typeof parsed.plans === 'boolean') setIsPlansSubmenuOpen(parsed.plans);
       if (typeof parsed.work === 'boolean') setIsWorkSubmenuOpen(parsed.work);
@@ -490,6 +549,7 @@ const DashboardLayout = () => {
       if (typeof parsed.workGarage === 'boolean') setIsWorkGarageSubmenuOpen(parsed.workGarage);
       if (typeof parsed.moscowGarage === 'boolean') setIsMoscowGarageSubmenuOpen(parsed.moscowGarage);
       if (typeof parsed.businessProcess === 'boolean') setIsBusinessProcessSubmenuOpen(parsed.businessProcess);
+      if (typeof parsed.hr === 'boolean') setIsHrSubmenuOpen(parsed.hr);
     } catch {
       // ignore invalid persisted submenu state
     }
@@ -510,6 +570,7 @@ const DashboardLayout = () => {
           workGarage: isWorkGarageSubmenuOpen,
           moscowGarage: isMoscowGarageSubmenuOpen,
           businessProcess: isBusinessProcessSubmenuOpen,
+          hr: isHrSubmenuOpen,
         }),
       );
     } catch {
@@ -526,6 +587,7 @@ const DashboardLayout = () => {
     isWorkGarageSubmenuOpen,
     isMoscowGarageSubmenuOpen,
     isBusinessProcessSubmenuOpen,
+    isHrSubmenuOpen,
   ]);
 
 
@@ -1139,6 +1201,105 @@ const DashboardLayout = () => {
             )}
           </>
         )}
+        {canOpenHrModule && (
+          <>
+            <ListItem disablePadding>
+              <Tooltip title={!isPinnedOpen ? (canOpenHrCabinet ? 'Кабинет HR' : 'Подбор персонала') : ''} placement="right">
+                <ListItemButton
+                  selected={location.pathname.startsWith('/hr')}
+                  onClick={() => {
+                    const nextOpen = !isHrSubmenuOpen;
+                    setIsHrSubmenuOpen(nextOpen);
+                    if (nextOpen && !location.pathname.startsWith('/hr')) {
+                      handleNavigate(canOpenHrCabinet ? '/hr/dashboard' : '/hr/requests');
+                    }
+                  }}
+                >
+                  <ListItemIcon sx={{ minWidth: isPinnedOpen ? 40 : 0, justifyContent: 'center' }}>
+                    <Badge color="error" badgeContent={hrBadgesLabel} invisible={isPinnedOpen || hrBadgesTotal <= 0}>
+                      <Work />
+                    </Badge>
+                  </ListItemIcon>
+                  {isPinnedOpen && <ListItemText primary={canOpenHrCabinet ? 'Кабинет HR' : 'Подбор персонала'} />}
+                  {isPinnedOpen && !isHrSubmenuOpen && hrBadgesTotal > 0
+                    && hrPill(hrBadgesTotal, 'Задачи подбора: заявки, решения, интервью')}
+                  {isPinnedOpen ? (isHrSubmenuOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />) : null}
+                </ListItemButton>
+              </Tooltip>
+            </ListItem>
+            {isPinnedOpen && isHrSubmenuOpen && (
+              <>
+                {canOpenHrCabinet && (
+                  <ListItem disablePadding sx={{ pl: 4 }}>
+                    <ListItemButton
+                      selected={location.pathname === '/hr/dashboard'}
+                      onClick={() => handleNavigate('/hr/dashboard')}
+                      sx={{ py: 0.5, minHeight: 34 }}
+                    >
+                      <ListItemText primary="Обзор" primaryTypographyProps={{ fontSize: 14 }} />
+                    </ListItemButton>
+                  </ListItem>
+                )}
+                <ListItem disablePadding sx={{ pl: 4 }}>
+                  <ListItemButton
+                    selected={location.pathname === '/hr/requests'}
+                    onClick={() => handleNavigate('/hr/requests')}
+                    sx={{ py: 0.5, minHeight: 34 }}
+                  >
+                    <ListItemText primary="Заявки на подбор" primaryTypographyProps={{ fontSize: 14 }} />
+                    {hrRequestsBadgeCount > 0 && hrPill(hrRequestsBadgeCount, hrRequestsBadgeTitle)}
+                  </ListItemButton>
+                </ListItem>
+                {canOpenHrCabinet && (
+                <ListItem disablePadding sx={{ pl: 4 }}>
+                  <ListItemButton
+                    selected={location.pathname.startsWith('/hr/vacancies')}
+                    onClick={() => handleNavigate('/hr/vacancies')}
+                    sx={{ py: 0.5, minHeight: 34 }}
+                  >
+                    <ListItemText primary="Вакансии" primaryTypographyProps={{ fontSize: 14 }} />
+                  </ListItemButton>
+                </ListItem>
+                )}
+                {canOpenHrCabinet && (
+                <ListItem disablePadding sx={{ pl: 4 }}>
+                  <ListItemButton
+                    selected={location.pathname === '/hr/candidates'}
+                    onClick={() => handleNavigate('/hr/candidates')}
+                    sx={{ py: 0.5, minHeight: 34 }}
+                  >
+                    <ListItemText primary="Кандидаты" primaryTypographyProps={{ fontSize: 14 }} />
+                  </ListItemButton>
+                </ListItem>
+                )}
+                {canOpenHrCabinet && (
+                <ListItem disablePadding sx={{ pl: 4 }}>
+                  <ListItemButton
+                    selected={location.pathname === '/hr/interviews'}
+                    onClick={() => handleNavigate('/hr/interviews')}
+                    sx={{ py: 0.5, minHeight: 34 }}
+                  >
+                    <ListItemText primary="Интервью" primaryTypographyProps={{ fontSize: 14 }} />
+                    {hrBadges.interviewsToday > 0
+                      && hrPill(hrBadges.interviewsToday, `${hrBadges.interviewsToday} интервью сегодня`, '#1976d2')}
+                  </ListItemButton>
+                </ListItem>
+                )}
+                {canOpenHrReports && (
+                  <ListItem disablePadding sx={{ pl: 4 }}>
+                    <ListItemButton
+                      selected={location.pathname === '/hr/reports'}
+                      onClick={() => handleNavigate('/hr/reports')}
+                      sx={{ py: 0.5, minHeight: 34 }}
+                    >
+                      <ListItemText primary="Отчёты по подбору" primaryTypographyProps={{ fontSize: 14 }} />
+                    </ListItemButton>
+                  </ListItem>
+                )}
+              </>
+            )}
+          </>
+        )}
         {menuItems.map((item) => (
           <ListItem disablePadding key={item.key}>
             <Tooltip title={!isPinnedOpen ? item.label : ''} placement="right">
@@ -1214,6 +1375,14 @@ const DashboardLayout = () => {
               {location.pathname.includes('/business-processes/bill-of-lading') && 'Коносамент'}
               {location.pathname.includes('/business-processes/dashboard') && 'Дашборд'}
               {location.pathname.startsWith('/warehouse') && 'Склад ТС'}
+              {location.pathname.startsWith('/hr') && (
+                <>
+                  Кабинет HR
+                  <Box component="span" sx={{ ml: 1.5, fontSize: 13, fontWeight: 400, opacity: 0.75 }}>
+                    {new Date().toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long' })}
+                  </Box>
+                </>
+              )}
               {location.pathname.includes('/settings') && 'Настройки'}
             </Typography>
           )}

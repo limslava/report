@@ -12,7 +12,11 @@ export const AppDataSource = new DataSource({
   password: process.env.DB_PASSWORD || 'postgres',
   database: process.env.DB_DATABASE || 'logistics_reporting',
   synchronize: process.env.DB_SYNCHRONIZE === 'true',
-  migrationsRun: process.env.DB_MIGRATIONS_RUN === 'true',
+  // Выключено намеренно: initialize() выполнял бы миграции ДО synchronize,
+  // и на пустой базе миграция склада падала на отсутствующей counterparties.
+  // Порядок теперь контролирует ensureDatabaseSchema() (db-bootstrap.service),
+  // флаг DB_MIGRATIONS_RUN обрабатывается там же.
+  migrationsRun: false,
   logging: process.env.NODE_ENV === 'development',
   entities: [path.join(__dirname, '..', 'models', '**', '*.{js,ts}')],
   migrations: [path.join(__dirname, '..', 'migrations', '**', '*.{js,ts}')],
