@@ -86,6 +86,8 @@ export default function DirectoriesPage() {
   });
 
   const [employeeEdit, setEmployeeEdit] = useState<Partial<EmployeeItem> | null>(null);
+  const [personFilter, setPersonFilter] = useState<'all' | 'driver' | 'dispatcher' | 'other'>('all');
+  const [showFullData, setShowFullData] = useState(false);
   const [vehicleEdit, setVehicleEdit] = useState<Partial<FleetVehicleItem> | null>(null);
   const [vehicleModelLabel, setVehicleModelLabel] = useState('');
   const [trailerEdit, setTrailerEdit] = useState<Partial<TrailerItem> | null>(null);
@@ -114,6 +116,13 @@ export default function DirectoriesPage() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  const filteredEmployees = useMemo(() => {
+    if (personFilter === 'all') return employees;
+    if (personFilter === 'driver') return employees.filter((e) => e.position === 'водитель');
+    if (personFilter === 'dispatcher') return employees.filter((e) => e.position === 'диспетчер');
+    return employees.filter((e) => e.position !== 'водитель' && e.position !== 'диспетчер');
+  }, [employees, personFilter]);
 
   const copyCard = async (employee: EmployeeItem) => {
     try {
@@ -277,14 +286,21 @@ export default function DirectoriesPage() {
               variant="scrollable"
               sx={{ minHeight: 40, '& .MuiTab-root': { minHeight: 40, py: 0 } }}
             >
-              <Tab value="employees" label={`Сотрудники (${employees.length})`} />
+              <Tab value="employees" label={`Персонал (${employees.length})`} />
               <Tab value="vehicles" label={`Техника (${vehicles.length})`} />
               <Tab value="trailers" label={`Прицепы (${trailers.length})`} />
               <Tab value="models" label={`Модели и нормы (${models.length})`} />
             </Tabs>
             <Box sx={{ ml: 'auto' }}>
               {tab === 'employees' && (
-                <button type="button" className="ops-btn ops-btn--add" onClick={() => setEmployeeEdit({ position: 'водитель', status: 'active' })}>
+                <button
+                  type="button"
+                  className="ops-btn ops-btn--add"
+                  onClick={() => {
+                    setShowFullData(false);
+                    setEmployeeEdit({ position: 'водитель', status: 'active' });
+                  }}
+                >
                   Добавить
                 </button>
               )}
@@ -317,6 +333,19 @@ export default function DirectoriesPage() {
 
       <section className="ops-preview__matrix">
         {tab === 'employees' && (
+          <>
+          <div className="dir-filter">
+            {([['all', 'Все'], ['driver', 'Водители'], ['dispatcher', 'Диспетчеры'], ['other', 'Прочие']] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={`dir-filter__btn${personFilter === value ? ' is-active' : ''}`}
+                onClick={() => setPersonFilter(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="fuel-matrix">
             <table>
               <thead>
@@ -330,9 +359,13 @@ export default function DirectoriesPage() {
                 </tr>
               </thead>
               <tbody>
-                {employees.map((employee) => (
+                {filteredEmployees.map((employee) => (
                   <tr key={employee.id}>
-                    <td className="fuel-cell--sticky" style={{ cursor: 'pointer' }} onClick={() => void showCard(employee)}>
+                    <td
+                      className="fuel-cell--sticky"
+                      style={employee.position === 'водитель' ? { cursor: 'pointer' } : undefined}
+                      onClick={employee.position === 'водитель' ? () => void showCard(employee) : undefined}
+                    >
                       {employee.fullName}
                     </td>
                     <td className="fuel-cell--center">{employee.position}</td>
@@ -348,12 +381,20 @@ export default function DirectoriesPage() {
                       </span>
                     </td>
                     <td className="fuel-cell--center dir-actions">
-                      <Tooltip title="Скопировать карточку">
-                        <IconButton size="small" onClick={() => void copyCard(employee)}>
-                          <ContentCopy sx={{ fontSize: 16 }} />
-                        </IconButton>
-                      </Tooltip>
-                      <IconButton size="small" onClick={() => setEmployeeEdit(employee)}>
+                      {employee.position === 'водитель' && (
+                        <Tooltip title="Скопировать карточку водителя">
+                          <IconButton size="small" onClick={() => void copyCard(employee)}>
+                            <ContentCopy sx={{ fontSize: 16 }} />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          setShowFullData(false);
+                          setEmployeeEdit(employee);
+                        }}
+                      >
                         <Edit sx={{ fontSize: 16 }} />
                       </IconButton>
                       <IconButton size="small" className="dir-actions__delete" onClick={() => void removeEntity('employees', employee.id, employee.fullName)}>
@@ -362,14 +403,17 @@ export default function DirectoriesPage() {
                     </td>
                   </tr>
                 ))}
-                {employees.length === 0 && (
+                {filteredEmployees.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="fuel-empty">Справочник пуст — добавьте сотрудников</td>
+                    <td colSpan={6} className="fuel-empty">
+                      {employees.length === 0 ? 'Справочник пуст — добавьте сотрудников' : 'Нет записей по выбранному фильтру'}
+                    </td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
+          </>
         )}
 
         {tab === 'vehicles' && (
@@ -544,9 +588,13 @@ export default function DirectoriesPage() {
 
 
 
-      {/* ─── Карточка сотрудника ─── */}
+      {/* ─── Карточка сотрудника: полная для водителя, короткая для остальных ─── */}
       <Dialog open={Boolean(employeeEdit)} onClose={() => setEmployeeEdit(null)} maxWidth="md" fullWidth>
-        <DialogTitle>{employeeEdit?.id ? 'Карточка сотрудника' : 'Новый сотрудник'}</DialogTitle>
+        <DialogTitle>
+          {(employeeEdit?.position ?? 'водитель') === 'водитель'
+            ? (employeeEdit?.id ? 'Карточка водителя' : 'Новый водитель')
+            : (employeeEdit?.id ? 'Карточка сотрудника' : 'Новый сотрудник')}
+        </DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mt: 1 }}>
             {textField('ФИО', employeeEdit?.fullName, (value) => setEmployeeEdit((prev) => ({ ...prev, fullName: value })))}
@@ -568,41 +616,52 @@ export default function DirectoriesPage() {
               <MenuItem value="active">работает</MenuItem>
               <MenuItem value="fired">уволен</MenuItem>
             </TextField>
-            {textField('Дата рождения', formatDateInput(employeeEdit?.birthDate), (value) => setEmployeeEdit((prev) => ({ ...prev, birthDate: value || null })), { type: 'date' })}
-            {textField('Место рождения', employeeEdit?.birthPlace, (value) => setEmployeeEdit((prev) => ({ ...prev, birthPlace: value })))}
-            {textField('Паспорт (серия и номер)', employeeEdit?.passportNumber, (value) => setEmployeeEdit((prev) => ({ ...prev, passportNumber: value })))}
-            {textField('Дата выдачи паспорта', formatDateInput(employeeEdit?.passportIssueDate), (value) => setEmployeeEdit((prev) => ({ ...prev, passportIssueDate: value || null })), { type: 'date' })}
           </Box>
-          <Box sx={{ mt: 1.5, display: 'grid', gap: 1.5 }}>
-            {textField('Кем выдан паспорт', employeeEdit?.passportIssuedBy, (value) => setEmployeeEdit((prev) => ({ ...prev, passportIssuedBy: value })))}
-            {textField('Адрес регистрации', employeeEdit?.registrationAddress, (value) => setEmployeeEdit((prev) => ({ ...prev, registrationAddress: value })))}
-          </Box>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mt: 1.5 }}>
-            {textField('ВУ (номер)', employeeEdit?.licenseNumber, (value) => setEmployeeEdit((prev) => ({ ...prev, licenseNumber: value })))}
-            {textField('Дата выдачи ВУ', formatDateInput(employeeEdit?.licenseIssueDate), (value) => setEmployeeEdit((prev) => ({ ...prev, licenseIssueDate: value || null })), { type: 'date' })}
-            <TextField
-              select size="small" label="Закреплённое авто" fullWidth
-              value={employeeEdit?.assignedVehicleId ?? ''}
-              onChange={(event) => setEmployeeEdit((prev) => ({ ...prev, assignedVehicleId: event.target.value || null }))}
-            >
-              <MenuItem value="">— не закреплено —</MenuItem>
-              {vehicles.map((vehicle) => (
-                <MenuItem key={vehicle.id} value={vehicle.id}>
-                  {vehicle.plate}{vehicle.model ? ` · ${vehicle.model.brand}` : ''}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              select size="small" label="Прицеп" fullWidth
-              value={employeeEdit?.assignedTrailerId ?? ''}
-              onChange={(event) => setEmployeeEdit((prev) => ({ ...prev, assignedTrailerId: event.target.value || null }))}
-            >
-              <MenuItem value="">— без прицепа —</MenuItem>
-              {trailers.map((trailer) => (
-                <MenuItem key={trailer.id} value={trailer.id}>{trailer.plate}</MenuItem>
-              ))}
-            </TextField>
-          </Box>
+          {(employeeEdit?.position ?? 'водитель') !== 'водитель' && !showFullData && (
+            <Button size="small" sx={{ mt: 1.5 }} onClick={() => setShowFullData(true)}>
+              Заполнить полные данные (паспорт, ВУ, закрепление)
+            </Button>
+          )}
+          {((employeeEdit?.position ?? 'водитель') === 'водитель' || showFullData) && (
+            <>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mt: 1.5 }}>
+                {textField('Дата рождения', formatDateInput(employeeEdit?.birthDate), (value) => setEmployeeEdit((prev) => ({ ...prev, birthDate: value || null })), { type: 'date' })}
+                {textField('Место рождения', employeeEdit?.birthPlace, (value) => setEmployeeEdit((prev) => ({ ...prev, birthPlace: value })))}
+                {textField('Паспорт (серия и номер)', employeeEdit?.passportNumber, (value) => setEmployeeEdit((prev) => ({ ...prev, passportNumber: value })))}
+                {textField('Дата выдачи паспорта', formatDateInput(employeeEdit?.passportIssueDate), (value) => setEmployeeEdit((prev) => ({ ...prev, passportIssueDate: value || null })), { type: 'date' })}
+              </Box>
+              <Box sx={{ mt: 1.5, display: 'grid', gap: 1.5 }}>
+                {textField('Кем выдан паспорт', employeeEdit?.passportIssuedBy, (value) => setEmployeeEdit((prev) => ({ ...prev, passportIssuedBy: value })))}
+                {textField('Адрес регистрации', employeeEdit?.registrationAddress, (value) => setEmployeeEdit((prev) => ({ ...prev, registrationAddress: value })))}
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mt: 1.5 }}>
+                {textField('ВУ (номер)', employeeEdit?.licenseNumber, (value) => setEmployeeEdit((prev) => ({ ...prev, licenseNumber: value })))}
+                {textField('Дата выдачи ВУ', formatDateInput(employeeEdit?.licenseIssueDate), (value) => setEmployeeEdit((prev) => ({ ...prev, licenseIssueDate: value || null })), { type: 'date' })}
+                <TextField
+                  select size="small" label="Закреплённое авто" fullWidth
+                  value={employeeEdit?.assignedVehicleId ?? ''}
+                  onChange={(event) => setEmployeeEdit((prev) => ({ ...prev, assignedVehicleId: event.target.value || null }))}
+                >
+                  <MenuItem value="">— не закреплено —</MenuItem>
+                  {vehicles.map((vehicle) => (
+                    <MenuItem key={vehicle.id} value={vehicle.id}>
+                      {vehicle.plate}{vehicle.model ? ` · ${vehicle.model.brand}` : ''}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  select size="small" label="Прицеп" fullWidth
+                  value={employeeEdit?.assignedTrailerId ?? ''}
+                  onChange={(event) => setEmployeeEdit((prev) => ({ ...prev, assignedTrailerId: event.target.value || null }))}
+                >
+                  <MenuItem value="">— без прицепа —</MenuItem>
+                  {trailers.map((trailer) => (
+                    <MenuItem key={trailer.id} value={trailer.id}>{trailer.plate}</MenuItem>
+                  ))}
+                </TextField>
+              </Box>
+            </>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEmployeeEdit(null)}>Отмена</Button>
