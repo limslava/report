@@ -3495,7 +3495,7 @@ export default function OperationsPreview() {
               <div className="ops-modal__hint">С {freeInputUntil} ФИО и госномера — только из справочника.</div>
             )}
             <datalist id="ops-name-options">
-              {nameSuggestions(filter !== 'Все' ? filter : null).map((name) => (
+              {nameSuggestions(addDepartment).map((name) => (
                 <option key={name} value={name} />
               ))}
             </datalist>
