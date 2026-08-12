@@ -125,6 +125,8 @@ type PersonRow = {
   name: string;
   secondName?: string;
   plate: string;
+  /** Номер прицепа сцепки — общий на строку (в т.ч. на двух водителей). */
+  trailer?: string;
   note?: string;
   secondNote?: string;
   department: Department;
@@ -341,10 +343,12 @@ export default function OperationsPreview() {
     name: string;
     secondName: string;
     plate: string;
+    trailer: string;
   }>({
     name: '',
     secondName: '',
     plate: '',
+    trailer: '',
   });
 
   const resolvePeopleForMonth = (targetMonth: string, source: PeopleByMonth): PersonRow[] => {
@@ -613,7 +617,7 @@ export default function OperationsPreview() {
   };
   const cardLocation = activeLocation === 'ktk_mow' || activeLocation === 'garage_mow' ? 'mow' : 'vvo';
   const canCopyDriverCard = directoryLocationsForRole(userRole).includes(cardLocation);
-  const [directoryOptions, setDirectoryOptions] = useState<DirectoryOptions>({ employees: [], vehicles: [] });
+  const [directoryOptions, setDirectoryOptions] = useState<DirectoryOptions>({ employees: [], vehicles: [], trailers: [] });
   const [freeInputUntil, setFreeInputUntil] = useState<string>('');
 
   useEffect(() => {
@@ -799,7 +803,9 @@ export default function OperationsPreview() {
       setSelectionAnchor(null);
     }
   }, [selectedCell, selectedCellInCurrentView]);
-  const dayColumnStart = 4;
+  // Колонка «Прицеп» — только в графике контейнеровозов
+  const showTrailerColumn = !isPersonnelSection && filter === 'Контейнеры';
+  const dayColumnStart = 5;
   const totalColumnIndex = dayColumnStart + monthDays.length;
   const currentScopeKey = `${effectiveMode}|${monthValue}` as OverrideScopeKey;
   const overrides = allOverrides[currentScopeKey] ?? {};
@@ -2445,6 +2451,7 @@ export default function OperationsPreview() {
             style={{
               ['--ops-fit-scale' as string]: String(matrixScale),
               ['--col-b' as string]: isPersonnelSection ? '0px' : '80px',
+              ['--col-t' as string]: showTrailerColumn ? '90px' : '0px',
               ['--col-c' as string]: isPersonnelSection ? '0px' : '100px',
               ['--col-count' as string]: isPersonnelSection ? '130px' : '70px',
               ['--days-count' as string]: String(monthDays.length),
@@ -2465,8 +2472,13 @@ export default function OperationsPreview() {
                   </button>
                 </div>
               )}
+              {showTrailerColumn && (
+                <div className="ops-matrix__cell ops-matrix__cell--sticky-trailer ops-matrix__cell--head-fixed" style={{ gridColumn: 3, gridRow: '1 / span 2' }}>
+                  Прицеп
+                </div>
+              )}
               {!isPersonnelSection && (
-                <div className="ops-matrix__cell ops-matrix__cell--sticky-third ops-matrix__cell--head-fixed" style={{ gridColumn: 3, gridRow: '1 / span 2' }}>
+                <div className="ops-matrix__cell ops-matrix__cell--sticky-third ops-matrix__cell--head-fixed" style={{ gridColumn: 4, gridRow: '1 / span 2' }}>
                   Примечание
                 </div>
               )}
@@ -2662,9 +2674,24 @@ export default function OperationsPreview() {
                               )}
                             </div>
                           )}
+                          {showTrailerColumn && (
+                            <div
+                              className={`ops-matrix__cell ops-matrix__cell--sticky-trailer${isSecond ? ' ops-matrix__cell--placeholder' : ''}`}
+                              style={{ gridColumn: 3 }}
+                              onDoubleClick={() => openPersonEdit(person)}
+                              title="Двойной щелчок для редактирования"
+                            >
+                              {!isSecond && (
+                                <span className={person.trailer?.trim() ? undefined : 'ops-matrix__empty-label'}>
+                                  {person.trailer?.trim() ? person.trailer : '—'}
+                                </span>
+                              )}
+                            </div>
+                          )}
                           {!isPersonnelSection && (
                             <div
                               className="ops-matrix__cell ops-matrix__cell--sticky-third ops-matrix__note-cell"
+                              style={{ gridColumn: 4 }}
                               onDoubleClick={() => startNoteEdit(person, isSecond ? '2' : '1')}
                               title="Двойной щелчок для редактирования"
                             >
@@ -2886,9 +2913,19 @@ export default function OperationsPreview() {
                                   {!isPersonnelSection && renderRowMoveControls(person)}
                               </div>
                             </div>
+                            {showTrailerColumn && (
+                              <div
+                                className="ops-matrix__cell ops-matrix__cell--merged ops-matrix__cell--sticky-trailer"
+                                style={{ gridColumn: 3, gridRow: '1 / span 2' }}
+                                onDoubleClick={() => openPersonEdit(person)}
+                                title="Двойной щелчок для редактирования"
+                              >
+                                {renderEditableLabel(person.trailer ?? '', '—')}
+                              </div>
+                            )}
                             <div
                               className="ops-matrix__cell ops-matrix__note-cell ops-matrix__cell--sticky-third"
-                              style={{ gridColumn: 3, gridRow: 1 }}
+                              style={{ gridColumn: 4, gridRow: 1 }}
                               onDoubleClick={() => startNoteEdit(person, '1')}
                             >
                               <div className="ops-matrix__note">
@@ -2915,7 +2952,7 @@ export default function OperationsPreview() {
                             </div>
                             <div
                               className="ops-matrix__cell ops-matrix__cell--row2 ops-matrix__note-cell ops-matrix__cell--sticky-third"
-                              style={{ gridColumn: 3, gridRow: 2 }}
+                              style={{ gridColumn: 4, gridRow: 2 }}
                               onDoubleClick={() => startNoteEdit(person, '2')}
                             >
                               <div className="ops-matrix__note">
@@ -3228,11 +3265,12 @@ export default function OperationsPreview() {
                       {isPersonnelSection ? 'На смене:' : 'Итого'}
                     </div>
                     {!isPersonnelSection && (
-                      <div className="ops-matrix__cell ops-matrix__cell--sticky-second ops-matrix__cell--total">
+                      <div className="ops-matrix__cell ops-matrix__cell--sticky-second ops-matrix__cell--total" style={{ gridColumn: 2 }}>
                         {platesCount}
                       </div>
                     )}
-                    {!isPersonnelSection && <div className="ops-matrix__cell ops-matrix__cell--sticky-third"> </div>}
+                    {showTrailerColumn && <div className="ops-matrix__cell ops-matrix__cell--sticky-trailer" style={{ gridColumn: 3 }}> </div>}
+                    {!isPersonnelSection && <div className="ops-matrix__cell ops-matrix__cell--sticky-third" style={{ gridColumn: 4 }}> </div>}
                     {(() => {
                       const dayTotals = monthDays.map((day) =>
                         sectionPeople.reduce((acc, person) => {
@@ -3543,6 +3581,23 @@ export default function OperationsPreview() {
                 />
               </label>
             )}
+            {addDepartment === 'Контейнеры' && (
+              <label className="ops-control">
+                <span>Прицеп</span>
+                <input
+                  type="text"
+                  list="ops-trailer-options"
+                  value={newPerson.trailer}
+                  onChange={(event) => setNewPerson((prev) => ({ ...prev, trailer: event.target.value }))}
+                  placeholder="АМ9211/25"
+                />
+              </label>
+            )}
+            <datalist id="ops-trailer-options">
+              {directoryOptions.trailers.map((plate) => (
+                <option key={plate} value={plate} />
+              ))}
+            </datalist>
             {addError && <div className="ops-modal__error">{addError}</div>}
             <div className="ops-modal__actions ops-modal__actions--split">
               <button
@@ -3574,10 +3629,11 @@ export default function OperationsPreview() {
                       name,
                       secondName: isPersonnelSection ? undefined : secondName || undefined,
                       plate: isPersonnelSection ? '' : plate || '',
+                      trailer: addDepartment === 'Контейнеры' ? newPerson.trailer.trim() || undefined : undefined,
                       department: addDepartment,
                     },
                   ]);
-                  setNewPerson({ name: '', secondName: '', plate: '' });
+                  setNewPerson({ name: '', secondName: '', plate: '', trailer: '' });
                   setAddError(null);
                   setAddOpen(false);
                 }}
@@ -3699,6 +3755,24 @@ export default function OperationsPreview() {
                     onChange={(event) => setEditPerson((prev) => (prev ? { ...prev, plate: event.target.value } : prev))}
                   />
                 </label>
+                {editPerson.department === 'Контейнеры' && (
+                  <label className="ops-control">
+                    <span>Прицеп</span>
+                    <input
+                      type="text"
+                      list="ops-edit-trailer-options"
+                      value={editPerson.trailer ?? ''}
+                      onChange={(event) =>
+                        setEditPerson((prev) => (prev ? { ...prev, trailer: event.target.value || undefined } : prev))
+                      }
+                    />
+                  </label>
+                )}
+                <datalist id="ops-edit-trailer-options">
+                  {directoryOptions.trailers.map((plate) => (
+                    <option key={plate} value={plate} />
+                  ))}
+                </datalist>
               </>
             )}
             {editError && <div className="ops-modal__error">{editError}</div>}

@@ -50,14 +50,10 @@ export type EmployeeItem = {
   registrationAddress: string;
   licenseNumber: string;
   licenseIssueDate: string | null;
-  assignedVehicleId: string | null;
-  assignedVehicle: FleetVehicleItem | null;
-  assignedTrailerId: string | null;
-  assignedTrailer: TrailerItem | null;
   note: string;
 };
 
-export type EmployeePayload = Partial<Omit<EmployeeItem, 'id' | 'assignedVehicle' | 'assignedTrailer'>> & {
+export type EmployeePayload = Partial<Omit<EmployeeItem, 'id'>> & {
   location: FleetLocation;
   fullName: string;
 };
@@ -98,6 +94,7 @@ export const findEmployeeCardByName = (location: FleetLocation, fullName: string
 export type DirectoryOptions = {
   employees: Array<{ fullName: string; position: string }>;
   vehicles: string[];
+  trailers: string[];
 };
 export const getDirectoryOptions = (location: FleetLocation) =>
   api.get<DirectoryOptions>('/directories/options', { params: { location } });

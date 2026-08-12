@@ -1,9 +1,11 @@
 import { Employee } from '../models/employee.model';
+import { FleetVehicle } from '../models/fleet-vehicle.model';
 
 /**
  * Фиксированный шаблон карточки водителя для копирования во внешние программы.
  * Формат согласован и НЕ меняется; незаполненные поля выводятся пустыми
  * (в т.ч. VIN), строки из шаблона не выбрасываются.
+ * Машина и прицеп передаются снаружи — их источник строка графика.
  */
 
 const formatDate = (value: string | null): string => {
@@ -15,8 +17,13 @@ const formatDate = (value: string | null): string => {
   return `${dd}.${mm}.${parsed.getFullYear()}`;
 };
 
-export function buildEmployeeCardText(employee: Employee): string {
-  const vehicle = employee.assignedVehicle;
+export type EmployeeRig = {
+  vehicle: FleetVehicle | null;
+  trailerPlate: string;
+};
+
+export function buildEmployeeCardText(employee: Employee, rig: EmployeeRig): string {
+  const vehicle = rig.vehicle;
   const model = vehicle?.model;
   const autoParts = [vehicle?.vehicleKind ?? '', vehicle?.plate ?? '', model ? `${model.brand} ${model.name}`.trim() : '', vehicle?.color ?? '']
     .map((part) => part.trim())
@@ -33,7 +40,7 @@ export function buildEmployeeCardText(employee: Employee): string {
     `ВУ: ${employee.licenseNumber} Выдано: ${formatDate(employee.licenseIssueDate)}`,
     `Авто: ${autoParts}`,
     `VIN: ${vehicle?.vin ?? ''}`,
-    `Номер прицепа: ${employee.assignedTrailer?.plate ?? ''}`,
+    `Номер прицепа: ${rig.trailerPlate}`,
     `Номер телефона: ${employee.phone}`,
   ].join('\n');
 }

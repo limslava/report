@@ -45,6 +45,8 @@ type PersonRow = {
   name: string;
   secondName?: string;
   plate: string;
+  /** Номер прицепа сцепки (только контейнеровозы), общий на строку. */
+  trailer?: string;
   note?: string;
   secondNote?: string;
   department: Department;
@@ -938,6 +940,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
   };
 
   const isPersonnel = section === 'dispatchers' || section === 'couriers' || section === 'mechanics' || section === 'warehouse_staff' || section === 'guards';
+  const hasTrailer = section === 'containers';
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('График работы');
 
@@ -964,13 +967,15 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
   const startRow = 4;
   const nameCol = 1;
   const plateCol = isPersonnel ? -1 : 2;
-  const noteCol = isPersonnel ? -1 : 3;
-  const dayStartCol = isPersonnel ? 2 : 4;
+  const trailerCol = hasTrailer ? 3 : -1;
+  const noteCol = isPersonnel ? -1 : hasTrailer ? 4 : 3;
+  const dayStartCol = isPersonnel ? 2 : hasTrailer ? 5 : 4;
   const totalCol = dayStartCol + monthDays.length;
 
   sheet.getColumn(nameCol).width = 28;
   if (!isPersonnel) {
     sheet.getColumn(plateCol).width = 13;
+    if (hasTrailer) sheet.getColumn(trailerCol).width = 14;
     sheet.getColumn(noteCol).width = 17;
   }
   monthDays.forEach((_, idx) => {
@@ -1021,6 +1026,10 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
   if (!isPersonnel) {
     sheet.mergeCells(headerDaysRow, plateCol, verticalHeaderEnd, plateCol);
     sheet.getCell(headerDaysRow, plateCol).value = 'Г/Н ТС';
+    if (hasTrailer) {
+      sheet.mergeCells(headerDaysRow, trailerCol, verticalHeaderEnd, trailerCol);
+      sheet.getCell(headerDaysRow, trailerCol).value = 'Прицеп';
+    }
     sheet.mergeCells(headerDaysRow, noteCol, verticalHeaderEnd, noteCol);
     sheet.getCell(headerDaysRow, noteCol).value = 'Примечание';
   }
@@ -1085,6 +1094,9 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
       sheet.getCell(cursorRow, nameCol).value = name;
       if (!isPersonnel) {
         sheet.getCell(cursorRow, plateCol).value = lane === '1' ? person.plate : '';
+        if (hasTrailer) {
+          sheet.getCell(cursorRow, trailerCol).value = lane === '1' ? person.trailer ?? '' : '';
+        }
         sheet.getCell(cursorRow, noteCol).value = note;
       }
 
@@ -1102,7 +1114,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
       sheet.getRow(cursorRow).height = 28;
       for (let col = 1; col <= totalCol; col += 1) {
         const cell = sheet.getCell(cursorRow, col);
-        if (col === nameCol || (!isPersonnel && (col === plateCol || col === noteCol))) {
+        if (col === nameCol || (!isPersonnel && (col === plateCol || col === trailerCol || col === noteCol))) {
           cell.alignment = { horizontal: 'left', vertical: 'middle' };
           if (!cell.font) cell.font = { size: 11, name: 'Arial', color: { argb: COLORS.textDark } };
         } else if (col === totalCol) {
@@ -1126,6 +1138,17 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
       plateCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.white } };
       for (let row = personStartRow; row <= personStartRow + 1; row += 1) {
         sheet.getCell(row, plateCol).border = fullBorder;
+      }
+      if (hasTrailer) {
+        sheet.mergeCells(personStartRow, trailerCol, personStartRow + 1, trailerCol);
+        const trailerCell = sheet.getCell(personStartRow, trailerCol);
+        trailerCell.value = person.trailer ?? '';
+        trailerCell.alignment = { horizontal: 'left', vertical: 'middle' };
+        trailerCell.font = { size: 11, name: 'Arial', color: { argb: COLORS.textDark } };
+        trailerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.white } };
+        for (let row = personStartRow; row <= personStartRow + 1; row += 1) {
+          sheet.getCell(row, trailerCol).border = fullBorder;
+        }
       }
     }
   });
@@ -1264,6 +1287,7 @@ const renderOperationsScheduleWorksheet = ({
   const scopeKey = `${mode}|${monthValue}` as OverrideScopeKey;
   const scopeOverrides = overrides[scopeKey] ?? {};
   const isPersonnel = section === 'dispatchers' || section === 'couriers' || section === 'mechanics' || section === 'warehouse_staff' || section === 'guards';
+  const hasTrailer = section === 'containers';
   const sheet = workbook.addWorksheet(makeSheetName(workbook, sheetName));
   sheet.properties.tabColor = { argb: tabColor };
 
@@ -1295,13 +1319,15 @@ const renderOperationsScheduleWorksheet = ({
   const startRow = 4;
   const nameCol = 1;
   const plateCol = isPersonnel ? -1 : 2;
-  const noteCol = isPersonnel ? -1 : 3;
-  const dayStartCol = isPersonnel ? 2 : 4;
+  const trailerCol = hasTrailer ? 3 : -1;
+  const noteCol = isPersonnel ? -1 : hasTrailer ? 4 : 3;
+  const dayStartCol = isPersonnel ? 2 : hasTrailer ? 5 : 4;
   const totalCol = dayStartCol + monthDays.length;
 
   sheet.getColumn(nameCol).width = 28;
   if (!isPersonnel) {
     sheet.getColumn(plateCol).width = 13;
+    if (hasTrailer) sheet.getColumn(trailerCol).width = 14;
     sheet.getColumn(noteCol).width = 17;
   }
   monthDays.forEach((_, idx) => {
@@ -1350,6 +1376,10 @@ const renderOperationsScheduleWorksheet = ({
   if (!isPersonnel) {
     sheet.mergeCells(headerDaysRow, plateCol, verticalHeaderEnd, plateCol);
     sheet.getCell(headerDaysRow, plateCol).value = 'Г/Н ТС';
+    if (hasTrailer) {
+      sheet.mergeCells(headerDaysRow, trailerCol, verticalHeaderEnd, trailerCol);
+      sheet.getCell(headerDaysRow, trailerCol).value = 'Прицеп';
+    }
     sheet.mergeCells(headerDaysRow, noteCol, verticalHeaderEnd, noteCol);
     sheet.getCell(headerDaysRow, noteCol).value = 'Примечание';
   }
@@ -1414,6 +1444,9 @@ const renderOperationsScheduleWorksheet = ({
       sheet.getCell(cursorRow, nameCol).value = name;
       if (!isPersonnel) {
         sheet.getCell(cursorRow, plateCol).value = lane === '1' ? person.plate : '';
+        if (hasTrailer) {
+          sheet.getCell(cursorRow, trailerCol).value = lane === '1' ? person.trailer ?? '' : '';
+        }
         sheet.getCell(cursorRow, noteCol).value = note;
       }
 
@@ -1431,7 +1464,7 @@ const renderOperationsScheduleWorksheet = ({
       sheet.getRow(cursorRow).height = 28;
       for (let col = 1; col <= totalCol; col += 1) {
         const cell = sheet.getCell(cursorRow, col);
-        if (col === nameCol || (!isPersonnel && (col === plateCol || col === noteCol))) {
+        if (col === nameCol || (!isPersonnel && (col === plateCol || col === trailerCol || col === noteCol))) {
           cell.alignment = { horizontal: 'left', vertical: 'middle' };
           if (!cell.font) cell.font = { size: 11, name: 'Arial', color: { argb: COLORS.textDark } };
         } else if (col === totalCol) {
@@ -1455,6 +1488,17 @@ const renderOperationsScheduleWorksheet = ({
       plateCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.white } };
       for (let row = personStartRow; row <= personStartRow + 1; row += 1) {
         sheet.getCell(row, plateCol).border = fullBorder;
+      }
+      if (hasTrailer) {
+        sheet.mergeCells(personStartRow, trailerCol, personStartRow + 1, trailerCol);
+        const trailerCell = sheet.getCell(personStartRow, trailerCol);
+        trailerCell.value = person.trailer ?? '';
+        trailerCell.alignment = { horizontal: 'left', vertical: 'middle' };
+        trailerCell.font = { size: 11, name: 'Arial', color: { argb: COLORS.textDark } };
+        trailerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.white } };
+        for (let row = personStartRow; row <= personStartRow + 1; row += 1) {
+          sheet.getCell(row, trailerCol).border = fullBorder;
+        }
       }
     }
   });

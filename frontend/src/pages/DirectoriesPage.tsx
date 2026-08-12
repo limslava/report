@@ -345,7 +345,6 @@ export default function DirectoriesPage() {
                   <th style={{ minWidth: 200 }}>ФИО</th>
                   <th style={{ minWidth: 110 }}>Роль</th>
                   <th style={{ minWidth: 130 }}>Телефон</th>
-                  <th style={{ minWidth: 180 }}>Закрепление</th>
                   <th className="fuel-cell--center" style={{ minWidth: 90 }}>Статус</th>
                   <th className="fuel-cell--center" style={{ minWidth: 80 }}>Карточка</th>
                 </tr>
@@ -362,11 +361,6 @@ export default function DirectoriesPage() {
                     <td className="fuel-cell--sticky">{employee.fullName}</td>
                     <td className="fuel-cell--center"><span className="dir-role">{employee.position}</span></td>
                     <td className="fuel-cell--center">{employee.phone || '—'}</td>
-                    <td className="fuel-cell--left">
-                      {[employee.assignedVehicle?.plate, employee.assignedTrailer ? `прицеп ${employee.assignedTrailer.plate}` : '']
-                        .filter(Boolean)
-                        .join(' · ') || '—'}
-                    </td>
                     <td className="fuel-cell--center">
                       <span className={`dir-status ${employee.status === 'active' ? 'dir-status--ok' : 'dir-status--off'}`}>
                         {employee.status === 'active' ? 'работает' : 'уволен'}
@@ -385,7 +379,7 @@ export default function DirectoriesPage() {
                 ))}
                 {filteredEmployees.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="fuel-empty">
+                    <td colSpan={5} className="fuel-empty">
                       {employees.length === 0 ? 'Справочник пуст — добавьте сотрудников' : 'Нет записей по выбранному фильтру'}
                     </td>
                   </tr>
@@ -566,7 +560,7 @@ export default function DirectoriesPage() {
           </Box>
           {(employeeEdit?.position ?? 'водитель') !== 'водитель' && !showFullData && (
             <Button size="small" sx={{ mt: 1.5 }} onClick={() => setShowFullData(true)}>
-              Заполнить полные данные (паспорт, ВУ, закрепление)
+              Заполнить полные данные (паспорт, ВУ)
             </Button>
           )}
           {((employeeEdit?.position ?? 'водитель') === 'водитель' || showFullData) && (
@@ -584,29 +578,10 @@ export default function DirectoriesPage() {
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mt: 1.5 }}>
                 {textField('ВУ (номер)', employeeEdit?.licenseNumber, (value) => setEmployeeEdit((prev) => ({ ...prev, licenseNumber: value })))}
                 {textField('Дата выдачи ВУ', formatDateInput(employeeEdit?.licenseIssueDate), (value) => setEmployeeEdit((prev) => ({ ...prev, licenseIssueDate: value || null })), { type: 'date' })}
-                <TextField
-                  select size="small" label="Закреплённое авто" fullWidth
-                  value={employeeEdit?.assignedVehicleId ?? ''}
-                  onChange={(event) => setEmployeeEdit((prev) => ({ ...prev, assignedVehicleId: event.target.value || null }))}
-                >
-                  <MenuItem value="">— не закреплено —</MenuItem>
-                  {vehicles.map((vehicle) => (
-                    <MenuItem key={vehicle.id} value={vehicle.id}>
-                      {vehicle.plate}{vehicle.model ? ` · ${vehicle.model.brand}` : ''}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  select size="small" label="Прицеп" fullWidth
-                  value={employeeEdit?.assignedTrailerId ?? ''}
-                  onChange={(event) => setEmployeeEdit((prev) => ({ ...prev, assignedTrailerId: event.target.value || null }))}
-                >
-                  <MenuItem value="">— без прицепа —</MenuItem>
-                  {trailers.map((trailer) => (
-                    <MenuItem key={trailer.id} value={trailer.id}>{trailer.plate}</MenuItem>
-                  ))}
-                </TextField>
               </Box>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                Машина и прицеп не закрепляются в справочнике — сцепка берётся из строки графика.
+              </Typography>
             </>
           )}
         </DialogContent>

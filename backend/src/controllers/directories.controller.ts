@@ -215,15 +215,9 @@ export const deleteTrailer = async (req: Request, res: Response) => {
 
 // ─────────────────────────── Сотрудники (ПДн) ───────────────────────────
 
-const EMPLOYEE_RELATIONS = { assignedVehicle: { model: true }, assignedTrailer: true } as const;
-
 export const listEmployees = async (req: Request, res: Response) => {
   const location = requireDirectoryLocation(req, req.query.location);
-  const employees = await employeeRepo.find({
-    where: { location },
-    relations: EMPLOYEE_RELATIONS,
-    order: { fullName: 'ASC' },
-  });
+  const employees = await employeeRepo.find({ where: { location }, order: { fullName: 'ASC' } });
   res.json(employees);
 };
 
@@ -249,10 +243,6 @@ export const saveEmployee = async (req: Request, res: Response) => {
   employee.registrationAddress = trimmed(req.body?.registrationAddress, 500);
   employee.licenseNumber = trimmed(req.body?.licenseNumber, 32);
   employee.licenseIssueDate = optionalDate(req.body?.licenseIssueDate);
-  employee.assignedVehicleId =
-    typeof req.body?.assignedVehicleId === 'string' && req.body.assignedVehicleId ? req.body.assignedVehicleId : null;
-  employee.assignedTrailerId =
-    typeof req.body?.assignedTrailerId === 'string' && req.body.assignedTrailerId ? req.body.assignedTrailerId : null;
   employee.note = trimmed(req.body?.note, 500);
 
   const saved = await employeeRepo.save(employee);
@@ -264,8 +254,7 @@ export const saveEmployee = async (req: Request, res: Response) => {
     details: { location, fullName: saved.fullName },
     req,
   });
-  const withRelations = await employeeRepo.findOne({ where: { id: saved.id }, relations: EMPLOYEE_RELATIONS });
-  res.json(withRelations);
+  res.json(saved);
 };
 
 export const deleteEmployee = async (req: Request, res: Response) => {
@@ -286,14 +275,12 @@ export const deleteEmployee = async (req: Request, res: Response) => {
 
 /** Текст карточки по фиксированному шаблону; каждое обращение пишется в аудит. */
 export const getEmployeeCardText = async (req: Request, res: Response) => {
-  const employee = await employeeRepo.findOne({
-    where: { id: req.params.id },
-    relations: EMPLOYEE_RELATIONS,
-  });
+  const employee = await employeeRepo.findOne({ where: { id: req.params.id } });
   if (!employee) return httpError(404, 'Employee not found') as never;
   requireDirectoryLocation(req, employee.location);
 
-  const text = buildEmployeeCardText(employee);
+  const rig = await resolveRigFromSchedule(employee.location, employee.fullName);
+  const text = buildEmployeeCardText(employee, rig);
   await recordAuditLog({
     action: 'DIRECTORY_EMPLOYEE_CARD_COPIED',
     userId: req.user?.id ?? null,
@@ -313,15 +300,13 @@ export const findEmployeeCardByName = async (req: Request, res: Response) => {
 
   const employee = await employeeRepo
     .createQueryBuilder('employee')
-    .leftJoinAndSelect('employee.assignedVehicle', 'vehicle')
-    .leftJoinAndSelect('vehicle.model', 'model')
-    .leftJoinAndSelect('employee.assignedTrailer', 'trailer')
     .where('employee.location = :location', { location })
     .andWhere('LOWER(employee.full_name) = LOWER(:fullName)', { fullName })
     .getOne();
   if (!employee) return httpError(404, 'Employee not found in directory') as never;
 
-  const text = buildEmployeeCardText(employee);
+  const rig = await resolveRigFromSchedule(location, employee.fullName);
+  const text = buildEmployeeCardText(employee, rig);
   await recordAuditLog({
     action: 'DIRECTORY_EMPLOYEE_CARD_COPIED',
     userId: req.user?.id ?? null,
@@ -333,6 +318,63 @@ export const findEmployeeCardByName = async (req: Request, res: Response) => {
   res.json({ employeeId: employee.id, text });
 };
 
+// ─────────────────────────── Сцепка из графика ───────────────────────────
+
+const SCHEDULE_SCOPE_BY_DIRECTORY_LOCATION: Record<FleetLocation, string> = {
+  vvo: 'ktk_vvo_preview_v1',
+  mow: 'ktk_mow_preview_v1',
+};
+
+type ScheduleRigRow = {
+  name?: string;
+  secondName?: string;
+  plate?: string;
+  trailer?: string;
+};
+
+const prevMonth = (monthValue: string): string => {
+  const [year, month] = monthValue.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 2, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+};
+
+/**
+ * Сцепка «машина + прицеп» для карточки водителя берётся из строки графика
+ * (текущий месяц, при пустом — предыдущий): справочники персонала, техники и
+ * прицепов независимы, связывает их только график.
+ */
+export const resolveRigFromSchedule = async (
+  location: FleetLocation,
+  fullName: string
+): Promise<{ vehicle: FleetVehicle | null; trailerPlate: string }> => {
+  const empty = { vehicle: null, trailerPlate: '' };
+  const row = await previewRepo.findOne({ where: { scopeKey: SCHEDULE_SCOPE_BY_DIRECTORY_LOCATION[location] } });
+  if (!row) return empty;
+  const payload = (row.payload ?? {}) as { peopleByMonth?: Record<string, ScheduleRigRow[]> };
+  const byMonth = payload.peopleByMonth ?? {};
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const people =
+    (byMonth[currentMonth]?.length ? byMonth[currentMonth] : byMonth[prevMonth(currentMonth)]) ?? [];
+  const needle = fullName.trim().toLowerCase();
+  const personRow = people.find(
+    (person) =>
+      (person.name ?? '').trim().toLowerCase() === needle ||
+      (person.secondName ?? '').trim().toLowerCase() === needle
+  );
+  if (!personRow) return empty;
+
+  const plate = (personRow.plate ?? '').trim();
+  const vehicle = plate
+    ? await vehicleRepo
+        .createQueryBuilder('vehicle')
+        .leftJoinAndSelect('vehicle.model', 'model')
+        .where('LOWER(vehicle.plate) = LOWER(:plate)', { plate })
+        .getOne()
+    : null;
+  return { vehicle, trailerPlate: (personRow.trailer ?? '').trim() };
+};
+
 // ─────────────────────────── Подсказки для графиков (без ПДн) ───────────────────────────
 
 /**
@@ -341,13 +383,15 @@ export const findEmployeeCardByName = async (req: Request, res: Response) => {
  */
 export const getDirectoryOptions = async (req: Request, res: Response) => {
   const location = parseLocation(req.query.location);
-  const [employees, vehicles] = await Promise.all([
+  const [employees, vehicles, trailers] = await Promise.all([
     employeeRepo.find({ where: { location, status: 'active' }, order: { fullName: 'ASC' } }),
     vehicleRepo.find({ where: { location }, order: { plate: 'ASC' } }),
+    trailerRepo.find({ where: { location, status: 'active' }, order: { plate: 'ASC' } }),
   ]);
   res.json({
     employees: employees.map((employee) => ({ fullName: employee.fullName, position: employee.position })),
     vehicles: vehicles.filter((vehicle) => vehicle.status !== 'archived').map((vehicle) => vehicle.plate),
+    trailers: trailers.map((trailer) => trailer.plate),
   });
 };
 
