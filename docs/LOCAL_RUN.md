@@ -28,12 +28,14 @@
 Из папки `Report-fuel`:
 
 ```bash
-# 1. База и Redis (контейнеры уже созданы, просто поднять)
-docker start logistics_postgres logistics_redis
+# 1. База (копия прода от 12.08.2026) и Redis
+docker start report_prod_check logistics_redis
 ```
 
-Если контейнеров ещё нет — создать из compose:
-`docker compose -f backend/docker-compose.yml up -d`
+База `report_prod_check` — PostgreSQL 17 на порту **5434** с копией продовых
+данных (дамп от 12.08.2026, файл `~/Desktop/report_prod.dump`). Настройки
+подключения уже в `backend/.env`. Прежняя пустая база (`logistics_postgres`,
+порт 5433) сохранена — вернуться на неё можно, восстановив `backend/.env.local-backup`.
 
 ```bash
 # 2. Бэкенд (порт 3001) — оставить работать в этом окне терминала
@@ -49,11 +51,9 @@ npm run dev --prefix frontend
 
 ## Вход
 
-Локальная база живёт в Docker и не связана со стейджем/продом — пароли свои.
-Локальный админ:
-
-- **Email:** `admin@local.test`
-- **Пароль:** `AdminLocal123!`
+Локальная база — **копия прода**, поэтому подходят ваши обычные продовые
+логины/пароли (изменения при этом остаются только локально и на прод не
+влияют).
 
 ## Полезное
 
