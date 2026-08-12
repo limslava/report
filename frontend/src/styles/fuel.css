@@ -96,10 +96,11 @@
   color: #94a3b8;
 }
 
-.fuel-matrix input:focus {
-  box-shadow: inset 0 0 0 2px #2563eb;
-  border-radius: 2px;
-  background: #fff;
+/* фокус — тонкая рамка по границе ячейки, как выделение в «Планах» и графиках */
+.fuel-matrix td:focus-within {
+  outline: 2px solid #1976d2;
+  outline-offset: -2px;
+  background: #fff !important;
 }
 
 .fuel-matrix tr.fuel-row--total td {
