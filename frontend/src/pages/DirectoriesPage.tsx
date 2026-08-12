@@ -57,7 +57,7 @@ const MONTH_GENITIVE = [
   'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
 ];
 
-type TabKey = 'drivers' | 'staff' | 'vehicles' | 'trailers' | 'models';
+type TabKey = 'drivers' | 'vehicles' | 'trailers' | 'models';
 
 type Feedback = { severity: 'success' | 'error'; text: string } | null;
 
@@ -93,7 +93,6 @@ export default function DirectoriesPage() {
   });
 
   const [employeeEdit, setEmployeeEdit] = useState<Partial<EmployeeItem> | null>(null);
-  const [showFullData, setShowFullData] = useState(false);
   const [vehicleEdit, setVehicleEdit] = useState<Partial<FleetVehicleItem> | null>(null);
   const [vehicleModelLabel, setVehicleModelLabel] = useState('');
   const [trailerEdit, setTrailerEdit] = useState<Partial<TrailerItem> | null>(null);
@@ -123,7 +122,6 @@ export default function DirectoriesPage() {
   }, [reload]);
 
   const drivers = useMemo(() => employees.filter((e) => e.position === 'водитель'), [employees]);
-  const staff = useMemo(() => employees.filter((e) => e.position !== 'водитель'), [employees]);
 
   const copyCard = async (employee: EmployeeItem) => {
     try {
@@ -279,7 +277,6 @@ export default function DirectoriesPage() {
               sx={{ minHeight: 40, '& .MuiTab-root': { minHeight: 40, py: 0 } }}
             >
               <Tab value="drivers" label={`Водители (${drivers.length})`} />
-              <Tab value="staff" label={`Сотрудники (${staff.length})`} />
               <Tab value="vehicles" label={`Техника (${vehicles.length})`} />
               <Tab value="trailers" label={`Прицепы (${trailers.length})`} />
               <Tab value="models" label={`Модели и нормы (${models.length})`} />
@@ -289,22 +286,7 @@ export default function DirectoriesPage() {
                 <button
                   type="button"
                   className="ops-btn ops-btn--add"
-                  onClick={() => {
-                    setShowFullData(false);
-                    setEmployeeEdit({ position: 'водитель', status: 'active' });
-                  }}
-                >
-                  Добавить
-                </button>
-              )}
-              {tab === 'staff' && (
-                <button
-                  type="button"
-                  className="ops-btn ops-btn--add"
-                  onClick={() => {
-                    setShowFullData(false);
-                    setEmployeeEdit({ position: 'диспетчер', status: 'active' });
-                  }}
+                  onClick={() => setEmployeeEdit({ position: 'водитель', status: 'active' })}
                 >
                   Добавить
                 </button>
@@ -355,10 +337,7 @@ export default function DirectoriesPage() {
                 {drivers.map((employee) => (
                   <tr
                     key={employee.id}
-                    onDoubleClick={() => {
-                      setShowFullData(false);
-                      setEmployeeEdit(employee);
-                    }}
+                    onDoubleClick={() => setEmployeeEdit(employee)}
                   >
                     <td className="fuel-cell--sticky">{employee.fullName}</td>
                     <td className="fuel-cell--center">{employee.phone || '—'}</td>
@@ -382,46 +361,6 @@ export default function DirectoriesPage() {
                 {drivers.length === 0 && (
                   <tr>
                     <td colSpan={7} className="fuel-empty">Водителей пока нет — добавьте</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {tab === 'staff' && (
-          <div className="dir-table">
-            <table>
-              <thead>
-                <tr>
-                  <th style={{ minWidth: 200 }}>ФИО</th>
-                  <th style={{ minWidth: 110 }}>Роль</th>
-                  <th style={{ minWidth: 130 }}>Телефон</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>Статус</th>
-                </tr>
-              </thead>
-              <tbody>
-                {staff.map((employee) => (
-                  <tr
-                    key={employee.id}
-                    onDoubleClick={() => {
-                      setShowFullData(false);
-                      setEmployeeEdit(employee);
-                    }}
-                  >
-                    <td className="fuel-cell--sticky">{employee.fullName}</td>
-                    <td className="fuel-cell--center"><span className="dir-role">{employee.position}</span></td>
-                    <td className="fuel-cell--center">{employee.phone || '—'}</td>
-                    <td className="fuel-cell--center">
-                      <span className={`dir-status ${employee.status === 'active' ? 'dir-status--ok' : 'dir-status--off'}`}>
-                        {employee.status === 'active' ? 'работает' : 'уволен'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-                {staff.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="fuel-empty">Сотрудников пока нет — добавьте (диспетчеры, оперативники и др.)</td>
                   </tr>
                 )}
               </tbody>
@@ -570,23 +509,10 @@ export default function DirectoriesPage() {
 
       {/* ─── Карточка сотрудника: полная для водителя, короткая для остальных ─── */}
       <Dialog open={Boolean(employeeEdit)} onClose={() => setEmployeeEdit(null)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          {(employeeEdit?.position ?? 'водитель') === 'водитель'
-            ? (employeeEdit?.id ? 'Карточка водителя' : 'Новый водитель')
-            : (employeeEdit?.id ? 'Карточка сотрудника' : 'Новый сотрудник')}
-        </DialogTitle>
+        <DialogTitle>{employeeEdit?.id ? 'Карточка водителя' : 'Новый водитель'}</DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mt: 1 }}>
             {textField('ФИО', employeeEdit?.fullName, (value) => setEmployeeEdit((prev) => ({ ...prev, fullName: value })))}
-            <TextField
-              select size="small" label="Роль" fullWidth
-              value={employeeEdit?.position ?? 'водитель'}
-              onChange={(event) => setEmployeeEdit((prev) => ({ ...prev, position: event.target.value }))}
-            >
-              {['водитель', 'диспетчер', 'оперативник', 'автослесарь', 'сторож'].map((option) => (
-                <MenuItem key={option} value={option}>{option}</MenuItem>
-              ))}
-            </TextField>
             {textField('Телефон', employeeEdit?.phone, (value) => setEmployeeEdit((prev) => ({ ...prev, phone: value })))}
             <TextField
               select size="small" label="Статус" fullWidth
@@ -597,13 +523,7 @@ export default function DirectoriesPage() {
               <MenuItem value="fired">уволен</MenuItem>
             </TextField>
           </Box>
-          {(employeeEdit?.position ?? 'водитель') !== 'водитель' && !showFullData && (
-            <Button size="small" sx={{ mt: 1.5 }} onClick={() => setShowFullData(true)}>
-              Заполнить полные данные (паспорт, ВУ)
-            </Button>
-          )}
-          {((employeeEdit?.position ?? 'водитель') === 'водитель' || showFullData) && (
-            <>
+          <>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mt: 1.5 }}>
                 {textField('Дата рождения', formatDateInput(employeeEdit?.birthDate), (value) => setEmployeeEdit((prev) => ({ ...prev, birthDate: value || null })), { type: 'date' })}
                 {textField('Место рождения', employeeEdit?.birthPlace, (value) => setEmployeeEdit((prev) => ({ ...prev, birthPlace: value })))}
@@ -621,8 +541,7 @@ export default function DirectoriesPage() {
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                 Машина и прицеп не закрепляются в справочнике — сцепка берётся из строки графика.
               </Typography>
-            </>
-          )}
+          </>
         </DialogContent>
         <DialogActions>
           {isAdmin && employeeEdit?.id && (

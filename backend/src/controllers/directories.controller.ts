@@ -412,11 +412,6 @@ type PreviewPersonRow = {
 const POSITION_BY_DEPARTMENT: Record<string, string> = {
   'Контейнеры': 'водитель',
   'Авто': 'водитель',
-  'Диспетчера': 'диспетчер',
-  'Курьеры': 'оперативник',
-  'Автослесари': 'автослесарь',
-  'Сотрудники склада': 'прочее',
-  'Сторожа': 'сторож',
 };
 
 const KIND_BY_DEPARTMENT: Record<string, string> = {
@@ -427,9 +422,6 @@ const KIND_BY_DEPARTMENT: Record<string, string> = {
 const BOOTSTRAP_SOURCES: Array<{ scopeKey: string; location: FleetLocation }> = [
   { scopeKey: 'ktk_vvo_preview_v1', location: 'vvo' },
   { scopeKey: 'ktk_mow_preview_v1', location: 'mow' },
-  { scopeKey: 'garage_preview_v1', location: 'vvo' },
-  { scopeKey: 'garage_mow_preview_v1', location: 'mow' },
-  { scopeKey: 'security_preview_v1', location: 'vvo' },
 ];
 
 /**
@@ -459,7 +451,8 @@ export const bootstrapDirectoriesFromSchedules = async (req: Request, res: Respo
 
     for (const person of latestPeople) {
       const department = person.department ?? '';
-      const position = POSITION_BY_DEPARTMENT[department] ?? 'прочее';
+      const position = POSITION_BY_DEPARTMENT[department];
+      if (!position) continue;
       for (const rawName of [person.name, person.secondName]) {
         const fullName = (rawName ?? '').trim();
         if (!fullName) continue;
