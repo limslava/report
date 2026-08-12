@@ -87,7 +87,7 @@ export default function DirectoriesPage() {
   });
 
   const [employeeEdit, setEmployeeEdit] = useState<Partial<EmployeeItem> | null>(null);
-  const [personFilter, setPersonFilter] = useState<'all' | 'driver' | 'dispatcher'>('all');
+  const [personFilter, setPersonFilter] = useState<string>('all');
   const [showFullData, setShowFullData] = useState(false);
   const [vehicleEdit, setVehicleEdit] = useState<Partial<FleetVehicleItem> | null>(null);
   const [vehicleModelLabel, setVehicleModelLabel] = useState('');
@@ -119,8 +119,7 @@ export default function DirectoriesPage() {
 
   const filteredEmployees = useMemo(() => {
     if (personFilter === 'all') return employees;
-    if (personFilter === 'driver') return employees.filter((e) => e.position === 'водитель');
-    return employees.filter((e) => e.position === 'диспетчер');
+    return employees.filter((e) => e.position === personFilter);
   }, [employees, personFilter]);
 
   const copyCard = async (employee: EmployeeItem) => {
@@ -281,21 +280,22 @@ export default function DirectoriesPage() {
               <Tab value="trailers" label={`Прицепы (${trailers.length})`} />
               <Tab value="models" label={`Модели и нормы (${models.length})`} />
             </Tabs>
-            {tab === 'employees' && (
-              <TextField
-                label="Роль"
-                select
-                size="small"
-                value={personFilter}
-                onChange={(event) => setPersonFilter(event.target.value as 'all' | 'driver' | 'dispatcher')}
-                sx={{ width: 150, '& .MuiInputBase-root': { height: 40 } }}
-              >
-                <MenuItem value="all">Все</MenuItem>
-                <MenuItem value="driver">Водители</MenuItem>
-                <MenuItem value="dispatcher">Диспетчеры</MenuItem>
-              </TextField>
-            )}
-            <Box sx={{ ml: 'auto' }}>
+            <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              {tab === 'employees' && (
+                <TextField
+                  label="Роль"
+                  select
+                  size="small"
+                  value={personFilter}
+                  onChange={(event) => setPersonFilter(event.target.value)}
+                  sx={{ width: 170, '& .MuiInputBase-root': { height: 40 } }}
+                >
+                  <MenuItem value="all">Все</MenuItem>
+                  {['водитель', 'диспетчер', 'оперативник', 'автослесарь', 'сторож', 'прочее'].map((option) => (
+                    <MenuItem key={option} value={option}>{option}</MenuItem>
+                  ))}
+                </TextField>
+              )}
               {tab === 'employees' && (
                 <button
                   type="button"
