@@ -281,6 +281,20 @@ export default function DirectoriesPage() {
               <Tab value="trailers" label={`Прицепы (${trailers.length})`} />
               <Tab value="models" label={`Модели и нормы (${models.length})`} />
             </Tabs>
+            {tab === 'employees' && (
+              <TextField
+                label="Роль"
+                select
+                size="small"
+                value={personFilter}
+                onChange={(event) => setPersonFilter(event.target.value as 'all' | 'driver' | 'dispatcher')}
+                sx={{ width: 150, '& .MuiInputBase-root': { height: 40 } }}
+              >
+                <MenuItem value="all">Все</MenuItem>
+                <MenuItem value="driver">Водители</MenuItem>
+                <MenuItem value="dispatcher">Диспетчеры</MenuItem>
+              </TextField>
+            )}
             <Box sx={{ ml: 'auto' }}>
               {tab === 'employees' && (
                 <button
@@ -324,18 +338,6 @@ export default function DirectoriesPage() {
       <section className="ops-preview__matrix">
         {tab === 'employees' && (
           <>
-          <div className="dir-filter">
-            {([['all', 'Все'], ['driver', 'Водители'], ['dispatcher', 'Диспетчеры']] as const).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                className={`dir-filter__btn${personFilter === value ? ' is-active' : ''}`}
-                onClick={() => setPersonFilter(value)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
           <div className="dir-table">
             <table>
               <thead>
