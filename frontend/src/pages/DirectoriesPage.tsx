@@ -338,7 +338,7 @@ export default function DirectoriesPage() {
       <section className="ops-preview__controls">
         <Paper sx={{ p: 1.5, width: '100%' }}>
           <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
-            {allowedLocations.length > 1 ? (
+            {allowedLocations.length > 1 && (
               <TextField
                 label="Город"
                 select
@@ -351,8 +351,6 @@ export default function DirectoriesPage() {
                   <MenuItem key={value} value={value}>{LOCATION_LABELS[value]}</MenuItem>
                 ))}
               </TextField>
-            ) : (
-              <Typography sx={{ fontWeight: 700 }}>{LOCATION_LABELS[location]}</Typography>
             )}
             <Tabs
               value={tab}
