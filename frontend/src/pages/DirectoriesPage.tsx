@@ -360,7 +360,7 @@ export default function DirectoriesPage() {
                     }}
                   >
                     <td className="fuel-cell--sticky">{employee.fullName}</td>
-                    <td className="fuel-cell--center">{employee.position}</td>
+                    <td className="fuel-cell--center"><span className="dir-role">{employee.position}</span></td>
                     <td className="fuel-cell--center">{employee.phone || '—'}</td>
                     <td className="fuel-cell--left">
                       {[employee.assignedVehicle?.plate, employee.assignedTrailer ? `прицеп ${employee.assignedTrailer.plate}` : '']

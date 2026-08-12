@@ -191,8 +191,9 @@
 .dir-table {
   overflow-x: auto;
   background: #fff;
-  border: 1px solid rgba(224, 224, 224, 1);
-  border-radius: 4px;
+  border: 1px solid #e4e8ef;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06);
 }
 
 .dir-table table {
@@ -206,23 +207,30 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #fff;
-  font-weight: 500;
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 600;
+  font-size: 12.5px;
+  letter-spacing: 0.2px;
   text-align: left;
-  padding: 10px 16px;
-  border-bottom: 1px solid rgba(224, 224, 224, 1);
-  border-right: 1px solid rgba(224, 224, 224, 1);
+  padding: 11px 16px;
+  border-bottom: 1px solid #e4e8ef;
+  border-right: 1px solid #edf0f5;
   white-space: nowrap;
   line-height: 1.4;
 }
 
 .dir-table td {
   padding: 8px 16px;
-  border-bottom: 1px solid rgba(224, 224, 224, 1);
-  border-right: 1px solid rgba(224, 224, 224, 1);
+  border-bottom: 1px solid #edf0f5;
+  border-right: 1px solid #edf0f5;
   white-space: nowrap;
-  height: 38px;
+  height: 42px;
   text-align: left;
+}
+
+.dir-table tbody tr:nth-child(even) td {
+  background: #fafbfd;
 }
 
 .dir-table th:last-child,
@@ -234,8 +242,9 @@
   border-bottom: none;
 }
 
-.dir-table tbody tr:hover td {
-  background: rgba(0, 0, 0, 0.04);
+.dir-table tbody tr:hover td,
+.dir-table tbody tr:nth-child(even):hover td {
+  background: #eef4fd;
 }
 
 .dir-table .fuel-cell--sticky {
@@ -252,4 +261,14 @@
   color: #6b7280;
   padding: 26px 10px;
   font-size: 13px;
+}
+
+
+.dir-role {
+  display: inline-block;
+  background: #f1f5f9;
+  border-radius: 999px;
+  padding: 2px 12px;
+  font-size: 12px;
+  color: #475569;
 }
