@@ -715,7 +715,7 @@ export default function OperationsPreview() {
     </span>
   );
   const visibleCellCodes: CellCode[] = isPersonnelSection
-    ? (filter === 'Автослесари' || filter === 'Сотрудники склада' || filter === 'Сторожа' ? ['W', 'V', 'O', 'B', 'N'] : ['W', 'V', 'O', 'B'])
+    ? ['W', 'V', 'O', 'B', 'N']
     : filter === 'Авто'
       ? ['W', 'O', 'V', 'B', 'H', 'S', 'R', 'N']
       : ['W', 'O', 'V', 'B', 'H', 'R', 'N'];
