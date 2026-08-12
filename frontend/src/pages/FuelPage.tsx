@@ -315,7 +315,7 @@ export default function FuelPage() {
   };
 
   return (
-    <div className="ops-preview">
+    <div className="ops-preview fuel-page">
       <section className="ops-preview__controls">
         <Paper sx={{ p: 1.5, width: '100%' }}>
           <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
@@ -371,7 +371,7 @@ export default function FuelPage() {
                 Скачать Excel
               </button>
               <button type="button" className="ops-btn ops-btn--fill-prev" onClick={() => void copyPrevComposition()}>
-                Техника из прошлого месяца
+                Из прошлого месяца
               </button>
               <button type="button" className="ops-btn ops-btn--add" onClick={() => void openAddDialog()}>
                 Добавить
