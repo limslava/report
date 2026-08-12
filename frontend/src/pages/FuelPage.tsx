@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Autocomplete,
   Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Menu,
   MenuItem,
   Paper,
@@ -13,12 +19,17 @@ import {
 import { useAuthStore } from '../store/auth-store';
 import {
   FleetLocation,
+  FleetVehicleItem,
   FuelRow,
   FuelRowPayload,
   FuelState,
+  addFuelRows,
+  copyFuelRowsFromPrevMonth,
   downloadFuelExcel,
   downloadFuelYearExcel,
+  getFleetVehicles,
   getFuelState,
+  removeFuelRow,
   saveFuelState,
 } from '../services/directories.api';
 import { fuelLocationsForRole } from '../utils/rolePermissions';
@@ -66,6 +77,11 @@ const draftToNumber = (value: string): number | null => {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 };
 
+const monthTitle = (monthValue: string): string => {
+  const [year, month] = monthValue.split('-').map(Number);
+  return `${MONTH_OPTIONS[month - 1].label} ${year}`;
+};
+
 const formatNumber = (value: number | null, digits = 1): string =>
   value === null ? '—' : value.toLocaleString('ru-RU', { maximumFractionDigits: digits });
 
@@ -85,6 +101,10 @@ export default function FuelPage() {
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [exportMenuAnchor, setExportMenuAnchor] = useState<HTMLElement | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [vehiclesForAdd, setVehiclesForAdd] = useState<FleetVehicleItem[]>([]);
+  const [selectedVehicles, setSelectedVehicles] = useState<FleetVehicleItem[]>([]);
+  const [rowMenu, setRowMenu] = useState<{ x: number; y: number; row: FuelRow } | null>(null);
 
   const parsedMonth = useMemo(() => {
     const [year, month] = monthValue.split('-').map(Number);
@@ -158,6 +178,58 @@ export default function FuelPage() {
       setFeedback({ severity: 'error', text: errorText(error) });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openAddDialog = async () => {
+    try {
+      const { data } = await getFleetVehicles(location);
+      const inMonth = new Set((state?.rows ?? []).map((row) => row.vehicleId));
+      setVehiclesForAdd(data.filter((vehicle) => vehicle.status !== 'archived' && !inMonth.has(vehicle.id)));
+      setSelectedVehicles([]);
+      setAddOpen(true);
+    } catch (error) {
+      setFeedback({ severity: 'error', text: errorText(error) });
+    }
+  };
+
+  const confirmAdd = async () => {
+    if (selectedVehicles.length === 0) {
+      setAddOpen(false);
+      return;
+    }
+    try {
+      const { data } = await addFuelRows(location, monthValue, selectedVehicles.map((vehicle) => vehicle.id));
+      applyState(data);
+      setAddOpen(false);
+      setFeedback({ severity: 'success', text: `Добавлено машин: ${selectedVehicles.length}` });
+    } catch (error) {
+      setFeedback({ severity: 'error', text: errorText(error) });
+    }
+  };
+
+  const copyPrevComposition = async () => {
+    try {
+      const { data } = await copyFuelRowsFromPrevMonth(location, monthValue);
+      applyState(data);
+      setFeedback(
+        data.added > 0
+          ? { severity: 'success', text: `Из прошлого месяца добавлено машин: ${data.added}` }
+          : { severity: 'info', text: 'В прошлом месяце нет машин, которых не было бы в текущем' }
+      );
+    } catch (error) {
+      setFeedback({ severity: 'error', text: errorText(error) });
+    }
+  };
+
+  const removeRow = async (row: FuelRow) => {
+    if (!window.confirm(`Убрать ${row.plate} из ${monthTitle(monthValue).toLowerCase()}? Данные месяца по этой машине будут удалены.`)) return;
+    try {
+      const { data } = await removeFuelRow(location, monthValue, row.vehicleId);
+      applyState(data);
+      setFeedback({ severity: 'success', text: `${row.plate} убрана из месяца` });
+    } catch (error) {
+      setFeedback({ severity: 'error', text: errorText(error) });
     }
   };
 
@@ -298,6 +370,12 @@ export default function FuelPage() {
               <button type="button" className="ops-btn ghost" onClick={(event) => setExportMenuAnchor(event.currentTarget)}>
                 Скачать Excel
               </button>
+              <button type="button" className="ops-btn ops-btn--fill-prev" onClick={() => void copyPrevComposition()}>
+                Техника из прошлого месяца
+              </button>
+              <button type="button" className="ops-btn ops-btn--add" onClick={() => void openAddDialog()}>
+                Добавить
+              </button>
               <Menu
                 anchorEl={exportMenuAnchor}
                 open={Boolean(exportMenuAnchor)}
@@ -347,7 +425,13 @@ export default function FuelPage() {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.vehicleId}>
+                <tr
+                  key={row.vehicleId}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setRowMenu({ x: event.clientX, y: event.clientY, row });
+                  }}
+                >
                   <td className="fuel-cell--sticky">
                     {row.plate}
                     {row.status === 'repair' && <span className="fuel-status">ремонт</span>}
@@ -378,7 +462,7 @@ export default function FuelPage() {
               {rows.length === 0 && !loading && (
                 <tr>
                   <td colSpan={10} className="fuel-empty">
-                    В справочнике нет техники для «{LOCATION_LABELS[location]}». Добавьте машины в разделе «Справочники».
+                    Состав месяца пуст — добавьте технику из справочника (кнопка «Добавить») или скопируйте из прошлого месяца.
                   </td>
                 </tr>
               )}
@@ -400,6 +484,54 @@ export default function FuelPage() {
           </table>
         </div>
       </section>
+
+      <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Добавить технику · {monthTitle(monthValue)}</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Autocomplete
+            multiple
+            options={vehiclesForAdd}
+            getOptionLabel={(vehicle) => `${vehicle.plate}${vehicle.model ? ` · ${vehicle.model.brand} ${vehicle.model.name}`.trimEnd() : ''}`}
+            value={selectedVehicles}
+            onChange={(_event, value) => setSelectedVehicles(value)}
+            renderInput={(params) => (
+              <TextField {...params} label="Машины из справочника" placeholder="Начните вводить госномер" autoFocus />
+            )}
+            noOptionsText="Все машины справочника уже в этом месяце"
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={() => void confirmAdd()} disabled={selectedVehicles.length === 0}>
+            Добавить{selectedVehicles.length > 0 ? ` (${selectedVehicles.length})` : ''}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {rowMenu && (
+        <div
+          className="ops-context-overlay"
+          onClick={() => setRowMenu(null)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setRowMenu(null);
+          }}
+        >
+          <div className="ops-context-menu" style={{ left: rowMenu.x, top: rowMenu.y }} onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="ops-context-item danger"
+              onClick={() => {
+                void removeRow(rowMenu.row);
+                setRowMenu(null);
+              }}
+            >
+              Убрать из месяца
+            </button>
+          </div>
+        </div>
+      )}
 
       <Snackbar
         open={Boolean(feedback)}

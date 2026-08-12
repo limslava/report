@@ -7,7 +7,6 @@ import type { FleetLocation } from '../models/fleet-vehicle.model';
 import { FuelEntry } from '../models/fuel-entry.model';
 import { VehicleModel } from '../models/vehicle-model.model';
 import { recordAuditLog } from '../services/audit-log.service';
-import { syncVehiclesFromSchedule } from '../services/fleet-sync.service';
 import {
   DEFAULT_FUEL_SEASONS,
   FUEL_SEASONS_SETTING_KEY,
@@ -102,39 +101,42 @@ type FuelRow = {
   hasBaseline: boolean;
 };
 
+/**
+ * Состав месяца в топливе — это существующие записи fuel_entries за месяц:
+ * машины добавляются из справочника техники (кнопка «Добавить» или
+ * копирование состава прошлого месяца) и удаляются через контекстное меню.
+ * Автоматического наполнения из графиков нет.
+ */
 async function buildFuelRows(location: FleetLocation, monthValue: string): Promise<{ rows: FuelRow[]; isWinter: boolean }> {
-  await syncVehiclesFromSchedule(location, monthValue);
   const seasons = await loadSeasons();
   const month = Number(monthValue.split('-')[1]);
   const isWinter = isWinterMonth(month, seasons);
 
-  const vehicles = await vehicleRepo.find({
-    where: { location },
-    relations: { model: true },
-    order: { plate: 'ASC' },
+  const monthEntries = await entryRepo.find({
+    where: { location, monthValue },
+    relations: { vehicle: { model: true } },
   });
-  const activeVehicles = vehicles.filter((vehicle) => vehicle.status !== 'archived');
-  const vehicleIds = activeVehicles.map((vehicle) => vehicle.id);
-  if (vehicleIds.length === 0) return { rows: [], isWinter };
+  monthEntries.sort((a, b) => a.vehicle.plate.localeCompare(b.vehicle.plate, 'ru'));
+  if (monthEntries.length === 0) return { rows: [], isWinter };
 
+  const vehicleIds = monthEntries.map((entry) => entry.vehicleId);
   const prevMonth = prevMonthValue(monthValue);
-  const entries = await entryRepo
+  const prevEntries = await entryRepo
     .createQueryBuilder('entry')
     .where('entry.vehicle_id IN (:...vehicleIds)', { vehicleIds })
-    .andWhere('entry.month_value IN (:...months)', { months: [monthValue, prevMonth] })
+    .andWhere('entry.month_value = :prevMonth', { prevMonth })
     .getMany();
-  const currentByVehicle = new Map(entries.filter((e) => e.monthValue === monthValue).map((e) => [e.vehicleId, e]));
-  const prevByVehicle = new Map(entries.filter((e) => e.monthValue === prevMonth).map((e) => [e.vehicleId, e]));
+  const prevByVehicle = new Map(prevEntries.map((e) => [e.vehicleId, e]));
 
-  const rows = activeVehicles.map((vehicle): FuelRow => {
-    const entry = currentByVehicle.get(vehicle.id) ?? null;
+  const rows = monthEntries.map((entry): FuelRow => {
+    const vehicle = entry.vehicle;
     const prev = prevByVehicle.get(vehicle.id) ?? null;
 
-    const odometer = toNumber(entry?.odometer);
-    const fuelEnd = toNumber(entry?.fuelEnd);
-    const fuelFilled = toNumber(entry?.fuelFilled);
-    const mileageManual = toNumber(entry?.mileageManual);
-    const fuelStartManual = toNumber(entry?.fuelStartManual);
+    const odometer = toNumber(entry.odometer);
+    const fuelEnd = toNumber(entry.fuelEnd);
+    const fuelFilled = toNumber(entry.fuelFilled);
+    const mileageManual = toNumber(entry.mileageManual);
+    const fuelStartManual = toNumber(entry.fuelStartManual);
     const prevOdometer = toNumber(prev?.odometer);
     const prevFuelEnd = toNumber(prev?.fuelEnd);
 
@@ -251,6 +253,86 @@ export const setVehicleBaseline = async (req: Request, res: Response) => {
     req,
   });
   res.json({ ok: true, baselineMonth });
+};
+
+/** Добавить машины из справочника техники в состав месяца (пустые записи). */
+export const addFuelRows = async (req: Request, res: Response) => {
+  const location = requireFuelLocation(req, req.body?.location);
+  const monthValue = parseMonthValue(req.body?.monthValue);
+  const vehicleIds: unknown = req.body?.vehicleIds;
+  if (!Array.isArray(vehicleIds) || vehicleIds.length === 0) httpError(400, 'vehicleIds must be a non-empty array');
+
+  const vehicles = await vehicleRepo.find({ where: { location } });
+  const vehicleById = new Map(vehicles.map((vehicle) => [vehicle.id, vehicle]));
+  let added = 0;
+  for (const vehicleId of vehicleIds as string[]) {
+    if (!vehicleById.has(vehicleId)) httpError(400, `Vehicle ${vehicleId} is not in ${location}`);
+    const existing = await entryRepo.findOne({ where: { vehicleId, monthValue } });
+    if (existing) continue;
+    await entryRepo.save(entryRepo.create({ vehicleId, monthValue, location, updatedByUserId: req.user?.id ?? null }));
+    added += 1;
+  }
+  await recordAuditLog({
+    action: 'FUEL_ROWS_ADDED',
+    userId: req.user?.id ?? null,
+    entityType: 'fuel_entry',
+    entityId: `${location}:${monthValue}`,
+    details: { location, monthValue, added },
+    req,
+  });
+  const { rows, isWinter } = await buildFuelRows(location, monthValue);
+  const filledCount = rows.filter((row) => row.odometer !== null && row.fuelEnd !== null && row.fuelFilled !== null).length;
+  res.json({ location, monthValue, isWinter, filledCount, totalCount: rows.length, rows });
+};
+
+/** Убрать машину из состава месяца (данные месяца этой машины удаляются). */
+export const removeFuelRow = async (req: Request, res: Response) => {
+  const location = requireFuelLocation(req, req.body?.location);
+  const monthValue = parseMonthValue(req.body?.monthValue);
+  const vehicleId = typeof req.body?.vehicleId === 'string' ? req.body.vehicleId : httpError(400, 'vehicleId is required');
+
+  const entry = await entryRepo.findOne({ where: { vehicleId: vehicleId as string, monthValue, location } });
+  if (!entry) return httpError(404, 'Row not found in this month') as never;
+  await entryRepo.remove(entry);
+  await recordAuditLog({
+    action: 'FUEL_ROW_REMOVED',
+    userId: req.user?.id ?? null,
+    entityType: 'fuel_entry',
+    entityId: `${location}:${monthValue}:${vehicleId}`,
+    details: { location, monthValue, vehicleId },
+    req,
+  });
+  const { rows, isWinter } = await buildFuelRows(location, monthValue);
+  const filledCount = rows.filter((row) => row.odometer !== null && row.fuelEnd !== null && row.fuelFilled !== null).length;
+  res.json({ location, monthValue, isWinter, filledCount, totalCount: rows.length, rows });
+};
+
+/** Скопировать состав техники из прошлого месяца (без значений). */
+export const copyFuelRowsFromPrevMonth = async (req: Request, res: Response) => {
+  const location = requireFuelLocation(req, req.body?.location);
+  const monthValue = parseMonthValue(req.body?.monthValue);
+  const prevMonth = prevMonthValue(monthValue);
+  const prevEntries = await entryRepo.find({ where: { location, monthValue: prevMonth } });
+  let added = 0;
+  for (const prev of prevEntries) {
+    const existing = await entryRepo.findOne({ where: { vehicleId: prev.vehicleId, monthValue } });
+    if (existing) continue;
+    await entryRepo.save(
+      entryRepo.create({ vehicleId: prev.vehicleId, monthValue, location, updatedByUserId: req.user?.id ?? null })
+    );
+    added += 1;
+  }
+  await recordAuditLog({
+    action: 'FUEL_ROWS_COPIED',
+    userId: req.user?.id ?? null,
+    entityType: 'fuel_entry',
+    entityId: `${location}:${monthValue}`,
+    details: { location, monthValue, fromMonth: prevMonth, added },
+    req,
+  });
+  const { rows, isWinter } = await buildFuelRows(location, monthValue);
+  const filledCount = rows.filter((row) => row.odometer !== null && row.fuelEnd !== null && row.fuelFilled !== null).length;
+  res.json({ location, monthValue, isWinter, filledCount, totalCount: rows.length, rows, added });
 };
 
 export const getFuelSeasons = async (_req: Request, res: Response) => {

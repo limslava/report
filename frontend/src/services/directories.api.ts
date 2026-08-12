@@ -151,6 +151,12 @@ export const setFuelBaseline = (data: {
   startOdometer: number | null;
   startFuelLevel: number | null;
 }) => api.post('/fuel/baseline', data);
+export const addFuelRows = (location: FleetLocation, monthValue: string, vehicleIds: string[]) =>
+  api.post<FuelState>('/fuel/rows', { location, monthValue, vehicleIds });
+export const removeFuelRow = (location: FleetLocation, monthValue: string, vehicleId: string) =>
+  api.post<FuelState>('/fuel/rows/remove', { location, monthValue, vehicleId });
+export const copyFuelRowsFromPrevMonth = (location: FleetLocation, monthValue: string) =>
+  api.post<FuelState & { added: number }>('/fuel/rows/copy-prev', { location, monthValue });
 export const getFuelSeasons = () => api.get<{ winterStartMonth: number; winterEndMonth: number }>('/fuel/seasons');
 export const saveFuelSeasons = (data: { winterStartMonth: number; winterEndMonth: number }) => api.put('/fuel/seasons', data);
 export const downloadFuelExcel = (location: FleetLocation, month: string) =>
