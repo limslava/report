@@ -57,11 +57,17 @@ const MONTH_GENITIVE = [
   'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
 ];
 
-type TabKey = 'employees' | 'vehicles' | 'trailers' | 'models';
+type TabKey = 'drivers' | 'staff' | 'vehicles' | 'trailers' | 'models';
 
 type Feedback = { severity: 'success' | 'error'; text: string } | null;
 
 const formatDateInput = (value: string | null | undefined): string => (value ? value.slice(0, 10) : '');
+
+const formatDateDisplay = (value: string | null | undefined): string => {
+  if (!value) return '—';
+  const [year, month, day] = value.slice(0, 10).split('-');
+  return `${day}.${month}.${year}`;
+};
 
 const errorText = (error: unknown): string => {
   const anyError = error as any;
@@ -74,7 +80,7 @@ export default function DirectoriesPage() {
   const canManageNorms = canManageFuelNormsFrontend(user?.role);
   const isAdmin = user?.role === 'admin';
   const [location, setLocation] = useState<FleetLocation>(allowedLocations[0] ?? 'vvo');
-  const [tab, setTab] = useState<TabKey>('employees');
+  const [tab, setTab] = useState<TabKey>('drivers');
   const [feedback, setFeedback] = useState<Feedback>(null);
 
   const [employees, setEmployees] = useState<EmployeeItem[]>([]);
@@ -87,7 +93,6 @@ export default function DirectoriesPage() {
   });
 
   const [employeeEdit, setEmployeeEdit] = useState<Partial<EmployeeItem> | null>(null);
-  const [personFilter, setPersonFilter] = useState<string>('all');
   const [showFullData, setShowFullData] = useState(false);
   const [vehicleEdit, setVehicleEdit] = useState<Partial<FleetVehicleItem> | null>(null);
   const [vehicleModelLabel, setVehicleModelLabel] = useState('');
@@ -117,10 +122,8 @@ export default function DirectoriesPage() {
     void reload();
   }, [reload]);
 
-  const filteredEmployees = useMemo(() => {
-    if (personFilter === 'all') return employees;
-    return employees.filter((e) => e.position === personFilter);
-  }, [employees, personFilter]);
+  const drivers = useMemo(() => employees.filter((e) => e.position === 'водитель'), [employees]);
+  const staff = useMemo(() => employees.filter((e) => e.position !== 'водитель'), [employees]);
 
   const copyCard = async (employee: EmployeeItem) => {
     try {
@@ -207,7 +210,7 @@ export default function DirectoriesPage() {
     }
   };
 
-  const removeEntity = async (kind: TabKey, id: string, label: string) => {
+  const removeEntity = async (kind: 'employees' | 'vehicles' | 'trailers' | 'models', id: string, label: string) => {
     if (!window.confirm(`Удалить «${label}»?`)) return;
     try {
       if (kind === 'employees') { await deleteEmployee(id); setEmployeeEdit(null); }
@@ -275,34 +278,32 @@ export default function DirectoriesPage() {
               variant="scrollable"
               sx={{ minHeight: 40, '& .MuiTab-root': { minHeight: 40, py: 0 } }}
             >
-              <Tab value="employees" label={`Персонал (${employees.length})`} />
+              <Tab value="drivers" label={`Водители (${drivers.length})`} />
+              <Tab value="staff" label={`Сотрудники (${staff.length})`} />
               <Tab value="vehicles" label={`Техника (${vehicles.length})`} />
               <Tab value="trailers" label={`Прицепы (${trailers.length})`} />
               <Tab value="models" label={`Модели и нормы (${models.length})`} />
             </Tabs>
             <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              {tab === 'employees' && (
-                <TextField
-                  label="Роль"
-                  select
-                  size="small"
-                  value={personFilter}
-                  onChange={(event) => setPersonFilter(event.target.value)}
-                  sx={{ width: 170, '& .MuiInputBase-root': { height: 40 } }}
-                >
-                  <MenuItem value="all">Все</MenuItem>
-                  {['водитель', 'диспетчер', 'оперативник', 'автослесарь', 'сторож', 'прочее'].map((option) => (
-                    <MenuItem key={option} value={option}>{option}</MenuItem>
-                  ))}
-                </TextField>
-              )}
-              {tab === 'employees' && (
+              {tab === 'drivers' && (
                 <button
                   type="button"
                   className="ops-btn ops-btn--add"
                   onClick={() => {
                     setShowFullData(false);
                     setEmployeeEdit({ position: 'водитель', status: 'active' });
+                  }}
+                >
+                  Добавить
+                </button>
+              )}
+              {tab === 'staff' && (
+                <button
+                  type="button"
+                  className="ops-btn ops-btn--add"
+                  onClick={() => {
+                    setShowFullData(false);
+                    setEmployeeEdit({ position: 'диспетчер', status: 'active' });
                   }}
                 >
                   Добавить
@@ -336,8 +337,59 @@ export default function DirectoriesPage() {
       </section>
 
       <section className="ops-preview__matrix">
-        {tab === 'employees' && (
-          <>
+        {tab === 'drivers' && (
+          <div className="dir-table">
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ minWidth: 200 }}>ФИО</th>
+                  <th style={{ minWidth: 130 }}>Телефон</th>
+                  <th style={{ minWidth: 120 }}>ВУ (номер)</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 110 }}>Дата выдачи ВУ</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 110 }}>Дата рождения</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>Статус</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 80 }}>Карточка</th>
+                </tr>
+              </thead>
+              <tbody>
+                {drivers.map((employee) => (
+                  <tr
+                    key={employee.id}
+                    onDoubleClick={() => {
+                      setShowFullData(false);
+                      setEmployeeEdit(employee);
+                    }}
+                  >
+                    <td className="fuel-cell--sticky">{employee.fullName}</td>
+                    <td className="fuel-cell--center">{employee.phone || '—'}</td>
+                    <td className="fuel-cell--center">{employee.licenseNumber || '—'}</td>
+                    <td className="fuel-cell--center">{formatDateDisplay(employee.licenseIssueDate)}</td>
+                    <td className="fuel-cell--center">{formatDateDisplay(employee.birthDate)}</td>
+                    <td className="fuel-cell--center">
+                      <span className={`dir-status ${employee.status === 'active' ? 'dir-status--ok' : 'dir-status--off'}`}>
+                        {employee.status === 'active' ? 'работает' : 'уволен'}
+                      </span>
+                    </td>
+                    <td className="fuel-cell--center dir-actions">
+                      <Tooltip title="Скопировать карточку водителя">
+                        <IconButton size="small" onClick={() => void copyCard(employee)}>
+                          <ContentCopy sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                    </td>
+                  </tr>
+                ))}
+                {drivers.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="fuel-empty">Водителей пока нет — добавьте</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === 'staff' && (
           <div className="dir-table">
             <table>
               <thead>
@@ -346,11 +398,10 @@ export default function DirectoriesPage() {
                   <th style={{ minWidth: 110 }}>Роль</th>
                   <th style={{ minWidth: 130 }}>Телефон</th>
                   <th className="fuel-cell--center" style={{ minWidth: 90 }}>Статус</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 80 }}>Карточка</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredEmployees.map((employee) => (
+                {staff.map((employee) => (
                   <tr
                     key={employee.id}
                     onDoubleClick={() => {
@@ -366,28 +417,16 @@ export default function DirectoriesPage() {
                         {employee.status === 'active' ? 'работает' : 'уволен'}
                       </span>
                     </td>
-                    <td className="fuel-cell--center dir-actions">
-                      {employee.position === 'водитель' && (
-                        <Tooltip title="Скопировать карточку водителя">
-                          <IconButton size="small" onClick={() => void copyCard(employee)}>
-                            <ContentCopy sx={{ fontSize: 16 }} />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                    </td>
                   </tr>
                 ))}
-                {filteredEmployees.length === 0 && (
+                {staff.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="fuel-empty">
-                      {employees.length === 0 ? 'Справочник пуст — добавьте сотрудников' : 'Нет записей по выбранному фильтру'}
-                    </td>
+                    <td colSpan={4} className="fuel-empty">Сотрудников пока нет — добавьте (диспетчеры, оперативники и др.)</td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
-          </>
         )}
 
         {tab === 'vehicles' && (
@@ -544,7 +583,7 @@ export default function DirectoriesPage() {
               value={employeeEdit?.position ?? 'водитель'}
               onChange={(event) => setEmployeeEdit((prev) => ({ ...prev, position: event.target.value }))}
             >
-              {['водитель', 'диспетчер', 'оперативник', 'автослесарь', 'сторож', 'прочее'].map((option) => (
+              {['водитель', 'диспетчер', 'оперативник', 'автослесарь', 'сторож'].map((option) => (
                 <MenuItem key={option} value={option}>{option}</MenuItem>
               ))}
             </TextField>
