@@ -105,6 +105,7 @@ export default function FuelPage() {
   const [exportMenuAnchor, setExportMenuAnchor] = useState<HTMLElement | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [vehiclesForAdd, setVehiclesForAdd] = useState<FleetVehicleItem[]>([]);
+  const [directoryEmpty, setDirectoryEmpty] = useState(false);
   const [selectedVehicles, setSelectedVehicles] = useState<FleetVehicleItem[]>([]);
   const [rowMenu, setRowMenu] = useState<{ x: number; y: number; row: FuelRow } | null>(null);
 
@@ -239,8 +240,10 @@ export default function FuelPage() {
   const openAddDialog = async () => {
     try {
       const { data } = await getFleetVehicles(location);
+      const active = data.filter((vehicle) => vehicle.status !== 'archived');
       const inMonth = new Set((state?.rows ?? []).map((row) => row.vehicleId));
-      setVehiclesForAdd(data.filter((vehicle) => vehicle.status !== 'archived' && !inMonth.has(vehicle.id)));
+      setDirectoryEmpty(active.length === 0);
+      setVehiclesForAdd(active.filter((vehicle) => !inMonth.has(vehicle.id)));
       setSelectedVehicles([]);
       setAddOpen(true);
     } catch (error) {
@@ -549,7 +552,11 @@ export default function FuelPage() {
             renderInput={(params) => (
               <TextField {...params} label="Машины из справочника" placeholder="Начните вводить госномер" autoFocus />
             )}
-            noOptionsText="Все машины справочника уже в этом месяце"
+            noOptionsText={
+              directoryEmpty
+                ? 'Справочник техники пуст — машины туда добавляют руководитель/менеджер КТК или администратор в разделе «Справочники»'
+                : 'Все машины справочника уже в этом месяце'
+            }
             sx={{ mt: 1 }}
           />
         </DialogContent>
