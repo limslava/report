@@ -3847,6 +3847,18 @@ export default function OperationsPreview() {
             >
               Копировать
             </button>
+            {canCopyDriverCard && (contextMenu.person.department === 'Контейнеры' || contextMenu.person.department === 'Авто') && (
+              <button
+                type="button"
+                className="ops-context-item"
+                onClick={() => {
+                  void handleCopyDriverCard(contextMenu.person, contextMenu.lane);
+                  setContextMenu(null);
+                }}
+              >
+                Скопировать данные
+              </button>
+            )}
             <button
               type="button"
               className={`ops-context-item${clipboardPerson ? '' : ' disabled'}`}
@@ -3880,18 +3892,6 @@ export default function OperationsPreview() {
             >
               Удалить
             </button>
-            {canCopyDriverCard && (contextMenu.person.department === 'Контейнеры' || contextMenu.person.department === 'Авто') && (
-              <button
-                type="button"
-                className="ops-context-item"
-                onClick={() => {
-                  void handleCopyDriverCard(contextMenu.person, contextMenu.lane);
-                  setContextMenu(null);
-                }}
-              >
-                Скопировать данные водителя
-              </button>
-            )}
           </div>
         </div>
       )}
