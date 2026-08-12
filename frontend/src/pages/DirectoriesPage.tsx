@@ -18,7 +18,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { ContentCopy, Delete, Edit } from '@mui/icons-material';
+import { ContentCopy } from '@mui/icons-material';
 import { useAuthStore } from '../store/auth-store';
 import {
   EmployeeItem,
@@ -72,6 +72,7 @@ export default function DirectoriesPage() {
   const { user } = useAuthStore();
   const allowedLocations = useMemo(() => directoryLocationsForRole(user?.role), [user?.role]);
   const canManageNorms = canManageFuelNormsFrontend(user?.role);
+  const isAdmin = user?.role === 'admin';
   const [location, setLocation] = useState<FleetLocation>(allowedLocations[0] ?? 'vvo');
   const [tab, setTab] = useState<TabKey>('employees');
   const [feedback, setFeedback] = useState<Feedback>(null);
@@ -92,7 +93,6 @@ export default function DirectoriesPage() {
   const [vehicleModelLabel, setVehicleModelLabel] = useState('');
   const [trailerEdit, setTrailerEdit] = useState<Partial<TrailerItem> | null>(null);
   const [modelEdit, setModelEdit] = useState<Partial<VehicleModelItem> | null>(null);
-  const [cardPreview, setCardPreview] = useState<{ fullName: string; text: string } | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -128,15 +128,6 @@ export default function DirectoriesPage() {
       const { data } = await getEmployeeCardText(employee.id);
       await navigator.clipboard.writeText(data.text);
       setFeedback({ severity: 'success', text: `Карточка «${employee.fullName}» скопирована в буфер обмена` });
-    } catch (error) {
-      setFeedback({ severity: 'error', text: errorText(error) });
-    }
-  };
-
-  const showCard = async (employee: EmployeeItem) => {
-    try {
-      const { data } = await getEmployeeCardText(employee.id);
-      setCardPreview({ fullName: employee.fullName, text: data.text });
     } catch (error) {
       setFeedback({ severity: 'error', text: errorText(error) });
     }
@@ -220,10 +211,10 @@ export default function DirectoriesPage() {
   const removeEntity = async (kind: TabKey, id: string, label: string) => {
     if (!window.confirm(`Удалить «${label}»?`)) return;
     try {
-      if (kind === 'employees') await deleteEmployee(id);
-      if (kind === 'vehicles') await deleteFleetVehicle(id);
-      if (kind === 'trailers') await deleteTrailer(id);
-      if (kind === 'models') await deleteVehicleModel(id);
+      if (kind === 'employees') { await deleteEmployee(id); setEmployeeEdit(null); }
+      if (kind === 'vehicles') { await deleteFleetVehicle(id); setVehicleEdit(null); }
+      if (kind === 'trailers') { await deleteTrailer(id); setTrailerEdit(null); }
+      if (kind === 'models') { await deleteVehicleModel(id); setModelEdit(null); }
       await reload();
       setFeedback({ severity: 'success', text: 'Удалено' });
     } catch (error) {
@@ -354,19 +345,19 @@ export default function DirectoriesPage() {
                   <th style={{ minWidth: 130 }}>Телефон</th>
                   <th style={{ minWidth: 180 }}>Закрепление</th>
                   <th style={{ minWidth: 90 }}>Статус</th>
-                  <th style={{ minWidth: 120 }}>Действия</th>
+                  <th style={{ minWidth: 80 }}>Карточка</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredEmployees.map((employee) => (
-                  <tr key={employee.id}>
-                    <td
-                      className="fuel-cell--sticky"
-                      style={employee.position === 'водитель' ? { cursor: 'pointer' } : undefined}
-                      onClick={employee.position === 'водитель' ? () => void showCard(employee) : undefined}
-                    >
-                      {employee.fullName}
-                    </td>
+                  <tr
+                    key={employee.id}
+                    onDoubleClick={() => {
+                      setShowFullData(false);
+                      setEmployeeEdit(employee);
+                    }}
+                  >
+                    <td className="fuel-cell--sticky">{employee.fullName}</td>
                     <td className="fuel-cell--center">{employee.position}</td>
                     <td className="fuel-cell--center">{employee.phone || '—'}</td>
                     <td className="fuel-cell--left">
@@ -387,18 +378,6 @@ export default function DirectoriesPage() {
                           </IconButton>
                         </Tooltip>
                       )}
-                      <IconButton
-                        size="small"
-                        onClick={() => {
-                          setShowFullData(false);
-                          setEmployeeEdit(employee);
-                        }}
-                      >
-                        <Edit sx={{ fontSize: 16 }} />
-                      </IconButton>
-                      <IconButton size="small" className="dir-actions__delete" onClick={() => void removeEntity('employees', employee.id, employee.fullName)}>
-                        <Delete sx={{ fontSize: 16 }} />
-                      </IconButton>
                     </td>
                   </tr>
                 ))}
@@ -426,12 +405,17 @@ export default function DirectoriesPage() {
                   <th style={{ minWidth: 90 }}>Цвет</th>
                   <th style={{ minWidth: 140 }}>VIN</th>
                   <th style={{ minWidth: 90 }}>Статус</th>
-                  <th style={{ minWidth: 90 }}>Действия</th>
                 </tr>
               </thead>
               <tbody>
                 {vehicles.map((vehicle) => (
-                  <tr key={vehicle.id}>
+                  <tr
+                    key={vehicle.id}
+                    onDoubleClick={() => {
+                      setVehicleModelLabel(vehicle.model ? `${vehicle.model.brand} ${vehicle.model.name}`.trim() : '');
+                      setVehicleEdit(vehicle);
+                    }}
+                  >
                     <td className="fuel-cell--sticky">{vehicle.plate}</td>
                     <td className="fuel-cell--left">{vehicle.vehicleKind || '—'}</td>
                     <td className="fuel-cell--left">{vehicle.model ? `${vehicle.model.brand} ${vehicle.model.name}`.trim() : '—'}</td>
@@ -442,25 +426,11 @@ export default function DirectoriesPage() {
                         {vehicle.status === 'active' ? 'в работе' : vehicle.status === 'repair' ? 'ремонт' : 'архив'}
                       </span>
                     </td>
-                    <td className="fuel-cell--center dir-actions">
-                      <IconButton
-                        size="small"
-                        onClick={() => {
-                          setVehicleModelLabel(vehicle.model ? `${vehicle.model.brand} ${vehicle.model.name}`.trim() : '');
-                          setVehicleEdit(vehicle);
-                        }}
-                      >
-                        <Edit sx={{ fontSize: 16 }} />
-                      </IconButton>
-                      <IconButton size="small" className="dir-actions__delete" onClick={() => void removeEntity('vehicles', vehicle.id, vehicle.plate)}>
-                        <Delete sx={{ fontSize: 16 }} />
-                      </IconButton>
-                    </td>
                   </tr>
                 ))}
                 {vehicles.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="fuel-empty">Справочник пуст — техника появится из графиков или добавьте вручную</td>
+                    <td colSpan={6} className="fuel-empty">Справочник пуст — техника появится из графиков или добавьте вручную</td>
                   </tr>
                 )}
               </tbody>
@@ -476,12 +446,11 @@ export default function DirectoriesPage() {
                   <th style={{ minWidth: 130 }}>Номер</th>
                   <th style={{ minWidth: 260 }}>Примечание</th>
                   <th style={{ minWidth: 90 }}>Статус</th>
-                  <th style={{ minWidth: 90 }}>Действия</th>
                 </tr>
               </thead>
               <tbody>
                 {trailers.map((trailer) => (
-                  <tr key={trailer.id}>
+                  <tr key={trailer.id} onDoubleClick={() => setTrailerEdit(trailer)}>
                     <td className="fuel-cell--sticky">{trailer.plate}</td>
                     <td className="fuel-cell--left">{trailer.note || '—'}</td>
                     <td className="fuel-cell--center">
@@ -489,19 +458,11 @@ export default function DirectoriesPage() {
                         {trailer.status === 'active' ? 'в работе' : 'архив'}
                       </span>
                     </td>
-                    <td className="fuel-cell--center dir-actions">
-                      <IconButton size="small" onClick={() => setTrailerEdit(trailer)}>
-                        <Edit sx={{ fontSize: 16 }} />
-                      </IconButton>
-                      <IconButton size="small" className="dir-actions__delete" onClick={() => void removeEntity('trailers', trailer.id, trailer.plate)}>
-                        <Delete sx={{ fontSize: 16 }} />
-                      </IconButton>
-                    </td>
                   </tr>
                 ))}
                 {trailers.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="fuel-empty">Справочник пуст — добавьте прицепы</td>
+                    <td colSpan={3} className="fuel-empty">Справочник пуст — добавьте прицепы</td>
                   </tr>
                 )}
               </tbody>
@@ -547,35 +508,20 @@ export default function DirectoriesPage() {
                     <th style={{ minWidth: 140 }}>Норма зима, л/100км</th>
                     <th style={{ minWidth: 140 }}>Норма лето, л/100км</th>
                     <th style={{ minWidth: 80 }}>Машин</th>
-                    {canManageNorms && <th style={{ minWidth: 90 }}>Действия</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {models.map((model) => (
-                    <tr key={model.id}>
+                    <tr key={model.id} onDoubleClick={canManageNorms ? () => setModelEdit(model) : undefined}>
                       <td className="fuel-cell--sticky">{`${model.brand} ${model.name}`.trim()}</td>
                       <td>{model.fuelNormWinter ?? '—'}</td>
                       <td>{model.fuelNormSummer ?? '—'}</td>
                       <td>{model.vehicleCount ?? 0}</td>
-                      {canManageNorms && (
-                        <td className="fuel-cell--center dir-actions">
-                          <IconButton size="small" onClick={() => setModelEdit(model)}>
-                            <Edit sx={{ fontSize: 16 }} />
-                          </IconButton>
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => void removeEntity('models', model.id, `${model.brand} ${model.name}`.trim())}
-                          >
-                            <Delete sx={{ fontSize: 16 }} />
-                          </IconButton>
-                        </td>
-                      )}
                     </tr>
                   ))}
                   {models.length === 0 && (
                     <tr>
-                      <td colSpan={canManageNorms ? 5 : 4} className="fuel-empty">Моделей пока нет — они появятся при заполнении карточек техники</td>
+                      <td colSpan={4} className="fuel-empty">Моделей пока нет — они появятся при заполнении карточек техники</td>
                     </tr>
                   )}
                 </tbody>
@@ -663,6 +609,15 @@ export default function DirectoriesPage() {
           )}
         </DialogContent>
         <DialogActions>
+          {isAdmin && employeeEdit?.id && (
+            <Button
+              color="error"
+              sx={{ mr: 'auto' }}
+              onClick={() => void removeEntity('employees', employeeEdit.id!, employeeEdit.fullName ?? '')}
+            >
+              Удалить
+            </Button>
+          )}
           <Button onClick={() => setEmployeeEdit(null)}>Отмена</Button>
           <Button variant="contained" onClick={() => void saveEmployeeEdit()}>Сохранить</Button>
         </DialogActions>
@@ -700,6 +655,15 @@ export default function DirectoriesPage() {
           </Box>
         </DialogContent>
         <DialogActions>
+          {isAdmin && vehicleEdit?.id && (
+            <Button
+              color="error"
+              sx={{ mr: 'auto' }}
+              onClick={() => void removeEntity('vehicles', vehicleEdit.id!, vehicleEdit.plate ?? '')}
+            >
+              Удалить
+            </Button>
+          )}
           <Button onClick={() => setVehicleEdit(null)}>Отмена</Button>
           <Button variant="contained" onClick={() => void saveVehicleEdit()}>Сохранить</Button>
         </DialogActions>
@@ -715,6 +679,15 @@ export default function DirectoriesPage() {
           </Box>
         </DialogContent>
         <DialogActions>
+          {isAdmin && trailerEdit?.id && (
+            <Button
+              color="error"
+              sx={{ mr: 'auto' }}
+              onClick={() => void removeEntity('trailers', trailerEdit.id!, trailerEdit.plate ?? '')}
+            >
+              Удалить
+            </Button>
+          )}
           <Button onClick={() => setTrailerEdit(null)}>Отмена</Button>
           <Button variant="contained" onClick={() => void saveTrailerEdit()}>Сохранить</Button>
         </DialogActions>
@@ -732,33 +705,17 @@ export default function DirectoriesPage() {
           </Box>
         </DialogContent>
         <DialogActions>
+          {isAdmin && modelEdit?.id && (
+            <Button
+              color="error"
+              sx={{ mr: 'auto' }}
+              onClick={() => void removeEntity('models', modelEdit.id!, `${modelEdit.brand ?? ''} ${modelEdit.name ?? ''}`.trim())}
+            >
+              Удалить
+            </Button>
+          )}
           <Button onClick={() => setModelEdit(null)}>Отмена</Button>
           <Button variant="contained" onClick={() => void saveModelEdit()}>Сохранить</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ─── Предпросмотр карточки ─── */}
-      <Dialog open={Boolean(cardPreview)} onClose={() => setCardPreview(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Карточка · {cardPreview?.fullName}</DialogTitle>
-        <DialogContent>
-          <Box component="pre" sx={{ font: '13px/1.6 monospace', whiteSpace: 'pre-wrap', bgcolor: 'grey.50', p: 1.5, borderRadius: 1, m: 0 }}>
-            {cardPreview?.text}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCardPreview(null)}>Закрыть</Button>
-          <Button
-            variant="contained"
-            startIcon={<ContentCopy />}
-            onClick={() => {
-              if (cardPreview) {
-                void navigator.clipboard.writeText(cardPreview.text);
-                setFeedback({ severity: 'success', text: 'Карточка скопирована в буфер обмена' });
-              }
-            }}
-          >
-            Скопировать
-          </Button>
         </DialogActions>
       </Dialog>
 
