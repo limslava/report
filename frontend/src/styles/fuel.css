@@ -190,7 +190,10 @@
 /* ─── Справочники: стиль «Планов» (MUI-таблица) со светлыми разделителями ─── */
 
 .dir-table {
-  overflow-x: auto;
+  overflow: auto;
+  /* своя вертикальная прокрутка по высоте окна — как таблицы в «Планах»;
+     липкая шапка работает внутри этого контейнера */
+  max-height: calc(100dvh - 210px);
   background: #fff;
   border: 1px solid #e4e8ef;
   border-radius: 10px;
