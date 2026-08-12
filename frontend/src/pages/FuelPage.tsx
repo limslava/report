@@ -14,7 +14,6 @@ import {
   Snackbar,
   TextField,
   Tooltip,
-  Typography,
 } from '@mui/material';
 import { useAuthStore } from '../store/auth-store';
 import {
@@ -282,7 +281,6 @@ export default function FuelPage() {
       ),
     [rows]
   );
-  const filledCount = rows.filter((row) => row.odometer !== null && row.fuelEnd !== null && row.fuelFilled !== null).length;
 
   const deviationBadge = (deviationPct: number | null) => {
     if (deviationPct === null) return <span className="fuel-badge fuel-badge--none">—</span>;
@@ -360,13 +358,7 @@ export default function FuelPage() {
                 ))}
               </TextField>
             )}
-            <Typography sx={{ fontSize: 13, color: state?.isWinter ? '#1d4ed8' : '#15803d', fontWeight: 600 }}>
-              {state ? (state.isWinter ? 'Зимние нормы' : 'Летние нормы') : ''}
-            </Typography>
             <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              <Typography sx={{ fontSize: 13, color: '#6b7280' }}>
-                Заполнено {filledCount} из {rows.length}
-              </Typography>
               <button type="button" className="ops-btn ghost" onClick={(event) => setExportMenuAnchor(event.currentTarget)}>
                 Скачать Excel
               </button>
