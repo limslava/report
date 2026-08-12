@@ -68,11 +68,13 @@ const currentMonthValue = (): string => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 };
 
-const toDraft = (value: number | null): string => (value === null ? '' : String(value));
+const toDraft = (value: number | null): string =>
+  value === null ? '' : value.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 
 const draftToNumber = (value: string): number | null => {
   if (!value.trim()) return null;
-  const parsed = Number(value.replace(',', '.'));
+  // пробелы и неразрывные пробелы — разделители разрядов, запятая — десятичная
+  const parsed = Number(value.replace(/[\s\u00A0]/g, '').replace(',', '.'));
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 };
 
@@ -153,6 +155,17 @@ export default function FuelPage() {
   const updateDraft = (vehicleId: string, field: keyof DraftValues, value: string) => {
     setDrafts((prev) => ({ ...prev, [vehicleId]: { ...prev[vehicleId], [field]: value } }));
     setDirty(true);
+  };
+
+  // при уходе из ячейки число приводится к виду с разделителями разрядов
+  const normalizeDraft = (vehicleId: string, field: keyof DraftValues) => {
+    setDrafts((prev) => {
+      const raw = prev[vehicleId]?.[field] ?? '';
+      const parsed = draftToNumber(raw);
+      const formatted = parsed === null ? (raw.trim() ? raw : '') : toDraft(parsed);
+      if (formatted === raw) return prev;
+      return { ...prev, [vehicleId]: { ...prev[vehicleId], [field]: formatted } };
+    });
   };
 
   const save = async () => {
@@ -300,6 +313,7 @@ export default function FuelPage() {
           inputMode="decimal"
           placeholder={options?.manual ? options?.autoValue ?? '' : ''}
           onChange={(event) => updateDraft(row.vehicleId, field, event.target.value)}
+          onBlur={() => normalizeDraft(row.vehicleId, field)}
         />
       </td>
     );
