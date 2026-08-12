@@ -16,6 +16,7 @@ import {
   Tooltip,
 } from '@mui/material';
 import { useAuthStore } from '../store/auth-store';
+import { registerUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import {
   FleetLocation,
   FleetVehicleItem,
@@ -152,6 +153,46 @@ export default function FuelPage() {
     void reload();
   }, [reload]);
 
+  // предупреждение о несохранённых изменениях (общий механизм с графиками)
+  useEffect(() => {
+    setHasUnsavedChanges(dirty);
+  }, [dirty]);
+
+  useEffect(() => {
+    registerUnsavedHandlers({
+      save: () => save(),
+      discard: () => {
+        if (state) applyState(state);
+      },
+    });
+    return () => {
+      registerUnsavedHandlers(null);
+      setHasUnsavedChanges(false);
+    };
+  });
+
+  useEffect(() => {
+    const handler = (event: BeforeUnloadEvent) => {
+      if (dirty) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty]);
+
+  // смена периода/города при несохранённых изменениях — подтверждение
+  const [pendingSwitch, setPendingSwitch] = useState<(() => void) | null>(null);
+
+  const guardSwitch = (action: () => void) => {
+    if (!dirty) {
+      action();
+      return;
+    }
+    setPendingSwitch(() => action);
+  };
+
   const updateDraft = (vehicleId: string, field: keyof DraftValues, value: string) => {
     setDrafts((prev) => ({ ...prev, [vehicleId]: { ...prev[vehicleId], [field]: value } }));
     setDirty(true);
@@ -168,8 +209,8 @@ export default function FuelPage() {
     });
   };
 
-  const save = async () => {
-    if (!state) return;
+  const save = async (): Promise<boolean> => {
+    if (!state) return true;
     const rows: FuelRowPayload[] = state.rows.map((row) => {
       const draft = drafts[row.vehicleId];
       return {
@@ -186,8 +227,10 @@ export default function FuelPage() {
       const { data } = await saveFuelState(location, monthValue, rows);
       applyState(data);
       setFeedback({ severity: 'success', text: 'Данные сохранены' });
+      return true;
     } catch (error) {
       setFeedback({ severity: 'error', text: errorText(error) });
+      return false;
     } finally {
       setLoading(false);
     }
@@ -339,7 +382,7 @@ export default function FuelPage() {
               inputProps={{ min: 2020, max: 2100 }}
               onChange={(event) => {
                 const next = Number(event.target.value);
-                if (Number.isInteger(next)) setPeriod(next, parsedMonth.month);
+                if (Number.isInteger(next)) guardSwitch(() => setPeriod(next, parsedMonth.month));
               }}
               sx={{ width: 110, '& .MuiInputBase-root': { height: 40 } }}
             />
@@ -350,7 +393,7 @@ export default function FuelPage() {
               value={parsedMonth.month}
               onChange={(event) => {
                 const next = Number(event.target.value);
-                if (Number.isInteger(next)) setPeriod(parsedMonth.year, next);
+                if (Number.isInteger(next)) guardSwitch(() => setPeriod(parsedMonth.year, next));
               }}
               sx={{ width: 160, '& .MuiInputBase-root': { height: 40 } }}
             >
@@ -364,7 +407,10 @@ export default function FuelPage() {
                 select
                 size="small"
                 value={location}
-                onChange={(event) => setLocation(event.target.value as FleetLocation)}
+                onChange={(event) => {
+                  const next = event.target.value as FleetLocation;
+                  guardSwitch(() => setLocation(next));
+                }}
                 sx={{ width: 170, '& .MuiInputBase-root': { height: 40 } }}
               >
                 {allowedLocations.map((value) => (
@@ -538,6 +584,36 @@ export default function FuelPage() {
           </div>
         </div>
       )}
+
+      <Dialog open={Boolean(pendingSwitch)} onClose={() => setPendingSwitch(null)}>
+        <DialogTitle>Несохраненные изменения</DialogTitle>
+        <DialogContent>Вы изменили данные и еще не сохранили их. Сохранить перед переходом?</DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingSwitch(null)}>Отмена</Button>
+          <Button
+            onClick={() => {
+              const action = pendingSwitch;
+              setPendingSwitch(null);
+              if (state) applyState(state);
+              action?.();
+            }}
+          >
+            Не сохранять
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              const action = pendingSwitch;
+              setPendingSwitch(null);
+              void save().then((ok) => {
+                if (ok) action?.();
+              });
+            }}
+          >
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={Boolean(feedback)}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Autocomplete,
@@ -20,6 +20,7 @@ import {
 } from '@mui/material';
 import { ContentCopy } from '@mui/icons-material';
 import { useAuthStore } from '../store/auth-store';
+import { registerUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import {
   EmployeeItem,
   EmployeePayload,
@@ -112,6 +113,7 @@ export default function DirectoriesPage() {
       setTrailers(trailersRes.data);
       setModels(modelsRes.data);
       setSeasons(seasonsRes.data);
+      seasonsSnapshot.current = JSON.stringify(seasonsRes.data);
     } catch (error) {
       setFeedback({ severity: 'error', text: errorText(error) });
     }
@@ -120,6 +122,79 @@ export default function DirectoriesPage() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // «несохранённое» в справочниках: открытая карточка с изменениями или неприменённые сезоны
+  const employeeSnapshot = useRef<string | null>(null);
+  const vehicleSnapshot = useRef<string | null>(null);
+  const trailerSnapshot = useRef<string | null>(null);
+  const modelSnapshot = useRef<string | null>(null);
+  const seasonsSnapshot = useRef<string>(JSON.stringify({ winterStartMonth: 11, winterEndMonth: 3 }));
+
+  useEffect(() => {
+    employeeSnapshot.current = employeeEdit ? (employeeSnapshot.current ?? JSON.stringify(employeeEdit)) : null;
+  }, [employeeEdit === null]);
+  useEffect(() => {
+    vehicleSnapshot.current = vehicleEdit ? (vehicleSnapshot.current ?? JSON.stringify({ ...vehicleEdit, __label: vehicleModelLabel })) : null;
+  }, [vehicleEdit === null]);
+  useEffect(() => {
+    trailerSnapshot.current = trailerEdit ? (trailerSnapshot.current ?? JSON.stringify(trailerEdit)) : null;
+  }, [trailerEdit === null]);
+  useEffect(() => {
+    modelSnapshot.current = modelEdit ? (modelSnapshot.current ?? JSON.stringify(modelEdit)) : null;
+  }, [modelEdit === null]);
+
+  const dirty =
+    (employeeEdit !== null && employeeSnapshot.current !== null && JSON.stringify(employeeEdit) !== employeeSnapshot.current) ||
+    (vehicleEdit !== null && vehicleSnapshot.current !== null && JSON.stringify({ ...vehicleEdit, __label: vehicleModelLabel }) !== vehicleSnapshot.current) ||
+    (trailerEdit !== null && trailerSnapshot.current !== null && JSON.stringify(trailerEdit) !== trailerSnapshot.current) ||
+    (modelEdit !== null && modelSnapshot.current !== null && JSON.stringify(modelEdit) !== modelSnapshot.current) ||
+    (canManageNorms && JSON.stringify(seasons) !== seasonsSnapshot.current);
+
+  useEffect(() => {
+    setHasUnsavedChanges(dirty);
+  }, [dirty]);
+
+  useEffect(() => {
+    registerUnsavedHandlers({
+      save: async () => {
+        if (employeeEdit) return saveEmployeeEdit();
+        if (vehicleEdit) return saveVehicleEdit();
+        if (trailerEdit) return saveTrailerEdit();
+        if (modelEdit) return saveModelEdit();
+        if (JSON.stringify(seasons) !== seasonsSnapshot.current) {
+          await saveSeasons();
+          seasonsSnapshot.current = JSON.stringify(seasons);
+        }
+        return true;
+      },
+      discard: () => {
+        setEmployeeEdit(null);
+        setVehicleEdit(null);
+        setTrailerEdit(null);
+        setModelEdit(null);
+        try {
+          setSeasons(JSON.parse(seasonsSnapshot.current));
+        } catch {
+          // снапшот всегда валиден
+        }
+      },
+    });
+    return () => {
+      registerUnsavedHandlers(null);
+      setHasUnsavedChanges(false);
+    };
+  });
+
+  useEffect(() => {
+    const handler = (event: BeforeUnloadEvent) => {
+      if (dirty) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty]);
 
   const drivers = useMemo(() => employees.filter((e) => e.position === 'водитель'), [employees]);
 
@@ -133,11 +208,11 @@ export default function DirectoriesPage() {
     }
   };
 
-  const saveEmployeeEdit = async () => {
-    if (!employeeEdit) return;
+  const saveEmployeeEdit = async (): Promise<boolean> => {
+    if (!employeeEdit) return true;
     if (!employeeEdit.fullName?.trim()) {
       setFeedback({ severity: 'error', text: 'Укажите ФИО' });
-      return;
+      return false;
     }
     const payload: EmployeePayload = {
       ...employeeEdit,
@@ -150,16 +225,18 @@ export default function DirectoriesPage() {
       setEmployeeEdit(null);
       await reload();
       setFeedback({ severity: 'success', text: 'Сотрудник сохранён' });
+      return true;
     } catch (error) {
       setFeedback({ severity: 'error', text: errorText(error) });
+      return false;
     }
   };
 
-  const saveVehicleEdit = async () => {
-    if (!vehicleEdit) return;
+  const saveVehicleEdit = async (): Promise<boolean> => {
+    if (!vehicleEdit) return true;
     if (!vehicleEdit.plate?.trim()) {
       setFeedback({ severity: 'error', text: 'Укажите госномер' });
-      return;
+      return false;
     }
     try {
       const payload = { ...vehicleEdit, location, modelLabel: vehicleModelLabel.trim(), modelId: vehicleModelLabel.trim() ? undefined : null };
@@ -168,16 +245,18 @@ export default function DirectoriesPage() {
       setVehicleEdit(null);
       await reload();
       setFeedback({ severity: 'success', text: 'Техника сохранена' });
+      return true;
     } catch (error) {
       setFeedback({ severity: 'error', text: errorText(error) });
+      return false;
     }
   };
 
-  const saveTrailerEdit = async () => {
-    if (!trailerEdit) return;
+  const saveTrailerEdit = async (): Promise<boolean> => {
+    if (!trailerEdit) return true;
     if (!trailerEdit.plate?.trim()) {
       setFeedback({ severity: 'error', text: 'Укажите номер прицепа' });
-      return;
+      return false;
     }
     try {
       const payload = { ...trailerEdit, location };
@@ -186,16 +265,18 @@ export default function DirectoriesPage() {
       setTrailerEdit(null);
       await reload();
       setFeedback({ severity: 'success', text: 'Прицеп сохранён' });
+      return true;
     } catch (error) {
       setFeedback({ severity: 'error', text: errorText(error) });
+      return false;
     }
   };
 
-  const saveModelEdit = async () => {
-    if (!modelEdit) return;
+  const saveModelEdit = async (): Promise<boolean> => {
+    if (!modelEdit) return true;
     if (!modelEdit.brand?.trim()) {
       setFeedback({ severity: 'error', text: 'Укажите марку' });
-      return;
+      return false;
     }
     try {
       if (modelEdit.id) await updateVehicleModel(modelEdit.id, modelEdit);
@@ -203,8 +284,10 @@ export default function DirectoriesPage() {
       setModelEdit(null);
       await reload();
       setFeedback({ severity: 'success', text: 'Модель сохранена' });
+      return true;
     } catch (error) {
       setFeedback({ severity: 'error', text: errorText(error) });
+      return false;
     }
   };
 
@@ -225,6 +308,7 @@ export default function DirectoriesPage() {
   const saveSeasons = async () => {
     try {
       await saveFuelSeasons(seasons);
+      seasonsSnapshot.current = JSON.stringify(seasons);
       setFeedback({ severity: 'success', text: 'Сезоны сохранены' });
     } catch (error) {
       setFeedback({ severity: 'error', text: errorText(error) });
