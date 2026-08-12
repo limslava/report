@@ -23,6 +23,7 @@ import { useAuthStore } from '../store/auth-store';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import {
   EmployeeItem,
+  bootstrapDirectories,
   EmployeePayload,
   FleetLocation,
   FleetVehicleItem,
@@ -364,6 +365,26 @@ export default function DirectoriesPage() {
               <Tab value="models" label={`Модели и нормы (${models.length})`} />
             </Tabs>
             <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              {isAdmin && (tab === 'drivers' || tab === 'vehicles') && (
+                <button
+                  type="button"
+                  className="ops-btn ghost"
+                  onClick={() => {
+                    if (!window.confirm('Наполнить справочники из графиков? Будут созданы отсутствующие водители и машины из графиков контейнеровозов и автовозов обоих регионов. Существующие записи не изменятся.')) return;
+                    void bootstrapDirectories()
+                      .then(({ data }) => {
+                        setFeedback({
+                          severity: 'success',
+                          text: `Добавлено из графиков: водителей ${data.createdEmployees}, машин ${data.createdVehicles}`,
+                        });
+                        return reload();
+                      })
+                      .catch((error) => setFeedback({ severity: 'error', text: errorText(error) }));
+                  }}
+                >
+                  Наполнить из графиков
+                </button>
+              )}
               {tab === 'drivers' && (
                 <button
                   type="button"

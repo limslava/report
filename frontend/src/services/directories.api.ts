@@ -90,6 +90,10 @@ export const getEmployeeCardText = (id: string) => api.get<{ text: string }>(`/d
 export const findEmployeeCardByName = (location: FleetLocation, fullName: string) =>
   api.get<{ employeeId: string; text: string }>('/directories/employees/card-by-name', { params: { location, fullName } });
 
+/** Одноразовое наполнение справочников из графиков (только админ, идемпотентно). */
+export const bootstrapDirectories = () =>
+  api.post<{ createdEmployees: number; createdVehicles: number }>('/directories/bootstrap-from-schedules');
+
 // Подсказки для диалогов графиков (без ПДн)
 export type DirectoryOptions = {
   employees: Array<{ fullName: string; position: string }>;
