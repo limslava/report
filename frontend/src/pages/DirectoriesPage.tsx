@@ -371,7 +371,7 @@ export default function DirectoriesPage() {
                       </span>
                     </td>
                     <td className="fuel-cell--center dir-actions">
-                      <Tooltip title="Скопировать карточку водителя">
+                      <Tooltip title="Скопировать данные водителя (без машины и прицепа)">
                         <IconButton size="small" onClick={() => void copyCard(employee)}>
                           <ContentCopy sx={{ fontSize: 16 }} />
                         </IconButton>

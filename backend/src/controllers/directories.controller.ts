@@ -273,14 +273,16 @@ export const deleteEmployee = async (req: Request, res: Response) => {
   res.json({ ok: true });
 };
 
-/** Текст карточки по фиксированному шаблону; каждое обращение пишется в аудит. */
+/**
+ * Текст карточки из справочника — только данные водителя, без машины и прицепа
+ * (полная карточка со сцепкой копируется из графика). Пишется в аудит.
+ */
 export const getEmployeeCardText = async (req: Request, res: Response) => {
   const employee = await employeeRepo.findOne({ where: { id: req.params.id } });
   if (!employee) return httpError(404, 'Employee not found') as never;
   requireDirectoryLocation(req, employee.location);
 
-  const rig = await resolveRigFromSchedule(employee.location, employee.fullName);
-  const text = buildEmployeeCardText(employee, rig);
+  const text = buildEmployeeCardText(employee, null);
   await recordAuditLog({
     action: 'DIRECTORY_EMPLOYEE_CARD_COPIED',
     userId: req.user?.id ?? null,

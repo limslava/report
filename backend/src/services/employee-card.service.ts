@@ -22,15 +22,13 @@ export type EmployeeRig = {
   trailerPlate: string;
 };
 
-export function buildEmployeeCardText(employee: Employee, rig: EmployeeRig): string {
-  const vehicle = rig.vehicle;
-  const model = vehicle?.model;
-  const autoParts = [vehicle?.vehicleKind ?? '', vehicle?.plate ?? '', model ? `${model.brand} ${model.name}`.trim() : '', vehicle?.color ?? '']
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .join('  ');
-
-  return [
+/**
+ * rig передаётся из строки графика (пункт «Скопировать данные» в графике) —
+ * тогда в карточку входят строки «Авто», «VIN» и «Номер прицепа».
+ * Без rig (копирование из справочника) выводятся только данные водителя.
+ */
+export function buildEmployeeCardText(employee: Employee, rig: EmployeeRig | null): string {
+  const personLines = [
     employee.fullName,
     `Паспорт: ${employee.passportNumber} дата выдачи: ${formatDate(employee.passportIssueDate)}`,
     `Выдан: ${employee.passportIssuedBy}`,
@@ -38,9 +36,21 @@ export function buildEmployeeCardText(employee: Employee, rig: EmployeeRig): str
     `Место рождения: ${employee.birthPlace}`,
     `Зарегистрирован: ${employee.registrationAddress}`,
     `ВУ: ${employee.licenseNumber} Выдано: ${formatDate(employee.licenseIssueDate)}`,
+  ];
+  const phoneLine = `Номер телефона: ${employee.phone}`;
+  if (!rig) return [...personLines, phoneLine].join('\n');
+
+  const vehicle = rig.vehicle;
+  const model = vehicle?.model;
+  const autoParts = [vehicle?.vehicleKind ?? '', vehicle?.plate ?? '', model ? `${model.brand} ${model.name}`.trim() : '', vehicle?.color ?? '']
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join('  ');
+  return [
+    ...personLines,
     `Авто: ${autoParts}`,
     `VIN: ${vehicle?.vin ?? ''}`,
     `Номер прицепа: ${rig.trailerPlate}`,
-    `Номер телефона: ${employee.phone}`,
+    phoneLine,
   ].join('\n');
 }
