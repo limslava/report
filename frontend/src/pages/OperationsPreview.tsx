@@ -666,22 +666,21 @@ export default function OperationsPreview() {
     };
   }, [cardLocation]);
 
+  // Подсказки из справочника — только в разделах КТК. Гараж и СБ работают
+  // как раньше: свободное написание, без подсказок и ограничений.
   const POSITION_BY_DEPARTMENT: Record<string, string> = {
     'Контейнеры': 'водитель',
     'Авто': 'водитель',
     'Диспетчера': 'диспетчер',
     'Курьеры': 'оперативник',
-    'Автослесари': 'автослесарь',
-    'Сторожа': 'сторож',
   };
 
   const nameSuggestions = (department: string | null): string[] => {
     const position = department ? POSITION_BY_DEPARTMENT[department] : undefined;
-    // строго роль раздела: водители не должны предлагаться в графике диспетчеров и т.п.
-    const matched = position
-      ? directoryOptions.employees.filter((employee) => employee.position === position)
-      : directoryOptions.employees;
-    return matched.map((employee) => employee.fullName);
+    if (!position) return [];
+    return directoryOptions.employees
+      .filter((employee) => employee.position === position)
+      .map((employee) => employee.fullName);
   };
 
   const handleCopyDriverCard = async (person: PersonRow, lane?: '1' | '2') => {
