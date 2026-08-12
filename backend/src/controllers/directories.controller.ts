@@ -108,6 +108,22 @@ export const deleteVehicleModel = async (req: Request, res: Response) => {
   res.json({ ok: true });
 };
 
+
+/**
+ * Модель по текстовой подписи из карточки техники: ищем существующую без учёта
+ * регистра (чтобы 11 одинаковых машин не породили 11 моделей), иначе создаём.
+ * Нормы расхода к новой модели добавляют БДД/руководители КТК в «Модели и нормы».
+ */
+const resolveModelByLabel = async (label: string): Promise<VehicleModel> => {
+  const existing = await modelRepo
+    .createQueryBuilder('model')
+    .where("LOWER(TRIM(model.brand || ' ' || model.name)) = LOWER(:label)", { label })
+    .orWhere('LOWER(model.brand) = LOWER(:label)', { label })
+    .getOne();
+  if (existing) return existing;
+  return modelRepo.save(modelRepo.create({ brand: label, name: '' }));
+};
+
 // ─────────────────────────── Техника ───────────────────────────
 
 export const listVehicles = async (req: Request, res: Response) => {
@@ -139,7 +155,12 @@ export const saveVehicle = async (req: Request, res: Response) => {
   vehicle.location = location;
   vehicle.plate = plate;
   vehicle.vehicleKind = trimmed(req.body?.vehicleKind, 120);
-  vehicle.modelId = typeof req.body?.modelId === 'string' && req.body.modelId ? req.body.modelId : null;
+  const modelLabel = trimmed(req.body?.modelLabel, 240);
+  if (modelLabel) {
+    vehicle.modelId = (await resolveModelByLabel(modelLabel)).id;
+  } else {
+    vehicle.modelId = typeof req.body?.modelId === 'string' && req.body.modelId ? req.body.modelId : null;
+  }
   vehicle.color = trimmed(req.body?.color, 60);
   vehicle.vin = trimmed(req.body?.vin, 40);
   vehicle.note = trimmed(req.body?.note, 500);

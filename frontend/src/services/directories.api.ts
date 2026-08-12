@@ -24,6 +24,9 @@ export type FleetVehicleItem = {
   note: string;
 };
 
+/** При сохранении техники модель передаётся текстом — бэкенд найдёт существующую или создаст новую. */
+export type FleetVehiclePayload = Partial<FleetVehicleItem> & { modelLabel?: string };
+
 export type TrailerItem = {
   id: string;
   location: FleetLocation;
@@ -69,8 +72,8 @@ export const deleteVehicleModel = (id: string) => api.delete(`/directories/model
 // Техника
 export const getFleetVehicles = (location: FleetLocation) =>
   api.get<FleetVehicleItem[]>('/directories/vehicles', { params: { location } });
-export const createFleetVehicle = (data: Partial<FleetVehicleItem>) => api.post<FleetVehicleItem>('/directories/vehicles', data);
-export const updateFleetVehicle = (id: string, data: Partial<FleetVehicleItem>) =>
+export const createFleetVehicle = (data: FleetVehiclePayload) => api.post<FleetVehicleItem>('/directories/vehicles', data);
+export const updateFleetVehicle = (id: string, data: FleetVehiclePayload) =>
   api.put<FleetVehicleItem>(`/directories/vehicles/${id}`, data);
 export const deleteFleetVehicle = (id: string) => api.delete(`/directories/vehicles/${id}`);
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Chip,
@@ -91,6 +92,7 @@ export default function DirectoriesPage() {
 
   const [employeeEdit, setEmployeeEdit] = useState<Partial<EmployeeItem> | null>(null);
   const [vehicleEdit, setVehicleEdit] = useState<Partial<FleetVehicleItem> | null>(null);
+  const [vehicleModelLabel, setVehicleModelLabel] = useState('');
   const [trailerEdit, setTrailerEdit] = useState<Partial<TrailerItem> | null>(null);
   const [modelEdit, setModelEdit] = useState<Partial<VehicleModelItem> | null>(null);
   const [cardPreview, setCardPreview] = useState<{ fullName: string; text: string } | null>(null);
@@ -166,7 +168,7 @@ export default function DirectoriesPage() {
       return;
     }
     try {
-      const payload = { ...vehicleEdit, location };
+      const payload = { ...vehicleEdit, location, modelLabel: vehicleModelLabel.trim(), modelId: vehicleModelLabel.trim() ? undefined : null };
       if (vehicleEdit.id) await updateFleetVehicle(vehicleEdit.id, payload);
       else await createFleetVehicle(payload);
       setVehicleEdit(null);
@@ -360,7 +362,13 @@ export default function DirectoriesPage() {
             <Typography variant="subtitle1" fontWeight={600}>
               Техника · {LOCATION_LABELS[location]}
             </Typography>
-            <Button variant="contained" onClick={() => setVehicleEdit({ status: 'active' })}>
+            <Button
+              variant="contained"
+              onClick={() => {
+                setVehicleModelLabel('');
+                setVehicleEdit({ status: 'active' });
+              }}
+            >
               Добавить технику
             </Button>
           </Box>
@@ -394,7 +402,13 @@ export default function DirectoriesPage() {
                       />
                     </TableCell>
                     <TableCell align="right">
-                      <IconButton size="small" onClick={() => setVehicleEdit(vehicle)}>
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          setVehicleModelLabel(vehicle.model ? `${vehicle.model.brand} ${vehicle.model.name}`.trim() : '');
+                          setVehicleEdit(vehicle);
+                        }}
+                      >
                         <Edit fontSize="small" />
                       </IconButton>
                       <IconButton size="small" color="error" onClick={() => void removeEntity('vehicles', vehicle.id, vehicle.plate)}>
@@ -624,16 +638,17 @@ export default function DirectoriesPage() {
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mt: 1 }}>
             {textField('Госномер', vehicleEdit?.plate, (value) => setVehicleEdit((prev) => ({ ...prev, plate: value })))}
             {textField('Тип ТС', vehicleEdit?.vehicleKind, (value) => setVehicleEdit((prev) => ({ ...prev, vehicleKind: value })))}
-            <TextField
-              select size="small" label="Модель" fullWidth
-              value={vehicleEdit?.modelId ?? ''}
-              onChange={(event) => setVehicleEdit((prev) => ({ ...prev, modelId: event.target.value || null }))}
-            >
-              <MenuItem value="">— не указана —</MenuItem>
-              {models.map((model) => (
-                <MenuItem key={model.id} value={model.id}>{`${model.brand} ${model.name}`.trim()}</MenuItem>
-              ))}
-            </TextField>
+            <Autocomplete
+              freeSolo
+              size="small"
+              options={models.map((model) => `${model.brand} ${model.name}`.trim())}
+              value={vehicleModelLabel}
+              onChange={(_event, value) => setVehicleModelLabel(value ?? '')}
+              onInputChange={(_event, value) => setVehicleModelLabel(value)}
+              renderInput={(params) => (
+                <TextField {...params} label="Модель" placeholder="Начните вводить — или выберите из списка" fullWidth />
+              )}
+            />
             {textField('Цвет', vehicleEdit?.color, (value) => setVehicleEdit((prev) => ({ ...prev, color: value })))}
             {textField('VIN', vehicleEdit?.vin, (value) => setVehicleEdit((prev) => ({ ...prev, vin: value })))}
             <TextField

@@ -6,6 +6,7 @@ import { FleetVehicle } from '../models/fleet-vehicle.model';
 import type { FleetLocation } from '../models/fleet-vehicle.model';
 import { FuelEntry } from '../models/fuel-entry.model';
 import { recordAuditLog } from '../services/audit-log.service';
+import { syncVehiclesFromSchedule } from '../services/fleet-sync.service';
 import {
   DEFAULT_FUEL_SEASONS,
   FUEL_SEASONS_SETTING_KEY,
@@ -101,6 +102,7 @@ type FuelRow = {
 };
 
 async function buildFuelRows(location: FleetLocation, monthValue: string): Promise<{ rows: FuelRow[]; isWinter: boolean }> {
+  await syncVehiclesFromSchedule(location, monthValue);
   const seasons = await loadSeasons();
   const month = Number(monthValue.split('-')[1]);
   const isWinter = isWinterMonth(month, seasons);
