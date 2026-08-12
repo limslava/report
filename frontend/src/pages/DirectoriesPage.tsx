@@ -335,10 +335,10 @@ export default function DirectoriesPage() {
   );
 
   return (
-    <div className="ops-preview">
+    <div className="ops-preview dir-page">
       <section className="ops-preview__controls">
         <Paper sx={{ p: 1.5, width: '100%' }}>
-          <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+          <Box display="flex" alignItems="center" gap={2} sx={{ flexWrap: 'nowrap', overflow: 'hidden' }}>
             {allowedLocations.length > 1 && (
               <TextField
                 label="Город"
@@ -357,14 +357,14 @@ export default function DirectoriesPage() {
               value={tab}
               onChange={(_event, value) => setTab(value as TabKey)}
               variant="scrollable"
-              sx={{ minHeight: 40, '& .MuiTab-root': { minHeight: 40, py: 0 } }}
+              sx={{ minHeight: 40, flexShrink: 1, minWidth: 0, '& .MuiTab-root': { minHeight: 40, py: 0 } }}
             >
               <Tab value="drivers" label={`Водители (${drivers.length})`} />
               <Tab value="vehicles" label={`Техника (${vehicles.length})`} />
               <Tab value="trailers" label={`Прицепы (${trailers.length})`} />
               <Tab value="models" label={`Модели и нормы (${models.length})`} />
             </Tabs>
-            <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
               {isAdmin && (tab === 'drivers' || tab === 'vehicles') && (
                 <button
                   type="button"
