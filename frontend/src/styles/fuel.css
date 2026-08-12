@@ -103,7 +103,7 @@
 }
 
 .fuel-matrix tr.fuel-row--total td {
-  background: #f1f5f9;
+  background: #dceeff; /* как расчётные строки в «Планах» */
   font-weight: 700;
   border-top: 1px solid #8292ae;
 }
@@ -211,4 +211,66 @@
   background: #1976d2;
   border-color: #1976d2;
   color: #fff;
+}
+
+
+/* ─── Справочники: стиль «Планов» (MUI-таблица) ─── */
+
+.dir-table {
+  overflow-x: auto;
+  background: #fff;
+  border: 1px solid rgba(224, 224, 224, 1);
+  border-radius: 4px;
+}
+
+.dir-table table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13.5px;
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.dir-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #fff;
+  font-weight: 500;
+  text-align: left;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(224, 224, 224, 1);
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.dir-table td {
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(224, 224, 224, 1);
+  white-space: nowrap;
+  height: 38px;
+  text-align: left;
+}
+
+.dir-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.dir-table tbody tr:hover td {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.dir-table .fuel-cell--sticky {
+  font-weight: 600;
+}
+
+.dir-table td.fuel-cell--center,
+.dir-table th.fuel-cell--center {
+  text-align: center;
+}
+
+.dir-table .fuel-empty {
+  text-align: center;
+  color: #6b7280;
+  padding: 26px 10px;
+  font-size: 13px;
 }

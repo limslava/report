@@ -336,7 +336,7 @@ export default function DirectoriesPage() {
               </button>
             ))}
           </div>
-          <div className="fuel-matrix">
+          <div className="dir-table">
             <table>
               <thead>
                 <tr>
@@ -344,8 +344,8 @@ export default function DirectoriesPage() {
                   <th style={{ minWidth: 110 }}>Роль</th>
                   <th style={{ minWidth: 130 }}>Телефон</th>
                   <th style={{ minWidth: 180 }}>Закрепление</th>
-                  <th style={{ minWidth: 90 }}>Статус</th>
-                  <th style={{ minWidth: 80 }}>Карточка</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>Статус</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 80 }}>Карточка</th>
                 </tr>
               </thead>
               <tbody>
@@ -395,7 +395,7 @@ export default function DirectoriesPage() {
         )}
 
         {tab === 'vehicles' && (
-          <div className="fuel-matrix">
+          <div className="dir-table">
             <table>
               <thead>
                 <tr>
@@ -404,7 +404,7 @@ export default function DirectoriesPage() {
                   <th style={{ minWidth: 150 }}>Модель</th>
                   <th style={{ minWidth: 90 }}>Цвет</th>
                   <th style={{ minWidth: 140 }}>VIN</th>
-                  <th style={{ minWidth: 90 }}>Статус</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>Статус</th>
                 </tr>
               </thead>
               <tbody>
@@ -439,13 +439,13 @@ export default function DirectoriesPage() {
         )}
 
         {tab === 'trailers' && (
-          <div className="fuel-matrix">
+          <div className="dir-table">
             <table>
               <thead>
                 <tr>
                   <th style={{ minWidth: 130 }}>Номер</th>
                   <th style={{ minWidth: 260 }}>Примечание</th>
-                  <th style={{ minWidth: 90 }}>Статус</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>Статус</th>
                 </tr>
               </thead>
               <tbody>
@@ -500,23 +500,23 @@ export default function DirectoriesPage() {
                 </Box>
               </Paper>
             )}
-            <div className="fuel-matrix">
+            <div className="dir-table">
               <table>
                 <thead>
                   <tr>
                     <th style={{ minWidth: 220 }}>Марка / модель</th>
-                    <th style={{ minWidth: 140 }}>Норма зима, л/100км</th>
-                    <th style={{ minWidth: 140 }}>Норма лето, л/100км</th>
-                    <th style={{ minWidth: 80 }}>Машин</th>
+                    <th className="fuel-cell--center" style={{ minWidth: 140 }}>Норма зима, л/100км</th>
+                    <th className="fuel-cell--center" style={{ minWidth: 140 }}>Норма лето, л/100км</th>
+                    <th className="fuel-cell--center" style={{ minWidth: 80 }}>Машин</th>
                   </tr>
                 </thead>
                 <tbody>
                   {models.map((model) => (
                     <tr key={model.id} onDoubleClick={canManageNorms ? () => setModelEdit(model) : undefined}>
                       <td className="fuel-cell--sticky">{`${model.brand} ${model.name}`.trim()}</td>
-                      <td>{model.fuelNormWinter ?? '—'}</td>
-                      <td>{model.fuelNormSummer ?? '—'}</td>
-                      <td>{model.vehicleCount ?? 0}</td>
+                      <td className="fuel-cell--center">{model.fuelNormWinter ?? '—'}</td>
+                      <td className="fuel-cell--center">{model.fuelNormSummer ?? '—'}</td>
+                      <td className="fuel-cell--center">{model.vehicleCount ?? 0}</td>
                     </tr>
                   ))}
                   {models.length === 0 && (
