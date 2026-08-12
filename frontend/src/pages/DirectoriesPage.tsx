@@ -4,7 +4,6 @@ import {
   Autocomplete,
   Box,
   Button,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -14,12 +13,6 @@ import {
   Paper,
   Snackbar,
   Tab,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Tabs,
   TextField,
   Tooltip,
@@ -55,6 +48,8 @@ import {
   updateVehicleModel,
 } from '../services/directories.api';
 import { canManageFuelNormsFrontend, directoryLocationsForRole } from '../utils/rolePermissions';
+import '../styles/operations-preview.css';
+import '../styles/fuel.css';
 
 const LOCATION_LABELS: Record<FleetLocation, string> = { vvo: 'Владивосток', mow: 'Москва' };
 const MONTH_OPTIONS = [
@@ -256,152 +251,155 @@ export default function DirectoriesPage() {
   );
 
   return (
-    <Box sx={{ p: 2 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap' }}>
-        <Typography variant="h5" fontWeight={700}>Справочники</Typography>
-        {allowedLocations.length > 1 ? (
-          <TextField
-            select
-            size="small"
-            value={location}
-            onChange={(event) => setLocation(event.target.value as FleetLocation)}
-            sx={{ minWidth: 180 }}
-          >
-            {allowedLocations.map((value) => (
-              <MenuItem key={value} value={value}>{LOCATION_LABELS[value]}</MenuItem>
-            ))}
-          </TextField>
-        ) : (
-          <Chip label={LOCATION_LABELS[location]} />
-        )}
-      </Box>
-
-      <Paper sx={{ mb: 2 }}>
-        <Tabs value={tab} onChange={(_event, value) => setTab(value as TabKey)} variant="scrollable">
-          <Tab value="employees" label={`Сотрудники (${employees.length})`} />
-          <Tab value="vehicles" label={`Техника (${vehicles.length})`} />
-          <Tab value="trailers" label={`Прицепы (${trailers.length})`} />
-          <Tab value="models" label={`Модели и нормы (${models.length})`} />
-        </Tabs>
-      </Paper>
-
-      {tab === 'employees' && (
-        <Paper sx={{ p: 2 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-            <Typography variant="subtitle1" fontWeight={600}>
-              Сотрудники · {LOCATION_LABELS[location]}
-            </Typography>
-            <Button variant="contained" onClick={() => setEmployeeEdit({ position: 'водитель', status: 'active' })}>
-              Добавить сотрудника
-            </Button>
+    <div className="ops-preview">
+      <section className="ops-preview__controls">
+        <Paper sx={{ p: 1.5, width: '100%' }}>
+          <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+            {allowedLocations.length > 1 ? (
+              <TextField
+                label="Город"
+                select
+                size="small"
+                value={location}
+                onChange={(event) => setLocation(event.target.value as FleetLocation)}
+                sx={{ width: 170, '& .MuiInputBase-root': { height: 40 } }}
+              >
+                {allowedLocations.map((value) => (
+                  <MenuItem key={value} value={value}>{LOCATION_LABELS[value]}</MenuItem>
+                ))}
+              </TextField>
+            ) : (
+              <Typography sx={{ fontWeight: 700 }}>{LOCATION_LABELS[location]}</Typography>
+            )}
+            <Tabs
+              value={tab}
+              onChange={(_event, value) => setTab(value as TabKey)}
+              variant="scrollable"
+              sx={{ minHeight: 40, '& .MuiTab-root': { minHeight: 40, py: 0 } }}
+            >
+              <Tab value="employees" label={`Сотрудники (${employees.length})`} />
+              <Tab value="vehicles" label={`Техника (${vehicles.length})`} />
+              <Tab value="trailers" label={`Прицепы (${trailers.length})`} />
+              <Tab value="models" label={`Модели и нормы (${models.length})`} />
+            </Tabs>
+            <Box sx={{ ml: 'auto' }}>
+              {tab === 'employees' && (
+                <button type="button" className="ops-btn ops-btn--add" onClick={() => setEmployeeEdit({ position: 'водитель', status: 'active' })}>
+                  Добавить
+                </button>
+              )}
+              {tab === 'vehicles' && (
+                <button
+                  type="button"
+                  className="ops-btn ops-btn--add"
+                  onClick={() => {
+                    setVehicleModelLabel('');
+                    setVehicleEdit({ status: 'active' });
+                  }}
+                >
+                  Добавить
+                </button>
+              )}
+              {tab === 'trailers' && (
+                <button type="button" className="ops-btn ops-btn--add" onClick={() => setTrailerEdit({ status: 'active' })}>
+                  Добавить
+                </button>
+              )}
+              {tab === 'models' && canManageNorms && (
+                <button type="button" className="ops-btn ops-btn--add" onClick={() => setModelEdit({})}>
+                  Добавить
+                </button>
+              )}
+            </Box>
           </Box>
-          <TableContainer>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>ФИО</TableCell>
-                  <TableCell>Роль</TableCell>
-                  <TableCell>Телефон</TableCell>
-                  <TableCell>Закрепление</TableCell>
-                  <TableCell>Статус</TableCell>
-                  <TableCell align="right">Действия</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
+        </Paper>
+      </section>
+
+      <section className="ops-preview__matrix">
+        {tab === 'employees' && (
+          <div className="fuel-matrix">
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ minWidth: 200 }}>ФИО</th>
+                  <th style={{ minWidth: 110 }}>Роль</th>
+                  <th style={{ minWidth: 130 }}>Телефон</th>
+                  <th style={{ minWidth: 180 }}>Закрепление</th>
+                  <th style={{ minWidth: 90 }}>Статус</th>
+                  <th style={{ minWidth: 120 }}>Действия</th>
+                </tr>
+              </thead>
+              <tbody>
                 {employees.map((employee) => (
-                  <TableRow key={employee.id} hover>
-                    <TableCell sx={{ cursor: 'pointer' }} onClick={() => void showCard(employee)}>
+                  <tr key={employee.id}>
+                    <td className="fuel-cell--sticky" style={{ cursor: 'pointer' }} onClick={() => void showCard(employee)}>
                       {employee.fullName}
-                    </TableCell>
-                    <TableCell>{employee.position}</TableCell>
-                    <TableCell>{employee.phone}</TableCell>
-                    <TableCell>
+                    </td>
+                    <td className="fuel-cell--center">{employee.position}</td>
+                    <td className="fuel-cell--center">{employee.phone || '—'}</td>
+                    <td className="fuel-cell--left">
                       {[employee.assignedVehicle?.plate, employee.assignedTrailer ? `прицеп ${employee.assignedTrailer.plate}` : '']
                         .filter(Boolean)
                         .join(' · ') || '—'}
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        label={employee.status === 'active' ? 'работает' : 'уволен'}
-                        color={employee.status === 'active' ? 'success' : 'default'}
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell align="right">
+                    </td>
+                    <td className="fuel-cell--center">
+                      <span className={`fuel-badge ${employee.status === 'active' ? 'fuel-badge--ok' : 'fuel-badge--none'}`}>
+                        {employee.status === 'active' ? 'работает' : 'уволен'}
+                      </span>
+                    </td>
+                    <td className="fuel-cell--center">
                       <Tooltip title="Скопировать карточку">
                         <IconButton size="small" onClick={() => void copyCard(employee)}>
-                          <ContentCopy fontSize="small" />
+                          <ContentCopy sx={{ fontSize: 16 }} />
                         </IconButton>
                       </Tooltip>
                       <IconButton size="small" onClick={() => setEmployeeEdit(employee)}>
-                        <Edit fontSize="small" />
+                        <Edit sx={{ fontSize: 16 }} />
                       </IconButton>
                       <IconButton size="small" color="error" onClick={() => void removeEntity('employees', employee.id, employee.fullName)}>
-                        <Delete fontSize="small" />
+                        <Delete sx={{ fontSize: 16 }} />
                       </IconButton>
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 ))}
                 {employees.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} align="center" sx={{ color: 'text.secondary' }}>
-                      Справочник пуст — добавьте сотрудников
-                    </TableCell>
-                  </TableRow>
+                  <tr>
+                    <td colSpan={6} className="fuel-empty">Справочник пуст — добавьте сотрудников</td>
+                  </tr>
                 )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Paper>
-      )}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-      {tab === 'vehicles' && (
-        <Paper sx={{ p: 2 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-            <Typography variant="subtitle1" fontWeight={600}>
-              Техника · {LOCATION_LABELS[location]}
-            </Typography>
-            <Button
-              variant="contained"
-              onClick={() => {
-                setVehicleModelLabel('');
-                setVehicleEdit({ status: 'active' });
-              }}
-            >
-              Добавить технику
-            </Button>
-          </Box>
-          <TableContainer>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Г/Н ТС</TableCell>
-                  <TableCell>Тип ТС</TableCell>
-                  <TableCell>Модель</TableCell>
-                  <TableCell>Цвет</TableCell>
-                  <TableCell>VIN</TableCell>
-                  <TableCell>Статус</TableCell>
-                  <TableCell align="right">Действия</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
+        {tab === 'vehicles' && (
+          <div className="fuel-matrix">
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ minWidth: 110 }}>Г/Н ТС</th>
+                  <th style={{ minWidth: 170 }}>Тип ТС</th>
+                  <th style={{ minWidth: 150 }}>Модель</th>
+                  <th style={{ minWidth: 90 }}>Цвет</th>
+                  <th style={{ minWidth: 140 }}>VIN</th>
+                  <th style={{ minWidth: 90 }}>Статус</th>
+                  <th style={{ minWidth: 90 }}>Действия</th>
+                </tr>
+              </thead>
+              <tbody>
                 {vehicles.map((vehicle) => (
-                  <TableRow key={vehicle.id} hover>
-                    <TableCell sx={{ fontWeight: 600 }}>{vehicle.plate}</TableCell>
-                    <TableCell>{vehicle.vehicleKind}</TableCell>
-                    <TableCell>{vehicle.model ? `${vehicle.model.brand} ${vehicle.model.name}`.trim() : '—'}</TableCell>
-                    <TableCell>{vehicle.color}</TableCell>
-                    <TableCell>{vehicle.vin}</TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        label={vehicle.status === 'active' ? 'в работе' : vehicle.status === 'repair' ? 'ремонт' : 'архив'}
-                        color={vehicle.status === 'active' ? 'success' : vehicle.status === 'repair' ? 'warning' : 'default'}
-                      />
-                    </TableCell>
-                    <TableCell align="right">
+                  <tr key={vehicle.id}>
+                    <td className="fuel-cell--sticky">{vehicle.plate}</td>
+                    <td className="fuel-cell--left">{vehicle.vehicleKind || '—'}</td>
+                    <td className="fuel-cell--left">{vehicle.model ? `${vehicle.model.brand} ${vehicle.model.name}`.trim() : '—'}</td>
+                    <td className="fuel-cell--center">{vehicle.color || '—'}</td>
+                    <td className="fuel-cell--left">{vehicle.vin || '—'}</td>
+                    <td className="fuel-cell--center">
+                      <span className={`fuel-badge ${vehicle.status === 'active' ? 'fuel-badge--ok' : vehicle.status === 'repair' ? 'fuel-badge--warn' : 'fuel-badge--none'}`}>
+                        {vehicle.status === 'active' ? 'в работе' : vehicle.status === 'repair' ? 'ремонт' : 'архив'}
+                      </span>
+                    </td>
+                    <td className="fuel-cell--center">
                       <IconButton
                         size="small"
                         onClick={() => {
@@ -409,161 +407,142 @@ export default function DirectoriesPage() {
                           setVehicleEdit(vehicle);
                         }}
                       >
-                        <Edit fontSize="small" />
+                        <Edit sx={{ fontSize: 16 }} />
                       </IconButton>
                       <IconButton size="small" color="error" onClick={() => void removeEntity('vehicles', vehicle.id, vehicle.plate)}>
-                        <Delete fontSize="small" />
+                        <Delete sx={{ fontSize: 16 }} />
                       </IconButton>
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 ))}
                 {vehicles.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} align="center" sx={{ color: 'text.secondary' }}>
-                      Справочник пуст — добавьте технику
-                    </TableCell>
-                  </TableRow>
+                  <tr>
+                    <td colSpan={7} className="fuel-empty">Справочник пуст — техника появится из графиков или добавьте вручную</td>
+                  </tr>
                 )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Paper>
-      )}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-      {tab === 'trailers' && (
-        <Paper sx={{ p: 2 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-            <Typography variant="subtitle1" fontWeight={600}>
-              Прицепы · {LOCATION_LABELS[location]}
-            </Typography>
-            <Button variant="contained" onClick={() => setTrailerEdit({ status: 'active' })}>
-              Добавить прицеп
-            </Button>
-          </Box>
-          <TableContainer>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Номер</TableCell>
-                  <TableCell>Примечание</TableCell>
-                  <TableCell>Статус</TableCell>
-                  <TableCell align="right">Действия</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
+        {tab === 'trailers' && (
+          <div className="fuel-matrix">
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ minWidth: 130 }}>Номер</th>
+                  <th style={{ minWidth: 260 }}>Примечание</th>
+                  <th style={{ minWidth: 90 }}>Статус</th>
+                  <th style={{ minWidth: 90 }}>Действия</th>
+                </tr>
+              </thead>
+              <tbody>
                 {trailers.map((trailer) => (
-                  <TableRow key={trailer.id} hover>
-                    <TableCell sx={{ fontWeight: 600 }}>{trailer.plate}</TableCell>
-                    <TableCell>{trailer.note}</TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        label={trailer.status === 'active' ? 'в работе' : 'архив'}
-                        color={trailer.status === 'active' ? 'success' : 'default'}
-                      />
-                    </TableCell>
-                    <TableCell align="right">
+                  <tr key={trailer.id}>
+                    <td className="fuel-cell--sticky">{trailer.plate}</td>
+                    <td className="fuel-cell--left">{trailer.note || '—'}</td>
+                    <td className="fuel-cell--center">
+                      <span className={`fuel-badge ${trailer.status === 'active' ? 'fuel-badge--ok' : 'fuel-badge--none'}`}>
+                        {trailer.status === 'active' ? 'в работе' : 'архив'}
+                      </span>
+                    </td>
+                    <td className="fuel-cell--center">
                       <IconButton size="small" onClick={() => setTrailerEdit(trailer)}>
-                        <Edit fontSize="small" />
+                        <Edit sx={{ fontSize: 16 }} />
                       </IconButton>
                       <IconButton size="small" color="error" onClick={() => void removeEntity('trailers', trailer.id, trailer.plate)}>
-                        <Delete fontSize="small" />
+                        <Delete sx={{ fontSize: 16 }} />
                       </IconButton>
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 ))}
                 {trailers.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={4} align="center" sx={{ color: 'text.secondary' }}>
-                      Справочник пуст — добавьте прицепы
-                    </TableCell>
-                  </TableRow>
+                  <tr>
+                    <td colSpan={4} className="fuel-empty">Справочник пуст — добавьте прицепы</td>
+                  </tr>
                 )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Paper>
-      )}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-      {tab === 'models' && (
-        <Paper sx={{ p: 2 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
-            <Typography variant="subtitle1" fontWeight={600}>Модели техники и нормы расхода</Typography>
+        {tab === 'models' && (
+          <>
             {canManageNorms && (
-              <Button variant="contained" onClick={() => setModelEdit({})}>Добавить модель</Button>
+              <Paper sx={{ p: 1.5, mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                  <Typography sx={{ fontSize: 13, color: '#6b7280' }}>Зимний период:</Typography>
+                  <TextField
+                    select size="small" sx={{ minWidth: 140, '& .MuiInputBase-root': { height: 36 } }}
+                    value={seasons.winterStartMonth}
+                    onChange={(event) => setSeasons((prev) => ({ ...prev, winterStartMonth: Number(event.target.value) }))}
+                  >
+                    {MONTH_OPTIONS.map((name, index) => (
+                      <MenuItem key={name} value={index + 1}>с 1 {name}</MenuItem>
+                    ))}
+                  </TextField>
+                  <TextField
+                    select size="small" sx={{ minWidth: 170, '& .MuiInputBase-root': { height: 36 } }}
+                    value={seasons.winterEndMonth}
+                    onChange={(event) => setSeasons((prev) => ({ ...prev, winterEndMonth: Number(event.target.value) }))}
+                  >
+                    {MONTH_OPTIONS.map((name, index) => (
+                      <MenuItem key={name} value={index + 1}>по конец {name === 'март' ? 'марта' : name + 'я'}</MenuItem>
+                    ))}
+                  </TextField>
+                  <button type="button" className="ops-btn ghost" onClick={() => void saveSeasons()}>
+                    Сохранить сезоны
+                  </button>
+                </Box>
+              </Paper>
             )}
-          </Box>
-          {canManageNorms && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2, flexWrap: 'wrap' }}>
-              <Typography variant="body2" color="text.secondary">Зимний период:</Typography>
-              <TextField
-                select size="small" sx={{ minWidth: 130 }}
-                value={seasons.winterStartMonth}
-                onChange={(event) => setSeasons((prev) => ({ ...prev, winterStartMonth: Number(event.target.value) }))}
-              >
-                {MONTH_OPTIONS.map((name, index) => (
-                  <MenuItem key={name} value={index + 1}>с 1 {name}</MenuItem>
-                ))}
-              </TextField>
-              <TextField
-                select size="small" sx={{ minWidth: 150 }}
-                value={seasons.winterEndMonth}
-                onChange={(event) => setSeasons((prev) => ({ ...prev, winterEndMonth: Number(event.target.value) }))}
-              >
-                {MONTH_OPTIONS.map((name, index) => (
-                  <MenuItem key={name} value={index + 1}>по конец {name === 'март' ? 'марта' : name + 'я'}</MenuItem>
-                ))}
-              </TextField>
-              <Button size="small" onClick={() => void saveSeasons()}>Сохранить сезоны</Button>
-            </Box>
-          )}
-          <TableContainer>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Марка / модель</TableCell>
-                  <TableCell align="right">Норма зима, л/100км</TableCell>
-                  <TableCell align="right">Норма лето, л/100км</TableCell>
-                  <TableCell align="right">Машин</TableCell>
-                  {canManageNorms && <TableCell align="right">Действия</TableCell>}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {models.map((model) => (
-                  <TableRow key={model.id} hover>
-                    <TableCell sx={{ fontWeight: 600 }}>{`${model.brand} ${model.name}`.trim()}</TableCell>
-                    <TableCell align="right">{model.fuelNormWinter ?? '—'}</TableCell>
-                    <TableCell align="right">{model.fuelNormSummer ?? '—'}</TableCell>
-                    <TableCell align="right">{model.vehicleCount ?? 0}</TableCell>
-                    {canManageNorms && (
-                      <TableCell align="right">
-                        <IconButton size="small" onClick={() => setModelEdit(model)}>
-                          <Edit fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => void removeEntity('models', model.id, `${model.brand} ${model.name}`.trim())}
-                        >
-                          <Delete fontSize="small" />
-                        </IconButton>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-                {models.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={canManageNorms ? 5 : 4} align="center" sx={{ color: 'text.secondary' }}>
-                      Моделей пока нет
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Paper>
-      )}
+            <div className="fuel-matrix">
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ minWidth: 220 }}>Марка / модель</th>
+                    <th style={{ minWidth: 140 }}>Норма зима, л/100км</th>
+                    <th style={{ minWidth: 140 }}>Норма лето, л/100км</th>
+                    <th style={{ minWidth: 80 }}>Машин</th>
+                    {canManageNorms && <th style={{ minWidth: 90 }}>Действия</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {models.map((model) => (
+                    <tr key={model.id}>
+                      <td className="fuel-cell--sticky">{`${model.brand} ${model.name}`.trim()}</td>
+                      <td>{model.fuelNormWinter ?? '—'}</td>
+                      <td>{model.fuelNormSummer ?? '—'}</td>
+                      <td>{model.vehicleCount ?? 0}</td>
+                      {canManageNorms && (
+                        <td className="fuel-cell--center">
+                          <IconButton size="small" onClick={() => setModelEdit(model)}>
+                            <Edit sx={{ fontSize: 16 }} />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => void removeEntity('models', model.id, `${model.brand} ${model.name}`.trim())}
+                          >
+                            <Delete sx={{ fontSize: 16 }} />
+                          </IconButton>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                  {models.length === 0 && (
+                    <tr>
+                      <td colSpan={canManageNorms ? 5 : 4} className="fuel-empty">Моделей пока нет — они появятся при заполнении карточек техники</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
+
+
 
       {/* ─── Карточка сотрудника ─── */}
       <Dialog open={Boolean(employeeEdit)} onClose={() => setEmployeeEdit(null)} maxWidth="md" fullWidth>
@@ -735,6 +714,6 @@ export default function DirectoriesPage() {
           {feedback?.text}
         </Alert>
       </Snackbar>
-    </Box>
+    </div>
   );
 }
