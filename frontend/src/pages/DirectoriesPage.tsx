@@ -86,7 +86,7 @@ export default function DirectoriesPage() {
   });
 
   const [employeeEdit, setEmployeeEdit] = useState<Partial<EmployeeItem> | null>(null);
-  const [personFilter, setPersonFilter] = useState<'all' | 'driver' | 'dispatcher' | 'other'>('all');
+  const [personFilter, setPersonFilter] = useState<'all' | 'driver' | 'dispatcher'>('all');
   const [showFullData, setShowFullData] = useState(false);
   const [vehicleEdit, setVehicleEdit] = useState<Partial<FleetVehicleItem> | null>(null);
   const [vehicleModelLabel, setVehicleModelLabel] = useState('');
@@ -120,8 +120,7 @@ export default function DirectoriesPage() {
   const filteredEmployees = useMemo(() => {
     if (personFilter === 'all') return employees;
     if (personFilter === 'driver') return employees.filter((e) => e.position === 'водитель');
-    if (personFilter === 'dispatcher') return employees.filter((e) => e.position === 'диспетчер');
-    return employees.filter((e) => e.position !== 'водитель' && e.position !== 'диспетчер');
+    return employees.filter((e) => e.position === 'диспетчер');
   }, [employees, personFilter]);
 
   const copyCard = async (employee: EmployeeItem) => {
@@ -335,7 +334,7 @@ export default function DirectoriesPage() {
         {tab === 'employees' && (
           <>
           <div className="dir-filter">
-            {([['all', 'Все'], ['driver', 'Водители'], ['dispatcher', 'Диспетчеры'], ['other', 'Прочие']] as const).map(([value, label]) => (
+            {([['all', 'Все'], ['driver', 'Водители'], ['dispatcher', 'Диспетчеры']] as const).map(([value, label]) => (
               <button
                 key={value}
                 type="button"
