@@ -2716,6 +2716,17 @@ export default function OperationsPreview() {
                                 onMouseDown={(event) => {
                                   if (event.button !== 0) return;
                                   event.preventDefault();
+                                  // preventDefault на mousedown гасит нативный dblclick — ловим двойной клик по detail
+                                  if (event.detail >= 2) {
+                                    openAutoDirectionEdit({
+                                      key: cellKey,
+                                      personName: name ?? '',
+                                      day,
+                                      value: cell,
+                                      department: person.department,
+                                    });
+                                    return;
+                                  }
                                   const key = cellKey;
                                   const anchor = selectionAnchor ?? {
                                     personId: selectedCell?.personId ?? person.id,
@@ -2957,6 +2968,16 @@ export default function OperationsPreview() {
                                     onMouseDown={(event) => {
                                       if (event.button !== 0) return;
                                       event.preventDefault();
+                                      if (event.detail >= 2) {
+                                        openAutoDirectionEdit({
+                                          key: cellKey1,
+                                          personName: person.name,
+                                          day,
+                                          value: cell1,
+                                          department: person.department,
+                                        });
+                                        return;
+                                      }
                                       const key = cellKey1;
                                       const anchor = selectionAnchor ?? {
                                         personId: selectedCell?.personId ?? person.id,
@@ -3056,6 +3077,16 @@ export default function OperationsPreview() {
                                     onMouseDown={(event) => {
                                       if (event.button !== 0) return;
                                       event.preventDefault();
+                                      if (event.detail >= 2) {
+                                        openAutoDirectionEdit({
+                                          key: cellKey2,
+                                          personName: person.secondName ?? '',
+                                          day,
+                                          value: cell2,
+                                          department: person.department,
+                                        });
+                                        return;
+                                      }
                                       const key = cellKey2;
                                       const anchor = selectionAnchor ?? {
                                         personId: selectedCell?.personId ?? person.id,
