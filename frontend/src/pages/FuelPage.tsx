@@ -16,6 +16,7 @@ import {
   FuelRowPayload,
   FuelState,
   downloadFuelExcel,
+  downloadFuelYearExcel,
   getFuelState,
   saveFuelState,
 } from '../services/directories.api';
@@ -168,6 +169,15 @@ export default function FuelPage() {
     }
   };
 
+  const exportYearExcel = async () => {
+    try {
+      const response = await downloadFuelYearExcel(location, parsedMonth.year);
+      await downloadBlob(response.data as Blob, `Топливо_${LOCATION_LABELS[location]}_${parsedMonth.year}.xlsx`);
+    } catch (error) {
+      setFeedback({ severity: 'error', text: errorText(error) });
+    }
+  };
+
   // живой пересчёт по черновикам, чтобы расчётные колонки обновлялись при вводе
   const computedRow = (row: FuelRow): FuelRow => {
     const draft = drafts[row.vehicleId];
@@ -284,7 +294,10 @@ export default function FuelPage() {
                 Заполнено {filledCount} из {rows.length}
               </Typography>
               <button type="button" className="ops-btn ghost" onClick={() => void exportExcel()}>
-                Скачать Excel
+                Excel · месяц
+              </button>
+              <button type="button" className="ops-btn ghost" onClick={() => void exportYearExcel()}>
+                Excel · год
               </button>
               <button type="button" className="ops-btn ops-btn--save" disabled={!dirty || loading} onClick={() => void save()}>
                 Сохранить

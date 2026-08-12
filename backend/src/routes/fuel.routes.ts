@@ -5,6 +5,7 @@ import { asyncHandler } from '../middleware/error-handler';
 import { FUEL_ROLES } from '../constants/directories';
 import {
   exportFuelExcel,
+  exportFuelYearExcel,
   getFuelSeasons,
   getFuelState,
   saveFuelSeasons,
@@ -23,5 +24,6 @@ router.post('/baseline', asyncHandler(setVehicleBaseline));
 router.get('/seasons', asyncHandler(getFuelSeasons));
 router.put('/seasons', asyncHandler(saveFuelSeasons));
 router.get('/export', asyncHandler(exportFuelExcel));
+router.get('/export-year', asyncHandler(exportFuelYearExcel));
 
 export { router as fuelRouter };

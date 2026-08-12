@@ -155,3 +155,5 @@ export const getFuelSeasons = () => api.get<{ winterStartMonth: number; winterEn
 export const saveFuelSeasons = (data: { winterStartMonth: number; winterEndMonth: number }) => api.put('/fuel/seasons', data);
 export const downloadFuelExcel = (location: FleetLocation, month: string) =>
   api.get('/fuel/export', { params: { location, month }, responseType: 'blob' });
+export const downloadFuelYearExcel = (location: FleetLocation, year: number) =>
+  api.get('/fuel/export-year', { params: { location, year }, responseType: 'blob' });
