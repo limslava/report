@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
+  Menu,
   MenuItem,
   Paper,
   Snackbar,
@@ -83,6 +84,7 @@ export default function FuelPage() {
   const [dirty, setDirty] = useState(false);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
+  const [exportMenuAnchor, setExportMenuAnchor] = useState<HTMLElement | null>(null);
 
   const parsedMonth = useMemo(() => {
     const [year, month] = monthValue.split('-').map(Number);
@@ -293,12 +295,31 @@ export default function FuelPage() {
               <Typography sx={{ fontSize: 13, color: '#6b7280' }}>
                 Заполнено {filledCount} из {rows.length}
               </Typography>
-              <button type="button" className="ops-btn ghost" onClick={() => void exportExcel()}>
-                Excel · месяц
+              <button type="button" className="ops-btn ghost" onClick={(event) => setExportMenuAnchor(event.currentTarget)}>
+                Скачать Excel
               </button>
-              <button type="button" className="ops-btn ghost" onClick={() => void exportYearExcel()}>
-                Excel · год
-              </button>
+              <Menu
+                anchorEl={exportMenuAnchor}
+                open={Boolean(exportMenuAnchor)}
+                onClose={() => setExportMenuAnchor(null)}
+              >
+                <MenuItem
+                  onClick={() => {
+                    setExportMenuAnchor(null);
+                    void exportExcel();
+                  }}
+                >
+                  За {MONTH_OPTIONS[parsedMonth.month - 1].label.toLowerCase()} {parsedMonth.year}
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    setExportMenuAnchor(null);
+                    void exportYearExcel();
+                  }}
+                >
+                  За {parsedMonth.year} год
+                </MenuItem>
+              </Menu>
               <button type="button" className="ops-btn ops-btn--save" disabled={!dirty || loading} onClick={() => void save()}>
                 Сохранить
               </button>
