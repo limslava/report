@@ -677,10 +677,11 @@ export default function OperationsPreview() {
 
   const nameSuggestions = (department: string | null): string[] => {
     const position = department ? POSITION_BY_DEPARTMENT[department] : undefined;
+    // строго роль раздела: водители не должны предлагаться в графике диспетчеров и т.п.
     const matched = position
       ? directoryOptions.employees.filter((employee) => employee.position === position)
       : directoryOptions.employees;
-    return (matched.length > 0 ? matched : directoryOptions.employees).map((employee) => employee.fullName);
+    return matched.map((employee) => employee.fullName);
   };
 
   const handleCopyDriverCard = async (person: PersonRow, lane?: '1' | '2') => {
