@@ -94,6 +94,14 @@ export const getEmployeeCardText = (id: string) => api.get<{ text: string }>(`/d
 export const findEmployeeCardByName = (location: FleetLocation, fullName: string) =>
   api.get<{ employeeId: string; text: string }>('/directories/employees/card-by-name', { params: { location, fullName } });
 
+// Подсказки для диалогов графиков (без ПДн)
+export type DirectoryOptions = {
+  employees: Array<{ fullName: string; position: string }>;
+  vehicles: string[];
+};
+export const getDirectoryOptions = (location: FleetLocation) =>
+  api.get<DirectoryOptions>('/directories/options', { params: { location } });
+
 // Топливо
 export type FuelRow = {
   vehicleId: string;

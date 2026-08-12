@@ -333,6 +333,24 @@ export const findEmployeeCardByName = async (req: Request, res: Response) => {
   res.json({ employeeId: employee.id, text });
 };
 
+// ─────────────────────────── Подсказки для графиков (без ПДн) ───────────────────────────
+
+/**
+ * Автокомплит в диалогах графиков: только ФИО+роль и госномера, без ПДн —
+ * поэтому доступно всем ролям, редактирующим графики (см. роут).
+ */
+export const getDirectoryOptions = async (req: Request, res: Response) => {
+  const location = parseLocation(req.query.location);
+  const [employees, vehicles] = await Promise.all([
+    employeeRepo.find({ where: { location, status: 'active' }, order: { fullName: 'ASC' } }),
+    vehicleRepo.find({ where: { location }, order: { plate: 'ASC' } }),
+  ]);
+  res.json({
+    employees: employees.map((employee) => ({ fullName: employee.fullName, position: employee.position })),
+    vehicles: vehicles.filter((vehicle) => vehicle.status !== 'archived').map((vehicle) => vehicle.plate),
+  });
+};
+
 // ─────────────────────────── Первичное наполнение из графиков ───────────────────────────
 
 const previewRepo = AppDataSource.getRepository(OperationsPreviewState);

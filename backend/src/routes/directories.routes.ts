@@ -5,6 +5,7 @@ import { asyncHandler } from '../middleware/error-handler';
 import { DIRECTORY_ROLES, FLEET_VIEW_ROLES, FUEL_ROLES } from '../constants/directories';
 import {
   bootstrapDirectoriesFromSchedules,
+  getDirectoryOptions,
   deleteEmployee,
   deleteTrailer,
   deleteVehicle,
@@ -50,6 +51,26 @@ router.put('/employees/:id', authorizeRole(...DIRECTORY_ROLES), asyncHandler(sav
 router.delete('/employees/:id', authorizeRole('admin'), asyncHandler(deleteEmployee));
 router.get('/employees/card-by-name', authorizeRole(...DIRECTORY_ROLES), asyncHandler(findEmployeeCardByName));
 router.get('/employees/:id/card-text', authorizeRole(...DIRECTORY_ROLES), asyncHandler(getEmployeeCardText));
+
+// подсказки для диалогов графиков — роли, редактирующие графики
+router.get(
+  '/options',
+  authorizeRole(
+    'admin',
+    'manager_ktk_vvo',
+    'head_ktk_vvo',
+    'manager_ktk_mow',
+    'head_ktk_mow',
+    'head_hr',
+    'hr_specialist',
+    'garage_head_vvo',
+    'garage_head',
+    'warehouse_manager_vvo',
+    'manager_to',
+    'security'
+  ),
+  asyncHandler(getDirectoryOptions)
+);
 
 router.post('/bootstrap-from-schedules', authorizeRole('admin'), asyncHandler(bootstrapDirectoriesFromSchedules));
 

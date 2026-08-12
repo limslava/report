@@ -10,7 +10,7 @@ import {
 } from '../services/api';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import { downloadBlob } from '../utils/download';
-import { findEmployeeCardByName } from '../services/directories.api';
+import { DirectoryOptions, findEmployeeCardByName, getDirectoryOptions } from '../services/directories.api';
 import { directoryLocationsForRole } from '../utils/rolePermissions';
 import '../styles/operations-preview.css';
 
@@ -611,6 +611,38 @@ export default function OperationsPreview() {
   };
   const cardLocation = activeLocation === 'ktk_mow' || activeLocation === 'garage_mow' ? 'mow' : 'vvo';
   const canCopyDriverCard = directoryLocationsForRole(userRole).includes(cardLocation);
+  const [directoryOptions, setDirectoryOptions] = useState<DirectoryOptions>({ employees: [], vehicles: [] });
+
+  useEffect(() => {
+    let cancelled = false;
+    getDirectoryOptions(cardLocation)
+      .then(({ data }) => {
+        if (!cancelled) setDirectoryOptions(data);
+      })
+      .catch(() => {
+        // нет прав на подсказки — поля остаются свободным вводом
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cardLocation]);
+
+  const POSITION_BY_DEPARTMENT: Record<string, string> = {
+    'Контейнеры': 'водитель',
+    'Авто': 'водитель',
+    'Диспетчера': 'диспетчер',
+    'Курьеры': 'оперативник',
+    'Автослесари': 'автослесарь',
+    'Сторожа': 'сторож',
+  };
+
+  const nameSuggestions = (department: string | null): string[] => {
+    const position = department ? POSITION_BY_DEPARTMENT[department] : undefined;
+    const matched = position
+      ? directoryOptions.employees.filter((employee) => employee.position === position)
+      : directoryOptions.employees;
+    return (matched.length > 0 ? matched : directoryOptions.employees).map((employee) => employee.fullName);
+  };
 
   const handleCopyDriverCard = async (person: PersonRow, lane?: '1' | '2') => {
     const fullName = (lane === '2' ? person.secondName : person.name)?.trim();
@@ -3388,10 +3420,21 @@ export default function OperationsPreview() {
         <div className="ops-modal">
           <div className="ops-modal__content">
             <div className="ops-modal__title">Добавить</div>
+            <datalist id="ops-name-options">
+              {nameSuggestions(filter !== 'Все' ? filter : null).map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+            <datalist id="ops-plate-options">
+              {directoryOptions.vehicles.map((plate) => (
+                <option key={plate} value={plate} />
+              ))}
+            </datalist>
             <label className="ops-control">
               <span>ФИО</span>
               <input
                 type="text"
+                list="ops-name-options"
                 value={newPerson.name}
                 onChange={(event) => {
                   setNewPerson((prev) => ({ ...prev, name: event.target.value }));
@@ -3405,6 +3448,7 @@ export default function OperationsPreview() {
                 <span>Второй водитель (опц.)</span>
                 <input
                   type="text"
+                  list="ops-name-options"
                   value={newPerson.secondName}
                   onChange={(event) => setNewPerson((prev) => ({ ...prev, secondName: event.target.value }))}
                   placeholder="Петров Петр"
@@ -3416,6 +3460,7 @@ export default function OperationsPreview() {
                 <span>Г/Н ТС</span>
                 <input
                   type="text"
+                  list="ops-plate-options"
                   value={newPerson.plate}
                   onChange={(event) => {
                     setNewPerson((prev) => ({ ...prev, plate: event.target.value }));
@@ -3530,10 +3575,21 @@ export default function OperationsPreview() {
         <div className="ops-modal">
           <div className="ops-modal__content">
             <div className="ops-modal__title">Редактировать строку</div>
+            <datalist id="ops-edit-name-options">
+              {nameSuggestions(editPerson.department).map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+            <datalist id="ops-edit-plate-options">
+              {directoryOptions.vehicles.map((plate) => (
+                <option key={plate} value={plate} />
+              ))}
+            </datalist>
             <label className="ops-control">
               <span>{getPersonnelNameLabel(editPerson.department, activeLocation)}</span>
               <input
                 type="text"
+                list="ops-edit-name-options"
                 value={editPerson.name}
                 onChange={(event) => setEditPerson((prev) => (prev ? { ...prev, name: event.target.value } : prev))}
               />
@@ -3544,6 +3600,7 @@ export default function OperationsPreview() {
                   <span>Второй водитель</span>
                   <input
                     type="text"
+                    list="ops-edit-name-options"
                     value={editPerson.secondName ?? ''}
                     onChange={(event) =>
                       setEditPerson((prev) => (prev ? { ...prev, secondName: event.target.value || undefined } : prev))
@@ -3554,6 +3611,7 @@ export default function OperationsPreview() {
                   <span>Г/Н ТС</span>
                   <input
                     type="text"
+                    list="ops-edit-plate-options"
                     value={editPerson.plate}
                     onChange={(event) => setEditPerson((prev) => (prev ? { ...prev, plate: event.target.value } : prev))}
                   />
