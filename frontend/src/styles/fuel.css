@@ -66,35 +66,37 @@
   background: #f3f6fb;
 }
 
-.fuel-matrix tr:hover td.fuel-cell--edit,
 .fuel-cell--edit {
-  background: #fef9c3; /* жёлтый — ввод оператора, как section-fill в графике */
+  background: #fff;
 }
 
 .fuel-matrix tr:hover td.fuel-cell--calc,
 .fuel-cell--calc {
-  background: #eef2f7; /* серый — считает система */
+  background: #f3f5f9;
   color: #334155;
 }
 
 .fuel-matrix tr:hover td.fuel-cell--manual,
 .fuel-cell--manual {
-  background: #ffe3bd; /* оранжевый — расчётное поле исправлено вручную */
+  background: #fff4e0;
 }
 
-.fuel-cell--edit input,
-.fuel-cell--manual input {
+.fuel-matrix input {
   border: none;
   outline: none;
   background: transparent;
   width: 100%;
   font: inherit;
+  color: inherit;
   text-align: right;
   padding: 0 2px;
 }
 
-.fuel-cell--edit input:focus,
-.fuel-cell--manual input:focus {
+.fuel-matrix input::placeholder {
+  color: #94a3b8;
+}
+
+.fuel-matrix input:focus {
   box-shadow: inset 0 0 0 2px #2563eb;
   border-radius: 2px;
   background: #fff;
@@ -138,15 +140,3 @@
   color: #7c2d12;
 }
 
-.fuel-legend .legend-item {
-  padding: 2px 8px;
-  border-radius: 4px;
-  display: inline-block;
-}
-
-.fuel-legend .legend-item.edit { background: #fef9c3; color: #713f12; }
-.fuel-legend .legend-item.calc { background: #eef2f7; color: #334155; }
-.fuel-legend .legend-item.manual { background: #ffe3bd; color: #7c2d12; }
-.fuel-legend .legend-item.norm-ok { background: #8fdda3; color: #0f172a; }
-.fuel-legend .legend-item.norm-warn { background: #f2d77a; color: #0f172a; }
-.fuel-legend .legend-item.norm-bad { background: #fecaca; color: #7f1d1d; }

@@ -301,11 +301,11 @@ export default function FuelPage() {
               <tr>
                 <th style={{ minWidth: 110 }}>Г/Н ТС</th>
                 <th style={{ minWidth: 130 }}>Модель</th>
-                <th style={{ minWidth: 110 }}>Показания одометра, км ✏️</th>
+                <th style={{ minWidth: 110 }}>Показания одометра, км</th>
                 <th style={{ minWidth: 100 }}>Пробег по Одометру, км</th>
                 <th style={{ minWidth: 100 }}>Начальный уровень Топлива</th>
-                <th style={{ minWidth: 100 }}>Конечный уровень Топлива ✏️</th>
-                <th style={{ minWidth: 100 }}>Заправлено по ППР ✏️</th>
+                <th style={{ minWidth: 100 }}>Конечный уровень Топлива</th>
+                <th style={{ minWidth: 100 }}>Заправлено по ППР</th>
                 <th style={{ minWidth: 90 }}>Расход топлива, л</th>
                 <th style={{ minWidth: 90 }}>Расход л/100км по одометру</th>
                 <th style={{ minWidth: 80 }}>К норме</th>
@@ -364,14 +364,6 @@ export default function FuelPage() {
               )}
             </tbody>
           </table>
-        </div>
-        <div className="ops-matrix__legend fuel-legend">
-          <span className="legend-item edit">✏️ — вводит оператор</span>
-          <span className="legend-item calc">серое — считает система</span>
-          <span className="legend-item manual">оранжевое — исправлено вручную</span>
-          <span className="legend-item norm-ok">в норме / экономия</span>
-          <span className="legend-item norm-warn">перерасход до 10 %</span>
-          <span className="legend-item norm-bad">перерасход больше 10 %</span>
         </div>
       </section>
 
