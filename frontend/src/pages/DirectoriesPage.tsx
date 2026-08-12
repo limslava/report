@@ -52,9 +52,9 @@ import '../styles/operations-preview.css';
 import '../styles/fuel.css';
 
 const LOCATION_LABELS: Record<FleetLocation, string> = { vvo: 'Владивосток', mow: 'Москва' };
-const MONTH_OPTIONS = [
-  'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
-  'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
+const MONTH_GENITIVE = [
+  'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
 ];
 
 type TabKey = 'employees' | 'vehicles' | 'trailers' | 'models';
@@ -343,11 +343,11 @@ export default function DirectoriesPage() {
                         .join(' · ') || '—'}
                     </td>
                     <td className="fuel-cell--center">
-                      <span className={`fuel-badge ${employee.status === 'active' ? 'fuel-badge--ok' : 'fuel-badge--none'}`}>
+                      <span className={`dir-status ${employee.status === 'active' ? 'dir-status--ok' : 'dir-status--off'}`}>
                         {employee.status === 'active' ? 'работает' : 'уволен'}
                       </span>
                     </td>
-                    <td className="fuel-cell--center">
+                    <td className="fuel-cell--center dir-actions">
                       <Tooltip title="Скопировать карточку">
                         <IconButton size="small" onClick={() => void copyCard(employee)}>
                           <ContentCopy sx={{ fontSize: 16 }} />
@@ -356,7 +356,7 @@ export default function DirectoriesPage() {
                       <IconButton size="small" onClick={() => setEmployeeEdit(employee)}>
                         <Edit sx={{ fontSize: 16 }} />
                       </IconButton>
-                      <IconButton size="small" color="error" onClick={() => void removeEntity('employees', employee.id, employee.fullName)}>
+                      <IconButton size="small" className="dir-actions__delete" onClick={() => void removeEntity('employees', employee.id, employee.fullName)}>
                         <Delete sx={{ fontSize: 16 }} />
                       </IconButton>
                     </td>
@@ -395,11 +395,11 @@ export default function DirectoriesPage() {
                     <td className="fuel-cell--center">{vehicle.color || '—'}</td>
                     <td className="fuel-cell--left">{vehicle.vin || '—'}</td>
                     <td className="fuel-cell--center">
-                      <span className={`fuel-badge ${vehicle.status === 'active' ? 'fuel-badge--ok' : vehicle.status === 'repair' ? 'fuel-badge--warn' : 'fuel-badge--none'}`}>
+                      <span className={`dir-status ${vehicle.status === 'active' ? 'dir-status--ok' : vehicle.status === 'repair' ? 'dir-status--warn' : 'dir-status--off'}`}>
                         {vehicle.status === 'active' ? 'в работе' : vehicle.status === 'repair' ? 'ремонт' : 'архив'}
                       </span>
                     </td>
-                    <td className="fuel-cell--center">
+                    <td className="fuel-cell--center dir-actions">
                       <IconButton
                         size="small"
                         onClick={() => {
@@ -409,7 +409,7 @@ export default function DirectoriesPage() {
                       >
                         <Edit sx={{ fontSize: 16 }} />
                       </IconButton>
-                      <IconButton size="small" color="error" onClick={() => void removeEntity('vehicles', vehicle.id, vehicle.plate)}>
+                      <IconButton size="small" className="dir-actions__delete" onClick={() => void removeEntity('vehicles', vehicle.id, vehicle.plate)}>
                         <Delete sx={{ fontSize: 16 }} />
                       </IconButton>
                     </td>
@@ -442,15 +442,15 @@ export default function DirectoriesPage() {
                     <td className="fuel-cell--sticky">{trailer.plate}</td>
                     <td className="fuel-cell--left">{trailer.note || '—'}</td>
                     <td className="fuel-cell--center">
-                      <span className={`fuel-badge ${trailer.status === 'active' ? 'fuel-badge--ok' : 'fuel-badge--none'}`}>
+                      <span className={`dir-status ${trailer.status === 'active' ? 'dir-status--ok' : 'dir-status--off'}`}>
                         {trailer.status === 'active' ? 'в работе' : 'архив'}
                       </span>
                     </td>
-                    <td className="fuel-cell--center">
+                    <td className="fuel-cell--center dir-actions">
                       <IconButton size="small" onClick={() => setTrailerEdit(trailer)}>
                         <Edit sx={{ fontSize: 16 }} />
                       </IconButton>
-                      <IconButton size="small" color="error" onClick={() => void removeEntity('trailers', trailer.id, trailer.plate)}>
+                      <IconButton size="small" className="dir-actions__delete" onClick={() => void removeEntity('trailers', trailer.id, trailer.plate)}>
                         <Delete sx={{ fontSize: 16 }} />
                       </IconButton>
                     </td>
@@ -477,7 +477,7 @@ export default function DirectoriesPage() {
                     value={seasons.winterStartMonth}
                     onChange={(event) => setSeasons((prev) => ({ ...prev, winterStartMonth: Number(event.target.value) }))}
                   >
-                    {MONTH_OPTIONS.map((name, index) => (
+                    {MONTH_GENITIVE.map((name, index) => (
                       <MenuItem key={name} value={index + 1}>с 1 {name}</MenuItem>
                     ))}
                   </TextField>
@@ -486,8 +486,8 @@ export default function DirectoriesPage() {
                     value={seasons.winterEndMonth}
                     onChange={(event) => setSeasons((prev) => ({ ...prev, winterEndMonth: Number(event.target.value) }))}
                   >
-                    {MONTH_OPTIONS.map((name, index) => (
-                      <MenuItem key={name} value={index + 1}>по конец {name === 'март' ? 'марта' : name + 'я'}</MenuItem>
+                    {MONTH_GENITIVE.map((name, index) => (
+                      <MenuItem key={name} value={index + 1}>по конец {name}</MenuItem>
                     ))}
                   </TextField>
                   <button type="button" className="ops-btn ghost" onClick={() => void saveSeasons()}>
@@ -515,7 +515,7 @@ export default function DirectoriesPage() {
                       <td>{model.fuelNormSummer ?? '—'}</td>
                       <td>{model.vehicleCount ?? 0}</td>
                       {canManageNorms && (
-                        <td className="fuel-cell--center">
+                        <td className="fuel-cell--center dir-actions">
                           <IconButton size="small" onClick={() => setModelEdit(model)}>
                             <Edit sx={{ fontSize: 16 }} />
                           </IconButton>
