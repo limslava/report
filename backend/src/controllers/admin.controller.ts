@@ -380,8 +380,10 @@ export const getSystemStats = async (_req: Request, res: Response, next: NextFun
 export const getAppSettings = async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const appTitle = await appSettingRepository.findOne({ where: { key: 'app_title' } });
+    const freeInputUntil = await appSettingRepository.findOne({ where: { key: 'schedule_free_input_until' } });
     res.json({
       appTitle: appTitle?.value || 'Логистика & Отчетность',
+      scheduleFreeInputUntil: freeInputUntil?.value || '',
     });
   } catch (error) {
     next(error);
@@ -404,7 +406,29 @@ export const updateAppSettings = async (req: Request, res: Response, next: NextF
     }
 
     await appSettingRepository.save(setting);
-    res.json({ message: 'Настройки приложения обновлены', appTitle: setting.value });
+
+    // Дата отключения свободного ввода в графиках КТК ('' = ограничение выключено)
+    if (req.body?.scheduleFreeInputUntil !== undefined) {
+      const rawDate = (req.body.scheduleFreeInputUntil ?? '').toString().trim();
+      if (rawDate && !/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+        res.status(400).json({ message: 'Дата должна быть в формате ГГГГ-ММ-ДД' });
+        return;
+      }
+      let dateSetting = await appSettingRepository.findOne({ where: { key: 'schedule_free_input_until' } });
+      if (!dateSetting) {
+        dateSetting = appSettingRepository.create({ key: 'schedule_free_input_until', value: rawDate });
+      } else {
+        dateSetting.value = rawDate;
+      }
+      await appSettingRepository.save(dateSetting);
+    }
+
+    const freeInputUntil = await appSettingRepository.findOne({ where: { key: 'schedule_free_input_until' } });
+    res.json({
+      message: 'Настройки приложения обновлены',
+      appTitle: setting.value,
+      scheduleFreeInputUntil: freeInputUntil?.value || '',
+    });
   } catch (error) {
     next(error);
   }

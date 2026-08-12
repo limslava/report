@@ -2,9 +2,15 @@ import { Request, Response } from 'express';
 import ExcelJS from 'exceljs';
 import { AppDataSource } from '../config/data-source';
 import { OperationsPreviewState } from '../models/operations-preview-state.model';
+import { AppSetting } from '../models/app-setting.model';
+import { Employee } from '../models/employee.model';
+import { FleetVehicle } from '../models/fleet-vehicle.model';
 import { recordAuditLog } from '../services/audit-log.service';
 
 const operationsPreviewRepo = AppDataSource.getRepository(OperationsPreviewState);
+const appSettingRepo = AppDataSource.getRepository(AppSetting);
+const employeeRepo = AppDataSource.getRepository(Employee);
+const fleetVehicleRepo = AppDataSource.getRepository(FleetVehicle);
 const OPERATIONS_PREVIEW_SCOPE_KEY = 'ktk_vvo_preview_v1';
 const OPERATIONS_PREVIEW_SCOPE_BY_LOCATION = {
   ktk_vvo: OPERATIONS_PREVIEW_SCOPE_KEY,
@@ -353,6 +359,94 @@ export const getOperationsPreviewState = async (req: Request, res: Response) => 
   });
 };
 
+/**
+ * Политика отключения свободного ввода в графиках КТК.
+ * После даты `schedule_free_input_until` (настройка админа, '' = выключено)
+ * НОВЫЕ значения ФИО/госномеров в графиках контейнеровозов, автовозов,
+ * диспетчеров и оперативников должны существовать в справочнике с
+ * соответствующей ролью. Уже сохранённые значения не проверяются (правки
+ * старых строк и перенос месяца не блокируются). СБ и гараж — вне политики.
+ */
+const FREE_INPUT_POSITION_BY_DEPARTMENT: Record<string, string> = {
+  'Контейнеры': 'водитель',
+  'Авто': 'водитель',
+  'Диспетчера': 'диспетчер',
+  'Курьеры': 'оперативник',
+};
+
+const assertFreeInputPolicy = async (
+  location: PreviewLocation,
+  incoming: PreviewPersistedState,
+  current: PreviewPersistedState | null
+): Promise<void> => {
+  if (location !== 'ktk_vvo' && location !== 'ktk_mow') return;
+  const incomingMonths = incoming.peopleByMonth ?? {};
+  if (Object.keys(incomingMonths).length === 0) return;
+
+  const cutoffSetting = await appSettingRepo.findOne({ where: { key: 'schedule_free_input_until' } });
+  const cutoff = (cutoffSetting?.value ?? '').trim();
+  if (!cutoff) return;
+  const today = new Date().toISOString().slice(0, 10);
+  if (today < cutoff) return;
+
+  // Всё, что уже есть в сохранённом графике, считается «старым» и не проверяется
+  const knownNames = new Set<string>();
+  const knownPlates = new Set<string>();
+  for (const people of Object.values(current?.peopleByMonth ?? {})) {
+    for (const person of people) {
+      if (person.name?.trim()) knownNames.add(person.name.trim().toLowerCase());
+      if (person.secondName?.trim()) knownNames.add(person.secondName.trim().toLowerCase());
+      if (person.plate?.trim()) knownPlates.add(person.plate.trim().toLowerCase());
+    }
+  }
+
+  const directoryLocation = location === 'ktk_mow' ? 'mow' : 'vvo';
+  const [employees, vehicles] = await Promise.all([
+    employeeRepo.find({ where: { location: directoryLocation, status: 'active' } }),
+    fleetVehicleRepo.find({ where: { location: directoryLocation } }),
+  ]);
+  const employeesByName = new Map<string, string[]>();
+  for (const employee of employees) {
+    const key = employee.fullName.trim().toLowerCase();
+    employeesByName.set(key, [...(employeesByName.get(key) ?? []), employee.position]);
+  }
+  const directoryPlates = new Set(
+    vehicles.filter((vehicle) => vehicle.status !== 'archived').map((vehicle) => vehicle.plate.trim().toLowerCase())
+  );
+
+  const fail = (message: string): never => {
+    const error: any = new Error(message);
+    error.statusCode = 422;
+    throw error;
+  };
+
+  for (const people of Object.values(incomingMonths)) {
+    for (const person of people) {
+      const requiredPosition = FREE_INPUT_POSITION_BY_DEPARTMENT[person.department];
+      if (!requiredPosition) continue;
+      for (const rawName of [person.name, person.secondName]) {
+        const name = (rawName ?? '').trim();
+        if (!name || knownNames.has(name.toLowerCase())) continue;
+        const positions = employeesByName.get(name.toLowerCase());
+        if (!positions) {
+          fail(`Свободный ввод отключён с ${cutoff}: «${name}» нет в справочнике персонала. Заведите карточку в разделе «Справочники».`);
+        }
+        if (!positions!.includes(requiredPosition)) {
+          fail(`«${name}» в справочнике не имеет роли «${requiredPosition}» — в этот график можно добавлять только персонал с этой ролью.`);
+        }
+        knownNames.add(name.toLowerCase());
+      }
+      const plate = (person.plate ?? '').trim();
+      if (plate && (person.department === 'Контейнеры' || person.department === 'Авто')) {
+        if (!knownPlates.has(plate.toLowerCase()) && !directoryPlates.has(plate.toLowerCase())) {
+          fail(`Свободный ввод отключён с ${cutoff}: госномера «${plate}» нет в справочнике техники.`);
+        }
+        knownPlates.add(plate.toLowerCase());
+      }
+    }
+  }
+};
+
 export const saveOperationsPreviewState = async (req: Request, res: Response) => {
   const location = parseLocation(req.query.location ?? req.body?.location);
   const sectionRaw = req.query.section ?? req.body?.section;
@@ -385,6 +479,7 @@ export const saveOperationsPreviewState = async (req: Request, res: Response) =>
 
   if (!row) {
     const incomingPayload = sanitized as PreviewPersistedState;
+    await assertFreeInputPolicy(location, incomingPayload, null);
     const incomingOverrideScopes = hasOverridesPatch
       ? Object.keys(overridesPatch ?? {})
       : Object.keys(incomingPayload.overrides ?? {});
@@ -407,6 +502,7 @@ export const saveOperationsPreviewState = async (req: Request, res: Response) =>
   } else {
     const currentPayload = sanitizePayload(row.payload) as PreviewPersistedState;
     const incomingPayload = sanitized as PreviewPersistedState;
+    await assertFreeInputPolicy(location, incomingPayload, currentPayload);
     const currentOverrideVersions = currentPayload.meta?.overrideScopeVersions ?? {};
     const currentPeopleVersions = currentPayload.meta?.peopleMonthVersions ?? {};
 

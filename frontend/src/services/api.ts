@@ -92,7 +92,7 @@ export const deleteUser = (id: string) => api.delete(`/admin/users/${id}`);
 export const getSystemStats = () => api.get('/admin/stats');
 export const getAuditLog = (params?: any) => api.get('/admin/audit', { params });
 export const getAppSettings = () => api.get('/admin/app-settings');
-export const updateAppSettings = (data: { appTitle: string }) => api.put('/admin/app-settings', data);
+export const updateAppSettings = (data: { appTitle: string; scheduleFreeInputUntil?: string }) => api.put('/admin/app-settings', data);
 
 export const getEmailSchedules = () => api.get('/email-schedules');
 export const getEmailSchedule = (id: string) => api.get(`/email-schedules/${id}`);

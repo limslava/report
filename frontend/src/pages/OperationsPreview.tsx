@@ -11,6 +11,7 @@ import {
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import { downloadBlob } from '../utils/download';
 import { DirectoryOptions, findEmployeeCardByName, getDirectoryOptions } from '../services/directories.api';
+import { getRuntimeAppSettings } from '../services/api';
 import { directoryLocationsForRole } from '../utils/rolePermissions';
 import '../styles/operations-preview.css';
 
@@ -335,6 +336,7 @@ export default function OperationsPreview() {
   const [saving, setSaving] = useState(false);
   const [copyConfirmOpen, setCopyConfirmOpen] = useState(false);
   const [fillPrevConfirmOpen, setFillPrevConfirmOpen] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [newPerson, setNewPerson] = useState<{
     name: string;
     secondName: string;
@@ -612,6 +614,43 @@ export default function OperationsPreview() {
   const cardLocation = activeLocation === 'ktk_mow' || activeLocation === 'garage_mow' ? 'mow' : 'vvo';
   const canCopyDriverCard = directoryLocationsForRole(userRole).includes(cardLocation);
   const [directoryOptions, setDirectoryOptions] = useState<DirectoryOptions>({ employees: [], vehicles: [] });
+  const [freeInputUntil, setFreeInputUntil] = useState<string>('');
+
+  useEffect(() => {
+    getRuntimeAppSettings()
+      .then((response) => setFreeInputUntil((response?.data?.scheduleFreeInputUntil ?? '').trim()))
+      .catch(() => setFreeInputUntil(''));
+  }, []);
+
+  // Политика: с даты freeInputUntil в графиках КТК новые значения — только из справочника
+  const isFreeInputLocked =
+    Boolean(freeInputUntil) &&
+    new Date().toISOString().slice(0, 10) >= freeInputUntil &&
+    (activeLocation === 'ktk_vvo' || activeLocation === 'ktk_mow');
+
+  const strictNameError = (rawName: string, department: string): string | null => {
+    const name = rawName.trim();
+    if (!name) return null;
+    const requiredPosition = POSITION_BY_DEPARTMENT[department];
+    if (!requiredPosition) return null;
+    const matches = directoryOptions.employees.filter(
+      (employee) => employee.fullName.trim().toLowerCase() === name.toLowerCase()
+    );
+    if (matches.length === 0) {
+      return `Свободный ввод отключён с ${freeInputUntil}: «${name}» нет в справочнике персонала.`;
+    }
+    if (!matches.some((employee) => employee.position === requiredPosition)) {
+      return `«${name}» в справочнике не имеет роли «${requiredPosition}».`;
+    }
+    return null;
+  };
+
+  const strictPlateError = (rawPlate: string): string | null => {
+    const plate = rawPlate.trim();
+    if (!plate) return null;
+    const exists = directoryOptions.vehicles.some((option) => option.trim().toLowerCase() === plate.toLowerCase());
+    return exists ? null : `Свободный ввод отключён с ${freeInputUntil}: госномера «${plate}» нет в справочнике техники.`;
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -3420,6 +3459,9 @@ export default function OperationsPreview() {
         <div className="ops-modal">
           <div className="ops-modal__content">
             <div className="ops-modal__title">Добавить</div>
+            {isFreeInputLocked && (
+              <div className="ops-modal__hint">С {freeInputUntil} ФИО и госномера — только из справочника.</div>
+            )}
             <datalist id="ops-name-options">
               {nameSuggestions(filter !== 'Все' ? filter : null).map((name) => (
                 <option key={name} value={name} />
@@ -3483,6 +3525,16 @@ export default function OperationsPreview() {
                   if (!name) {
                     setAddError('Заполните ФИО.');
                     return;
+                  }
+                  if (isFreeInputLocked) {
+                    const validationError =
+                      strictNameError(name, addDepartment) ||
+                      (secondName ? strictNameError(secondName, addDepartment) : null) ||
+                      (!isPersonnelSection && plate ? strictPlateError(plate) : null);
+                    if (validationError) {
+                      setAddError(validationError);
+                      return;
+                    }
                   }
                   setPeopleStateForCurrentMonth((prev) => [
                     ...prev,
@@ -3618,11 +3670,32 @@ export default function OperationsPreview() {
                 </label>
               </>
             )}
+            {editError && <div className="ops-modal__error">{editError}</div>}
             <div className="ops-modal__actions ops-modal__actions--split">
               <button
                 type="button"
                 className="ops-btn ops-modal__btn-left"
                 onClick={() => {
+                  if (isFreeInputLocked) {
+                    const original = peopleState.find((item) => item.id === editPerson.id);
+                    const changedChecks = [
+                      editPerson.name.trim() !== (original?.name ?? '').trim()
+                        ? strictNameError(editPerson.name, editPerson.department)
+                        : null,
+                      (editPerson.secondName ?? '').trim() !== (original?.secondName ?? '').trim()
+                        ? strictNameError(editPerson.secondName ?? '', editPerson.department)
+                        : null,
+                      editPerson.plate.trim() !== (original?.plate ?? '').trim()
+                        ? strictPlateError(editPerson.plate)
+                        : null,
+                    ];
+                    const validationError = changedChecks.find(Boolean);
+                    if (validationError) {
+                      setEditError(validationError);
+                      return;
+                    }
+                  }
+                  setEditError(null);
                   setPeopleStateForCurrentMonth((prev) =>
                     prev.map((item) => (item.id === editPerson.id ? editPerson : item))
                   );
@@ -3631,7 +3704,14 @@ export default function OperationsPreview() {
               >
                 Сохранить
               </button>
-              <button type="button" className="ops-btn ghost ops-modal__btn-right" onClick={() => setEditPerson(null)}>
+              <button
+                type="button"
+                className="ops-btn ghost ops-modal__btn-right"
+                onClick={() => {
+                  setEditError(null);
+                  setEditPerson(null);
+                }}
+              >
                 Отмена
               </button>
             </div>

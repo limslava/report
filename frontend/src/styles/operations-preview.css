@@ -1231,3 +1231,13 @@
     align-items: flex-start;
   }
 }
+
+.ops-modal__hint {
+  background: #f0f6ff;
+  border: 1px solid #c8ddf8;
+  color: #27446b;
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-bottom: 10px;
+  font-size: 12.5px;
+}
