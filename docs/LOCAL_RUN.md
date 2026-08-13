@@ -63,3 +63,31 @@ npm run dev --prefix frontend
 - Остановить: `Ctrl+C` в обоих терминалах; Docker-контейнеры можно не гасить
   (или `docker stop logistics_postgres logistics_redis`).
 - Если порт занят (3001/5173) — найти процесс: `lsof -nP -iTCP:3001 -sTCP:LISTEN`.
+
+## Бэкапы прода и восстановление
+
+Ежедневный автоматический бэкап продовой БД настроен на Mac владельца:
+
+- скрипт `~/bin/report-pg-backup.sh` (запуск — launchd
+  `com.report.pg-backup`, ежедневно в 10:30, при пропуске — после
+  пробуждения мака);
+- копии: iCloud Drive → `ReportBackups/daily` (30 дней) и
+  `ReportBackups/monthly` (первый дамп месяца, ~13 месяцев), журнал —
+  `ReportBackups/backup.log`;
+- схема подключения: socat-туннель `TCP-LISTEN:15544 → OPENSSL:
+  reportdb-limslava.db-msk0.amvera.tech:5432` (ингресс Amvera не пропускает
+  postgres-ALPN напрямую), пароль — в `~/.pgpass`;
+- при ошибке скрипт показывает уведомление macOS «Бэкап Report: ОШИБКА».
+
+Восстановление дампа (пример — в локальную копию прода):
+
+```bash
+docker exec report_prod_check psql -U postgres -c 'DROP DATABASE IF EXISTS report_prod' \
+  && docker exec report_prod_check psql -U postgres -c 'CREATE DATABASE report_prod'
+/opt/homebrew/opt/libpq/bin/pg_restore -h 127.0.0.1 -p 5434 -U postgres \
+  -d report_prod --no-owner "путь/к/report_prod_ДАТА.dump"
+```
+
+Восстановление НА ПРОД — только осознанно и через тот же socat-туннель
+(`pg_restore -h 127.0.0.1 -p 15544 -U limslava -d Report --clean --no-owner`);
+перед этим обязательно снять свежий дамп текущего состояния.
