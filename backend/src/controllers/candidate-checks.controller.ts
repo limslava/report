@@ -10,6 +10,7 @@ import { sendEmailWithAttachment } from '../services/email.service';
 import { logger } from '../utils/logger';
 import { buildContentDisposition } from '../utils/content-disposition';
 import { getDocxPdfPreviewPath, isDocxFile } from '../services/docx-pdf-preview.service';
+import { getHeicJpegPreview, looksLikeHeic } from '../services/heic-preview.service';
 
 const HR_RECRUITER_ROLES = new Set(['admin', 'hr_recruiter']);
 const SECURITY_DECISION_ROLES = new Set(['admin', 'security']);
@@ -407,6 +408,17 @@ export const previewCandidateCheckAttachment = async (req: Request, res: Respons
     }
 
     const data = await fs.readFile(item.storagePath);
+
+    // HEIC (фото iPhone, в т.ч. переименованные в .jpg) браузеры не показывают —
+    // конвертируем в JPEG для предпросмотра; скачивание отдаёт оригинал.
+    if (looksLikeHeic(data)) {
+      const previewName = `${path.basename(item.originalName, path.extname(item.originalName))}.jpg`;
+      res.setHeader('Content-Type', 'image/jpeg');
+      res.setHeader('Content-Disposition', buildContentDisposition(previewName, 'inline', 'attachment'));
+      res.send(await getHeicJpegPreview(item.storagePath, data));
+      return;
+    }
+
     res.setHeader('Content-Type', resolvePreviewMimeType(item.originalName, item.mimeType));
     res.setHeader('Content-Disposition', buildContentDisposition(item.originalName, 'inline', 'attachment'));
     res.send(data);
