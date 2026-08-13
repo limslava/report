@@ -32,6 +32,7 @@ import { authorizeRole } from './middleware/authorize';
 import { withRetry } from './utils/db-retry';
 import { dbCircuit } from './utils/db-circuit';
 import { AppDataSource } from './config/data-source';
+import { AppSetting } from './models/app-setting.model';
 import { dbMetrics } from './utils/db-metrics';
 import { canConnectRedis, getSchedulerStatus, isRedisRequiredForScheduler } from './services/scheduler';
 import { createWarehouseTusServer } from './services/warehouse-tus.service';
@@ -185,6 +186,58 @@ export function createApp() {
 
   // Отдаёт конфигурацию интеграции и телеметрию — только администратору.
   app.get('/health/hh', authenticate, authorizeRole('admin'), getHhModuleHealth);
+
+  // Контроль свежести бэкапов БД для внешнего мониторинга (UptimeRobot):
+  // скрипт бэкапа после успешного дампа отчитывается POST'ом с токеном,
+  // а GET отвечает 200, только если бэкап был недавно.
+  const BACKUP_PING_KEY = 'backup_last_ping';
+
+  app.post('/health/backup-ping', async (req, res) => {
+    const token = process.env.BACKUP_PING_TOKEN || '';
+    if (!token) {
+      res.status(503).json({ status: 'DISABLED', reason: 'BACKUP_PING_TOKEN is not configured' });
+      return;
+    }
+    if (req.get('x-backup-token') !== token) {
+      res.status(403).json({ status: 'FORBIDDEN' });
+      return;
+    }
+    const repo = AppDataSource.getRepository(AppSetting);
+    const now = new Date().toISOString();
+    const existing = await repo.findOne({ where: { key: BACKUP_PING_KEY } });
+    if (existing) {
+      existing.value = now;
+      await repo.save(existing);
+    } else {
+      await repo.save(repo.create({ key: BACKUP_PING_KEY, value: now }));
+    }
+    res.json({ status: 'OK', lastBackup: now });
+  });
+
+  app.get('/health/backup', async (_req, res) => {
+    const maxAgeHours = Number(process.env.BACKUP_MAX_AGE_HOURS || '26');
+    try {
+      const repo = AppDataSource.getRepository(AppSetting);
+      const setting = await repo.findOne({ where: { key: BACKUP_PING_KEY } });
+      if (!setting) {
+        res.status(503).json({ status: 'NO_DATA', reason: 'Бэкап ещё ни разу не отчитывался' });
+        return;
+      }
+      const ageHours = (Date.now() - new Date(setting.value).getTime()) / 3_600_000;
+      if (!Number.isFinite(ageHours) || ageHours > maxAgeHours) {
+        res.status(503).json({
+          status: 'STALE',
+          lastBackup: setting.value,
+          ageHours: Math.round(ageHours),
+          maxAgeHours,
+        });
+        return;
+      }
+      res.json({ status: 'OK', lastBackup: setting.value, ageHours: Math.round(ageHours * 10) / 10 });
+    } catch (err: any) {
+      res.status(503).json({ status: 'DOWN', error: err?.message || 'backup health failed' });
+    }
+  });
 
   app.get('/health/redis', async (_req, res) => {
     if (!isRedisRequiredForScheduler()) {

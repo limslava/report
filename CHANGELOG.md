@@ -36,6 +36,10 @@
   - Preview mime normalization by extension, readable message instead of a
     broken image, and on-the-fly HEIC→JPEG conversion for iPhone photos
     renamed to .jpg (heic-convert, cached like the DOCX PDF preview).
+- Monitoring
+  - New endpoints `GET /health/backup` (200 while the daily DB backup is
+    fresh, 503 otherwise — for UptimeRobot) and `POST /health/backup-ping`
+    (backup script reports success; guarded by `BACKUP_PING_TOKEN` env).
 - Docs: user manual for directories/fuel/trailers (docs/manual.html + PDF),
   local run guide (docs/LOCAL_RUN.md).
 
