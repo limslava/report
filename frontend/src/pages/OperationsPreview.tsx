@@ -10,6 +10,9 @@ import {
 } from '../services/api';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import { downloadBlob } from '../utils/download';
+import { DirectoryOptions, findEmployeeCardByName, getDirectoryOptions } from '../services/directories.api';
+import { getRuntimeAppSettings } from '../services/api';
+import { directoryLocationsForRole } from '../utils/rolePermissions';
 import '../styles/operations-preview.css';
 
 type PreviewLocation = OperationsPreviewLocation;
@@ -122,6 +125,8 @@ type PersonRow = {
   name: string;
   secondName?: string;
   plate: string;
+  /** Номер прицепа сцепки — общий на строку (в т.ч. на двух водителей). */
+  trailer?: string;
   note?: string;
   secondNote?: string;
   department: Department;
@@ -333,14 +338,17 @@ export default function OperationsPreview() {
   const [saving, setSaving] = useState(false);
   const [copyConfirmOpen, setCopyConfirmOpen] = useState(false);
   const [fillPrevConfirmOpen, setFillPrevConfirmOpen] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [newPerson, setNewPerson] = useState<{
     name: string;
     secondName: string;
     plate: string;
+    trailer: string;
   }>({
     name: '',
     secondName: '',
     plate: '',
+    trailer: '',
   });
 
   const resolvePeopleForMonth = (targetMonth: string, source: PeopleByMonth): PersonRow[] => {
@@ -607,6 +615,97 @@ export default function OperationsPreview() {
       lane,
     });
   };
+  const cardLocation = activeLocation === 'ktk_mow' || activeLocation === 'garage_mow' ? 'mow' : 'vvo';
+  const canCopyDriverCard = directoryLocationsForRole(userRole).includes(cardLocation);
+  const [directoryOptions, setDirectoryOptions] = useState<DirectoryOptions>({ employees: [], vehicles: [], trailers: [] });
+  const [freeInputUntil, setFreeInputUntil] = useState<string>('');
+
+  useEffect(() => {
+    getRuntimeAppSettings()
+      .then((response) => setFreeInputUntil((response?.data?.scheduleFreeInputUntil ?? '').trim()))
+      .catch(() => setFreeInputUntil(''));
+  }, []);
+
+  // Политика: с даты freeInputUntil в графиках КТК новые значения — только из справочника
+  const isFreeInputLocked =
+    Boolean(freeInputUntil) &&
+    new Date().toISOString().slice(0, 10) >= freeInputUntil &&
+    (activeLocation === 'ktk_vvo' || activeLocation === 'ktk_mow');
+
+  const strictNameError = (rawName: string, department: string): string | null => {
+    const name = rawName.trim();
+    if (!name) return null;
+    const requiredPosition = POSITION_BY_DEPARTMENT[department];
+    if (!requiredPosition) return null;
+    const matches = directoryOptions.employees.filter(
+      (employee) => employee.fullName.trim().toLowerCase() === name.toLowerCase()
+    );
+    if (matches.length === 0) {
+      return `Свободный ввод отключён с ${freeInputUntil}: «${name}» нет в справочнике персонала.`;
+    }
+    if (!matches.some((employee) => employee.position === requiredPosition)) {
+      return `«${name}» в справочнике не имеет роли «${requiredPosition}».`;
+    }
+    return null;
+  };
+
+  const strictPlateError = (rawPlate: string): string | null => {
+    const plate = rawPlate.trim();
+    if (!plate) return null;
+    const exists = directoryOptions.vehicles.some((option) => option.trim().toLowerCase() === plate.toLowerCase());
+    return exists ? null : `Свободный ввод отключён с ${freeInputUntil}: госномера «${plate}» нет в справочнике техники.`;
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    getDirectoryOptions(cardLocation)
+      .then(({ data }) => {
+        if (!cancelled) setDirectoryOptions(data);
+      })
+      .catch(() => {
+        // нет прав на подсказки — поля остаются свободным вводом
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cardLocation]);
+
+  // Подсказки из справочника — только водители (контейнеровозы/автовозы).
+  // Диспетчера, оперативники/механики, гараж и СБ — свободное написание.
+  const POSITION_BY_DEPARTMENT: Record<string, string> = {
+    'Контейнеры': 'водитель',
+    'Авто': 'водитель',
+  };
+
+  const nameSuggestions = (department: string | null): string[] => {
+    const position = department ? POSITION_BY_DEPARTMENT[department] : undefined;
+    if (!position) return [];
+    return directoryOptions.employees
+      .filter((employee) => employee.position === position)
+      .map((employee) => employee.fullName);
+  };
+
+  const handleCopyDriverCard = async (person: PersonRow, lane?: '1' | '2') => {
+    const fullName = (lane === '2' ? person.secondName : person.name)?.trim();
+    if (!fullName) {
+      setCopyStatus({ type: 'error', text: 'В строке не указано ФИО' });
+      return;
+    }
+    try {
+      const { data } = await findEmployeeCardByName(cardLocation, fullName);
+      await navigator.clipboard.writeText(data.text);
+      setCopyStatus({ type: 'success', text: `Данные водителя «${fullName}» скопированы в буфер обмена` });
+    } catch (error) {
+      const status = (error as any)?.response?.status;
+      setCopyStatus({
+        type: 'error',
+        text: status === 404
+          ? `«${fullName}» не найден в справочнике сотрудников — заведите карточку в разделе «Справочники»`
+          : 'Не удалось получить данные водителя',
+      });
+    }
+  };
+
   const openPersonEdit = (person: PersonRow) => {
     if (!canEditRows) return;
     setEditPerson(person);
@@ -618,7 +717,7 @@ export default function OperationsPreview() {
     </span>
   );
   const visibleCellCodes: CellCode[] = isPersonnelSection
-    ? (filter === 'Автослесари' || filter === 'Сотрудники склада' || filter === 'Сторожа' ? ['W', 'V', 'O', 'B', 'N'] : ['W', 'V', 'O', 'B'])
+    ? ['W', 'V', 'O', 'B', 'N']
     : filter === 'Авто'
       ? ['W', 'O', 'V', 'B', 'H', 'S', 'R', 'N']
       : ['W', 'O', 'V', 'B', 'H', 'R', 'N'];
@@ -702,7 +801,9 @@ export default function OperationsPreview() {
       setSelectionAnchor(null);
     }
   }, [selectedCell, selectedCellInCurrentView]);
-  const dayColumnStart = 4;
+  // Колонка «Прицеп» — только в графике контейнеровозов
+  const showTrailerColumn = !isPersonnelSection && filter === 'Контейнеры';
+  const dayColumnStart = 5;
   const totalColumnIndex = dayColumnStart + monthDays.length;
   const currentScopeKey = `${effectiveMode}|${monthValue}` as OverrideScopeKey;
   const overrides = allOverrides[currentScopeKey] ?? {};
@@ -2348,6 +2449,7 @@ export default function OperationsPreview() {
             style={{
               ['--ops-fit-scale' as string]: String(matrixScale),
               ['--col-b' as string]: isPersonnelSection ? '0px' : '80px',
+              ['--col-t' as string]: showTrailerColumn ? '90px' : '0px',
               ['--col-c' as string]: isPersonnelSection ? '0px' : '100px',
               ['--col-count' as string]: isPersonnelSection ? '130px' : '70px',
               ['--days-count' as string]: String(monthDays.length),
@@ -2368,8 +2470,13 @@ export default function OperationsPreview() {
                   </button>
                 </div>
               )}
+              {showTrailerColumn && (
+                <div className="ops-matrix__cell ops-matrix__cell--sticky-trailer ops-matrix__cell--head-fixed" style={{ gridColumn: 3, gridRow: '1 / span 2' }}>
+                  Прицеп
+                </div>
+              )}
               {!isPersonnelSection && (
-                <div className="ops-matrix__cell ops-matrix__cell--sticky-third ops-matrix__cell--head-fixed" style={{ gridColumn: 3, gridRow: '1 / span 2' }}>
+                <div className="ops-matrix__cell ops-matrix__cell--sticky-third ops-matrix__cell--head-fixed" style={{ gridColumn: 4, gridRow: '1 / span 2' }}>
                   Примечание
                 </div>
               )}
@@ -2565,9 +2672,24 @@ export default function OperationsPreview() {
                               )}
                             </div>
                           )}
+                          {showTrailerColumn && (
+                            <div
+                              className={`ops-matrix__cell ops-matrix__cell--sticky-trailer${isSecond ? ' ops-matrix__cell--placeholder' : ''}`}
+                              style={{ gridColumn: 3 }}
+                              onDoubleClick={() => openPersonEdit(person)}
+                              title="Двойной щелчок для редактирования"
+                            >
+                              {!isSecond && (
+                                <span className={person.trailer?.trim() ? undefined : 'ops-matrix__empty-label'}>
+                                  {person.trailer?.trim() ? person.trailer : '—'}
+                                </span>
+                              )}
+                            </div>
+                          )}
                           {!isPersonnelSection && (
                             <div
                               className="ops-matrix__cell ops-matrix__cell--sticky-third ops-matrix__note-cell"
+                              style={{ gridColumn: 4 }}
                               onDoubleClick={() => startNoteEdit(person, isSecond ? '2' : '1')}
                               title="Двойной щелчок для редактирования"
                             >
@@ -2619,6 +2741,17 @@ export default function OperationsPreview() {
                                 onMouseDown={(event) => {
                                   if (event.button !== 0) return;
                                   event.preventDefault();
+                                  // preventDefault на mousedown гасит нативный dblclick — ловим двойной клик по detail
+                                  if (event.detail >= 2) {
+                                    openAutoDirectionEdit({
+                                      key: cellKey,
+                                      personName: name ?? '',
+                                      day,
+                                      value: cell,
+                                      department: person.department,
+                                    });
+                                    return;
+                                  }
                                   const key = cellKey;
                                   const anchor = selectionAnchor ?? {
                                     personId: selectedCell?.personId ?? person.id,
@@ -2778,9 +2911,19 @@ export default function OperationsPreview() {
                                   {!isPersonnelSection && renderRowMoveControls(person)}
                               </div>
                             </div>
+                            {showTrailerColumn && (
+                              <div
+                                className="ops-matrix__cell ops-matrix__cell--merged ops-matrix__cell--sticky-trailer"
+                                style={{ gridColumn: 3, gridRow: '1 / span 2' }}
+                                onDoubleClick={() => openPersonEdit(person)}
+                                title="Двойной щелчок для редактирования"
+                              >
+                                {renderEditableLabel(person.trailer ?? '', '—')}
+                              </div>
+                            )}
                             <div
                               className="ops-matrix__cell ops-matrix__note-cell ops-matrix__cell--sticky-third"
-                              style={{ gridColumn: 3, gridRow: 1 }}
+                              style={{ gridColumn: 4, gridRow: 1 }}
                               onDoubleClick={() => startNoteEdit(person, '1')}
                             >
                               <div className="ops-matrix__note">
@@ -2807,7 +2950,7 @@ export default function OperationsPreview() {
                             </div>
                             <div
                               className="ops-matrix__cell ops-matrix__cell--row2 ops-matrix__note-cell ops-matrix__cell--sticky-third"
-                              style={{ gridColumn: 3, gridRow: 2 }}
+                              style={{ gridColumn: 4, gridRow: 2 }}
                               onDoubleClick={() => startNoteEdit(person, '2')}
                             >
                               <div className="ops-matrix__note">
@@ -2860,6 +3003,16 @@ export default function OperationsPreview() {
                                     onMouseDown={(event) => {
                                       if (event.button !== 0) return;
                                       event.preventDefault();
+                                      if (event.detail >= 2) {
+                                        openAutoDirectionEdit({
+                                          key: cellKey1,
+                                          personName: person.name,
+                                          day,
+                                          value: cell1,
+                                          department: person.department,
+                                        });
+                                        return;
+                                      }
                                       const key = cellKey1;
                                       const anchor = selectionAnchor ?? {
                                         personId: selectedCell?.personId ?? person.id,
@@ -2959,6 +3112,16 @@ export default function OperationsPreview() {
                                     onMouseDown={(event) => {
                                       if (event.button !== 0) return;
                                       event.preventDefault();
+                                      if (event.detail >= 2) {
+                                        openAutoDirectionEdit({
+                                          key: cellKey2,
+                                          personName: person.secondName ?? '',
+                                          day,
+                                          value: cell2,
+                                          department: person.department,
+                                        });
+                                        return;
+                                      }
                                       const key = cellKey2;
                                       const anchor = selectionAnchor ?? {
                                         personId: selectedCell?.personId ?? person.id,
@@ -3100,11 +3263,12 @@ export default function OperationsPreview() {
                       {isPersonnelSection ? 'На смене:' : 'Итого'}
                     </div>
                     {!isPersonnelSection && (
-                      <div className="ops-matrix__cell ops-matrix__cell--sticky-second ops-matrix__cell--total">
+                      <div className="ops-matrix__cell ops-matrix__cell--sticky-second ops-matrix__cell--total" style={{ gridColumn: 2 }}>
                         {platesCount}
                       </div>
                     )}
-                    {!isPersonnelSection && <div className="ops-matrix__cell ops-matrix__cell--sticky-third"> </div>}
+                    {showTrailerColumn && <div className="ops-matrix__cell ops-matrix__cell--sticky-trailer" style={{ gridColumn: 3 }}> </div>}
+                    {!isPersonnelSection && <div className="ops-matrix__cell ops-matrix__cell--sticky-third" style={{ gridColumn: 4 }}> </div>}
                     {(() => {
                       const dayTotals = monthDays.map((day) =>
                         sectionPeople.reduce((acc, person) => {
@@ -3362,10 +3526,24 @@ export default function OperationsPreview() {
         <div className="ops-modal">
           <div className="ops-modal__content">
             <div className="ops-modal__title">Добавить</div>
+            {isFreeInputLocked && (
+              <div className="ops-modal__hint">С {freeInputUntil} ФИО и госномера — только из справочника.</div>
+            )}
+            <datalist id="ops-name-options">
+              {nameSuggestions(addDepartment).map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+            <datalist id="ops-plate-options">
+              {directoryOptions.vehicles.map((plate) => (
+                <option key={plate} value={plate} />
+              ))}
+            </datalist>
             <label className="ops-control">
               <span>ФИО</span>
               <input
                 type="text"
+                list="ops-name-options"
                 value={newPerson.name}
                 onChange={(event) => {
                   setNewPerson((prev) => ({ ...prev, name: event.target.value }));
@@ -3379,6 +3557,7 @@ export default function OperationsPreview() {
                 <span>Второй водитель (опц.)</span>
                 <input
                   type="text"
+                  list="ops-name-options"
                   value={newPerson.secondName}
                   onChange={(event) => setNewPerson((prev) => ({ ...prev, secondName: event.target.value }))}
                   placeholder="Петров Петр"
@@ -3390,6 +3569,7 @@ export default function OperationsPreview() {
                 <span>Г/Н ТС</span>
                 <input
                   type="text"
+                  list="ops-plate-options"
                   value={newPerson.plate}
                   onChange={(event) => {
                     setNewPerson((prev) => ({ ...prev, plate: event.target.value }));
@@ -3399,6 +3579,23 @@ export default function OperationsPreview() {
                 />
               </label>
             )}
+            {addDepartment === 'Контейнеры' && (
+              <label className="ops-control">
+                <span>Прицеп</span>
+                <input
+                  type="text"
+                  list="ops-trailer-options"
+                  value={newPerson.trailer}
+                  onChange={(event) => setNewPerson((prev) => ({ ...prev, trailer: event.target.value }))}
+                  placeholder="АМ9211/25"
+                />
+              </label>
+            )}
+            <datalist id="ops-trailer-options">
+              {directoryOptions.trailers.map((plate) => (
+                <option key={plate} value={plate} />
+              ))}
+            </datalist>
             {addError && <div className="ops-modal__error">{addError}</div>}
             <div className="ops-modal__actions ops-modal__actions--split">
               <button
@@ -3413,6 +3610,16 @@ export default function OperationsPreview() {
                     setAddError('Заполните ФИО.');
                     return;
                   }
+                  if (isFreeInputLocked) {
+                    const validationError =
+                      strictNameError(name, addDepartment) ||
+                      (secondName ? strictNameError(secondName, addDepartment) : null) ||
+                      (!isPersonnelSection && plate ? strictPlateError(plate) : null);
+                    if (validationError) {
+                      setAddError(validationError);
+                      return;
+                    }
+                  }
                   setPeopleStateForCurrentMonth((prev) => [
                     ...prev,
                     {
@@ -3420,10 +3627,11 @@ export default function OperationsPreview() {
                       name,
                       secondName: isPersonnelSection ? undefined : secondName || undefined,
                       plate: isPersonnelSection ? '' : plate || '',
+                      trailer: addDepartment === 'Контейнеры' ? newPerson.trailer.trim() || undefined : undefined,
                       department: addDepartment,
                     },
                   ]);
-                  setNewPerson({ name: '', secondName: '', plate: '' });
+                  setNewPerson({ name: '', secondName: '', plate: '', trailer: '' });
                   setAddError(null);
                   setAddOpen(false);
                 }}
@@ -3504,10 +3712,21 @@ export default function OperationsPreview() {
         <div className="ops-modal">
           <div className="ops-modal__content">
             <div className="ops-modal__title">Редактировать строку</div>
+            <datalist id="ops-edit-name-options">
+              {nameSuggestions(editPerson.department).map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+            <datalist id="ops-edit-plate-options">
+              {directoryOptions.vehicles.map((plate) => (
+                <option key={plate} value={plate} />
+              ))}
+            </datalist>
             <label className="ops-control">
               <span>{getPersonnelNameLabel(editPerson.department, activeLocation)}</span>
               <input
                 type="text"
+                list="ops-edit-name-options"
                 value={editPerson.name}
                 onChange={(event) => setEditPerson((prev) => (prev ? { ...prev, name: event.target.value } : prev))}
               />
@@ -3518,6 +3737,7 @@ export default function OperationsPreview() {
                   <span>Второй водитель</span>
                   <input
                     type="text"
+                    list="ops-edit-name-options"
                     value={editPerson.secondName ?? ''}
                     onChange={(event) =>
                       setEditPerson((prev) => (prev ? { ...prev, secondName: event.target.value || undefined } : prev))
@@ -3528,17 +3748,57 @@ export default function OperationsPreview() {
                   <span>Г/Н ТС</span>
                   <input
                     type="text"
+                    list="ops-edit-plate-options"
                     value={editPerson.plate}
                     onChange={(event) => setEditPerson((prev) => (prev ? { ...prev, plate: event.target.value } : prev))}
                   />
                 </label>
+                {editPerson.department === 'Контейнеры' && (
+                  <label className="ops-control">
+                    <span>Прицеп</span>
+                    <input
+                      type="text"
+                      list="ops-edit-trailer-options"
+                      value={editPerson.trailer ?? ''}
+                      onChange={(event) =>
+                        setEditPerson((prev) => (prev ? { ...prev, trailer: event.target.value || undefined } : prev))
+                      }
+                    />
+                  </label>
+                )}
+                <datalist id="ops-edit-trailer-options">
+                  {directoryOptions.trailers.map((plate) => (
+                    <option key={plate} value={plate} />
+                  ))}
+                </datalist>
               </>
             )}
+            {editError && <div className="ops-modal__error">{editError}</div>}
             <div className="ops-modal__actions ops-modal__actions--split">
               <button
                 type="button"
                 className="ops-btn ops-modal__btn-left"
                 onClick={() => {
+                  if (isFreeInputLocked) {
+                    const original = peopleState.find((item) => item.id === editPerson.id);
+                    const changedChecks = [
+                      editPerson.name.trim() !== (original?.name ?? '').trim()
+                        ? strictNameError(editPerson.name, editPerson.department)
+                        : null,
+                      (editPerson.secondName ?? '').trim() !== (original?.secondName ?? '').trim()
+                        ? strictNameError(editPerson.secondName ?? '', editPerson.department)
+                        : null,
+                      editPerson.plate.trim() !== (original?.plate ?? '').trim()
+                        ? strictPlateError(editPerson.plate)
+                        : null,
+                    ];
+                    const validationError = changedChecks.find(Boolean);
+                    if (validationError) {
+                      setEditError(validationError);
+                      return;
+                    }
+                  }
+                  setEditError(null);
                   setPeopleStateForCurrentMonth((prev) =>
                     prev.map((item) => (item.id === editPerson.id ? editPerson : item))
                   );
@@ -3547,7 +3807,14 @@ export default function OperationsPreview() {
               >
                 Сохранить
               </button>
-              <button type="button" className="ops-btn ghost ops-modal__btn-right" onClick={() => setEditPerson(null)}>
+              <button
+                type="button"
+                className="ops-btn ghost ops-modal__btn-right"
+                onClick={() => {
+                  setEditError(null);
+                  setEditPerson(null);
+                }}
+              >
                 Отмена
               </button>
             </div>
@@ -3578,6 +3845,18 @@ export default function OperationsPreview() {
             >
               Копировать
             </button>
+            {canCopyDriverCard && (contextMenu.person.department === 'Контейнеры' || contextMenu.person.department === 'Авто') && (
+              <button
+                type="button"
+                className="ops-context-item"
+                onClick={() => {
+                  void handleCopyDriverCard(contextMenu.person, contextMenu.lane);
+                  setContextMenu(null);
+                }}
+              >
+                Скопировать данные
+              </button>
+            )}
             <button
               type="button"
               className={`ops-context-item${clipboardPerson ? '' : ' disabled'}`}

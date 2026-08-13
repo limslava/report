@@ -220,8 +220,10 @@ export const changePassword = async (req: Request, res: Response, next: NextFunc
 export const getAppSettings = async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const appTitle = await appSettingRepository.findOne({ where: { key: 'app_title' } });
+    const freeInputUntil = await appSettingRepository.findOne({ where: { key: 'schedule_free_input_until' } });
     res.json({
       appTitle: appTitle?.value || 'Логистика & Отчетность',
+      scheduleFreeInputUntil: freeInputUntil?.value || '',
     });
   } catch (error) {
     next(error);

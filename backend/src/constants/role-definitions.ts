@@ -18,6 +18,8 @@ export const ROLE_VALUES = [
   'manager_extra',
   'manager_to',
   'warehouse_manager_vvo',
+  'bdd_specialist_vvo',
+  'bdd_specialist_mow',
 ] as const;
 
 export type RoleValue = typeof ROLE_VALUES[number];

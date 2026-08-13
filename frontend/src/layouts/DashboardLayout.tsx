@@ -35,6 +35,8 @@ import {
   Logout,
   TableChart,
   CalendarMonth,
+  LocalGasStation,
+  FolderShared,
   ChevronLeft,
   ChevronRight,
   Close,
@@ -50,6 +52,8 @@ import {
   canAccessAdmin,
   canAccessOperationsPreview,
   canViewCalendar,
+  canAccessFuel,
+  canAccessDirectories,
   canViewOperationsEfficiency,
   canViewFinancialPlan,
   canViewSummary,
@@ -148,7 +152,8 @@ const DashboardLayout = () => {
   const isSecurityHead = user?.role === 'security';
   const isAdmin = canAccessAdmin(user?.role);
   const canUseWorkSchedule = canAccessOperationsPreview(user?.role);
-  const canViewPlansMenu = !isHrScheduleRole && !isGarageHead && user?.role !== 'warehouse_manager_vvo' && !isSecurityHead;
+  const isBddSpecialist = user?.role === 'bdd_specialist_vvo' || user?.role === 'bdd_specialist_mow';
+  const canViewPlansMenu = !isHrScheduleRole && !isGarageHead && user?.role !== 'warehouse_manager_vvo' && !isSecurityHead && !isBddSpecialist;
   const canViewVvoSchedule = isAdmin || isHrScheduleRole || isKtkVvoManager;
   const canViewMoscowSchedule = isAdmin || isHrScheduleRole || isKtkMowManager;
   const canViewVvoGarageSchedule = isAdmin || isHrScheduleRole || isGarageHead || isWarehouseStaffScheduleOperator;
@@ -297,6 +302,12 @@ const DashboardLayout = () => {
       : null,
     canViewCalendar(user?.role)
       ? { key: 'calendar', label: 'Календарь', icon: calendarIcon, onClick: () => handleNavigate('/calendar'), active: location.pathname.includes('/calendar') }
+      : null,
+    canAccessFuel(user?.role)
+      ? { key: 'fuel', label: 'Топливо', icon: <LocalGasStation />, onClick: () => handleNavigate('/fuel'), active: location.pathname.includes('/fuel') }
+      : null,
+    canAccessDirectories(user?.role)
+      ? { key: 'directories', label: 'Справочники', icon: <FolderShared />, onClick: () => handleNavigate('/directories'), active: location.pathname.includes('/directories') }
       : null,
     canAccessAdmin(user?.role)
       ? { key: 'admin', label: 'Администрирование', icon: <People />, onClick: () => handleNavigate('/admin'), active: location.pathname.includes('/admin') }
@@ -1032,6 +1043,8 @@ const DashboardLayout = () => {
               {location.pathname.includes('/summary-report') && 'Сводный отчет'}
               {location.pathname.includes('/admin') && 'Администрирование'}
               {location.pathname.includes('/settings') && 'Настройки'}
+              {location.pathname.includes('/fuel') && 'Учёт топлива'}
+              {location.pathname.includes('/directories') && 'Справочники'}
             </Typography>
           )}
           {isTechDashboardRoute && (

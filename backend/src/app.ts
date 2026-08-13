@@ -13,6 +13,8 @@ import { usersRouter } from './routes/users.routes';
 import { planningV2Router } from './routes/planning-v2.routes';
 import { financialPlanRouter } from './routes/financial-plan.routes';
 import { operationsPreviewRouter } from './routes/operations-preview.routes';
+import { directoriesRouter } from './routes/directories.routes';
+import { fuelRouter } from './routes/fuel.routes';
 import { errorHandler } from './middleware/error-handler';
 import { logger } from './utils/logger';
 import { getAllowedCorsOrigins } from './config/env';
@@ -93,6 +95,8 @@ export function createApp() {
   app.use('/api/smtp-config', smtpConfigRouter);
   app.use('/api/notes', notesRouter);
   app.use('/api/operations-preview', operationsPreviewRouter);
+  app.use('/api/directories', directoriesRouter);
+  app.use('/api/fuel', fuelRouter);
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });

@@ -1,6 +1,66 @@
 # Changelog
 
 ## Unreleased
+- Fuel accounting module (updates)
+  - Month composition is now managed manually: vehicles are added from the
+    fleet directory (multi-select dialog), copied as a set from the previous
+    month, or removed via row context menu; automatic sync from work schedules
+    was removed.
+  - Single «Скачать Excel» button with month/year choice; yearly export
+    reproduces the legacy spreadsheet layout (7 indicators per vehicle,
+    12 month columns, year totals, winter/summer norm reference block).
+  - Thousands separators in editable cells; cell focus outline unified with
+    plans/schedules; totals row highlighted like plan calculated rows.
+  - Unsaved-changes warning wired into fuel and directories (shared mechanism
+    with schedules), including guarded month/year/city switching.
+- Directories (updates)
+  - Personnel directory narrowed to drivers only; driver card copy from the
+    directory returns personal data only, while the full card with the rig
+    (vehicle + trailer) is copied from the schedule row context menu.
+  - Vehicle/trailer/model tables restyled to the plans look with own vertical
+    scroll and sticky headers; per-region roles no longer see the region label;
+    admin gets a «Наполнить из графиков» bootstrap button.
+- Container schedules
+  - New «Прицеп» column (containers only), shared across both drivers of a
+    rig, with directory suggestions in add/edit dialogs and both Excel exports.
+  - Name/plate suggestions come from directories strictly by section role;
+    an admin-configurable cutoff date disables free input in KTK schedules
+    (new names/plates must exist in directories; old rows and month transfer
+    are unaffected; garage and security schedules stay free-form).
+  - Fixed double-click on «П» cells not opening the loading-direction editor
+    (preventDefault on mousedown suppressed native dblclick); directions can
+    now be corrected without re-entering the mark.
+  - Status «Н — нет сотрудника» enabled for dispatcher and courier/mechanic
+    sections in both regions.
+- Candidate checks (develop line)
+  - Preview mime normalization by extension, readable message instead of a
+    broken image, and on-the-fly HEIC→JPEG conversion for iPhone photos
+    renamed to .jpg (heic-convert, cached like the DOCX PDF preview).
+- Docs: user manual for directories/fuel/trailers (docs/manual.html + PDF),
+  local run guide (docs/LOCAL_RUN.md).
+
+- Fuel accounting module
+  - Added monthly fuel schedule (`Топливо`) for Vladivostok and Moscow with
+    per-vehicle rows: operator enters odometer reading, end fuel level and
+    refueled amount; mileage, start level, consumption and l/100km are computed.
+  - Computed fields (`Пробег по Одометру`, `Начальный уровень Топлива`) can be
+    manually overridden with a visual marker; vehicle baseline (start odometer
+    and fuel level) is entered once when a vehicle joins the module.
+  - Added per-model fuel norms (winter/summer) with configurable season bounds
+    and live deviation badges against the seasonal norm; Excel export of the
+    month with original indicator names.
+  - Added roles `Специалист по БДД Владивосток` / `Специалист по БДД Москва`;
+    fuel access: admin + BDD specialist + KTK head per region.
+- Directories (employees / vehicles / trailers / models)
+  - Added region-scoped directories maintained by KTK head/manager, HR and
+    admin. Employee card holds personal data (passport, address, driver
+    license) and vehicle+trailer assignment; PD access excludes BDD roles,
+    card copies are audit-logged.
+  - Added fixed-template driver card copy (`Скопировать данные водителя`) from
+    the employee card and from the containers/auto schedule context menu;
+    empty VIN renders as an empty line, template never changes.
+  - Added one-off admin bootstrap that fills directories from existing
+    schedule rows (unique names and plates).
 - SW Tech Dashboard
   - Added year/month period selectors in the top bar and period-aware data loading.
   - Updated monthly logic for widgets/charts:

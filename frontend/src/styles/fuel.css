@@ -1,0 +1,289 @@
+/* График «Топливо» — в стилистике ops-matrix (график работы) */
+
+.fuel-matrix {
+  overflow-x: auto;
+  border-radius: 4px;
+  border: 1px solid #7f8da8;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.fuel-matrix table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 1080px;
+  font-size: 12px;
+  color: #1b1f2a;
+}
+
+.fuel-matrix th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f8fafc;
+  border-right: 1px solid #8d9bb5;
+  border-bottom: 1px solid #8292ae;
+  padding: 6px 6px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.fuel-matrix td {
+  border-right: 1px solid #8d9bb5;
+  border-bottom: 1px solid #8796b1;
+  padding: 2px 4px;
+  text-align: right;
+  white-space: nowrap;
+  height: 30px;
+}
+
+.fuel-matrix th:last-child,
+.fuel-matrix td:last-child {
+  border-right: none;
+}
+
+.fuel-matrix td.fuel-cell--left {
+  text-align: left;
+}
+
+.fuel-matrix td.fuel-cell--center {
+  text-align: center;
+}
+
+.fuel-matrix .fuel-cell--sticky {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #fff;
+  border-right: 1px solid #8292ae;
+  font-weight: 600;
+  text-align: left;
+}
+
+.fuel-matrix tr:hover td {
+  background: #f3f6fb;
+}
+
+.fuel-cell--edit {
+  background: #fff;
+}
+
+.fuel-matrix tr:hover td.fuel-cell--calc,
+.fuel-cell--calc {
+  background: #f3f5f9;
+  color: #334155;
+}
+
+.fuel-matrix tr:hover td.fuel-cell--manual,
+.fuel-cell--manual {
+  background: #fff4e0;
+}
+
+.fuel-matrix input {
+  border: none;
+  outline: none;
+  background: transparent;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: right;
+  padding: 0 2px;
+}
+
+.fuel-matrix input::placeholder {
+  color: #94a3b8;
+}
+
+/* фокус — тонкая рамка по границе ячейки, как выделение в «Планах» и графиках */
+.fuel-matrix td:focus-within {
+  outline: 2px solid #1976d2;
+  outline-offset: -2px;
+  background: #fff !important;
+}
+
+.fuel-matrix tr.fuel-row--total td {
+  background: #dceeff; /* как расчётные строки в «Планах» */
+  font-weight: 700;
+  border-top: 1px solid #8292ae;
+}
+
+.fuel-matrix .fuel-empty {
+  text-align: center;
+  color: #6b7280;
+  padding: 26px 10px;
+  font-size: 13px;
+}
+
+.fuel-badge {
+  display: inline-block;
+  min-width: 58px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.fuel-badge--ok { background: #8fdda3; color: #0f172a; }
+.fuel-badge--warn { background: #f2d77a; color: #0f172a; }
+.fuel-badge--bad { background: #fecaca; color: #7f1d1d; }
+.fuel-badge--none { background: transparent; color: #9ca3af; font-weight: 400; }
+
+.fuel-status {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #f2d77a;
+  color: #7c2d12;
+}
+
+
+/* ─── Справочники: корпоративные статусы и действия ─── */
+
+.dir-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 10px 1px 8px;
+  border: 1px solid #d6dce8;
+  border-radius: 999px;
+  background: #fff;
+  color: #374151;
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.dir-status::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #9ca3af;
+}
+
+.dir-status--ok::before { background: #16a34a; }
+.dir-status--warn::before { background: #d97706; }
+.dir-status--off { color: #6b7280; }
+.dir-status--off::before { background: #9ca3af; }
+
+.dir-actions .MuiIconButton-root {
+  color: #8a94a6;
+  padding: 3px;
+}
+
+.dir-actions .MuiIconButton-root:hover {
+  color: #1f2937;
+  background: #eef2f7;
+}
+
+.dir-actions .dir-actions__delete:hover {
+  color: #b3261e;
+  background: #fde9e7;
+}
+
+
+/* ─── Справочники: стиль «Планов» (MUI-таблица) со светлыми разделителями ─── */
+
+.dir-table {
+  overflow: auto;
+  /* своя вертикальная прокрутка по высоте окна — как таблицы в «Планах»;
+     липкая шапка работает внутри этого контейнера */
+  max-height: calc(100dvh - 210px);
+  background: #fff;
+  border: 1px solid #e4e8ef;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06);
+}
+
+.dir-table table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13.5px;
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.dir-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 600;
+  font-size: 12.5px;
+  letter-spacing: 0.2px;
+  text-align: left;
+  padding: 11px 16px;
+  border-bottom: 1px solid #e4e8ef;
+  border-right: 1px solid #edf0f5;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.dir-table td {
+  padding: 8px 16px;
+  border-bottom: 1px solid #edf0f5;
+  border-right: 1px solid #edf0f5;
+  white-space: nowrap;
+  height: 42px;
+  text-align: left;
+}
+
+.dir-table tbody tr:nth-child(even) td {
+  background: #fafbfd;
+}
+
+.dir-table th:last-child,
+.dir-table td:last-child {
+  border-right: none;
+}
+
+.dir-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.dir-table tbody tr:hover td,
+.dir-table tbody tr:nth-child(even):hover td {
+  background: #eef4fd;
+}
+
+.dir-table .fuel-cell--sticky {
+  font-weight: 600;
+}
+
+.dir-table td.fuel-cell--center,
+.dir-table th.fuel-cell--center {
+  text-align: center;
+}
+
+.dir-table .fuel-empty {
+  text-align: center;
+  color: #6b7280;
+  padding: 26px 10px;
+  font-size: 13px;
+}
+
+
+.dir-role {
+  display: inline-block;
+  background: #f1f5f9;
+  border-radius: 999px;
+  padding: 2px 12px;
+  font-size: 12px;
+  color: #475569;
+}
+
+
+/* компактные кнопки панелей топлива и справочников */
+.fuel-page .ops-btn,
+.dir-page .ops-btn {
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: 7px;
+  white-space: nowrap;
+}
