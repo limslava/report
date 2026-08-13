@@ -407,10 +407,24 @@ export const previewCandidateCheckAttachment = async (req: Request, res: Respons
     }
 
     const data = await fs.readFile(item.storagePath);
-    res.setHeader('Content-Type', item.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Type', resolvePreviewMimeType(item.originalName, item.mimeType));
     res.setHeader('Content-Disposition', buildContentDisposition(item.originalName, 'inline', 'attachment'));
     res.send(data);
   } catch (error) {
     next(error);
   }
 };
+
+// Файлы из мессенджеров часто приходят с типом octet-stream — для inline-показа
+// браузеру нужен честный тип, выводим его из расширения.
+const PREVIEW_MIME_BY_EXTENSION: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+};
+
+function resolvePreviewMimeType(fileName: string, storedMimeType: string | null): string {
+  if (storedMimeType && storedMimeType !== 'application/octet-stream') return storedMimeType;
+  return PREVIEW_MIME_BY_EXTENSION[path.extname(fileName).toLowerCase()] ?? 'application/octet-stream';
+}

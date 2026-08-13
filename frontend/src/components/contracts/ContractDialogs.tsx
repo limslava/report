@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Box,
@@ -77,6 +78,12 @@ export function PreviewDialog({
   onClose,
   onDownloadOriginal,
 }: PreviewDialogProps) {
+  const [imageRenderFailed, setImageRenderFailed] = useState(false);
+
+  useEffect(() => {
+    setImageRenderFailed(false);
+  }, [previewUrl]);
+
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
       <DialogTitle>{fileName || 'Просмотр договора'}</DialogTitle>
@@ -105,19 +112,29 @@ export function PreviewDialog({
                 alignItems: 'center',
                 justifyContent: 'center',
                 bgcolor: '#f7f9fc',
+                p: 2,
               }}
             >
-              <Box
-                component="img"
-                src={previewUrl}
-                alt={fileName || 'preview'}
-                sx={{
-                  maxWidth: '100%',
-                  maxHeight: '75vh',
-                  objectFit: 'contain',
-                  display: 'block',
-                }}
-              />
+              {imageRenderFailed ? (
+                <Alert severity="warning" sx={{ maxWidth: 520 }}>
+                  Браузер не смог отобразить это изображение — вероятно, файл сохранён в формате,
+                  который браузеры не показывают (например, HEIC с iPhone, переименованный в .jpg).
+                  Нажмите «Скачать оригинал» — на компьютере файл откроется.
+                </Alert>
+              ) : (
+                <Box
+                  component="img"
+                  src={previewUrl}
+                  alt={fileName || 'preview'}
+                  onError={() => setImageRenderFailed(true)}
+                  sx={{
+                    maxWidth: '100%',
+                    maxHeight: '75vh',
+                    objectFit: 'contain',
+                    display: 'block',
+                  }}
+                />
+              )}
             </Box>
           ) : (
             <iframe
