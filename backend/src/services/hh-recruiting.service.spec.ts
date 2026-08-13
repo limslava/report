@@ -36,7 +36,9 @@ function candidate(input: Partial<HhCandidate> = {}): HhCandidate {
 
 describe('serializeCandidate: доступ к персональным данным', () => {
   it('отдаёт ПДн ролям, допущенным к кандидатам', () => {
-    for (const role of ['admin', 'head_hr', 'hr_recruiter', 'hr_specialist']) {
+    // Подбор ведут только админ и рекрутер; head_hr/hr_specialist — кадровое
+    // администрирование без доступа к кандидатам (см. HH_RECRUITING_ROLES).
+    for (const role of ['admin', 'hr_recruiter']) {
       const dto = serializeCandidate(candidate(), user(role));
       expect(dto.fullName).toBe('Иванов Иван Иванович');
       expect(dto.phone).toBe('+79001234567');
