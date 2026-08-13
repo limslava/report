@@ -1212,6 +1212,8 @@ const DashboardLayout = () => {
               {location.pathname.includes('/business-processes/dashboard') && 'Дашборд'}
               {location.pathname.startsWith('/warehouse') && 'Склад ТС'}
               {location.pathname.includes('/settings') && 'Настройки'}
+              {location.pathname.includes('/fuel') && 'Учёт топлива'}
+              {location.pathname.includes('/directories') && 'Справочники'}
             </Typography>
           )}
           {isTechDashboardRoute && (

@@ -108,6 +108,22 @@ export const deleteVehicleModel = async (req: Request, res: Response) => {
   res.json({ ok: true });
 };
 
+
+/**
+ * Модель по текстовой подписи из карточки техники: ищем существующую без учёта
+ * регистра (чтобы 11 одинаковых машин не породили 11 моделей), иначе создаём.
+ * Нормы расхода к новой модели добавляют БДД/руководители КТК в «Модели и нормы».
+ */
+const resolveModelByLabel = async (label: string): Promise<VehicleModel> => {
+  const existing = await modelRepo
+    .createQueryBuilder('model')
+    .where("LOWER(TRIM(model.brand || ' ' || model.name)) = LOWER(:label)", { label })
+    .orWhere('LOWER(model.brand) = LOWER(:label)', { label })
+    .getOne();
+  if (existing) return existing;
+  return modelRepo.save(modelRepo.create({ brand: label, name: '' }));
+};
+
 // ─────────────────────────── Техника ───────────────────────────
 
 export const listVehicles = async (req: Request, res: Response) => {
@@ -139,7 +155,12 @@ export const saveVehicle = async (req: Request, res: Response) => {
   vehicle.location = location;
   vehicle.plate = plate;
   vehicle.vehicleKind = trimmed(req.body?.vehicleKind, 120);
-  vehicle.modelId = typeof req.body?.modelId === 'string' && req.body.modelId ? req.body.modelId : null;
+  const modelLabel = trimmed(req.body?.modelLabel, 240);
+  if (modelLabel) {
+    vehicle.modelId = (await resolveModelByLabel(modelLabel)).id;
+  } else {
+    vehicle.modelId = typeof req.body?.modelId === 'string' && req.body.modelId ? req.body.modelId : null;
+  }
   vehicle.color = trimmed(req.body?.color, 60);
   vehicle.vin = trimmed(req.body?.vin, 40);
   vehicle.note = trimmed(req.body?.note, 500);
@@ -194,15 +215,9 @@ export const deleteTrailer = async (req: Request, res: Response) => {
 
 // ─────────────────────────── Сотрудники (ПДн) ───────────────────────────
 
-const EMPLOYEE_RELATIONS = { assignedVehicle: { model: true }, assignedTrailer: true } as const;
-
 export const listEmployees = async (req: Request, res: Response) => {
   const location = requireDirectoryLocation(req, req.query.location);
-  const employees = await employeeRepo.find({
-    where: { location },
-    relations: EMPLOYEE_RELATIONS,
-    order: { fullName: 'ASC' },
-  });
+  const employees = await employeeRepo.find({ where: { location }, order: { fullName: 'ASC' } });
   res.json(employees);
 };
 
@@ -228,10 +243,6 @@ export const saveEmployee = async (req: Request, res: Response) => {
   employee.registrationAddress = trimmed(req.body?.registrationAddress, 500);
   employee.licenseNumber = trimmed(req.body?.licenseNumber, 32);
   employee.licenseIssueDate = optionalDate(req.body?.licenseIssueDate);
-  employee.assignedVehicleId =
-    typeof req.body?.assignedVehicleId === 'string' && req.body.assignedVehicleId ? req.body.assignedVehicleId : null;
-  employee.assignedTrailerId =
-    typeof req.body?.assignedTrailerId === 'string' && req.body.assignedTrailerId ? req.body.assignedTrailerId : null;
   employee.note = trimmed(req.body?.note, 500);
 
   const saved = await employeeRepo.save(employee);
@@ -243,8 +254,7 @@ export const saveEmployee = async (req: Request, res: Response) => {
     details: { location, fullName: saved.fullName },
     req,
   });
-  const withRelations = await employeeRepo.findOne({ where: { id: saved.id }, relations: EMPLOYEE_RELATIONS });
-  res.json(withRelations);
+  res.json(saved);
 };
 
 export const deleteEmployee = async (req: Request, res: Response) => {
@@ -263,16 +273,16 @@ export const deleteEmployee = async (req: Request, res: Response) => {
   res.json({ ok: true });
 };
 
-/** Текст карточки по фиксированному шаблону; каждое обращение пишется в аудит. */
+/**
+ * Текст карточки из справочника — только данные водителя, без машины и прицепа
+ * (полная карточка со сцепкой копируется из графика). Пишется в аудит.
+ */
 export const getEmployeeCardText = async (req: Request, res: Response) => {
-  const employee = await employeeRepo.findOne({
-    where: { id: req.params.id },
-    relations: EMPLOYEE_RELATIONS,
-  });
+  const employee = await employeeRepo.findOne({ where: { id: req.params.id } });
   if (!employee) return httpError(404, 'Employee not found') as never;
   requireDirectoryLocation(req, employee.location);
 
-  const text = buildEmployeeCardText(employee);
+  const text = buildEmployeeCardText(employee, null);
   await recordAuditLog({
     action: 'DIRECTORY_EMPLOYEE_CARD_COPIED',
     userId: req.user?.id ?? null,
@@ -292,15 +302,13 @@ export const findEmployeeCardByName = async (req: Request, res: Response) => {
 
   const employee = await employeeRepo
     .createQueryBuilder('employee')
-    .leftJoinAndSelect('employee.assignedVehicle', 'vehicle')
-    .leftJoinAndSelect('vehicle.model', 'model')
-    .leftJoinAndSelect('employee.assignedTrailer', 'trailer')
     .where('employee.location = :location', { location })
     .andWhere('LOWER(employee.full_name) = LOWER(:fullName)', { fullName })
     .getOne();
   if (!employee) return httpError(404, 'Employee not found in directory') as never;
 
-  const text = buildEmployeeCardText(employee);
+  const rig = await resolveRigFromSchedule(location, employee.fullName);
+  const text = buildEmployeeCardText(employee, rig);
   await recordAuditLog({
     action: 'DIRECTORY_EMPLOYEE_CARD_COPIED',
     userId: req.user?.id ?? null,
@@ -310,6 +318,83 @@ export const findEmployeeCardByName = async (req: Request, res: Response) => {
     req,
   });
   res.json({ employeeId: employee.id, text });
+};
+
+// ─────────────────────────── Сцепка из графика ───────────────────────────
+
+const SCHEDULE_SCOPE_BY_DIRECTORY_LOCATION: Record<FleetLocation, string> = {
+  vvo: 'ktk_vvo_preview_v1',
+  mow: 'ktk_mow_preview_v1',
+};
+
+type ScheduleRigRow = {
+  name?: string;
+  secondName?: string;
+  plate?: string;
+  trailer?: string;
+};
+
+const prevMonth = (monthValue: string): string => {
+  const [year, month] = monthValue.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 2, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+};
+
+/**
+ * Сцепка «машина + прицеп» для карточки водителя берётся из строки графика
+ * (текущий месяц, при пустом — предыдущий): справочники персонала, техники и
+ * прицепов независимы, связывает их только график.
+ */
+export const resolveRigFromSchedule = async (
+  location: FleetLocation,
+  fullName: string
+): Promise<{ vehicle: FleetVehicle | null; trailerPlate: string }> => {
+  const empty = { vehicle: null, trailerPlate: '' };
+  const row = await previewRepo.findOne({ where: { scopeKey: SCHEDULE_SCOPE_BY_DIRECTORY_LOCATION[location] } });
+  if (!row) return empty;
+  const payload = (row.payload ?? {}) as { peopleByMonth?: Record<string, ScheduleRigRow[]> };
+  const byMonth = payload.peopleByMonth ?? {};
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const people =
+    (byMonth[currentMonth]?.length ? byMonth[currentMonth] : byMonth[prevMonth(currentMonth)]) ?? [];
+  const needle = fullName.trim().toLowerCase();
+  const personRow = people.find(
+    (person) =>
+      (person.name ?? '').trim().toLowerCase() === needle ||
+      (person.secondName ?? '').trim().toLowerCase() === needle
+  );
+  if (!personRow) return empty;
+
+  const plate = (personRow.plate ?? '').trim();
+  const vehicle = plate
+    ? await vehicleRepo
+        .createQueryBuilder('vehicle')
+        .leftJoinAndSelect('vehicle.model', 'model')
+        .where('LOWER(vehicle.plate) = LOWER(:plate)', { plate })
+        .getOne()
+    : null;
+  return { vehicle, trailerPlate: (personRow.trailer ?? '').trim() };
+};
+
+// ─────────────────────────── Подсказки для графиков (без ПДн) ───────────────────────────
+
+/**
+ * Автокомплит в диалогах графиков: только ФИО+роль и госномера, без ПДн —
+ * поэтому доступно всем ролям, редактирующим графики (см. роут).
+ */
+export const getDirectoryOptions = async (req: Request, res: Response) => {
+  const location = parseLocation(req.query.location);
+  const [employees, vehicles, trailers] = await Promise.all([
+    employeeRepo.find({ where: { location, status: 'active' }, order: { fullName: 'ASC' } }),
+    vehicleRepo.find({ where: { location }, order: { plate: 'ASC' } }),
+    trailerRepo.find({ where: { location, status: 'active' }, order: { plate: 'ASC' } }),
+  ]);
+  res.json({
+    employees: employees.map((employee) => ({ fullName: employee.fullName, position: employee.position })),
+    vehicles: vehicles.filter((vehicle) => vehicle.status !== 'archived').map((vehicle) => vehicle.plate),
+    trailers: trailers.map((trailer) => trailer.plate),
+  });
 };
 
 // ─────────────────────────── Первичное наполнение из графиков ───────────────────────────
@@ -327,11 +412,6 @@ type PreviewPersonRow = {
 const POSITION_BY_DEPARTMENT: Record<string, string> = {
   'Контейнеры': 'водитель',
   'Авто': 'водитель',
-  'Диспетчера': 'диспетчер',
-  'Курьеры': 'оперативник',
-  'Автослесари': 'автослесарь',
-  'Сотрудники склада': 'прочее',
-  'Сторожа': 'сторож',
 };
 
 const KIND_BY_DEPARTMENT: Record<string, string> = {
@@ -342,9 +422,6 @@ const KIND_BY_DEPARTMENT: Record<string, string> = {
 const BOOTSTRAP_SOURCES: Array<{ scopeKey: string; location: FleetLocation }> = [
   { scopeKey: 'ktk_vvo_preview_v1', location: 'vvo' },
   { scopeKey: 'ktk_mow_preview_v1', location: 'mow' },
-  { scopeKey: 'garage_preview_v1', location: 'vvo' },
-  { scopeKey: 'garage_mow_preview_v1', location: 'mow' },
-  { scopeKey: 'security_preview_v1', location: 'vvo' },
 ];
 
 /**
@@ -374,7 +451,8 @@ export const bootstrapDirectoriesFromSchedules = async (req: Request, res: Respo
 
     for (const person of latestPeople) {
       const department = person.department ?? '';
-      const position = POSITION_BY_DEPARTMENT[department] ?? 'прочее';
+      const position = POSITION_BY_DEPARTMENT[department];
+      if (!position) continue;
       for (const rawName of [person.name, person.secondName]) {
         const fullName = (rawName ?? '').trim();
         if (!fullName) continue;

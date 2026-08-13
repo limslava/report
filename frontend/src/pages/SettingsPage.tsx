@@ -312,6 +312,7 @@ const SettingsPage = () => {
   const [changing, setChanging] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [appTitle, setAppTitle] = useState('Логистика & Отчетность');
+  const [freeInputUntil, setFreeInputUntil] = useState('');
   const [appTitleMessage, setAppTitleMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [savingAppTitle, setSavingAppTitle] = useState(false);
   const currentYear = new Date().getFullYear();
@@ -372,6 +373,7 @@ const SettingsPage = () => {
         if (typeof title === 'string' && title.trim()) {
           setAppTitle(title.trim());
         }
+        setFreeInputUntil((response?.data?.scheduleFreeInputUntil ?? '').trim());
       } catch {
         // ignore and keep default
       }
@@ -406,7 +408,7 @@ const SettingsPage = () => {
     }
     try {
       setSavingAppTitle(true);
-      await updateAppSettings({ appTitle: normalized });
+      await updateAppSettings({ appTitle: normalized, scheduleFreeInputUntil: freeInputUntil });
       setAppTitleMessage({ type: 'success', text: 'Название системы сохранено' });
     } catch {
       setAppTitleMessage({ type: 'error', text: 'Не удалось сохранить название системы' });
@@ -639,6 +641,28 @@ const SettingsPage = () => {
                   <Button variant="contained" onClick={handleSaveAppTitle} disabled={savingAppTitle}>
                     {savingAppTitle ? 'Сохранение...' : 'Сохранить'}
                   </Button>
+                </Box>
+                <Typography variant="subtitle1" gutterBottom sx={{ mt: 2.5 }}>
+                  Свободный ввод в графиках КТК
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <TextField
+                    label="Отключить свободный ввод с даты"
+                    type="date"
+                    value={freeInputUntil}
+                    onChange={(e) => setFreeInputUntil(e.target.value)}
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ minWidth: 240 }}
+                  />
+                  {freeInputUntil && (
+                    <Button size="small" onClick={() => setFreeInputUntil('')}>Сбросить</Button>
+                  )}
+                  <Typography variant="body2" color="text.secondary" sx={{ flexBasis: '100%' }}>
+                    С этой даты в графиках контейнеровозов, автовозов, диспетчеров и оперативников новые ФИО
+                    и госномера принимаются только из справочника. Пусто — ограничение выключено.
+                    СБ и гаража не касается. Сохраняется кнопкой «Сохранить» выше.
+                  </Typography>
                 </Box>
                 {appTitleMessage && (
                   <Alert severity={appTitleMessage.type} sx={{ mt: 1.5 }}>

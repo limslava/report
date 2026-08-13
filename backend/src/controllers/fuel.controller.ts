@@ -5,6 +5,7 @@ import { AppSetting } from '../models/app-setting.model';
 import { FleetVehicle } from '../models/fleet-vehicle.model';
 import type { FleetLocation } from '../models/fleet-vehicle.model';
 import { FuelEntry } from '../models/fuel-entry.model';
+import { VehicleModel } from '../models/vehicle-model.model';
 import { recordAuditLog } from '../services/audit-log.service';
 import {
   DEFAULT_FUEL_SEASONS,
@@ -100,38 +101,42 @@ type FuelRow = {
   hasBaseline: boolean;
 };
 
+/**
+ * Состав месяца в топливе — это существующие записи fuel_entries за месяц:
+ * машины добавляются из справочника техники (кнопка «Добавить» или
+ * копирование состава прошлого месяца) и удаляются через контекстное меню.
+ * Автоматического наполнения из графиков нет.
+ */
 async function buildFuelRows(location: FleetLocation, monthValue: string): Promise<{ rows: FuelRow[]; isWinter: boolean }> {
   const seasons = await loadSeasons();
   const month = Number(monthValue.split('-')[1]);
   const isWinter = isWinterMonth(month, seasons);
 
-  const vehicles = await vehicleRepo.find({
-    where: { location },
-    relations: { model: true },
-    order: { plate: 'ASC' },
+  const monthEntries = await entryRepo.find({
+    where: { location, monthValue },
+    relations: { vehicle: { model: true } },
   });
-  const activeVehicles = vehicles.filter((vehicle) => vehicle.status !== 'archived');
-  const vehicleIds = activeVehicles.map((vehicle) => vehicle.id);
-  if (vehicleIds.length === 0) return { rows: [], isWinter };
+  monthEntries.sort((a, b) => a.vehicle.plate.localeCompare(b.vehicle.plate, 'ru'));
+  if (monthEntries.length === 0) return { rows: [], isWinter };
 
+  const vehicleIds = monthEntries.map((entry) => entry.vehicleId);
   const prevMonth = prevMonthValue(monthValue);
-  const entries = await entryRepo
+  const prevEntries = await entryRepo
     .createQueryBuilder('entry')
     .where('entry.vehicle_id IN (:...vehicleIds)', { vehicleIds })
-    .andWhere('entry.month_value IN (:...months)', { months: [monthValue, prevMonth] })
+    .andWhere('entry.month_value = :prevMonth', { prevMonth })
     .getMany();
-  const currentByVehicle = new Map(entries.filter((e) => e.monthValue === monthValue).map((e) => [e.vehicleId, e]));
-  const prevByVehicle = new Map(entries.filter((e) => e.monthValue === prevMonth).map((e) => [e.vehicleId, e]));
+  const prevByVehicle = new Map(prevEntries.map((e) => [e.vehicleId, e]));
 
-  const rows = activeVehicles.map((vehicle): FuelRow => {
-    const entry = currentByVehicle.get(vehicle.id) ?? null;
+  const rows = monthEntries.map((entry): FuelRow => {
+    const vehicle = entry.vehicle;
     const prev = prevByVehicle.get(vehicle.id) ?? null;
 
-    const odometer = toNumber(entry?.odometer);
-    const fuelEnd = toNumber(entry?.fuelEnd);
-    const fuelFilled = toNumber(entry?.fuelFilled);
-    const mileageManual = toNumber(entry?.mileageManual);
-    const fuelStartManual = toNumber(entry?.fuelStartManual);
+    const odometer = toNumber(entry.odometer);
+    const fuelEnd = toNumber(entry.fuelEnd);
+    const fuelFilled = toNumber(entry.fuelFilled);
+    const mileageManual = toNumber(entry.mileageManual);
+    const fuelStartManual = toNumber(entry.fuelStartManual);
     const prevOdometer = toNumber(prev?.odometer);
     const prevFuelEnd = toNumber(prev?.fuelEnd);
 
@@ -250,6 +255,86 @@ export const setVehicleBaseline = async (req: Request, res: Response) => {
   res.json({ ok: true, baselineMonth });
 };
 
+/** Добавить машины из справочника техники в состав месяца (пустые записи). */
+export const addFuelRows = async (req: Request, res: Response) => {
+  const location = requireFuelLocation(req, req.body?.location);
+  const monthValue = parseMonthValue(req.body?.monthValue);
+  const vehicleIds: unknown = req.body?.vehicleIds;
+  if (!Array.isArray(vehicleIds) || vehicleIds.length === 0) httpError(400, 'vehicleIds must be a non-empty array');
+
+  const vehicles = await vehicleRepo.find({ where: { location } });
+  const vehicleById = new Map(vehicles.map((vehicle) => [vehicle.id, vehicle]));
+  let added = 0;
+  for (const vehicleId of vehicleIds as string[]) {
+    if (!vehicleById.has(vehicleId)) httpError(400, `Vehicle ${vehicleId} is not in ${location}`);
+    const existing = await entryRepo.findOne({ where: { vehicleId, monthValue } });
+    if (existing) continue;
+    await entryRepo.save(entryRepo.create({ vehicleId, monthValue, location, updatedByUserId: req.user?.id ?? null }));
+    added += 1;
+  }
+  await recordAuditLog({
+    action: 'FUEL_ROWS_ADDED',
+    userId: req.user?.id ?? null,
+    entityType: 'fuel_entry',
+    entityId: `${location}:${monthValue}`,
+    details: { location, monthValue, added },
+    req,
+  });
+  const { rows, isWinter } = await buildFuelRows(location, monthValue);
+  const filledCount = rows.filter((row) => row.odometer !== null && row.fuelEnd !== null && row.fuelFilled !== null).length;
+  res.json({ location, monthValue, isWinter, filledCount, totalCount: rows.length, rows });
+};
+
+/** Убрать машину из состава месяца (данные месяца этой машины удаляются). */
+export const removeFuelRow = async (req: Request, res: Response) => {
+  const location = requireFuelLocation(req, req.body?.location);
+  const monthValue = parseMonthValue(req.body?.monthValue);
+  const vehicleId = typeof req.body?.vehicleId === 'string' ? req.body.vehicleId : httpError(400, 'vehicleId is required');
+
+  const entry = await entryRepo.findOne({ where: { vehicleId: vehicleId as string, monthValue, location } });
+  if (!entry) return httpError(404, 'Row not found in this month') as never;
+  await entryRepo.remove(entry);
+  await recordAuditLog({
+    action: 'FUEL_ROW_REMOVED',
+    userId: req.user?.id ?? null,
+    entityType: 'fuel_entry',
+    entityId: `${location}:${monthValue}:${vehicleId}`,
+    details: { location, monthValue, vehicleId },
+    req,
+  });
+  const { rows, isWinter } = await buildFuelRows(location, monthValue);
+  const filledCount = rows.filter((row) => row.odometer !== null && row.fuelEnd !== null && row.fuelFilled !== null).length;
+  res.json({ location, monthValue, isWinter, filledCount, totalCount: rows.length, rows });
+};
+
+/** Скопировать состав техники из прошлого месяца (без значений). */
+export const copyFuelRowsFromPrevMonth = async (req: Request, res: Response) => {
+  const location = requireFuelLocation(req, req.body?.location);
+  const monthValue = parseMonthValue(req.body?.monthValue);
+  const prevMonth = prevMonthValue(monthValue);
+  const prevEntries = await entryRepo.find({ where: { location, monthValue: prevMonth } });
+  let added = 0;
+  for (const prev of prevEntries) {
+    const existing = await entryRepo.findOne({ where: { vehicleId: prev.vehicleId, monthValue } });
+    if (existing) continue;
+    await entryRepo.save(
+      entryRepo.create({ vehicleId: prev.vehicleId, monthValue, location, updatedByUserId: req.user?.id ?? null })
+    );
+    added += 1;
+  }
+  await recordAuditLog({
+    action: 'FUEL_ROWS_COPIED',
+    userId: req.user?.id ?? null,
+    entityType: 'fuel_entry',
+    entityId: `${location}:${monthValue}`,
+    details: { location, monthValue, fromMonth: prevMonth, added },
+    req,
+  });
+  const { rows, isWinter } = await buildFuelRows(location, monthValue);
+  const filledCount = rows.filter((row) => row.odometer !== null && row.fuelEnd !== null && row.fuelFilled !== null).length;
+  res.json({ location, monthValue, isWinter, filledCount, totalCount: rows.length, rows, added });
+};
+
 export const getFuelSeasons = async (_req: Request, res: Response) => {
   res.json(await loadSeasons());
 };
@@ -276,6 +361,7 @@ export const saveFuelSeasons = async (req: Request, res: Response) => {
 };
 
 const MONTH_NAMES = ['', 'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+const MONTH_GENITIVE = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 const LOCATION_LABELS: Record<FleetLocation, string> = { vvo: 'Владивосток', mow: 'Москва' };
 
 export const exportFuelExcel = async (req: Request, res: Response) => {
@@ -363,6 +449,192 @@ export const exportFuelExcel = async (req: Request, res: Response) => {
   res.setHeader(
     'Content-Disposition',
     `attachment; filename="fuel_${location}_${monthValue}.xlsx"; filename*=UTF-8''${encodeURIComponent(filename)}`
+  );
+  res.send(Buffer.from(buffer));
+};
+
+const YEAR_INDICATORS = [
+  'Показания одометра, км',
+  'Пробег по Одометру, км',
+  'Начальный уровень Топлива',
+  'Конечный уровень Топлива',
+  'Заправлено по ППР',
+  'Расход топлива, л',
+  'Расход л/100км по одометру',
+] as const;
+
+/**
+ * Годовая выгрузка в формате исходной таблицы «Топливо Владивосток»:
+ * блок из 7 показателей на машину, колонки — месяцы года, итог за год,
+ * справа — справочные нормы зима/лето по моделям.
+ */
+export const exportFuelYearExcel = async (req: Request, res: Response) => {
+  const location = requireFuelLocation(req, req.query.location);
+  const year = Number(req.query.year);
+  if (!Number.isInteger(year) || year < 2020 || year > 2100) httpError(400, 'year must be 2020..2100');
+
+  const seasons = await loadSeasons();
+  const vehicles = (await vehicleRepo.find({ where: { location }, relations: { model: true }, order: { plate: 'ASC' } }))
+    .filter((vehicle) => vehicle.status !== 'archived');
+  const vehicleIds = vehicles.map((vehicle) => vehicle.id);
+
+  const months = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
+  const monthsWithPrev = [`${year - 1}-12`, ...months];
+  const entries = vehicleIds.length
+    ? await entryRepo
+        .createQueryBuilder('entry')
+        .where('entry.vehicle_id IN (:...vehicleIds)', { vehicleIds })
+        .andWhere('entry.month_value IN (:...months)', { months: monthsWithPrev })
+        .getMany()
+    : [];
+  const entryByVehicleMonth = new Map<string, FuelEntry>();
+  entries.forEach((entry) => entryByVehicleMonth.set(`${entry.vehicleId}|${entry.monthValue}`, entry));
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Logistics Reporting';
+  workbook.created = new Date();
+  const sheet = workbook.addWorksheet(`Топливо ${LOCATION_LABELS[location]} ${year}`.slice(0, 31));
+
+  const indicatorCol = 1;
+  const plateCol = 2;
+  const modelCol = 3;
+  const monthStartCol = 4;
+  const totalCol = monthStartCol + 12;
+  const normStartCol = totalCol + 2;
+
+  sheet.mergeCells(1, 1, 1, totalCol);
+  const title = sheet.getCell(1, 1);
+  title.value = `Учёт топлива · ${LOCATION_LABELS[location]} · ${year}`;
+  title.font = { name: 'Arial', size: 14, bold: true, color: { argb: 'FF1F2937' } };
+
+  const headerRow = sheet.getRow(2);
+  headerRow.getCell(indicatorCol).value = 'Показатель';
+  headerRow.getCell(plateCol).value = 'Г/Н ТС';
+  headerRow.getCell(modelCol).value = 'Модель';
+  months.forEach((_, index) => {
+    headerRow.getCell(monthStartCol + index).value = MONTH_NAMES[index + 1];
+  });
+  headerRow.getCell(totalCol).value = 'Итого за год';
+  for (let col = 1; col <= totalCol; col += 1) {
+    const cell = headerRow.getCell(col);
+    cell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1F2937' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF2FF' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+  }
+
+  let cursor = 3;
+  vehicles.forEach((vehicle) => {
+    const monthly = months.map((monthValue, index) => {
+      const entry = entryByVehicleMonth.get(`${vehicle.id}|${monthValue}`) ?? null;
+      const prev = entryByVehicleMonth.get(`${vehicle.id}|${monthsWithPrev[index]}`) ?? null;
+      const odometer = toNumber(entry?.odometer);
+      const fuelEnd = toNumber(entry?.fuelEnd);
+      const fuelFilled = toNumber(entry?.fuelFilled);
+      const prevOdometer = toNumber(prev?.odometer);
+      const mileage = toNumber(entry?.mileageManual) ?? (odometer !== null && prevOdometer !== null ? odometer - prevOdometer : null);
+      const fuelStart = toNumber(entry?.fuelStartManual) ?? toNumber(prev?.fuelEnd);
+      const consumption = fuelStart !== null && fuelFilled !== null && fuelEnd !== null ? fuelStart + fuelFilled - fuelEnd : null;
+      const per100 = consumption !== null && mileage !== null && mileage > 0 ? (consumption / mileage) * 100 : null;
+      return { odometer, mileage, fuelStart, fuelEnd, fuelFilled, consumption, per100 };
+    });
+
+    const totalMileage = monthly.reduce((acc, m) => acc + (m.mileage ?? 0), 0);
+    const totalFilled = monthly.reduce((acc, m) => acc + (m.fuelFilled ?? 0), 0);
+    const totalConsumption = monthly.reduce((acc, m) => acc + (m.consumption ?? 0), 0);
+    const lastOdometer = [...monthly].reverse().find((m) => m.odometer !== null)?.odometer ?? null;
+    const totals: Array<number | null> = [
+      lastOdometer,
+      totalMileage || null,
+      null,
+      null,
+      totalFilled || null,
+      totalConsumption || null,
+      totalConsumption && totalMileage ? (totalConsumption / totalMileage) * 100 : null,
+    ];
+    const valueOf = (m: (typeof monthly)[number], indicatorIndex: number): number | null =>
+      [m.odometer, m.mileage, m.fuelStart, m.fuelEnd, m.fuelFilled, m.consumption, m.per100][indicatorIndex];
+
+    YEAR_INDICATORS.forEach((indicator, indicatorIndex) => {
+      const row = sheet.getRow(cursor + indicatorIndex);
+      row.getCell(indicatorCol).value = indicator;
+      monthly.forEach((m, monthIndex) => {
+        const value = valueOf(m, indicatorIndex);
+        row.getCell(monthStartCol + monthIndex).value = value !== null ? Number(value.toFixed(2)) : null;
+      });
+      const total = totals[indicatorIndex];
+      row.getCell(totalCol).value = total !== null ? Number(total.toFixed(2)) : null;
+      for (let col = 1; col <= totalCol; col += 1) {
+        const cell = row.getCell(col);
+        cell.font = { name: 'Arial', size: 10.5, color: { argb: 'FF1F2937' } };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        };
+        if (col >= monthStartCol) cell.alignment = { horizontal: 'right' };
+        if (col === totalCol) cell.font = { name: 'Arial', size: 10.5, bold: true, color: { argb: 'FF1F2937' } };
+      }
+    });
+
+    sheet.mergeCells(cursor, plateCol, cursor + YEAR_INDICATORS.length - 1, plateCol);
+    sheet.mergeCells(cursor, modelCol, cursor + YEAR_INDICATORS.length - 1, modelCol);
+    const plateCell = sheet.getCell(cursor, plateCol);
+    plateCell.value = vehicle.plate;
+    plateCell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1F2937' } };
+    plateCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    const modelCell = sheet.getCell(cursor, modelCol);
+    modelCell.value = vehicle.model ? `${vehicle.model.brand} ${vehicle.model.name}`.trim() : '';
+    modelCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    const blockBottom = { style: 'medium' as const, color: { argb: 'FFB6C2D6' } };
+    for (let col = 1; col <= totalCol; col += 1) {
+      sheet.getCell(cursor + YEAR_INDICATORS.length - 1, col).border = {
+        ...sheet.getCell(cursor + YEAR_INDICATORS.length - 1, col).border,
+        bottom: blockBottom,
+      };
+    }
+    cursor += YEAR_INDICATORS.length;
+  });
+
+  // ── Справочный блок норм справа
+  const models = await AppDataSource.getRepository(VehicleModel).find({ order: { brand: 'ASC', name: 'ASC' } });
+  const winterLabel = `зима: с 1 ${MONTH_GENITIVE[seasons.winterStartMonth - 1]} по конец ${MONTH_GENITIVE[seasons.winterEndMonth - 1]}`;
+  sheet.getCell(2, normStartCol).value = 'НОРМЫ, л/100км';
+  sheet.getCell(2, normStartCol).font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1F2937' } };
+  sheet.getCell(3, normStartCol).value = winterLabel;
+  sheet.getCell(3, normStartCol).font = { name: 'Arial', size: 10, italic: true, color: { argb: 'FF6B7280' } };
+  const normHeader = sheet.getRow(4);
+  normHeader.getCell(normStartCol).value = 'Модель';
+  normHeader.getCell(normStartCol + 1).value = 'Зима';
+  normHeader.getCell(normStartCol + 2).value = 'Лето';
+  for (let i = 0; i < 3; i += 1) {
+    const cell = normHeader.getCell(normStartCol + i);
+    cell.font = { name: 'Arial', size: 10.5, bold: true, color: { argb: 'FF1F2937' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F4F9' } };
+  }
+  models.forEach((model, index) => {
+    const row = sheet.getRow(5 + index);
+    row.getCell(normStartCol).value = `${model.brand} ${model.name}`.trim();
+    row.getCell(normStartCol + 1).value = toNumber(model.fuelNormWinter);
+    row.getCell(normStartCol + 2).value = toNumber(model.fuelNormSummer);
+  });
+
+  sheet.getColumn(indicatorCol).width = 26;
+  sheet.getColumn(plateCol).width = 13;
+  sheet.getColumn(modelCol).width = 18;
+  for (let col = monthStartCol; col <= totalCol; col += 1) sheet.getColumn(col).width = 11;
+  sheet.getColumn(totalCol).width = 13;
+  sheet.getColumn(normStartCol).width = 24;
+  sheet.getColumn(normStartCol + 1).width = 8;
+  sheet.getColumn(normStartCol + 2).width = 8;
+  sheet.views = [{ state: 'frozen', xSplit: 3, ySplit: 2 }];
+
+  const filename = `Топливо_${LOCATION_LABELS[location]}_${year}.xlsx`;
+  const buffer = await workbook.xlsx.writeBuffer();
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="fuel_${location}_${year}.xlsx"; filename*=UTF-8''${encodeURIComponent(filename)}`
   );
   res.send(Buffer.from(buffer));
 };

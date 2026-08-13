@@ -1,45 +1,58 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  IconButton,
-  LinearProgress,
+  Menu,
   MenuItem,
   Paper,
   Snackbar,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   TextField,
   Tooltip,
-  Typography,
 } from '@mui/material';
-import { ChevronLeft, ChevronRight, Download, PlayArrow } from '@mui/icons-material';
 import { useAuthStore } from '../store/auth-store';
+import { registerUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import {
   FleetLocation,
+  FleetVehicleItem,
   FuelRow,
   FuelRowPayload,
   FuelState,
+  addFuelRows,
+  copyFuelRowsFromPrevMonth,
   downloadFuelExcel,
+  downloadFuelYearExcel,
+  getFleetVehicles,
   getFuelState,
+  removeFuelRow,
   saveFuelState,
-  setFuelBaseline,
 } from '../services/directories.api';
 import { fuelLocationsForRole } from '../utils/rolePermissions';
 import { downloadBlob } from '../utils/download';
+import '../styles/operations-preview.css';
+import '../styles/fuel.css';
 
 const LOCATION_LABELS: Record<FleetLocation, string> = { vvo: 'Владивосток', mow: 'Москва' };
-const MONTH_NAMES = ['', 'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+
+const MONTH_OPTIONS = [
+  { value: 1, label: 'Январь' },
+  { value: 2, label: 'Февраль' },
+  { value: 3, label: 'Март' },
+  { value: 4, label: 'Апрель' },
+  { value: 5, label: 'Май' },
+  { value: 6, label: 'Июнь' },
+  { value: 7, label: 'Июль' },
+  { value: 8, label: 'Август' },
+  { value: 9, label: 'Сентябрь' },
+  { value: 10, label: 'Октябрь' },
+  { value: 11, label: 'Ноябрь' },
+  { value: 12, label: 'Декабрь' },
+];
 
 type DraftValues = {
   odometer: string;
@@ -56,35 +69,23 @@ const currentMonthValue = (): string => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 };
 
-const shiftMonth = (monthValue: string, delta: number): string => {
-  const [year, month] = monthValue.split('-').map(Number);
-  const date = new Date(Date.UTC(year, month - 1 + delta, 1));
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+const toDraft = (value: number | null): string =>
+  value === null ? '' : value.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+
+const draftToNumber = (value: string): number | null => {
+  if (!value.trim()) return null;
+  // пробелы и неразрывные пробелы — разделители разрядов, запятая — десятичная
+  const parsed = Number(value.replace(/[\s\u00A0]/g, '').replace(',', '.'));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 };
 
 const monthTitle = (monthValue: string): string => {
   const [year, month] = monthValue.split('-').map(Number);
-  return `${MONTH_NAMES[month]} ${year}`;
-};
-
-const toDraft = (value: number | null): string => (value === null ? '' : String(value));
-
-const draftToNumber = (value: string): number | null => {
-  if (!value.trim()) return null;
-  const parsed = Number(value.replace(',', '.'));
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  return `${MONTH_OPTIONS[month - 1].label} ${year}`;
 };
 
 const formatNumber = (value: number | null, digits = 1): string =>
   value === null ? '—' : value.toLocaleString('ru-RU', { maximumFractionDigits: digits });
-
-const deviationChip = (deviationPct: number | null) => {
-  if (deviationPct === null) return <Typography component="span" color="text.disabled">—</Typography>;
-  const rounded = deviationPct.toFixed(1).replace('.', ',');
-  const label = `${deviationPct > 0 ? '+' : ''}${rounded} %`;
-  const color = deviationPct > 10 ? 'error' : deviationPct > 0 ? 'warning' : 'success';
-  return <Chip size="small" color={color} variant="outlined" label={label} />;
-};
 
 const errorText = (error: unknown): string => {
   const anyError = error as any;
@@ -101,7 +102,22 @@ export default function FuelPage() {
   const [dirty, setDirty] = useState(false);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
-  const [baselineEdit, setBaselineEdit] = useState<{ row: FuelRow; odometer: string; fuelLevel: string } | null>(null);
+  const [exportMenuAnchor, setExportMenuAnchor] = useState<HTMLElement | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [vehiclesForAdd, setVehiclesForAdd] = useState<FleetVehicleItem[]>([]);
+  const [directoryEmpty, setDirectoryEmpty] = useState(false);
+  const [selectedVehicles, setSelectedVehicles] = useState<FleetVehicleItem[]>([]);
+  const [rowMenu, setRowMenu] = useState<{ x: number; y: number; row: FuelRow } | null>(null);
+
+  const parsedMonth = useMemo(() => {
+    const [year, month] = monthValue.split('-').map(Number);
+    return { year, month };
+  }, [monthValue]);
+
+  const setPeriod = (year: number, month: number) => {
+    if (year < 2020 || year > 2100 || month < 1 || month > 12) return;
+    setMonthValue(`${year}-${String(month).padStart(2, '0')}`);
+  };
 
   const applyState = useCallback((next: FuelState) => {
     setState(next);
@@ -138,13 +154,64 @@ export default function FuelPage() {
     void reload();
   }, [reload]);
 
+  // предупреждение о несохранённых изменениях (общий механизм с графиками)
+  useEffect(() => {
+    setHasUnsavedChanges(dirty);
+  }, [dirty]);
+
+  useEffect(() => {
+    registerUnsavedHandlers({
+      save: () => save(),
+      discard: () => {
+        if (state) applyState(state);
+      },
+    });
+    return () => {
+      registerUnsavedHandlers(null);
+      setHasUnsavedChanges(false);
+    };
+  });
+
+  useEffect(() => {
+    const handler = (event: BeforeUnloadEvent) => {
+      if (dirty) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty]);
+
+  // смена периода/города при несохранённых изменениях — подтверждение
+  const [pendingSwitch, setPendingSwitch] = useState<(() => void) | null>(null);
+
+  const guardSwitch = (action: () => void) => {
+    if (!dirty) {
+      action();
+      return;
+    }
+    setPendingSwitch(() => action);
+  };
+
   const updateDraft = (vehicleId: string, field: keyof DraftValues, value: string) => {
     setDrafts((prev) => ({ ...prev, [vehicleId]: { ...prev[vehicleId], [field]: value } }));
     setDirty(true);
   };
 
-  const save = async () => {
-    if (!state) return;
+  // при уходе из ячейки число приводится к виду с разделителями разрядов
+  const normalizeDraft = (vehicleId: string, field: keyof DraftValues) => {
+    setDrafts((prev) => {
+      const raw = prev[vehicleId]?.[field] ?? '';
+      const parsed = draftToNumber(raw);
+      const formatted = parsed === null ? (raw.trim() ? raw : '') : toDraft(parsed);
+      if (formatted === raw) return prev;
+      return { ...prev, [vehicleId]: { ...prev[vehicleId], [field]: formatted } };
+    });
+  };
+
+  const save = async (): Promise<boolean> => {
+    if (!state) return true;
     const rows: FuelRowPayload[] = state.rows.map((row) => {
       const draft = drafts[row.vehicleId];
       return {
@@ -161,26 +228,64 @@ export default function FuelPage() {
       const { data } = await saveFuelState(location, monthValue, rows);
       applyState(data);
       setFeedback({ severity: 'success', text: 'Данные сохранены' });
+      return true;
     } catch (error) {
       setFeedback({ severity: 'error', text: errorText(error) });
+      return false;
     } finally {
       setLoading(false);
     }
   };
 
-  const saveBaseline = async () => {
-    if (!baselineEdit) return;
+  const openAddDialog = async () => {
     try {
-      await setFuelBaseline({
-        location,
-        monthValue,
-        vehicleId: baselineEdit.row.vehicleId,
-        startOdometer: draftToNumber(baselineEdit.odometer),
-        startFuelLevel: draftToNumber(baselineEdit.fuelLevel),
-      });
-      setBaselineEdit(null);
-      await reload();
-      setFeedback({ severity: 'success', text: `Стартовые данные для ${baselineEdit.row.plate} сохранены` });
+      const { data } = await getFleetVehicles(location);
+      const active = data.filter((vehicle) => vehicle.status !== 'archived');
+      const inMonth = new Set((state?.rows ?? []).map((row) => row.vehicleId));
+      setDirectoryEmpty(active.length === 0);
+      setVehiclesForAdd(active.filter((vehicle) => !inMonth.has(vehicle.id)));
+      setSelectedVehicles([]);
+      setAddOpen(true);
+    } catch (error) {
+      setFeedback({ severity: 'error', text: errorText(error) });
+    }
+  };
+
+  const confirmAdd = async () => {
+    if (selectedVehicles.length === 0) {
+      setAddOpen(false);
+      return;
+    }
+    try {
+      const { data } = await addFuelRows(location, monthValue, selectedVehicles.map((vehicle) => vehicle.id));
+      applyState(data);
+      setAddOpen(false);
+      setFeedback({ severity: 'success', text: `Добавлено машин: ${selectedVehicles.length}` });
+    } catch (error) {
+      setFeedback({ severity: 'error', text: errorText(error) });
+    }
+  };
+
+  const copyPrevComposition = async () => {
+    try {
+      const { data } = await copyFuelRowsFromPrevMonth(location, monthValue);
+      applyState(data);
+      setFeedback(
+        data.added > 0
+          ? { severity: 'success', text: `Из прошлого месяца добавлено машин: ${data.added}` }
+          : { severity: 'info', text: 'В прошлом месяце нет машин, которых не было бы в текущем' }
+      );
+    } catch (error) {
+      setFeedback({ severity: 'error', text: errorText(error) });
+    }
+  };
+
+  const removeRow = async (row: FuelRow) => {
+    if (!window.confirm(`Убрать ${row.plate} из ${monthTitle(monthValue).toLowerCase()}? Данные месяца по этой машине будут удалены.`)) return;
+    try {
+      const { data } = await removeFuelRow(location, monthValue, row.vehicleId);
+      applyState(data);
+      setFeedback({ severity: 'success', text: `${row.plate} убрана из месяца` });
     } catch (error) {
       setFeedback({ severity: 'error', text: errorText(error) });
     }
@@ -196,8 +301,17 @@ export default function FuelPage() {
     }
   };
 
+  const exportYearExcel = async () => {
+    try {
+      const response = await downloadFuelYearExcel(location, parsedMonth.year);
+      await downloadBlob(response.data as Blob, `Топливо_${LOCATION_LABELS[location]}_${parsedMonth.year}.xlsx`);
+    } catch (error) {
+      setFeedback({ severity: 'error', text: errorText(error) });
+    }
+  };
+
+  // живой пересчёт по черновикам, чтобы расчётные колонки обновлялись при вводе
   const computedRow = (row: FuelRow): FuelRow => {
-    // живой пересчёт по черновикам, чтобы расчётные колонки обновлялись при вводе
     const draft = drafts[row.vehicleId];
     if (!draft) return row;
     const odometer = draftToNumber(draft.odometer);
@@ -226,201 +340,285 @@ export default function FuelPage() {
       ),
     [rows]
   );
-  const filledCount = rows.filter((row) => row.odometer !== null && row.fuelEnd !== null && row.fuelFilled !== null).length;
 
-  const numberCell = (
-    row: FuelRow,
-    field: keyof DraftValues,
-    options?: { width?: number; manualBase?: number | null }
-  ) => {
+  const deviationBadge = (deviationPct: number | null) => {
+    if (deviationPct === null) return <span className="fuel-badge fuel-badge--none">—</span>;
+    const rounded = deviationPct.toFixed(1).replace('.', ',');
+    const label = `${deviationPct > 0 ? '+' : ''}${rounded} %`;
+    const cls = deviationPct > 10 ? 'fuel-badge--bad' : deviationPct > 0 ? 'fuel-badge--warn' : 'fuel-badge--ok';
+    return <span className={`fuel-badge ${cls}`}>{label}</span>;
+  };
+
+  const inputCell = (row: FuelRow, field: keyof DraftValues, options?: { manual?: boolean; hint?: string; autoValue?: string }) => {
     const draft = drafts[row.vehicleId]?.[field] ?? '';
-    const isManualOverride = options?.manualBase !== undefined && draft.trim() !== '';
-    return (
-      <TextField
-        size="small"
-        value={draft}
-        onChange={(event) => updateDraft(row.vehicleId, field, event.target.value)}
-        inputProps={{ inputMode: 'decimal', style: { textAlign: 'right', padding: '4px 8px', fontSize: 13 } }}
-        sx={{
-          width: options?.width ?? 110,
-          '& .MuiOutlinedInput-root': {
-            bgcolor: isManualOverride ? '#fff3e0' : '#fffdf5',
-          },
-        }}
-      />
+    const isManual = options?.manual && draft.trim() !== '';
+    const cell = (
+      <td className={isManual ? 'fuel-cell--manual' : options?.manual ? 'fuel-cell--calc' : 'fuel-cell--edit'}>
+        <input
+          value={draft}
+          inputMode="decimal"
+          placeholder={options?.manual ? options?.autoValue ?? '' : ''}
+          onChange={(event) => updateDraft(row.vehicleId, field, event.target.value)}
+          onBlur={() => normalizeDraft(row.vehicleId, field)}
+        />
+      </td>
+    );
+    return options?.hint ? (
+      <Tooltip title={isManual ? 'Исправлено вручную' : options.hint} placement="top">
+        {cell}
+      </Tooltip>
+    ) : (
+      cell
     );
   };
 
   return (
-    <Box sx={{ p: 2 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2, flexWrap: 'wrap' }}>
-        <Typography variant="h5" fontWeight={700}>Топливо</Typography>
-        {allowedLocations.length > 1 ? (
-          <TextField
-            select size="small" value={location}
-            onChange={(event) => setLocation(event.target.value as FleetLocation)}
-            sx={{ minWidth: 170 }}
-          >
-            {allowedLocations.map((value) => (
-              <MenuItem key={value} value={value}>{LOCATION_LABELS[value]}</MenuItem>
-            ))}
-          </TextField>
-        ) : (
-          <Chip label={LOCATION_LABELS[location]} />
-        )}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <IconButton size="small" onClick={() => setMonthValue((prev) => shiftMonth(prev, -1))}>
-            <ChevronLeft />
-          </IconButton>
-          <Typography sx={{ minWidth: 140, textAlign: 'center', fontWeight: 600 }}>{monthTitle(monthValue)}</Typography>
-          <IconButton size="small" onClick={() => setMonthValue((prev) => shiftMonth(prev, 1))}>
-            <ChevronRight />
-          </IconButton>
-        </Box>
-        {state && (
-          <Chip
-            size="small"
-            variant="outlined"
-            color={state.isWinter ? 'info' : 'success'}
-            label={state.isWinter ? 'зимние нормы' : 'летние нормы'}
-          />
-        )}
-        <Box sx={{ flex: 1 }} />
-        <Typography variant="body2" color="text.secondary">
-          Заполнено {filledCount} из {rows.length}
-        </Typography>
-        <Button size="small" startIcon={<Download />} onClick={() => void exportExcel()}>Excel</Button>
-        <Button variant="contained" size="small" disabled={!dirty || loading} onClick={() => void save()}>
-          Сохранить
-        </Button>
-      </Box>
+    <div className="ops-preview fuel-page">
+      <section className="ops-preview__controls">
+        <Paper sx={{ p: 1.5, width: '100%' }}>
+          <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+            <TextField
+              label="Год"
+              type="number"
+              size="small"
+              value={parsedMonth.year}
+              inputProps={{ min: 2020, max: 2100 }}
+              onChange={(event) => {
+                const next = Number(event.target.value);
+                if (Number.isInteger(next)) guardSwitch(() => setPeriod(next, parsedMonth.month));
+              }}
+              sx={{ width: 110, '& .MuiInputBase-root': { height: 40 } }}
+            />
+            <TextField
+              label="Месяц"
+              select
+              size="small"
+              value={parsedMonth.month}
+              onChange={(event) => {
+                const next = Number(event.target.value);
+                if (Number.isInteger(next)) guardSwitch(() => setPeriod(parsedMonth.year, next));
+              }}
+              sx={{ width: 160, '& .MuiInputBase-root': { height: 40 } }}
+            >
+              {MONTH_OPTIONS.map((option) => (
+                <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+              ))}
+            </TextField>
+            {allowedLocations.length > 1 && (
+              <TextField
+                label="Город"
+                select
+                size="small"
+                value={location}
+                onChange={(event) => {
+                  const next = event.target.value as FleetLocation;
+                  guardSwitch(() => setLocation(next));
+                }}
+                sx={{ width: 170, '& .MuiInputBase-root': { height: 40 } }}
+              >
+                {allowedLocations.map((value) => (
+                  <MenuItem key={value} value={value}>{LOCATION_LABELS[value]}</MenuItem>
+                ))}
+              </TextField>
+            )}
+            <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <button type="button" className="ops-btn ghost" onClick={(event) => setExportMenuAnchor(event.currentTarget)}>
+                Скачать Excel
+              </button>
+              <button type="button" className="ops-btn ops-btn--fill-prev" onClick={() => void copyPrevComposition()}>
+                Из прошлого месяца
+              </button>
+              <button type="button" className="ops-btn ops-btn--add" onClick={() => void openAddDialog()}>
+                Добавить
+              </button>
+              <Menu
+                anchorEl={exportMenuAnchor}
+                open={Boolean(exportMenuAnchor)}
+                onClose={() => setExportMenuAnchor(null)}
+              >
+                <MenuItem
+                  onClick={() => {
+                    setExportMenuAnchor(null);
+                    void exportExcel();
+                  }}
+                >
+                  За {MONTH_OPTIONS[parsedMonth.month - 1].label.toLowerCase()} {parsedMonth.year}
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    setExportMenuAnchor(null);
+                    void exportYearExcel();
+                  }}
+                >
+                  За {parsedMonth.year} год
+                </MenuItem>
+              </Menu>
+              <button type="button" className="ops-btn ops-btn--save" disabled={!dirty || loading} onClick={() => void save()}>
+                Сохранить
+              </button>
+            </Box>
+          </Box>
+        </Paper>
+      </section>
 
-      {loading && <LinearProgress sx={{ mb: 1 }} />}
-
-      <Paper>
-        <TableContainer sx={{ maxHeight: 'calc(100vh - 190px)' }}>
-          <Table size="small" stickyHeader>
-            <TableHead>
-              <TableRow>
-                <TableCell>Г/Н ТС</TableCell>
-                <TableCell>Модель</TableCell>
-                <TableCell align="right">Показания одометра, км ✏️</TableCell>
-                <TableCell align="right">Пробег по Одометру, км</TableCell>
-                <TableCell align="right">Начальный уровень Топлива</TableCell>
-                <TableCell align="right">Конечный уровень Топлива ✏️</TableCell>
-                <TableCell align="right">Заправлено по ППР ✏️</TableCell>
-                <TableCell align="right">Расход топлива, л</TableCell>
-                <TableCell align="right">Расход л/100км</TableCell>
-                <TableCell align="center">К норме</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
+      <section className="ops-preview__matrix">
+        <div className="fuel-matrix">
+          <table>
+            <thead>
+              <tr>
+                <th style={{ minWidth: 110 }}>Г/Н ТС</th>
+                <th style={{ minWidth: 130 }}>Модель</th>
+                <th style={{ minWidth: 110 }}>Показания одометра, км</th>
+                <th style={{ minWidth: 100 }}>Пробег по Одометру, км</th>
+                <th style={{ minWidth: 100 }}>Начальный уровень Топлива</th>
+                <th style={{ minWidth: 100 }}>Конечный уровень Топлива</th>
+                <th style={{ minWidth: 100 }}>Заправлено по ППР</th>
+                <th style={{ minWidth: 90 }}>Расход топлива, л</th>
+                <th style={{ minWidth: 90 }}>Расход л/100км по одометру</th>
+                <th style={{ minWidth: 80 }}>К норме</th>
+              </tr>
+            </thead>
+            <tbody>
               {rows.map((row) => (
-                <TableRow key={row.vehicleId} hover>
-                  <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                <tr
+                  key={row.vehicleId}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setRowMenu({ x: event.clientX, y: event.clientY, row });
+                  }}
+                >
+                  <td className="fuel-cell--sticky">
                     {row.plate}
-                    {row.status === 'repair' && (
-                      <Chip size="small" label="ремонт" color="warning" variant="outlined" sx={{ ml: 0.5 }} />
-                    )}
-                  </TableCell>
-                  <TableCell sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>{row.modelLabel || '—'}</TableCell>
-                  {row.hasBaseline || row.odometer !== null ? (
-                    <>
-                      <TableCell align="right">{numberCell(row, 'odometer', { width: 120 })}</TableCell>
-                      <TableCell align="right">
-                        <Tooltip title={row.mileageManual !== null ? 'Значение исправлено вручную' : 'Одометр минус прошлый месяц; можно исправить вручную'}>
-                          <Box component="span">{numberCell(row, 'mileageManual', { manualBase: row.mileage })}</Box>
-                        </Tooltip>
-                        {row.mileageManual === null && (
-                          <Typography variant="caption" display="block" color="text.secondary">
-                            {formatNumber(row.mileage)}
-                          </Typography>
-                        )}
-                      </TableCell>
-                      <TableCell align="right">
-                        <Tooltip title={row.fuelStartManual !== null ? 'Значение исправлено вручную' : 'Конечный уровень прошлого месяца; можно исправить вручную'}>
-                          <Box component="span">{numberCell(row, 'fuelStartManual', { manualBase: row.fuelStart })}</Box>
-                        </Tooltip>
-                        {row.fuelStartManual === null && (
-                          <Typography variant="caption" display="block" color="text.secondary">
-                            {formatNumber(row.fuelStart, 2)}
-                          </Typography>
-                        )}
-                      </TableCell>
-                      <TableCell align="right">{numberCell(row, 'fuelEnd')}</TableCell>
-                      <TableCell align="right">{numberCell(row, 'fuelFilled')}</TableCell>
-                      <TableCell align="right" sx={{ bgcolor: '#f6f8fb' }}>{formatNumber(row.consumption, 2)}</TableCell>
-                      <TableCell align="right" sx={{ bgcolor: '#f6f8fb', fontWeight: 600 }}>{formatNumber(row.per100, 1)}</TableCell>
-                      <TableCell align="center">{deviationChip(row.deviationPct)}</TableCell>
-                    </>
-                  ) : (
-                    <TableCell colSpan={8}>
-                      <Button
-                        size="small"
-                        startIcon={<PlayArrow />}
-                        onClick={() => setBaselineEdit({ row, odometer: '', fuelLevel: '' })}
-                      >
-                        Ввести стартовые данные (одометр и остаток топлива)
-                      </Button>
-                    </TableCell>
-                  )}
-                </TableRow>
+                    {row.status === 'repair' && <span className="fuel-status">ремонт</span>}
+                  </td>
+                  <td className="fuel-cell--left" style={{ color: '#6b7280' }}>{row.modelLabel || '—'}</td>
+                  {inputCell(row, 'odometer')}
+                  {inputCell(row, 'mileageManual', {
+                    manual: true,
+                    hint: row.prevOdometer === null
+                      ? 'Прошлого месяца ещё нет — введите пробег вручную'
+                      : 'Одометр минус прошлый месяц. Можно исправить вручную',
+                    autoValue: formatNumber(row.mileageManual === null ? row.mileage : null),
+                  })}
+                  {inputCell(row, 'fuelStartManual', {
+                    manual: true,
+                    hint: row.prevFuelEnd === null
+                      ? 'Прошлого месяца ещё нет — введите остаток на начало вручную'
+                      : 'Конечный уровень прошлого месяца. Можно исправить вручную',
+                    autoValue: formatNumber(row.fuelStartManual === null ? row.fuelStart : null, 2),
+                  })}
+                  {inputCell(row, 'fuelEnd')}
+                  {inputCell(row, 'fuelFilled')}
+                  <td className="fuel-cell--calc">{formatNumber(row.consumption, 2)}</td>
+                  <td className="fuel-cell--calc" style={{ fontWeight: 700 }}>{formatNumber(row.per100, 1)}</td>
+                  <td className="fuel-cell--center">{deviationBadge(row.deviationPct)}</td>
+                </tr>
               ))}
               {rows.length === 0 && !loading && (
-                <TableRow>
-                  <TableCell colSpan={10} align="center" sx={{ color: 'text.secondary', py: 4 }}>
-                    В справочнике нет техники для «{LOCATION_LABELS[location]}». Добавьте машины в разделе «Справочники».
-                  </TableCell>
-                </TableRow>
+                <tr>
+                  <td colSpan={10} className="fuel-empty">
+                    Состав месяца пуст — добавьте технику из справочника (кнопка «Добавить») или скопируйте из прошлого месяца.
+                  </td>
+                </tr>
               )}
               {rows.length > 0 && (
-                <TableRow sx={{ '& td': { fontWeight: 700, bgcolor: '#f2f4f9' } }}>
-                  <TableCell colSpan={3}>Итого ({rows.length} машин)</TableCell>
-                  <TableCell align="right">{formatNumber(totals.mileage)}</TableCell>
-                  <TableCell />
-                  <TableCell />
-                  <TableCell align="right">{formatNumber(totals.filled, 2)}</TableCell>
-                  <TableCell align="right">{formatNumber(totals.consumption, 2)}</TableCell>
-                  <TableCell align="right">
-                    {totals.mileage > 0 ? formatNumber((totals.consumption / totals.mileage) * 100, 1) : '—'}
-                  </TableCell>
-                  <TableCell />
-                </TableRow>
+                <tr className="fuel-row--total">
+                  <td className="fuel-cell--sticky">Итого</td>
+                  <td className="fuel-cell--left">{rows.length} машин</td>
+                  <td />
+                  <td>{formatNumber(totals.mileage)}</td>
+                  <td />
+                  <td />
+                  <td>{formatNumber(totals.filled, 2)}</td>
+                  <td>{formatNumber(totals.consumption, 2)}</td>
+                  <td>{totals.mileage > 0 ? formatNumber((totals.consumption / totals.mileage) * 100, 1) : '—'}</td>
+                  <td />
+                </tr>
               )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Paper>
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-        ✏️ — вводит оператор; серые колонки считает система. Пробег и начальный уровень подставляются из прошлого месяца —
-        при необходимости их можно исправить вручную (исправленная ячейка подсвечивается оранжевым).
-      </Typography>
-
-      <Dialog open={Boolean(baselineEdit)} onClose={() => setBaselineEdit(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Стартовые данные · {baselineEdit?.row.plate}</DialogTitle>
+      <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Добавить технику · {monthTitle(monthValue)}</DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-            Значения на начало {monthTitle(monthValue).toLowerCase()} — от них пойдёт расчёт пробега и расхода.
-          </Typography>
-          <Box sx={{ display: 'grid', gap: 1.5 }}>
-            <TextField
-              label="Показания одометра, км" size="small" autoFocus
-              value={baselineEdit?.odometer ?? ''}
-              onChange={(event) => setBaselineEdit((prev) => (prev ? { ...prev, odometer: event.target.value } : prev))}
-              inputProps={{ inputMode: 'decimal' }}
-            />
-            <TextField
-              label="Остаток топлива, л" size="small"
-              value={baselineEdit?.fuelLevel ?? ''}
-              onChange={(event) => setBaselineEdit((prev) => (prev ? { ...prev, fuelLevel: event.target.value } : prev))}
-              inputProps={{ inputMode: 'decimal' }}
-            />
-          </Box>
+          <Autocomplete
+            multiple
+            options={vehiclesForAdd}
+            getOptionLabel={(vehicle) => `${vehicle.plate}${vehicle.model ? ` · ${vehicle.model.brand} ${vehicle.model.name}`.trimEnd() : ''}`}
+            value={selectedVehicles}
+            onChange={(_event, value) => setSelectedVehicles(value)}
+            renderInput={(params) => (
+              <TextField {...params} label="Машины из справочника" placeholder="Начните вводить госномер" autoFocus />
+            )}
+            noOptionsText={
+              directoryEmpty
+                ? 'Справочник техники пуст — машины туда добавляют руководитель/менеджер КТК или администратор в разделе «Справочники»'
+                : 'Все машины справочника уже в этом месяце'
+            }
+            sx={{ mt: 1 }}
+          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBaselineEdit(null)}>Отмена</Button>
-          <Button variant="contained" onClick={() => void saveBaseline()}>Сохранить</Button>
+          <Button onClick={() => setAddOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={() => void confirmAdd()} disabled={selectedVehicles.length === 0}>
+            Добавить{selectedVehicles.length > 0 ? ` (${selectedVehicles.length})` : ''}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {rowMenu && (
+        <div
+          className="ops-context-overlay"
+          onClick={() => setRowMenu(null)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setRowMenu(null);
+          }}
+        >
+          <div className="ops-context-menu" style={{ left: rowMenu.x, top: rowMenu.y }} onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="ops-context-item danger"
+              onClick={() => {
+                void removeRow(rowMenu.row);
+                setRowMenu(null);
+              }}
+            >
+              Убрать из месяца
+            </button>
+          </div>
+        </div>
+      )}
+
+      <Dialog open={Boolean(pendingSwitch)} onClose={() => setPendingSwitch(null)}>
+        <DialogTitle>Несохраненные изменения</DialogTitle>
+        <DialogContent>Вы изменили данные и еще не сохранили их. Сохранить перед переходом?</DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingSwitch(null)}>Отмена</Button>
+          <Button
+            onClick={() => {
+              const action = pendingSwitch;
+              setPendingSwitch(null);
+              if (state) applyState(state);
+              action?.();
+            }}
+          >
+            Не сохранять
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              const action = pendingSwitch;
+              setPendingSwitch(null);
+              void save().then((ok) => {
+                if (ok) action?.();
+              });
+            }}
+          >
+            Сохранить
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -434,6 +632,6 @@ export default function FuelPage() {
           {feedback?.text}
         </Alert>
       </Snackbar>
-    </Box>
+    </div>
   );
 }

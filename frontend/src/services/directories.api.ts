@@ -24,6 +24,9 @@ export type FleetVehicleItem = {
   note: string;
 };
 
+/** При сохранении техники модель передаётся текстом — бэкенд найдёт существующую или создаст новую. */
+export type FleetVehiclePayload = Partial<FleetVehicleItem> & { modelLabel?: string };
+
 export type TrailerItem = {
   id: string;
   location: FleetLocation;
@@ -47,14 +50,10 @@ export type EmployeeItem = {
   registrationAddress: string;
   licenseNumber: string;
   licenseIssueDate: string | null;
-  assignedVehicleId: string | null;
-  assignedVehicle: FleetVehicleItem | null;
-  assignedTrailerId: string | null;
-  assignedTrailer: TrailerItem | null;
   note: string;
 };
 
-export type EmployeePayload = Partial<Omit<EmployeeItem, 'id' | 'assignedVehicle' | 'assignedTrailer'>> & {
+export type EmployeePayload = Partial<Omit<EmployeeItem, 'id'>> & {
   location: FleetLocation;
   fullName: string;
 };
@@ -69,8 +68,8 @@ export const deleteVehicleModel = (id: string) => api.delete(`/directories/model
 // Техника
 export const getFleetVehicles = (location: FleetLocation) =>
   api.get<FleetVehicleItem[]>('/directories/vehicles', { params: { location } });
-export const createFleetVehicle = (data: Partial<FleetVehicleItem>) => api.post<FleetVehicleItem>('/directories/vehicles', data);
-export const updateFleetVehicle = (id: string, data: Partial<FleetVehicleItem>) =>
+export const createFleetVehicle = (data: FleetVehiclePayload) => api.post<FleetVehicleItem>('/directories/vehicles', data);
+export const updateFleetVehicle = (id: string, data: FleetVehiclePayload) =>
   api.put<FleetVehicleItem>(`/directories/vehicles/${id}`, data);
 export const deleteFleetVehicle = (id: string) => api.delete(`/directories/vehicles/${id}`);
 
@@ -90,6 +89,19 @@ export const deleteEmployee = (id: string) => api.delete(`/directories/employees
 export const getEmployeeCardText = (id: string) => api.get<{ text: string }>(`/directories/employees/${id}/card-text`);
 export const findEmployeeCardByName = (location: FleetLocation, fullName: string) =>
   api.get<{ employeeId: string; text: string }>('/directories/employees/card-by-name', { params: { location, fullName } });
+
+/** Одноразовое наполнение справочников из графиков (только админ, идемпотентно). */
+export const bootstrapDirectories = () =>
+  api.post<{ createdEmployees: number; createdVehicles: number }>('/directories/bootstrap-from-schedules');
+
+// Подсказки для диалогов графиков (без ПДн)
+export type DirectoryOptions = {
+  employees: Array<{ fullName: string; position: string }>;
+  vehicles: string[];
+  trailers: string[];
+};
+export const getDirectoryOptions = (location: FleetLocation) =>
+  api.get<DirectoryOptions>('/directories/options', { params: { location } });
 
 // Топливо
 export type FuelRow = {
@@ -143,7 +155,15 @@ export const setFuelBaseline = (data: {
   startOdometer: number | null;
   startFuelLevel: number | null;
 }) => api.post('/fuel/baseline', data);
+export const addFuelRows = (location: FleetLocation, monthValue: string, vehicleIds: string[]) =>
+  api.post<FuelState>('/fuel/rows', { location, monthValue, vehicleIds });
+export const removeFuelRow = (location: FleetLocation, monthValue: string, vehicleId: string) =>
+  api.post<FuelState>('/fuel/rows/remove', { location, monthValue, vehicleId });
+export const copyFuelRowsFromPrevMonth = (location: FleetLocation, monthValue: string) =>
+  api.post<FuelState & { added: number }>('/fuel/rows/copy-prev', { location, monthValue });
 export const getFuelSeasons = () => api.get<{ winterStartMonth: number; winterEndMonth: number }>('/fuel/seasons');
 export const saveFuelSeasons = (data: { winterStartMonth: number; winterEndMonth: number }) => api.put('/fuel/seasons', data);
 export const downloadFuelExcel = (location: FleetLocation, month: string) =>
   api.get('/fuel/export', { params: { location, month }, responseType: 'blob' });
+export const downloadFuelYearExcel = (location: FleetLocation, year: number) =>
+  api.get('/fuel/export-year', { params: { location, year }, responseType: 'blob' });

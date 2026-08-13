@@ -113,7 +113,7 @@ router.get('/stats',
 router.get('/app-settings', getAppSettings);
 router.put(
   '/app-settings',
-  [body('appTitle').optional().isString().isLength({ min: 1, max: 120 })],
+  [body('appTitle').optional().isString().isLength({ min: 1, max: 120 }), body('scheduleFreeInputUntil').optional({ nullable: true }).isString().isLength({ max: 10 })],
   handleValidationErrors,
   updateAppSettings
 );

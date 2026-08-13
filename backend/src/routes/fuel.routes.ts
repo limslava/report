@@ -4,9 +4,13 @@ import { authorizeRole } from '../middleware/authorize';
 import { asyncHandler } from '../middleware/error-handler';
 import { FUEL_ROLES } from '../constants/directories';
 import {
+  addFuelRows,
+  copyFuelRowsFromPrevMonth,
   exportFuelExcel,
+  exportFuelYearExcel,
   getFuelSeasons,
   getFuelState,
+  removeFuelRow,
   saveFuelSeasons,
   saveFuelState,
   setVehicleBaseline,
@@ -19,9 +23,13 @@ router.use(authorizeRole(...FUEL_ROLES));
 
 router.get('/state', asyncHandler(getFuelState));
 router.put('/state', asyncHandler(saveFuelState));
+router.post('/rows', asyncHandler(addFuelRows));
+router.post('/rows/remove', asyncHandler(removeFuelRow));
+router.post('/rows/copy-prev', asyncHandler(copyFuelRowsFromPrevMonth));
 router.post('/baseline', asyncHandler(setVehicleBaseline));
 router.get('/seasons', asyncHandler(getFuelSeasons));
 router.put('/seasons', asyncHandler(saveFuelSeasons));
 router.get('/export', asyncHandler(exportFuelExcel));
+router.get('/export-year', asyncHandler(exportFuelYearExcel));
 
 export { router as fuelRouter };
