@@ -7,6 +7,7 @@ import type { FleetLocation } from '../models/fleet-vehicle.model';
 import { FuelEntry } from '../models/fuel-entry.model';
 import { VehicleModel } from '../models/vehicle-model.model';
 import { recordAuditLog } from '../services/audit-log.service';
+import { computeFuelDerived } from '../services/fuel-calc.service';
 import {
   DEFAULT_FUEL_SEASONS,
   FUEL_SEASONS_SETTING_KEY,
@@ -140,13 +141,18 @@ async function buildFuelRows(location: FleetLocation, monthValue: string): Promi
     const prevOdometer = toNumber(prev?.odometer);
     const prevFuelEnd = toNumber(prev?.fuelEnd);
 
-    const mileage = mileageManual ?? (odometer !== null && prevOdometer !== null ? odometer - prevOdometer : null);
-    const fuelStart = fuelStartManual ?? prevFuelEnd;
-    const consumption =
-      fuelStart !== null && fuelFilled !== null && fuelEnd !== null ? fuelStart + fuelFilled - fuelEnd : null;
-    const per100 = consumption !== null && mileage !== null && mileage > 0 ? (consumption / mileage) * 100 : null;
-    const norm = toNumber(isWinter ? vehicle.model?.fuelNormWinter : vehicle.model?.fuelNormSummer);
-    const deviationPct = per100 !== null && norm !== null && norm > 0 ? ((per100 - norm) / norm) * 100 : null;
+    const { mileage, fuelStart, consumption, per100, norm, deviationPct } = computeFuelDerived({
+      odometer,
+      fuelEnd,
+      fuelFilled,
+      mileageManual,
+      fuelStartManual,
+      prevOdometer,
+      prevFuelEnd,
+      normWinter: toNumber(vehicle.model?.fuelNormWinter),
+      normSummer: toNumber(vehicle.model?.fuelNormSummer),
+      isWinter,
+    });
 
     return {
       vehicleId: vehicle.id,
