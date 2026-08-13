@@ -20,9 +20,12 @@ import { carriersRouter } from './routes/carriers.routes';
 import { warehouseRouter } from './routes/warehouse.routes';
 import { directoriesRouter } from './routes/directories.routes';
 import { fuelRouter } from './routes/fuel.routes';
+import { hhRouter } from './routes/hh.routes';
+import { getHhModuleHealth } from './controllers/hh-settings.controller';
+import { receiveHhWebhook } from './controllers/hh-webhooks.controller';
 import { errorHandler } from './middleware/error-handler';
 import { logger } from './utils/logger';
-import { getAllowedCorsOrigins } from './config/env';
+import { getAllowedCorsOrigins, isAllowedCorsOrigin } from './config/env';
 import { createRateLimiter } from './middleware/rate-limit';
 import { authenticate } from './middleware/authenticate';
 import { authorizeRole } from './middleware/authorize';
@@ -54,7 +57,7 @@ export function createApp() {
   }));
   app.use(cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (isAllowedCorsOrigin(origin, allowedOrigins)) {
         return callback(null, true);
       }
       return callback(new Error('CORS origin is not allowed'));
@@ -73,7 +76,7 @@ export function createApp() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true }));
   app.use('/api', (req, res, next) => {
-    if (req.path.startsWith('/warehouse/uploads')) {
+    if (req.path.startsWith('/warehouse/uploads') || req.path.startsWith('/hh/webhooks/')) {
       return next();
     }
     return apiRateLimiter(req, res, next);
@@ -114,6 +117,15 @@ export function createApp() {
     next();
   });
 
+  // Приёмник вебхуков hh: без JWT (запрос приходит от hh), но со своим лимитером.
+  // Исключён из общего apiRateLimiter выше, поэтому лимит нужен здесь.
+  const hhWebhookRateLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    max: 600,
+    message: 'Слишком много webhook-запросов hh.',
+  });
+  app.post('/api/hh/webhooks/:secret', hhWebhookRateLimiter, receiveHhWebhook);
+
   app.use('/api/auth', authRouter);
   app.use('/api/v2/planning', planningV2Router);
   app.use('/api/v2/financial-plan', financialPlanRouter);
@@ -130,6 +142,7 @@ export function createApp() {
   app.use('/api/warehouse', warehouseRouter);
   app.use('/api/directories', directoriesRouter);
   app.use('/api/fuel', fuelRouter);
+  app.use('/api/hh', hhRouter);
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });
@@ -169,6 +182,9 @@ export function createApp() {
   app.get('/health/db/metrics', (_req, res) => {
     res.json(dbMetrics.snapshot());
   });
+
+  // Отдаёт конфигурацию интеграции и телеметрию — только администратору.
+  app.get('/health/hh', authenticate, authorizeRole('admin'), getHhModuleHealth);
 
   app.get('/health/redis', async (_req, res) => {
     if (!isRedisRequiredForScheduler()) {

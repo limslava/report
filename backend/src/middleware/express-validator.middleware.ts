@@ -14,11 +14,13 @@ export const handleValidationErrors = (req: Request, res: Response, next: NextFu
       message: error.msg,
     }));
 
+    // Тело запроса не логируется: в модулях HR/договоров оно содержит
+    // персональные данные (ФИО, телефон, email, текст резюме).
     logger.warn('Express-validator validation error', {
       path: req.path,
       method: req.method,
       errors: errorDetails,
-      body: req.body,
+      bodyKeys: req.body && typeof req.body === 'object' ? Object.keys(req.body) : undefined,
     });
 
     return res.status(400).json({

@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Report FarPost Import",
+  "description": "Сохраняет открытое резюме FarPost в модуль HR системы Report.",
+  "version": "0.1.0",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://localhost:3101/*",
+    "http://localhost:5174/*",
+    "https://www.farpost.ru/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.farpost.ru/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Report FarPost Import",
+    "default_popup": "popup.html"
+  }
+}

@@ -10,6 +10,9 @@ import {
   canAccessContractApproval,
   canAccessOperationsPreview,
   canAccessWarehouse,
+  canAccessHrCabinet,
+  canAccessHrModule,
+  canViewHrReports,
   canViewBPDashboard,
   canViewCalendar,
   canViewFinancialPlan,
@@ -40,6 +43,13 @@ const WarehouseOperationsPage = lazy(() => import('../pages/WarehouseOperationsP
 const WarehouseOnSitePage = lazy(() => import('../pages/WarehouseOnSitePage'));
 const WarehouseReceptionPage = lazy(() => import('../pages/WarehouseReceptionPage'));
 const WarehouseIssuePage = lazy(() => import('../pages/WarehouseIssuePage'));
+const HrDashboardPage = lazy(() => import('../pages/HrDashboardPage'));
+const HrRequestsPage = lazy(() => import('../pages/HrRequestsPage'));
+const HrVacanciesPage = lazy(() => import('../pages/HrVacanciesPage'));
+const HrVacancyCardPage = lazy(() => import('../pages/HrVacancyCardPage'));
+const HrCandidatesPage = lazy(() => import('../pages/HrCandidatesPage'));
+const HrInterviewsPage = lazy(() => import('../pages/HrInterviewsPage'));
+const HrReportsPage = lazy(() => import('../pages/HrReportsPage'));
 
 type AppRoute = {
   path: string;
@@ -130,6 +140,42 @@ export const authenticatedRoutes: AppRoute[] = [
     path: 'sw-tech-dashboard',
     allow: canViewTechDashboard,
     element: () => withSuspense(<SWTechDashboardPage />),
+  },
+  {
+    path: 'hr/dashboard',
+    allow: canAccessHrCabinet,
+    element: () => withSuspense(<HrDashboardPage />),
+  },
+  {
+    // Единственный экран модуля, доступный руководителям-заявителям.
+    path: 'hr/requests',
+    allow: canAccessHrModule,
+    element: () => withSuspense(<HrRequestsPage />),
+  },
+  {
+    path: 'hr/vacancies',
+    allow: canAccessHrCabinet,
+    element: () => withSuspense(<HrVacanciesPage />),
+  },
+  {
+    path: 'hr/vacancies/:id',
+    allow: canAccessHrCabinet,
+    element: () => withSuspense(<HrVacancyCardPage />),
+  },
+  {
+    path: 'hr/candidates',
+    allow: canAccessHrCabinet,
+    element: () => withSuspense(<HrCandidatesPage />),
+  },
+  {
+    path: 'hr/interviews',
+    allow: canAccessHrCabinet,
+    element: () => withSuspense(<HrInterviewsPage />),
+  },
+  {
+    path: 'hr/reports',
+    allow: canViewHrReports,
+    element: () => withSuspense(<HrReportsPage />),
   },
   {
     path: 'business-processes/contract-approval',

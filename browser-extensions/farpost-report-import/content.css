@@ -1,0 +1,55 @@
+#report-farpost-import-button {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2147483647;
+  border: 1px solid #176b3a;
+  border-radius: 6px;
+  background: #198754;
+  color: #ffffff;
+  box-shadow: 0 8px 20px rgba(25, 135, 84, 0.28);
+  cursor: pointer;
+  font: 700 14px/1.2 Arial, sans-serif;
+  padding: 12px 16px;
+}
+
+#report-farpost-import-button:disabled {
+  cursor: progress;
+  opacity: 0.72;
+}
+
+.report-farpost-import-toast {
+  position: fixed;
+  right: 18px;
+  bottom: 76px;
+  z-index: 2147483647;
+  max-width: 360px;
+  border-radius: 6px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.22);
+  color: #ffffff;
+  font: 13px/1.35 Arial, sans-serif;
+  opacity: 0;
+  padding: 10px 12px;
+  pointer-events: none;
+  transform: translateY(6px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.report-farpost-import-toast--info,
+.report-farpost-import-toast--success,
+.report-farpost-import-toast--error {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.report-farpost-import-toast--info {
+  background: #2563eb;
+}
+
+.report-farpost-import-toast--success {
+  background: #198754;
+}
+
+.report-farpost-import-toast--error {
+  background: #b42318;
+}

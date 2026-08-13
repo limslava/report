@@ -12,7 +12,11 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ../database/init:/docker-entrypoint-initdb.d
+      # init-скрипты убраны намеренно: 01-init.sql создавал устаревшую схему
+      # (users без timezone, роли без hr_recruiter), и приложение затем не могло
+      # привести её к моделям. Пустую базу приложение разворачивает само при
+      # старте (ensureDatabaseSchema: полная схема из моделей + штамп миграций).
+      # Старые скрипты остаются в ../database/init как справочные.
     networks:
       - logistics_network
 

@@ -144,9 +144,7 @@ export function canViewBPDashboard(role?: string | null): boolean {
 }
 
 export function canShowBPDashboardMenu(role?: string | null): boolean {
-  // Админ попадает на дашборд через клик по шапке/логотипу и при логине,
-  // поэтому отдельный пункт в левом меню показываем только не-админам с дашбордом.
-  return canViewBPDashboard(role) && role !== 'admin';
+  return canViewBPDashboard(role);
 }
 
 export function canAccessBillOfLading(role?: string | null): boolean {
@@ -176,6 +174,70 @@ export function canViewOperationsEfficiency(role?: string | null): boolean {
 
 export function canViewTechDashboard(role?: string | null): boolean {
   return role === 'admin' || role === 'director' || role === 'general_director' || role === 'financer' || role === 'head_sales';
+}
+
+/**
+ * Модуль подбора. Списки ролей должны совпадать с backend/src/constants/hh.ts —
+ * клиентские предикаты только прячут UI, решение принимает сервер.
+ *
+ * `head_hr` и `hr_specialist` — это кадровая служба (графики работы, кадровое
+ * администрирование), а не подбор. Доступа к кандидатам у них нет; заявку на
+ * подбор `head_hr` подать может, как любой руководитель.
+ */
+const HR_RECRUITING_ROLES = new Set(['admin', 'hr_recruiter']);
+
+const HR_REQUESTER_ROLES = new Set([
+  'general_director',
+  'director',
+  'head_sales',
+  'head_ktk_vvo',
+  'head_ktk_mow',
+  'head_hr',
+  'garage_head',
+  'garage_head_vvo',
+  'warehouse_manager',
+  'warehouse_manager_vvo',
+  'security',
+  'chief_accountant',
+]);
+
+/** Ведёт подбор: кандидаты, вакансии, воронка, интервью, импорт. */
+export function canRunHrRecruiting(role?: string | null): boolean {
+  return Boolean(role && HR_RECRUITING_ROLES.has(role));
+}
+
+/** Подаёт заявки на подбор и рассматривает присланных по ним кандидатов. */
+export function canCreateHiringRequest(role?: string | null): boolean {
+  return Boolean(role && HR_REQUESTER_ROLES.has(role));
+}
+
+/** Модуль доступен хоть в каком-то виде — для маршрутов и пункта меню. */
+export function canAccessHrModule(role?: string | null): boolean {
+  return canRunHrRecruiting(role) || canCreateHiringRequest(role);
+}
+
+export function canAccessHrCabinet(role?: string | null): boolean {
+  return canRunHrRecruiting(role);
+}
+
+export function canManageHrVacancies(role?: string | null): boolean {
+  return canRunHrRecruiting(role);
+}
+
+export function canViewHrCandidatePii(role?: string | null): boolean {
+  return canRunHrRecruiting(role);
+}
+
+export function canOpenHrContacts(role?: string | null): boolean {
+  return canRunHrRecruiting(role);
+}
+
+export function canViewHrReports(role?: string | null): boolean {
+  return canRunHrRecruiting(role);
+}
+
+export function canManageHrIntegration(role?: string | null): boolean {
+  return role === 'admin';
 }
 
 export function canEditFinancialPlan(role?: string | null): boolean {

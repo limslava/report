@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <title>Report FarPost Import</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="popup">
+      <header>
+        <h1>Report FarPost</h1>
+        <p>Один вход, затем кнопка появится на страницах FarPost.</p>
+      </header>
+
+      <label>
+        Адрес API Report
+        <input id="apiUrl" type="text" value="http://localhost:3101/api">
+      </label>
+
+      <label>
+        Email
+        <input id="email" type="email" autocomplete="username">
+      </label>
+
+      <label>
+        Пароль
+        <input id="password" type="password" autocomplete="current-password">
+      </label>
+
+      <button id="login" type="button">Войти в Report</button>
+      <button id="logout" class="secondary" type="button">Выйти</button>
+
+      <div id="status" class="status">Не подключено</div>
+      <p class="hint">После входа откройте резюме на FarPost и нажмите кнопку “Сохранить в Report”.</p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
