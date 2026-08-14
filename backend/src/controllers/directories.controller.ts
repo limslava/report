@@ -9,6 +9,7 @@ import { OperationsPreviewState } from '../models/operations-preview-state.model
 import { recordAuditLog } from '../services/audit-log.service';
 import { buildEmployeeCardText } from '../services/employee-card.service';
 import {
+  canDeleteDirectoryEntry,
   canManageFuelNorms,
   directoryLocationsForRole,
   fuelLocationsForRole,
@@ -103,7 +104,10 @@ export const saveVehicleModel = async (req: Request, res: Response) => {
 };
 
 export const deleteVehicleModel = async (req: Request, res: Response) => {
-  if (!canManageFuelNorms(req.user?.role)) httpError(403, 'Access denied');
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'head_ktk_vvo' && role !== 'head_ktk_mow') {
+    httpError(403, 'Access denied');
+  }
   await modelRepo.delete({ id: req.params.id });
   res.json({ ok: true });
 };
@@ -163,6 +167,7 @@ export const saveVehicle = async (req: Request, res: Response) => {
   }
   vehicle.color = trimmed(req.body?.color, 60);
   vehicle.vin = trimmed(req.body?.vin, 40);
+  vehicle.manufactureYear = trimmed(req.body?.manufactureYear, 10);
   vehicle.note = trimmed(req.body?.note, 500);
   const status = req.body?.status;
   vehicle.status = status === 'repair' || status === 'archived' ? status : 'active';
@@ -174,7 +179,7 @@ export const saveVehicle = async (req: Request, res: Response) => {
 export const deleteVehicle = async (req: Request, res: Response) => {
   const vehicle = await vehicleRepo.findOne({ where: { id: req.params.id } });
   if (!vehicle) return httpError(404, 'Vehicle not found') as never;
-  requireDirectoryLocation(req, vehicle.location);
+  if (!canDeleteDirectoryEntry(req.user?.role, vehicle.location)) httpError(403, 'Access denied');
   await vehicleRepo.remove(vehicle);
   res.json({ ok: true });
 };
@@ -200,15 +205,19 @@ export const saveTrailer = async (req: Request, res: Response) => {
 
   trailer.location = location;
   trailer.plate = plate;
+  trailer.brand = trimmed(req.body?.brand, 120);
+  trailer.axles = trimmed(req.body?.axles, 40);
+  trailer.footage = trimmed(req.body?.footage, 40);
   trailer.note = trimmed(req.body?.note, 500);
-  trailer.status = req.body?.status === 'archived' ? 'archived' : 'active';
+  const trailerStatus = req.body?.status;
+  trailer.status = trailerStatus === 'repair' || trailerStatus === 'archived' ? trailerStatus : 'active';
   res.json(await trailerRepo.save(trailer));
 };
 
 export const deleteTrailer = async (req: Request, res: Response) => {
   const trailer = await trailerRepo.findOne({ where: { id: req.params.id } });
   if (!trailer) return httpError(404, 'Trailer not found') as never;
-  requireDirectoryLocation(req, trailer.location);
+  if (!canDeleteDirectoryEntry(req.user?.role, trailer.location)) httpError(403, 'Access denied');
   await trailerRepo.remove(trailer);
   res.json({ ok: true });
 };
@@ -260,7 +269,7 @@ export const saveEmployee = async (req: Request, res: Response) => {
 export const deleteEmployee = async (req: Request, res: Response) => {
   const employee = await employeeRepo.findOne({ where: { id: req.params.id } });
   if (!employee) return httpError(404, 'Employee not found') as never;
-  requireDirectoryLocation(req, employee.location);
+  if (!canDeleteDirectoryEntry(req.user?.role, employee.location)) httpError(403, 'Access denied');
   await employeeRepo.remove(employee);
   await recordAuditLog({
     action: 'DIRECTORY_EMPLOYEE_DELETED',
