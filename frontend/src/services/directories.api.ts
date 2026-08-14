@@ -20,6 +20,7 @@ export type FleetVehicleItem = {
   model: VehicleModelItem | null;
   color: string;
   vin: string;
+  manufactureYear: string;
   status: 'active' | 'repair' | 'archived';
   note: string;
 };
@@ -31,7 +32,10 @@ export type TrailerItem = {
   id: string;
   location: FleetLocation;
   plate: string;
-  status: 'active' | 'archived';
+  brand: string;
+  axles: string;
+  footage: string;
+  status: 'active' | 'repair' | 'archived';
   note: string;
 };
 

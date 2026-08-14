@@ -49,7 +49,12 @@ import {
   updateTrailer,
   updateVehicleModel,
 } from '../services/directories.api';
-import { canManageFuelNormsFrontend, directoryLocationsForRole } from '../utils/rolePermissions';
+import {
+  canDeleteDirectoryEntryFrontend,
+  canEditDirectoriesFrontend,
+  canManageFuelNormsFrontend,
+  directoryLocationsForRole,
+} from '../utils/rolePermissions';
 import '../styles/operations-preview.css';
 import '../styles/fuel.css';
 
@@ -82,6 +87,9 @@ export default function DirectoriesPage() {
   const canManageNorms = canManageFuelNormsFrontend(user?.role);
   const isAdmin = user?.role === 'admin';
   const [location, setLocation] = useState<FleetLocation>(allowedLocations[0] ?? 'vvo');
+  // менеджеры КТК — только просмотр и копирование; удаление — админ и рук. КТК своего региона
+  const canEdit = canEditDirectoriesFrontend(user?.role);
+  const canDelete = canDeleteDirectoryEntryFrontend(user?.role, location);
   const [tab, setTab] = useState<TabKey>('drivers');
   const [feedback, setFeedback] = useState<Feedback>(null);
 
@@ -396,7 +404,7 @@ export default function DirectoriesPage() {
                   Наполнить из графиков
                 </button>
               )}
-              {tab === 'drivers' && (
+              {tab === 'drivers' && canEdit && (
                 <button
                   type="button"
                   className="ops-btn ops-btn--add"
@@ -405,7 +413,7 @@ export default function DirectoriesPage() {
                   Добавить
                 </button>
               )}
-              {tab === 'vehicles' && (
+              {tab === 'vehicles' && canEdit && (
                 <button
                   type="button"
                   className="ops-btn ops-btn--add"
@@ -417,7 +425,7 @@ export default function DirectoriesPage() {
                   Добавить
                 </button>
               )}
-              {tab === 'trailers' && (
+              {tab === 'trailers' && canEdit && (
                 <button type="button" className="ops-btn ops-btn--add" onClick={() => setTrailerEdit({ status: 'active' })}>
                   Добавить
                 </button>
@@ -438,7 +446,7 @@ export default function DirectoriesPage() {
             <table>
               <thead>
                 <tr>
-                  <th style={{ minWidth: 200 }}>ФИО</th>
+                  <th style={{ minWidth: 290, whiteSpace: "nowrap" }}>ФИО</th>
                   <th style={{ minWidth: 130 }}>Телефон</th>
                   <th style={{ minWidth: 120 }}>ВУ (номер)</th>
                   <th className="fuel-cell--center" style={{ minWidth: 110 }}>Дата выдачи ВУ</th>
@@ -492,7 +500,9 @@ export default function DirectoriesPage() {
                   <th style={{ minWidth: 150 }}>Модель</th>
                   <th style={{ minWidth: 90 }}>Цвет</th>
                   <th style={{ minWidth: 140 }}>VIN</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>Год выпуска</th>
                   <th className="fuel-cell--center" style={{ minWidth: 90 }}>Статус</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 70 }}>Копия</th>
                 </tr>
               </thead>
               <tbody>
@@ -509,16 +519,37 @@ export default function DirectoriesPage() {
                     <td className="fuel-cell--left">{vehicle.model ? `${vehicle.model.brand} ${vehicle.model.name}`.trim() : '—'}</td>
                     <td className="fuel-cell--center">{vehicle.color || '—'}</td>
                     <td className="fuel-cell--left">{vehicle.vin || '—'}</td>
+                    <td className="fuel-cell--center">{vehicle.manufactureYear || '—'}</td>
                     <td className="fuel-cell--center">
                       <span className={`dir-status ${vehicle.status === 'active' ? 'dir-status--ok' : vehicle.status === 'repair' ? 'dir-status--warn' : 'dir-status--off'}`}>
                         {vehicle.status === 'active' ? 'в работе' : vehicle.status === 'repair' ? 'ремонт' : 'архив'}
                       </span>
                     </td>
+                    <td className="fuel-cell--center dir-actions">
+                      <Tooltip title="Скопировать данные техники">
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            const lines = [
+                              `Гос.номер: ${vehicle.plate ?? ''}`,
+                              `Модель: ${vehicle.model ? `${vehicle.model.brand} ${vehicle.model.name}`.trim() : ''}`,
+                              `Тип: ${vehicle.vehicleKind ?? ''}`,
+                              `Цвет: ${vehicle.color ?? ''}`,
+                              `VIN: ${vehicle.vin ?? ''}`,
+                              `Год выпуска: ${vehicle.manufactureYear ?? ''}`,
+                            ];
+                            void copyPlain(lines.join('\n'), `Техника «${vehicle.plate}»`);
+                          }}
+                        >
+                          <ContentCopy sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                    </td>
                   </tr>
                 ))}
                 {vehicles.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="fuel-empty">Справочник пуст — техника появится из графиков или добавьте вручную</td>
+                    <td colSpan={8} className="fuel-empty">Справочник пуст — техника появится из графиков или добавьте вручную</td>
                   </tr>
                 )}
               </tbody>
@@ -532,7 +563,10 @@ export default function DirectoriesPage() {
               <thead>
                 <tr>
                   <th style={{ minWidth: 130 }}>Номер</th>
-                  <th style={{ minWidth: 260 }}>Примечание</th>
+                  <th style={{ minWidth: 130 }}>Марка</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 70 }}>Оси</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 100 }}>Футовость</th>
+                  <th style={{ minWidth: 200 }}>Примечание</th>
                   <th className="fuel-cell--center" style={{ minWidth: 90 }}>Статус</th>
                   <th className="fuel-cell--center" style={{ minWidth: 70 }}>Копия</th>
                 </tr>
@@ -541,15 +575,29 @@ export default function DirectoriesPage() {
                 {trailers.map((trailer) => (
                   <tr key={trailer.id} onDoubleClick={() => setTrailerEdit(trailer)}>
                     <td className="fuel-cell--sticky">{trailer.plate}</td>
+                    <td className="fuel-cell--left">{trailer.brand || '—'}</td>
+                    <td className="fuel-cell--center">{trailer.axles || '—'}</td>
+                    <td className="fuel-cell--center">{trailer.footage || '—'}</td>
                     <td className="fuel-cell--left">{trailer.note || '—'}</td>
                     <td className="fuel-cell--center">
-                      <span className={`dir-status ${trailer.status === 'active' ? 'dir-status--ok' : 'dir-status--off'}`}>
-                        {trailer.status === 'active' ? 'в работе' : 'архив'}
+                      <span className={`dir-status ${trailer.status === 'active' ? 'dir-status--ok' : trailer.status === 'repair' ? 'dir-status--warn' : 'dir-status--off'}`}>
+                        {trailer.status === 'active' ? 'в работе' : trailer.status === 'repair' ? 'ремонт' : 'архив'}
                       </span>
                     </td>
                     <td className="fuel-cell--center dir-actions">
-                      <Tooltip title="Скопировать номер прицепа">
-                        <IconButton size="small" onClick={() => void copyPlain(trailer.plate, `Номер «${trailer.plate}»`)}>
+                      <Tooltip title="Скопировать данные прицепа">
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            const lines = [
+                              `Номер: ${trailer.plate ?? ''}`,
+                              `Марка: ${trailer.brand ?? ''}`,
+                              `Оси: ${trailer.axles ?? ''}`,
+                              `Футовость: ${trailer.footage ?? ''}`,
+                            ];
+                            void copyPlain(lines.join('\n'), `Прицеп «${trailer.plate}»`);
+                          }}
+                        >
                           <ContentCopy sx={{ fontSize: 16 }} />
                         </IconButton>
                       </Tooltip>
@@ -558,7 +606,7 @@ export default function DirectoriesPage() {
                 ))}
                 {trailers.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="fuel-empty">Справочник пуст — добавьте прицепы</td>
+                    <td colSpan={7} className="fuel-empty">Справочник пуст — добавьте прицепы</td>
                   </tr>
                 )}
               </tbody>
@@ -647,6 +695,7 @@ export default function DirectoriesPage() {
       <Dialog open={Boolean(employeeEdit)} onClose={() => setEmployeeEdit(null)} maxWidth="md" fullWidth>
         <DialogTitle>{employeeEdit?.id ? 'Карточка водителя' : 'Новый водитель'}</DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
+          <fieldset disabled={!canEdit} style={{ border: 0, margin: 0, padding: 0, display: 'contents' }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mt: 1 }}>
             {textField('ФИО', employeeEdit?.fullName, (value) => setEmployeeEdit((prev) => ({ ...prev, fullName: value })))}
             {textField('Телефон', employeeEdit?.phone, (value) => setEmployeeEdit((prev) => ({ ...prev, phone: value })))}
@@ -678,9 +727,10 @@ export default function DirectoriesPage() {
                 Машина и прицеп не закрепляются в справочнике — сцепка берётся из строки графика.
               </Typography>
           </>
+          </fieldset>
         </DialogContent>
         <DialogActions>
-          {isAdmin && employeeEdit?.id && (
+          {canDelete && employeeEdit?.id && (
             <Button
               color="error"
               sx={{ mr: 'auto' }}
@@ -689,8 +739,8 @@ export default function DirectoriesPage() {
               Удалить
             </Button>
           )}
-          <Button onClick={() => setEmployeeEdit(null)}>Отмена</Button>
-          <Button variant="contained" onClick={() => void saveEmployeeEdit()}>Сохранить</Button>
+          <Button onClick={() => setEmployeeEdit(null)}>{canEdit ? 'Отмена' : 'Закрыть'}</Button>
+          {canEdit && <Button variant="contained" onClick={() => void saveEmployeeEdit()}>Сохранить</Button>}
         </DialogActions>
       </Dialog>
 
@@ -698,6 +748,7 @@ export default function DirectoriesPage() {
       <Dialog open={Boolean(vehicleEdit)} onClose={() => setVehicleEdit(null)} maxWidth="sm" fullWidth>
         <DialogTitle>{vehicleEdit?.id ? 'Карточка техники' : 'Новая техника'}</DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
+          <fieldset disabled={!canEdit} style={{ border: 0, margin: 0, padding: 0, display: 'contents' }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mt: 1 }}>
             {textField('Госномер', vehicleEdit?.plate, (value) => setVehicleEdit((prev) => ({ ...prev, plate: value })))}
             {textField('Тип ТС', vehicleEdit?.vehicleKind, (value) => setVehicleEdit((prev) => ({ ...prev, vehicleKind: value })))}
@@ -714,6 +765,7 @@ export default function DirectoriesPage() {
             />
             {textField('Цвет', vehicleEdit?.color, (value) => setVehicleEdit((prev) => ({ ...prev, color: value })))}
             {textField('VIN', vehicleEdit?.vin, (value) => setVehicleEdit((prev) => ({ ...prev, vin: value })))}
+            {textField('Год выпуска', vehicleEdit?.manufactureYear, (value) => setVehicleEdit((prev) => ({ ...prev, manufactureYear: value })))}
             <TextField
               select size="small" label="Статус" fullWidth
               value={vehicleEdit?.status ?? 'active'}
@@ -724,9 +776,10 @@ export default function DirectoriesPage() {
               <MenuItem value="archived">архив</MenuItem>
             </TextField>
           </Box>
+          </fieldset>
         </DialogContent>
         <DialogActions>
-          {isAdmin && vehicleEdit?.id && (
+          {canDelete && vehicleEdit?.id && (
             <Button
               color="error"
               sx={{ mr: 'auto' }}
@@ -735,8 +788,8 @@ export default function DirectoriesPage() {
               Удалить
             </Button>
           )}
-          <Button onClick={() => setVehicleEdit(null)}>Отмена</Button>
-          <Button variant="contained" onClick={() => void saveVehicleEdit()}>Сохранить</Button>
+          <Button onClick={() => setVehicleEdit(null)}>{canEdit ? 'Отмена' : 'Закрыть'}</Button>
+          {canEdit && <Button variant="contained" onClick={() => void saveVehicleEdit()}>Сохранить</Button>}
         </DialogActions>
       </Dialog>
 
@@ -744,13 +797,27 @@ export default function DirectoriesPage() {
       <Dialog open={Boolean(trailerEdit)} onClose={() => setTrailerEdit(null)} maxWidth="xs" fullWidth>
         <DialogTitle>{trailerEdit?.id ? 'Прицеп' : 'Новый прицеп'}</DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
+          <fieldset disabled={!canEdit} style={{ border: 0, margin: 0, padding: 0, display: 'contents' }}>
           <Box sx={{ display: 'grid', gap: 1.5, mt: 1 }}>
             {textField('Номер прицепа', trailerEdit?.plate, (value) => setTrailerEdit((prev) => ({ ...prev, plate: value })))}
+            {textField('Марка', trailerEdit?.brand, (value) => setTrailerEdit((prev) => ({ ...prev, brand: value })))}
+            {textField('Оси', trailerEdit?.axles, (value) => setTrailerEdit((prev) => ({ ...prev, axles: value })))}
+            {textField('Футовость', trailerEdit?.footage, (value) => setTrailerEdit((prev) => ({ ...prev, footage: value })))}
+            <TextField
+              select size="small" label="Статус" fullWidth
+              value={trailerEdit?.status ?? 'active'}
+              onChange={(event) => setTrailerEdit((prev) => ({ ...prev, status: event.target.value as TrailerItem['status'] }))}
+            >
+              <MenuItem value="active">в работе</MenuItem>
+              <MenuItem value="repair">ремонт</MenuItem>
+              <MenuItem value="archived">архив</MenuItem>
+            </TextField>
             {textField('Примечание', trailerEdit?.note, (value) => setTrailerEdit((prev) => ({ ...prev, note: value })))}
           </Box>
+          </fieldset>
         </DialogContent>
         <DialogActions>
-          {isAdmin && trailerEdit?.id && (
+          {canDelete && trailerEdit?.id && (
             <Button
               color="error"
               sx={{ mr: 'auto' }}
@@ -759,8 +826,8 @@ export default function DirectoriesPage() {
               Удалить
             </Button>
           )}
-          <Button onClick={() => setTrailerEdit(null)}>Отмена</Button>
-          <Button variant="contained" onClick={() => void saveTrailerEdit()}>Сохранить</Button>
+          <Button onClick={() => setTrailerEdit(null)}>{canEdit ? 'Отмена' : 'Закрыть'}</Button>
+          {canEdit && <Button variant="contained" onClick={() => void saveTrailerEdit()}>Сохранить</Button>}
         </DialogActions>
       </Dialog>
 
@@ -776,7 +843,7 @@ export default function DirectoriesPage() {
           </Box>
         </DialogContent>
         <DialogActions>
-          {isAdmin && modelEdit?.id && (
+          {canDelete && modelEdit?.id && (
             <Button
               color="error"
               sx={{ mr: 'auto' }}
