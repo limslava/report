@@ -209,6 +209,17 @@ export default function DirectoriesPage() {
     }
   };
 
+  // Копия для прицепов/моделей: только данные самого справочника, без обращения
+  // к серверу (ПДн здесь нет), по аналогии с карточкой водителя.
+  const copyPlain = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setFeedback({ severity: 'success', text: `${label} — скопировано в буфер обмена` });
+    } catch (error) {
+      setFeedback({ severity: 'error', text: errorText(error) });
+    }
+  };
+
   const saveEmployeeEdit = async (): Promise<boolean> => {
     if (!employeeEdit) return true;
     if (!employeeEdit.fullName?.trim()) {
@@ -523,6 +534,7 @@ export default function DirectoriesPage() {
                   <th style={{ minWidth: 130 }}>Номер</th>
                   <th style={{ minWidth: 260 }}>Примечание</th>
                   <th className="fuel-cell--center" style={{ minWidth: 90 }}>Статус</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 70 }}>Копия</th>
                 </tr>
               </thead>
               <tbody>
@@ -535,11 +547,18 @@ export default function DirectoriesPage() {
                         {trailer.status === 'active' ? 'в работе' : 'архив'}
                       </span>
                     </td>
+                    <td className="fuel-cell--center dir-actions">
+                      <Tooltip title="Скопировать номер прицепа">
+                        <IconButton size="small" onClick={() => void copyPlain(trailer.plate, `Номер «${trailer.plate}»`)}>
+                          <ContentCopy sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                    </td>
                   </tr>
                 ))}
                 {trailers.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="fuel-empty">Справочник пуст — добавьте прицепы</td>
+                    <td colSpan={4} className="fuel-empty">Справочник пуст — добавьте прицепы</td>
                   </tr>
                 )}
               </tbody>
@@ -585,6 +604,7 @@ export default function DirectoriesPage() {
                     <th className="fuel-cell--center" style={{ minWidth: 140 }}>Норма зима, л/100км</th>
                     <th className="fuel-cell--center" style={{ minWidth: 140 }}>Норма лето, л/100км</th>
                     <th className="fuel-cell--center" style={{ minWidth: 80 }}>Машин</th>
+                    <th className="fuel-cell--center" style={{ minWidth: 70 }}>Копия</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -594,11 +614,24 @@ export default function DirectoriesPage() {
                       <td className="fuel-cell--center">{model.fuelNormWinter ?? '—'}</td>
                       <td className="fuel-cell--center">{model.fuelNormSummer ?? '—'}</td>
                       <td className="fuel-cell--center">{model.vehicleCount ?? 0}</td>
+                      <td className="fuel-cell--center dir-actions">
+                        <Tooltip title="Скопировать марку и модель">
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              const label = `${model.brand} ${model.name}`.trim();
+                              void copyPlain(label, `«${label}»`);
+                            }}
+                          >
+                            <ContentCopy sx={{ fontSize: 16 }} />
+                          </IconButton>
+                        </Tooltip>
+                      </td>
                     </tr>
                   ))}
                   {models.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="fuel-empty">Моделей пока нет — они появятся при заполнении карточек техники</td>
+                      <td colSpan={5} className="fuel-empty">Моделей пока нет — они появятся при заполнении карточек техники</td>
                     </tr>
                   )}
                 </tbody>
