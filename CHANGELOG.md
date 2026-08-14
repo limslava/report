@@ -20,6 +20,13 @@
   - Vehicle/trailer/model tables restyled to the plans look with own vertical
     scroll and sticky headers; per-region roles no longer see the region label;
     admin gets a «Наполнить из графиков» bootstrap button.
+- Directories (feedback round, 2026-08-14)
+  - Vehicles: new «Год выпуска» field (column, card, per-line copy button);
+    trailers: new «Марка», «Оси», «Футовость» fields, repair status and
+    per-line copy; driver name column widened to one line.
+  - Permissions: KTK managers are now read-only (view + copy, cards open
+    disabled); deletion extended to KTK heads for their own region (HR keeps
+    editing but cannot delete); enforced on both backend and frontend.
 - Container schedules
   - New «Прицеп» column (containers only), shared across both drivers of a
     rig, with directory suggestions in add/edit dialogs and both Excel exports.

@@ -102,6 +102,23 @@ export function canAccessDirectories(role?: string | null): boolean {
   return directoryLocationsForRole(role).length > 0;
 }
 
+/** Ведение справочников: менеджеры КТК — только просмотр и копирование. */
+export function canEditDirectoriesFrontend(role?: string | null): boolean {
+  return role === 'admin'
+    || role === 'head_hr'
+    || role === 'hr_specialist'
+    || role === 'head_ktk_vvo'
+    || role === 'head_ktk_mow';
+}
+
+/** Удаление в справочниках: админ везде, руководитель КТК — свой регион. */
+export function canDeleteDirectoryEntryFrontend(role?: string | null, location?: FuelLocation): boolean {
+  if (role === 'admin') return true;
+  if (role === 'head_ktk_vvo') return location === 'vvo';
+  if (role === 'head_ktk_mow') return location === 'mow';
+  return false;
+}
+
 export function canManageFuelNormsFrontend(role?: string | null): boolean {
   return role === 'admin'
     || role === 'bdd_specialist_vvo'
