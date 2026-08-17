@@ -53,7 +53,12 @@ import {
   isParallelSecretaryRoute,
   isPreSecretaryApprovalRole,
 } from '../services/contract-approval-route.service';
-import { assertContractDetailAccess, canViewContractAttachments, hasContractDetailAccess } from '../services/contract-approval-access.service';
+import {
+  assertContractDetailAccess,
+  canViewContractAttachments,
+  canViewOwnContractFile,
+  hasContractDetailAccess,
+} from '../services/contract-approval-access.service';
 import {
   applyApprovalDecision,
   assignApprovalStep,
@@ -529,8 +534,8 @@ async function resolveAttachmentForUser(attachmentId: string, userId?: string, r
     error.statusCode = 403;
     throw error;
   }
-  if (!canViewContractAttachments(role)) {
-    const error: any = new Error('Просмотр файлов листа согласования доступен только СБ, финдиректору, главбуху, гендиректору и администратору');
+  if (!canViewContractAttachments(role) && !canViewOwnContractFile(contract, item.context, userId)) {
+    const error: any = new Error('Файлы шагов согласования доступны только СБ, финдиректору, главбуху, гендиректору и администратору; инициатору доступны файлы самого договора');
     error.statusCode = 403;
     throw error;
   }
@@ -2456,12 +2461,16 @@ export const listContractAttachments = async (req: Request, res: Response, next:
     const steps = await stepRepository.find({ where: { contractId: id } });
     assertContractDetailAccess(contract, steps, req.user?.id, req.user?.role);
 
-    if (!canViewContractAttachments(req.user?.role)) {
-      res.json([]);
+    const rows = await attachmentRepository.find({ where: { contractId: id }, order: { createdAt: 'ASC' } });
+    if (canViewContractAttachments(req.user?.role)) {
+      res.json(rows.map(serializeAttachment));
       return;
     }
-    const rows = await attachmentRepository.find({ where: { contractId: id }, order: { createdAt: 'ASC' } });
-    res.json(rows.map(serializeAttachment));
+    if (req.user?.id && contract.initiatorId === req.user.id) {
+      res.json(rows.filter((row) => row.context === 'contract').map(serializeAttachment));
+      return;
+    }
+    res.json([]);
   } catch (error) {
     next(error);
   }
@@ -2967,8 +2976,13 @@ export const getContractApprovalSheet = async (req: Request, res: Response, next
     });
     assertContractDetailAccess(contract, allSteps, req.user?.id, req.user?.role);
     const showContractAttachments = canViewContractAttachments(req.user?.role);
+    const isInitiatorViewer = Boolean(req.user?.id && contract.initiatorId === req.user.id);
     const serializeSheetAttachments = (files: ContractAttachment[]) => (
       showContractAttachments ? files.map(serializeAttachment) : []
+    );
+    // файлы самого договора: ролям листа согласования — как раньше, инициатору — тоже
+    const serializeContractFileAttachments = (files: ContractAttachment[]) => (
+      showContractAttachments || isInitiatorViewer ? files.map(serializeAttachment) : []
     );
 
     const allContractFiles = await attachmentRepository.find({
@@ -3050,7 +3064,7 @@ export const getContractApprovalSheet = async (req: Request, res: Response, next
         psrFlag: contract.psrFlag,
         signingMethod: contract.signingMethod,
         status: contract.status,
-        attachments: serializeSheetAttachments(contractFiles),
+        attachments: serializeContractFileAttachments(contractFiles),
         revisionNo: currentRevisionNo,
         initiator: contract.initiator ? { id: contract.initiator.id, fullName: contract.initiator.fullName } : null,
         assignedGeneralDirector: contract.assignedGeneralDirector

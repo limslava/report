@@ -32,6 +32,20 @@ export function canViewContractAttachments(userRole?: string | null): boolean {
   return Boolean(userRole && CONTRACT_ATTACHMENT_VIEW_ROLES.has(userRole));
 }
 
+/**
+ * Инициатор своего договора видит и скачивает файлы САМОГО договора
+ * (context='contract' — заполненный договор и его редакции), решение
+ * 2026-08-17. Служебные файлы шагов согласования (СБ, бухгалтерия и т.п.)
+ * ему по-прежнему не видны.
+ */
+export function canViewOwnContractFile(
+  contract: Contract,
+  attachmentContext: string,
+  userId?: string,
+): boolean {
+  return Boolean(userId && contract.initiatorId === userId && attachmentContext === 'contract');
+}
+
 export function assertContractDetailAccess(
   contract: Contract,
   steps: ContractApprovalStep[],
