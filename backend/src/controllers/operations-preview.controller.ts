@@ -937,7 +937,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
   };
 
   const isPersonnel = section === 'dispatchers' || section === 'couriers' || section === 'mechanics' || section === 'warehouse_staff' || section === 'guards';
-  const hasTrailer = section === 'containers';
+  const hasTrailer = section === 'containers' || section === 'auto';
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('График работы');
 
@@ -1284,7 +1284,7 @@ const renderOperationsScheduleWorksheet = ({
   const scopeKey = `${mode}|${monthValue}` as OverrideScopeKey;
   const scopeOverrides = overrides[scopeKey] ?? {};
   const isPersonnel = section === 'dispatchers' || section === 'couriers' || section === 'mechanics' || section === 'warehouse_staff' || section === 'guards';
-  const hasTrailer = section === 'containers';
+  const hasTrailer = section === 'containers' || section === 'auto';
   const sheet = workbook.addWorksheet(makeSheetName(workbook, sheetName));
   sheet.properties.tabColor = { argb: tabColor };
 
