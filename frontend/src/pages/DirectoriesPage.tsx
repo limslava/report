@@ -4,6 +4,7 @@ import {
   Autocomplete,
   Box,
   Button,
+  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
@@ -125,9 +126,16 @@ export default function DirectoriesPage() {
   const [vehicleModelLabel, setVehicleModelLabel] = useState('');
   const [trailerEdit, setTrailerEdit] = useState<Partial<TrailerItem> | null>(null);
   const [modelEdit, setModelEdit] = useState<Partial<VehicleModelItem> | null>(null);
-  const [exportOpen, setExportOpen] = useState(false);
+  // экспорт: режим галочек слева в таблице (решение пользователя 2026-08-19)
+  const [exportMode, setExportMode] = useState(false);
   const [exportIds, setExportIds] = useState<string[]>([]);
   const [exporting, setExporting] = useState(false);
+  useEffect(() => {
+    setExportMode(false);
+    setExportIds([]);
+  }, [tab, location]);
+  const toggleExportId = (id: string) =>
+    setExportIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const reload = useCallback(async () => {
     try {
@@ -306,7 +314,7 @@ export default function DirectoriesPage() {
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-      setExportOpen(false);
+      setExportMode(false);
       setExportIds([]);
       setFeedback({ severity: 'success', text: 'Файл выгружен' });
     } catch (error) {
@@ -315,6 +323,26 @@ export default function DirectoriesPage() {
       setExporting(false);
     }
   };
+
+  const allExportSelected = exportIds.length > 0 && exportIds.length === exportOptions.length;
+  const toggleAllExport = () =>
+    setExportIds(allExportSelected ? [] : exportOptions.map((option) => option.id));
+  const exportCheckboxHeader = (
+    <th className="fuel-cell--center" style={{ width: 44 }}>
+      <Checkbox
+        size="small"
+        sx={{ p: 0.25 }}
+        checked={allExportSelected}
+        indeterminate={exportIds.length > 0 && !allExportSelected}
+        onChange={toggleAllExport}
+      />
+    </th>
+  );
+  const exportCheckboxCell = (id: string) => (
+    <td className="fuel-cell--center dir-actions" onDoubleClick={(event) => event.stopPropagation()}>
+      <Checkbox size="small" sx={{ p: 0.25 }} checked={exportIds.includes(id)} onChange={() => toggleExportId(id)} />
+    </td>
+  );
 
   const saveEmployeeEdit = async (): Promise<boolean> => {
     if (!employeeEdit) return true;
@@ -472,16 +500,40 @@ export default function DirectoriesPage() {
               <Tab value="models" label={`Модели и нормы (${models.length})`} />
             </Tabs>
             <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
-              <button
-                type="button"
-                className="ops-btn ops-btn--download"
-                onClick={() => {
-                  setExportIds([]);
-                  setExportOpen(true);
-                }}
-              >
-                Скачать Excel
-              </button>
+              {!exportMode && (
+                <button
+                  type="button"
+                  className="ops-btn ops-btn--download"
+                  onClick={() => {
+                    setExportIds([]);
+                    setExportMode(true);
+                  }}
+                >
+                  Скачать Excel
+                </button>
+              )}
+              {exportMode && (
+                <>
+                  <button
+                    type="button"
+                    className="ops-btn ops-btn--download"
+                    disabled={exporting}
+                    onClick={() => void runExport()}
+                  >
+                    {exporting ? 'Выгрузка…' : exportIds.length ? `Скачать (${exportIds.length})` : 'Скачать всех'}
+                  </button>
+                  <button
+                    type="button"
+                    className="ops-btn ghost"
+                    onClick={() => {
+                      setExportMode(false);
+                      setExportIds([]);
+                    }}
+                  >
+                    Отмена
+                  </button>
+                </>
+              )}
               {isAdmin && (tab === 'drivers' || tab === 'vehicles') && (
                 <button
                   type="button"
@@ -544,6 +596,7 @@ export default function DirectoriesPage() {
             <table>
               <thead>
                 <tr>
+                  {exportMode && exportCheckboxHeader}
                   <th style={{ minWidth: 290, whiteSpace: "nowrap" }}>{sortHeader('drivers', 'fullName', 'ФИО')}</th>
                   <th style={{ minWidth: 130 }}>{sortHeader('drivers', 'phone', 'Телефон')}</th>
                   <th style={{ minWidth: 120 }}>{sortHeader('drivers', 'licenseNumber', 'ВУ (номер)')}</th>
@@ -559,6 +612,7 @@ export default function DirectoriesPage() {
                     key={employee.id}
                     onDoubleClick={() => setEmployeeEdit(employee)}
                   >
+                    {exportMode && exportCheckboxCell(employee.id)}
                     <td className="fuel-cell--sticky">{employee.fullName}</td>
                     <td className="fuel-cell--center">{employee.phone || '—'}</td>
                     <td className="fuel-cell--center">{employee.licenseNumber || '—'}</td>
@@ -593,6 +647,7 @@ export default function DirectoriesPage() {
             <table>
               <thead>
                 <tr>
+                  {exportMode && exportCheckboxHeader}
                   <th style={{ minWidth: 110 }}>{sortHeader('vehicles', 'plate', 'Г/Н ТС')}</th>
                   <th style={{ minWidth: 170 }}>{sortHeader('vehicles', 'vehicleKind', 'Тип ТС')}</th>
                   <th style={{ minWidth: 150 }}>{sortHeader('vehicles', 'modelLabel', 'Модель')}</th>
@@ -612,6 +667,7 @@ export default function DirectoriesPage() {
                       setVehicleEdit(vehicle);
                     }}
                   >
+                    {exportMode && exportCheckboxCell(vehicle.id)}
                     <td className="fuel-cell--sticky">{vehicle.plate}</td>
                     <td className="fuel-cell--left">{vehicle.vehicleKind || '—'}</td>
                     <td className="fuel-cell--left">{vehicle.model ? `${vehicle.model.brand} ${vehicle.model.name}`.trim() : '—'}</td>
@@ -660,6 +716,7 @@ export default function DirectoriesPage() {
             <table>
               <thead>
                 <tr>
+                  {exportMode && exportCheckboxHeader}
                   <th style={{ minWidth: 130 }}>{sortHeader('trailers', 'plate', 'Номер')}</th>
                   <th style={{ minWidth: 130 }}>{sortHeader('trailers', 'kind', 'Тип')}</th>
                   <th style={{ minWidth: 130 }}>{sortHeader('trailers', 'brand', 'Марка')}</th>
@@ -673,6 +730,7 @@ export default function DirectoriesPage() {
               <tbody>
                 {sortedTrailers.map((trailer) => (
                   <tr key={trailer.id} onDoubleClick={() => setTrailerEdit(trailer)}>
+                    {exportMode && exportCheckboxCell(trailer.id)}
                     <td className="fuel-cell--sticky">{trailer.plate}</td>
                     <td className="fuel-cell--left">{trailerKindLabel(trailer.kind) || '—'}</td>
                     <td className="fuel-cell--left">{trailer.brand || '—'}</td>
@@ -748,6 +806,7 @@ export default function DirectoriesPage() {
               <table>
                 <thead>
                   <tr>
+                    {exportMode && exportCheckboxHeader}
                     <th style={{ minWidth: 220 }}>{sortHeader('models', 'label', 'Марка / модель')}</th>
                     <th className="fuel-cell--center" style={{ minWidth: 140 }}>{sortHeader('models', 'fuelNormWinter', 'Норма зима, л/100км')}</th>
                     <th className="fuel-cell--center" style={{ minWidth: 140 }}>{sortHeader('models', 'fuelNormSummer', 'Норма лето, л/100км')}</th>
@@ -758,6 +817,7 @@ export default function DirectoriesPage() {
                 <tbody>
                   {sortedModels.map((model) => (
                     <tr key={model.id} onDoubleClick={canManageNorms ? () => setModelEdit(model) : undefined}>
+                      {exportMode && exportCheckboxCell(model.id)}
                       <td className="fuel-cell--sticky">{`${model.brand} ${model.name}`.trim()}</td>
                       <td className="fuel-cell--center">{model.fuelNormWinter ?? '—'}</td>
                       <td className="fuel-cell--center">{model.fuelNormSummer ?? '—'}</td>
@@ -964,33 +1024,6 @@ export default function DirectoriesPage() {
           )}
           <Button onClick={() => setModelEdit(null)}>Отмена</Button>
           <Button variant="contained" onClick={() => void saveModelEdit()}>Сохранить</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ─── Экспорт вкладки в Excel ─── */}
-      <Dialog open={exportOpen} onClose={() => setExportOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Скачать Excel · {tab === 'drivers' ? 'Водители' : tab === 'vehicles' ? 'Техника' : tab === 'trailers' ? 'Прицепы' : 'Модели и нормы'}</DialogTitle>
-        <DialogContent sx={{ pt: 1 }}>
-          <Autocomplete
-            multiple
-            size="small"
-            options={exportOptions}
-            getOptionLabel={(option) => option.label}
-            value={exportOptions.filter((option) => exportIds.includes(option.id))}
-            onChange={(_event, value) => setExportIds(value.map((option) => option.id))}
-            renderInput={(params) => (
-              <TextField {...params} label="Кого выгружать" placeholder={exportIds.length ? '' : 'Пусто — выгрузить всех'} sx={{ mt: 1 }} />
-            )}
-          />
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            Оставьте поле пустым, чтобы выгрузить весь справочник. В файл попадают все данные вкладки.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setExportOpen(false)}>Отмена</Button>
-          <Button variant="contained" disabled={exporting} onClick={() => void runExport()}>
-            {exporting ? 'Выгрузка…' : exportIds.length ? `Скачать (${exportIds.length})` : 'Скачать всех'}
-          </Button>
         </DialogActions>
       </Dialog>
 
