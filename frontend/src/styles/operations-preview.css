@@ -308,7 +308,7 @@
 }
 
 .ops-matrix {
-  --col-a: 170px;
+  --col-a: 250px; /* полное ФИО в одну строку */
   --col-b: 80px;
   --col-t: 0px;
   --col-c: 100px;
@@ -539,6 +539,17 @@
   align-items: flex-start;
 }
 
+/* ФИО в одну строку; чрезмерно длинное — с многоточием */
+.ops-matrix__cell--name .ops-matrix__label,
+.ops-matrix__cell--name-left .ops-matrix__label,
+.ops-matrix__cell--name span,
+.ops-matrix__cell--name-left span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
 .ops-matrix__row--draggable {
   transition: background 0.15s ease;
 }
@@ -655,11 +666,16 @@
 }
 
 .ops-matrix__note span {
-  display: block;
+  /* переносим на вторую строку вместо обрезания; длиннее двух строк — многоточие */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  line-height: 1.25;
+  word-break: break-word;
 }
 
 .ops-matrix__note-input {
