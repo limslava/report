@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import ExcelJS from 'exceljs';
 import { AppDataSource } from '../config/data-source';
 import { Employee } from '../models/employee.model';
 import { FleetVehicle } from '../models/fleet-vehicle.model';
@@ -9,6 +10,7 @@ import { OperationsPreviewState } from '../models/operations-preview-state.model
 import { recordAuditLog } from '../services/audit-log.service';
 import { buildEmployeeCardText } from '../services/employee-card.service';
 import {
+  DIRECTORY_ROLES,
   canDeleteDirectoryEntry,
   canManageFuelNorms,
   directoryLocationsForRole,
@@ -168,6 +170,7 @@ export const saveVehicle = async (req: Request, res: Response) => {
   vehicle.color = trimmed(req.body?.color, 60);
   vehicle.vin = trimmed(req.body?.vin, 40);
   vehicle.manufactureYear = trimmed(req.body?.manufactureYear, 10);
+  vehicle.sor = trimmed(req.body?.sor, 40);
   vehicle.note = trimmed(req.body?.note, 500);
   const status = req.body?.status;
   vehicle.status = status === 'repair' || status === 'archived' ? status : 'active';
@@ -205,6 +208,8 @@ export const saveTrailer = async (req: Request, res: Response) => {
 
   trailer.location = location;
   trailer.plate = plate;
+  const trailerKind = req.body?.kind;
+  trailer.kind = trailerKind === 'auto' || trailerKind === 'container' ? trailerKind : '';
   trailer.brand = trimmed(req.body?.brand, 120);
   trailer.axles = trimmed(req.body?.axles, 40);
   trailer.footage = trimmed(req.body?.footage, 40);
@@ -403,7 +408,194 @@ export const getDirectoryOptions = async (req: Request, res: Response) => {
     employees: employees.map((employee) => ({ fullName: employee.fullName, position: employee.position })),
     vehicles: vehicles.filter((vehicle) => vehicle.status !== 'archived').map((vehicle) => vehicle.plate),
     trailers: trailers.map((trailer) => trailer.plate),
+    // тип прицепа для фильтрации подсказок по разделам графика
+    trailerOptions: trailers.map((trailer) => ({ plate: trailer.plate, kind: trailer.kind })),
   });
+};
+
+// ─────────────────────────── Экспорт справочников в Excel ───────────────────────────
+
+const TRAILER_KIND_LABELS: Record<string, string> = { auto: 'Автовозный', container: 'Контейнерный' };
+const trailerKindLabel = (kind: string): string => TRAILER_KIND_LABELS[kind] ?? '';
+
+const formatDateRu = (value: string | null): string => {
+  if (!value) return '';
+  const [year, month, day] = value.slice(0, 10).split('-');
+  return day && month && year ? `${day}.${month}.${year}` : value;
+};
+
+/**
+ * Выгрузка активной вкладки справочника: все поля, состав строк — выбранные
+ * id или все. Водители содержат ПДн: доступ только справочным ролям
+ * (проверка на роуте) + запись в аудит.
+ */
+export const exportDirectory = async (req: Request, res: Response) => {
+  const tab = req.body?.tab;
+  if (tab !== 'drivers' && tab !== 'vehicles' && tab !== 'trailers' && tab !== 'models') {
+    httpError(400, 'Unknown export tab');
+  }
+  const ids: string[] = Array.isArray(req.body?.ids)
+    ? req.body.ids.filter((value: unknown): value is string => typeof value === 'string')
+    : [];
+  const pick = <T extends { id: string }>(rows: T[]): T[] =>
+    ids.length ? rows.filter((row) => ids.includes(row.id)) : rows;
+
+  const workbook = new ExcelJS.Workbook();
+  const statusLabel = (status: string): string =>
+    status === 'active' ? 'в работе' : status === 'repair' ? 'ремонт' : status === 'fired' ? 'уволен' : 'архив';
+
+  let sheetName = '';
+  let filename = '';
+  let locationLabel = '';
+
+  if (tab === 'drivers') {
+    if (!DIRECTORY_ROLES.includes(req.user?.role as (typeof DIRECTORY_ROLES)[number])) {
+      httpError(403, 'Экспорт водителей доступен только справочным ролям');
+    }
+    const location = requireDirectoryLocation(req, req.body?.location);
+    locationLabel = location === 'vvo' ? 'Владивосток' : 'Москва';
+    const rows = pick(
+      await employeeRepo.find({ where: { location, position: 'водитель' }, order: { fullName: 'ASC' } })
+    );
+    sheetName = 'Водители';
+    filename = `Справочник_водители_${locationLabel}.xlsx`;
+    const sheet = workbook.addWorksheet(sheetName);
+    sheet.columns = [
+      { header: 'ФИО', key: 'fullName', width: 34 },
+      { header: 'Телефон', key: 'phone', width: 16 },
+      { header: 'Статус', key: 'status', width: 12 },
+      { header: 'Дата рождения', key: 'birthDate', width: 14 },
+      { header: 'Место рождения', key: 'birthPlace', width: 28 },
+      { header: 'Паспорт', key: 'passportNumber', width: 14 },
+      { header: 'Дата выдачи паспорта', key: 'passportIssueDate', width: 16 },
+      { header: 'Кем выдан', key: 'passportIssuedBy', width: 36 },
+      { header: 'Адрес регистрации', key: 'registrationAddress', width: 42 },
+      { header: 'ВУ (номер)', key: 'licenseNumber', width: 14 },
+      { header: 'Дата выдачи ВУ', key: 'licenseIssueDate', width: 14 },
+      { header: 'Примечание', key: 'note', width: 30 },
+    ];
+    rows.forEach((employee) =>
+      sheet.addRow({
+        fullName: employee.fullName,
+        phone: employee.phone,
+        status: statusLabel(employee.status),
+        birthDate: formatDateRu(employee.birthDate),
+        birthPlace: employee.birthPlace,
+        passportNumber: employee.passportNumber,
+        passportIssueDate: formatDateRu(employee.passportIssueDate),
+        passportIssuedBy: employee.passportIssuedBy,
+        registrationAddress: employee.registrationAddress,
+        licenseNumber: employee.licenseNumber,
+        licenseIssueDate: formatDateRu(employee.licenseIssueDate),
+        note: employee.note,
+      })
+    );
+    await recordAuditLog({
+      action: 'DIRECTORY_EMPLOYEES_EXPORTED',
+      userId: req.user?.id ?? null,
+      entityType: 'directory_employee',
+      entityId: null,
+      details: { location, count: rows.length, selected: ids.length > 0 },
+      req,
+    });
+  } else if (tab === 'vehicles') {
+    const location = requireFleetViewLocation(req, req.body?.location);
+    locationLabel = location === 'vvo' ? 'Владивосток' : 'Москва';
+    const rows = pick(await vehicleRepo.find({ where: { location }, relations: { model: true }, order: { plate: 'ASC' } }));
+    sheetName = 'Техника';
+    filename = `Справочник_техника_${locationLabel}.xlsx`;
+    const sheet = workbook.addWorksheet(sheetName);
+    sheet.columns = [
+      { header: 'Г/Н ТС', key: 'plate', width: 14 },
+      { header: 'Тип ТС', key: 'vehicleKind', width: 26 },
+      { header: 'Модель', key: 'model', width: 22 },
+      { header: 'Цвет', key: 'color', width: 12 },
+      { header: 'VIN', key: 'vin', width: 22 },
+      { header: 'СОР', key: 'sor', width: 16 },
+      { header: 'Год выпуска', key: 'manufactureYear', width: 12 },
+      { header: 'Статус', key: 'status', width: 12 },
+      { header: 'Примечание', key: 'note', width: 30 },
+    ];
+    rows.forEach((vehicle) =>
+      sheet.addRow({
+        plate: vehicle.plate,
+        vehicleKind: vehicle.vehicleKind,
+        model: vehicle.model ? `${vehicle.model.brand} ${vehicle.model.name}`.trim() : '',
+        color: vehicle.color,
+        vin: vehicle.vin,
+        sor: vehicle.sor,
+        manufactureYear: vehicle.manufactureYear,
+        status: statusLabel(vehicle.status),
+        note: vehicle.note,
+      })
+    );
+  } else if (tab === 'trailers') {
+    const location = requireFleetViewLocation(req, req.body?.location);
+    locationLabel = location === 'vvo' ? 'Владивосток' : 'Москва';
+    const rows = pick(await trailerRepo.find({ where: { location }, order: { plate: 'ASC' } }));
+    sheetName = 'Прицепы';
+    filename = `Справочник_прицепы_${locationLabel}.xlsx`;
+    const sheet = workbook.addWorksheet(sheetName);
+    sheet.columns = [
+      { header: 'Номер', key: 'plate', width: 14 },
+      { header: 'Тип прицепа', key: 'kind', width: 16 },
+      { header: 'Марка', key: 'brand', width: 16 },
+      { header: 'Оси', key: 'axles', width: 8 },
+      { header: 'Футовость', key: 'footage', width: 12 },
+      { header: 'Статус', key: 'status', width: 12 },
+      { header: 'Примечание', key: 'note', width: 30 },
+    ];
+    rows.forEach((trailer) =>
+      sheet.addRow({
+        plate: trailer.plate,
+        kind: trailerKindLabel(trailer.kind),
+        brand: trailer.brand,
+        axles: trailer.axles,
+        footage: trailer.footage,
+        status: statusLabel(trailer.status),
+        note: trailer.note,
+      })
+    );
+  } else {
+    const rows = pick(await modelRepo.find({ order: { brand: 'ASC', name: 'ASC' } }));
+    sheetName = 'Модели и нормы';
+    filename = 'Справочник_модели_и_нормы.xlsx';
+    const sheet = workbook.addWorksheet(sheetName);
+    sheet.columns = [
+      { header: 'Марка', key: 'brand', width: 18 },
+      { header: 'Модель', key: 'name', width: 18 },
+      { header: 'Норма зима, л/100км', key: 'fuelNormWinter', width: 18 },
+      { header: 'Норма лето, л/100км', key: 'fuelNormSummer', width: 18 },
+    ];
+    rows.forEach((model) =>
+      sheet.addRow({
+        brand: model.brand,
+        name: model.name,
+        fuelNormWinter: model.fuelNormWinter !== null ? Number(model.fuelNormWinter) : '',
+        fuelNormSummer: model.fuelNormSummer !== null ? Number(model.fuelNormSummer) : '',
+      })
+    );
+  }
+
+  // единый стиль шапки — как таблицы «Планов»
+  const sheet = workbook.getWorksheet(sheetName)!;
+  const headerRow = sheet.getRow(1);
+  headerRow.font = { bold: true, size: 11, name: 'Arial' };
+  headerRow.eachCell((cell) => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+    cell.border = { bottom: { style: 'thin', color: { argb: 'FFB6C0D2' } } };
+    cell.alignment = { vertical: 'middle' };
+  });
+  headerRow.height = 22;
+  sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="directory_${tab}.xlsx"; filename*=UTF-8''${encodeURIComponent(filename)}`
+  );
+  res.send(Buffer.from(buffer));
 };
 
 // ─────────────────────────── Первичное наполнение из графиков ───────────────────────────

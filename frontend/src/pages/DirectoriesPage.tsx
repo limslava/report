@@ -37,6 +37,7 @@ import {
   deleteFleetVehicle,
   deleteTrailer,
   deleteVehicleModel,
+  exportDirectoryExcel,
   getEmployeeCardText,
   getEmployees,
   getFleetVehicles,
@@ -60,6 +61,8 @@ import '../styles/operations-preview.css';
 import '../styles/fuel.css';
 
 const LOCATION_LABELS: Record<FleetLocation, string> = { vvo: 'Владивосток', mow: 'Москва' };
+const TRAILER_KIND_LABELS: Record<string, string> = { auto: 'Автовозный', container: 'Контейнерный' };
+const trailerKindLabel = (kind: string): string => TRAILER_KIND_LABELS[kind] ?? '';
 const MONTH_GENITIVE = [
   'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
   'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
@@ -122,6 +125,9 @@ export default function DirectoriesPage() {
   const [vehicleModelLabel, setVehicleModelLabel] = useState('');
   const [trailerEdit, setTrailerEdit] = useState<Partial<TrailerItem> | null>(null);
   const [modelEdit, setModelEdit] = useState<Partial<VehicleModelItem> | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportIds, setExportIds] = useState<string[]>([]);
+  const [exporting, setExporting] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -239,7 +245,10 @@ export default function DirectoriesPage() {
     [vehicles, sortByTab.vehicles]
   );
   const sortedTrailers = useMemo(
-    () => sortRows(trailers, sortByTab.trailers, (row, field) => (row as unknown as Record<string, unknown>)[field]),
+    () =>
+      sortRows(trailers, sortByTab.trailers, (row, field) =>
+        field === 'kind' ? trailerKindLabel(row.kind) : (row as unknown as Record<string, unknown>)[field]
+      ),
     [trailers, sortByTab.trailers]
   );
   const sortedModels = useMemo(
@@ -268,6 +277,42 @@ export default function DirectoriesPage() {
       setFeedback({ severity: 'success', text: `${label} — скопировано в буфер обмена` });
     } catch (error) {
       setFeedback({ severity: 'error', text: errorText(error) });
+    }
+  };
+
+  const exportOptions = useMemo(() => {
+    if (tab === 'drivers') return drivers.map((d) => ({ id: d.id, label: d.fullName }));
+    if (tab === 'vehicles') return sortedVehicles.map((v) => ({ id: v.id, label: v.plate }));
+    if (tab === 'trailers') return sortedTrailers.map((t) => ({ id: t.id, label: t.plate }));
+    return sortedModels.map((m) => ({ id: m.id, label: `${m.brand} ${m.name}`.trim() }));
+  }, [tab, drivers, sortedVehicles, sortedTrailers, sortedModels]);
+
+  const TAB_EXPORT_LABELS: Record<TabKey, string> = {
+    drivers: 'водители',
+    vehicles: 'техника',
+    trailers: 'прицепы',
+    models: 'модели_и_нормы',
+  };
+
+  const runExport = async () => {
+    setExporting(true);
+    try {
+      const { data } = await exportDirectoryExcel(tab, location, exportIds);
+      const url = URL.createObjectURL(new Blob([data as BlobPart]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Справочник_${TAB_EXPORT_LABELS[tab]}_${LOCATION_LABELS[location]}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setExportOpen(false);
+      setExportIds([]);
+      setFeedback({ severity: 'success', text: 'Файл выгружен' });
+    } catch (error) {
+      setFeedback({ severity: 'error', text: errorText(error) });
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -427,6 +472,16 @@ export default function DirectoriesPage() {
               <Tab value="models" label={`Модели и нормы (${models.length})`} />
             </Tabs>
             <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
+              <button
+                type="button"
+                className="ops-btn ops-btn--download"
+                onClick={() => {
+                  setExportIds([]);
+                  setExportOpen(true);
+                }}
+              >
+                Скачать Excel
+              </button>
               {isAdmin && (tab === 'drivers' || tab === 'vehicles') && (
                 <button
                   type="button"
@@ -606,6 +661,7 @@ export default function DirectoriesPage() {
               <thead>
                 <tr>
                   <th style={{ minWidth: 130 }}>{sortHeader('trailers', 'plate', 'Номер')}</th>
+                  <th style={{ minWidth: 130 }}>{sortHeader('trailers', 'kind', 'Тип')}</th>
                   <th style={{ minWidth: 130 }}>{sortHeader('trailers', 'brand', 'Марка')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 70 }}>{sortHeader('trailers', 'axles', 'Оси')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 100 }}>{sortHeader('trailers', 'footage', 'Футовость')}</th>
@@ -618,6 +674,7 @@ export default function DirectoriesPage() {
                 {sortedTrailers.map((trailer) => (
                   <tr key={trailer.id} onDoubleClick={() => setTrailerEdit(trailer)}>
                     <td className="fuel-cell--sticky">{trailer.plate}</td>
+                    <td className="fuel-cell--left">{trailerKindLabel(trailer.kind) || '—'}</td>
                     <td className="fuel-cell--left">{trailer.brand || '—'}</td>
                     <td className="fuel-cell--center">{trailer.axles || '—'}</td>
                     <td className="fuel-cell--center">{trailer.footage || '—'}</td>
@@ -649,7 +706,7 @@ export default function DirectoriesPage() {
                 ))}
                 {trailers.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="fuel-empty">Справочник пуст — добавьте прицепы</td>
+                    <td colSpan={8} className="fuel-empty">Справочник пуст — добавьте прицепы</td>
                   </tr>
                 )}
               </tbody>
@@ -808,6 +865,7 @@ export default function DirectoriesPage() {
             />
             {textField('Цвет', vehicleEdit?.color, (value) => setVehicleEdit((prev) => ({ ...prev, color: value })))}
             {textField('VIN', vehicleEdit?.vin, (value) => setVehicleEdit((prev) => ({ ...prev, vin: value })))}
+            {textField('СОР', vehicleEdit?.sor, (value) => setVehicleEdit((prev) => ({ ...prev, sor: value })))}
             {textField('Год выпуска', vehicleEdit?.manufactureYear, (value) => setVehicleEdit((prev) => ({ ...prev, manufactureYear: value })))}
             <TextField
               select size="small" label="Статус" fullWidth
@@ -843,6 +901,15 @@ export default function DirectoriesPage() {
           <fieldset disabled={!canEdit} style={{ border: 0, margin: 0, padding: 0, display: 'contents' }}>
           <Box sx={{ display: 'grid', gap: 1.5, mt: 1 }}>
             {textField('Номер прицепа', trailerEdit?.plate, (value) => setTrailerEdit((prev) => ({ ...prev, plate: value })))}
+            <TextField
+              select size="small" label="Тип прицепа (необязательно)" fullWidth
+              value={trailerEdit?.kind ?? ''}
+              onChange={(event) => setTrailerEdit((prev) => ({ ...prev, kind: event.target.value as TrailerItem['kind'] }))}
+            >
+              <MenuItem value="">— не указан —</MenuItem>
+              <MenuItem value="auto">Автовозный прицеп</MenuItem>
+              <MenuItem value="container">Контейнерный прицеп</MenuItem>
+            </TextField>
             {textField('Марка', trailerEdit?.brand, (value) => setTrailerEdit((prev) => ({ ...prev, brand: value })))}
             {textField('Оси', trailerEdit?.axles, (value) => setTrailerEdit((prev) => ({ ...prev, axles: value })))}
             {textField('Футовость', trailerEdit?.footage, (value) => setTrailerEdit((prev) => ({ ...prev, footage: value })))}
@@ -897,6 +964,33 @@ export default function DirectoriesPage() {
           )}
           <Button onClick={() => setModelEdit(null)}>Отмена</Button>
           <Button variant="contained" onClick={() => void saveModelEdit()}>Сохранить</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ─── Экспорт вкладки в Excel ─── */}
+      <Dialog open={exportOpen} onClose={() => setExportOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Скачать Excel · {tab === 'drivers' ? 'Водители' : tab === 'vehicles' ? 'Техника' : tab === 'trailers' ? 'Прицепы' : 'Модели и нормы'}</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Autocomplete
+            multiple
+            size="small"
+            options={exportOptions}
+            getOptionLabel={(option) => option.label}
+            value={exportOptions.filter((option) => exportIds.includes(option.id))}
+            onChange={(_event, value) => setExportIds(value.map((option) => option.id))}
+            renderInput={(params) => (
+              <TextField {...params} label="Кого выгружать" placeholder={exportIds.length ? '' : 'Пусто — выгрузить всех'} sx={{ mt: 1 }} />
+            )}
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            Оставьте поле пустым, чтобы выгрузить весь справочник. В файл попадают все данные вкладки.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setExportOpen(false)}>Отмена</Button>
+          <Button variant="contained" disabled={exporting} onClick={() => void runExport()}>
+            {exporting ? 'Выгрузка…' : exportIds.length ? `Скачать (${exportIds.length})` : 'Скачать всех'}
+          </Button>
         </DialogActions>
       </Dialog>
 
