@@ -16,6 +16,7 @@ import {
   Tooltip,
 } from '@mui/material';
 import { useAuthStore } from '../store/auth-store';
+import { TableSortState, cycleSort, loadSortState, saveSortState, sortIndicator, sortRows } from '../utils/tableSort';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import {
   FleetLocation,
@@ -94,6 +95,16 @@ const errorText = (error: unknown): string => {
 
 export default function FuelPage() {
   const { user } = useAuthStore();
+  const sortStorageKey = `fuel-sort-v1:${user?.id ?? 'anonymous'}`;
+  const [sort, setSort] = useState<TableSortState>(() => loadSortState<TableSortState>(sortStorageKey, null));
+  useEffect(() => saveSortState(sortStorageKey, sort), [sortStorageKey, sort]);
+  const toggleSort = (field: string) => setSort((prev) => cycleSort(prev, field));
+  const sortHeader = (field: string, label: string) => (
+    <button type="button" className="ops-matrix__sort-btn" onClick={() => toggleSort(field)}>
+      <span>{label}</span>
+      <span className={`ops-matrix__sort-indicator is-${sortIndicator(sort, field)}`} aria-hidden="true" />
+    </button>
+  );
   const allowedLocations = useMemo(() => fuelLocationsForRole(user?.role), [user?.role]);
   const [location, setLocation] = useState<FleetLocation>(allowedLocations[0] ?? 'vvo');
   const [monthValue, setMonthValue] = useState<string>(currentMonthValue());
@@ -327,7 +338,10 @@ export default function FuelPage() {
     return { ...row, odometer, fuelEnd, fuelFilled, mileageManual, fuelStartManual, mileage, fuelStart, consumption, per100, deviationPct };
   };
 
-  const rows = useMemo(() => (state ? state.rows.map(computedRow) : []), [state, drafts]);
+  const rows = useMemo(() => {
+    const computed = state ? state.rows.map(computedRow) : [];
+    return sortRows(computed, sort, (row, field) => (row as unknown as Record<string, unknown>)[field]);
+  }, [state, drafts, sort]);
   const totals = useMemo(
     () =>
       rows.reduce(
@@ -466,16 +480,16 @@ export default function FuelPage() {
           <table>
             <thead>
               <tr>
-                <th style={{ minWidth: 110 }}>Г/Н ТС</th>
-                <th style={{ minWidth: 130 }}>Модель</th>
-                <th style={{ minWidth: 110 }}>Показания одометра, км</th>
-                <th style={{ minWidth: 100 }}>Пробег по Одометру, км</th>
-                <th style={{ minWidth: 100 }}>Начальный уровень Топлива</th>
-                <th style={{ minWidth: 100 }}>Конечный уровень Топлива</th>
-                <th style={{ minWidth: 100 }}>Заправлено по ППР</th>
-                <th style={{ minWidth: 90 }}>Расход топлива, л</th>
-                <th style={{ minWidth: 90 }}>Расход л/100км по одометру</th>
-                <th style={{ minWidth: 80 }}>К норме</th>
+                <th style={{ minWidth: 110 }}>{sortHeader('plate', 'Г/Н ТС')}</th>
+                <th style={{ minWidth: 130 }}>{sortHeader('modelLabel', 'Модель')}</th>
+                <th style={{ minWidth: 110 }}>{sortHeader('odometer', 'Показания одометра, км')}</th>
+                <th style={{ minWidth: 100 }}>{sortHeader('mileage', 'Пробег по Одометру, км')}</th>
+                <th style={{ minWidth: 100 }}>{sortHeader('fuelStart', 'Начальный уровень Топлива')}</th>
+                <th style={{ minWidth: 100 }}>{sortHeader('fuelEnd', 'Конечный уровень Топлива')}</th>
+                <th style={{ minWidth: 100 }}>{sortHeader('fuelFilled', 'Заправлено по ППР')}</th>
+                <th style={{ minWidth: 90 }}>{sortHeader('consumption', 'Расход топлива, л')}</th>
+                <th style={{ minWidth: 90 }}>{sortHeader('per100', 'Расход л/100км по одометру')}</th>
+                <th style={{ minWidth: 80 }}>{sortHeader('deviationPct', 'К норме')}</th>
               </tr>
             </thead>
             <tbody>
