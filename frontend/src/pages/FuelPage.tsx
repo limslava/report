@@ -486,7 +486,7 @@ export default function FuelPage() {
                 <th style={{ minWidth: 100 }}>{sortHeader('mileage', 'Пробег по Одометру, км')}</th>
                 <th style={{ minWidth: 100 }}>{sortHeader('fuelStart', 'Начальный уровень Топлива')}</th>
                 <th style={{ minWidth: 100 }}>{sortHeader('fuelEnd', 'Конечный уровень Топлива')}</th>
-                <th style={{ minWidth: 100 }}>{sortHeader('fuelFilled', 'Заправлено по ППР')}</th>
+                <th style={{ minWidth: 100 }}>{sortHeader('fuelFilled', 'Заправлено')}</th>
                 <th style={{ minWidth: 90 }}>{sortHeader('consumption', 'Расход топлива, л')}</th>
                 <th style={{ minWidth: 90 }}>{sortHeader('per100', 'Расход л/100км по одометру')}</th>
                 <th style={{ minWidth: 80 }}>{sortHeader('deviationPct', 'К норме')}</th>

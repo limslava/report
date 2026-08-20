@@ -20,6 +20,7 @@ export type FleetVehicleItem = {
   model: VehicleModelItem | null;
   color: string;
   vin: string;
+  sor: string;
   manufactureYear: string;
   status: 'active' | 'repair' | 'archived';
   note: string;
@@ -32,6 +33,7 @@ export type TrailerItem = {
   id: string;
   location: FleetLocation;
   plate: string;
+  kind: '' | 'auto' | 'container';
   brand: string;
   axles: string;
   footage: string;
@@ -103,9 +105,15 @@ export type DirectoryOptions = {
   employees: Array<{ fullName: string; position: string }>;
   vehicles: string[];
   trailers: string[];
+  /** типы прицепов для фильтрации подсказок по разделам графика */
+  trailerOptions?: Array<{ plate: string; kind: '' | 'auto' | 'container' }>;
 };
 export const getDirectoryOptions = (location: FleetLocation) =>
   api.get<DirectoryOptions>('/directories/options', { params: { location } });
+
+/** Экспорт вкладки справочника в Excel; пустой ids — выгрузить всех. */
+export const exportDirectoryExcel = (tab: 'drivers' | 'vehicles' | 'trailers' | 'models', location: FleetLocation, ids: string[]) =>
+  api.post('/directories/export', { tab, location, ids }, { responseType: 'blob' });
 
 // Топливо
 export type FuelRow = {

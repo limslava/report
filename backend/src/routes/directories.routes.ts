@@ -11,6 +11,7 @@ import {
 } from '../constants/directories';
 import {
   bootstrapDirectoriesFromSchedules,
+  exportDirectory,
   getDirectoryOptions,
   deleteEmployee,
   deleteTrailer,
@@ -77,6 +78,9 @@ router.get(
   ),
   asyncHandler(getDirectoryOptions)
 );
+
+// экспорт: водители — только справочные роли (проверка в контроллере), остальное — и роли топлива
+router.post('/export', authorizeRole(...FLEET_VIEW_ROLES), asyncHandler(exportDirectory));
 
 router.post('/bootstrap-from-schedules', authorizeRole('admin'), asyncHandler(bootstrapDirectoriesFromSchedules));
 

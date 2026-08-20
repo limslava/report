@@ -49,6 +49,10 @@ export class FleetVehicle {
   @Column({ type: 'varchar', length: 40, default: '' })
   vin!: string;
 
+  /** СОР — свидетельство о регистрации ТС. */
+  @Column({ type: 'varchar', length: 40, default: '' })
+  sor!: string;
+
   /** Год выпуска; текстом — как вводят (в фикс. карточку водителя не входит). */
   @Column({ name: 'manufacture_year', type: 'varchar', length: 10, default: '' })
   manufactureYear!: string;

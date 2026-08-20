@@ -15,6 +15,10 @@ export class Trailer {
   @Column({ type: 'varchar', length: 32 })
   plate!: string;
 
+  /** Тип прицепа: автовозный/контейнерный; пусто — не указан (необязательное). */
+  @Column({ type: 'varchar', length: 20, default: '' })
+  kind!: '' | 'auto' | 'container';
+
   /** Марка (Schmitz, Krone…) — пока свободный текст. */
   @Column({ type: 'varchar', length: 120, default: '' })
   brand!: string;
