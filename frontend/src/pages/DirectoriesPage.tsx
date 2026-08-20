@@ -49,6 +49,7 @@ import {
   updateTrailer,
   updateVehicleModel,
 } from '../services/directories.api';
+import { TableSortState, cycleSort, loadSortState, saveSortState, sortIndicator, sortRows } from '../utils/tableSort';
 import {
   canDeleteDirectoryEntryFrontend,
   canEditDirectoriesFrontend,
@@ -92,6 +93,20 @@ export default function DirectoriesPage() {
   const canDelete = canDeleteDirectoryEntryFrontend(user?.role, location);
   const [tab, setTab] = useState<TabKey>('drivers');
   const [feedback, setFeedback] = useState<Feedback>(null);
+
+  const sortStorageKey = `dir-sort-v1:${user?.id ?? 'anonymous'}`;
+  const [sortByTab, setSortByTab] = useState<Record<TabKey, TableSortState>>(() =>
+    loadSortState(sortStorageKey, { drivers: null, vehicles: null, trailers: null, models: null })
+  );
+  useEffect(() => saveSortState(sortStorageKey, sortByTab), [sortStorageKey, sortByTab]);
+  const toggleSort = (tabKey: TabKey, field: string) =>
+    setSortByTab((prev) => ({ ...prev, [tabKey]: cycleSort(prev[tabKey], field) }));
+  const sortHeader = (tabKey: TabKey, field: string, label: string) => (
+    <button type="button" className="ops-matrix__sort-btn" onClick={() => toggleSort(tabKey, field)}>
+      <span>{label}</span>
+      <span className={`ops-matrix__sort-indicator is-${sortIndicator(sortByTab[tabKey], field)}`} aria-hidden="true" />
+    </button>
+  );
 
   const [employees, setEmployees] = useState<EmployeeItem[]>([]);
   const [vehicles, setVehicles] = useState<FleetVehicleItem[]>([]);
@@ -205,7 +220,35 @@ export default function DirectoriesPage() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
 
-  const drivers = useMemo(() => employees.filter((e) => e.position === 'водитель'), [employees]);
+  const drivers = useMemo(
+    () =>
+      sortRows(
+        employees.filter((e) => e.position === 'водитель'),
+        sortByTab.drivers,
+        (row, field) => (row as unknown as Record<string, unknown>)[field]
+      ),
+    [employees, sortByTab.drivers]
+  );
+  const sortedVehicles = useMemo(
+    () =>
+      sortRows(vehicles, sortByTab.vehicles, (row, field) =>
+        field === 'modelLabel'
+          ? (row.model ? `${row.model.brand} ${row.model.name}`.trim() : '')
+          : (row as unknown as Record<string, unknown>)[field]
+      ),
+    [vehicles, sortByTab.vehicles]
+  );
+  const sortedTrailers = useMemo(
+    () => sortRows(trailers, sortByTab.trailers, (row, field) => (row as unknown as Record<string, unknown>)[field]),
+    [trailers, sortByTab.trailers]
+  );
+  const sortedModels = useMemo(
+    () =>
+      sortRows(models, sortByTab.models, (row, field) =>
+        field === 'label' ? `${row.brand} ${row.name}`.trim() : (row as unknown as Record<string, unknown>)[field]
+      ),
+    [models, sortByTab.models]
+  );
 
   const copyCard = async (employee: EmployeeItem) => {
     try {
@@ -446,12 +489,12 @@ export default function DirectoriesPage() {
             <table>
               <thead>
                 <tr>
-                  <th style={{ minWidth: 290, whiteSpace: "nowrap" }}>ФИО</th>
-                  <th style={{ minWidth: 130 }}>Телефон</th>
-                  <th style={{ minWidth: 120 }}>ВУ (номер)</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 110 }}>Дата выдачи ВУ</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 110 }}>Дата рождения</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>Статус</th>
+                  <th style={{ minWidth: 290, whiteSpace: "nowrap" }}>{sortHeader('drivers', 'fullName', 'ФИО')}</th>
+                  <th style={{ minWidth: 130 }}>{sortHeader('drivers', 'phone', 'Телефон')}</th>
+                  <th style={{ minWidth: 120 }}>{sortHeader('drivers', 'licenseNumber', 'ВУ (номер)')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 110 }}>{sortHeader('drivers', 'licenseIssueDate', 'Дата выдачи ВУ')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 110 }}>{sortHeader('drivers', 'birthDate', 'Дата рождения')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>{sortHeader('drivers', 'status', 'Статус')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 80 }}>Карточка</th>
                 </tr>
               </thead>
@@ -495,18 +538,18 @@ export default function DirectoriesPage() {
             <table>
               <thead>
                 <tr>
-                  <th style={{ minWidth: 110 }}>Г/Н ТС</th>
-                  <th style={{ minWidth: 170 }}>Тип ТС</th>
-                  <th style={{ minWidth: 150 }}>Модель</th>
-                  <th style={{ minWidth: 90 }}>Цвет</th>
-                  <th style={{ minWidth: 140 }}>VIN</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>Год выпуска</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>Статус</th>
+                  <th style={{ minWidth: 110 }}>{sortHeader('vehicles', 'plate', 'Г/Н ТС')}</th>
+                  <th style={{ minWidth: 170 }}>{sortHeader('vehicles', 'vehicleKind', 'Тип ТС')}</th>
+                  <th style={{ minWidth: 150 }}>{sortHeader('vehicles', 'modelLabel', 'Модель')}</th>
+                  <th style={{ minWidth: 90 }}>{sortHeader('vehicles', 'color', 'Цвет')}</th>
+                  <th style={{ minWidth: 140 }}>{sortHeader('vehicles', 'vin', 'VIN')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>{sortHeader('vehicles', 'manufactureYear', 'Год выпуска')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>{sortHeader('vehicles', 'status', 'Статус')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 70 }}>Копия</th>
                 </tr>
               </thead>
               <tbody>
-                {vehicles.map((vehicle) => (
+                {sortedVehicles.map((vehicle) => (
                   <tr
                     key={vehicle.id}
                     onDoubleClick={() => {
@@ -562,17 +605,17 @@ export default function DirectoriesPage() {
             <table>
               <thead>
                 <tr>
-                  <th style={{ minWidth: 130 }}>Номер</th>
-                  <th style={{ minWidth: 130 }}>Марка</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 70 }}>Оси</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 100 }}>Футовость</th>
-                  <th style={{ minWidth: 200 }}>Примечание</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>Статус</th>
+                  <th style={{ minWidth: 130 }}>{sortHeader('trailers', 'plate', 'Номер')}</th>
+                  <th style={{ minWidth: 130 }}>{sortHeader('trailers', 'brand', 'Марка')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 70 }}>{sortHeader('trailers', 'axles', 'Оси')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 100 }}>{sortHeader('trailers', 'footage', 'Футовость')}</th>
+                  <th style={{ minWidth: 200 }}>{sortHeader('trailers', 'note', 'Примечание')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>{sortHeader('trailers', 'status', 'Статус')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 70 }}>Копия</th>
                 </tr>
               </thead>
               <tbody>
-                {trailers.map((trailer) => (
+                {sortedTrailers.map((trailer) => (
                   <tr key={trailer.id} onDoubleClick={() => setTrailerEdit(trailer)}>
                     <td className="fuel-cell--sticky">{trailer.plate}</td>
                     <td className="fuel-cell--left">{trailer.brand || '—'}</td>
@@ -648,15 +691,15 @@ export default function DirectoriesPage() {
               <table>
                 <thead>
                   <tr>
-                    <th style={{ minWidth: 220 }}>Марка / модель</th>
-                    <th className="fuel-cell--center" style={{ minWidth: 140 }}>Норма зима, л/100км</th>
-                    <th className="fuel-cell--center" style={{ minWidth: 140 }}>Норма лето, л/100км</th>
-                    <th className="fuel-cell--center" style={{ minWidth: 80 }}>Машин</th>
+                    <th style={{ minWidth: 220 }}>{sortHeader('models', 'label', 'Марка / модель')}</th>
+                    <th className="fuel-cell--center" style={{ minWidth: 140 }}>{sortHeader('models', 'fuelNormWinter', 'Норма зима, л/100км')}</th>
+                    <th className="fuel-cell--center" style={{ minWidth: 140 }}>{sortHeader('models', 'fuelNormSummer', 'Норма лето, л/100км')}</th>
+                    <th className="fuel-cell--center" style={{ minWidth: 80 }}>{sortHeader('models', 'vehicleCount', 'Машин')}</th>
                     <th className="fuel-cell--center" style={{ minWidth: 70 }}>Копия</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {models.map((model) => (
+                  {sortedModels.map((model) => (
                     <tr key={model.id} onDoubleClick={canManageNorms ? () => setModelEdit(model) : undefined}>
                       <td className="fuel-cell--sticky">{`${model.brand} ${model.name}`.trim()}</td>
                       <td className="fuel-cell--center">{model.fuelNormWinter ?? '—'}</td>
