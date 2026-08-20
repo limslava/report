@@ -27,6 +27,10 @@
   - Permissions: KTK managers are now read-only (view + copy, cards open
     disabled); deletion extended to KTK heads for their own region (HR keeps
     editing but cannot delete); enforced on both backend and frontend.
+- Auto carrier schedules
+  - «Прицеп» column extended to auto carrier schedules (2026-08-18): grid
+    column, add/edit dialogs with directory suggestions, Excel export;
+    driver card copy from schedule picks the trailer up automatically.
 - Container schedules
   - New «Прицеп» column (containers only), shared across both drivers of a
     rig, with directory suggestions in add/edit dialogs and both Excel exports.

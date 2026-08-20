@@ -802,7 +802,7 @@ export default function OperationsPreview() {
     }
   }, [selectedCell, selectedCellInCurrentView]);
   // Колонка «Прицеп» — только в графике контейнеровозов
-  const showTrailerColumn = !isPersonnelSection && filter === 'Контейнеры';
+  const showTrailerColumn = !isPersonnelSection && (filter === 'Контейнеры' || filter === 'Авто');
   const dayColumnStart = 5;
   const totalColumnIndex = dayColumnStart + monthDays.length;
   const currentScopeKey = `${effectiveMode}|${monthValue}` as OverrideScopeKey;
@@ -3579,7 +3579,7 @@ export default function OperationsPreview() {
                 />
               </label>
             )}
-            {addDepartment === 'Контейнеры' && (
+            {(addDepartment === 'Контейнеры' || addDepartment === 'Авто') && (
               <label className="ops-control">
                 <span>Прицеп</span>
                 <input
@@ -3627,7 +3627,7 @@ export default function OperationsPreview() {
                       name,
                       secondName: isPersonnelSection ? undefined : secondName || undefined,
                       plate: isPersonnelSection ? '' : plate || '',
-                      trailer: addDepartment === 'Контейнеры' ? newPerson.trailer.trim() || undefined : undefined,
+                      trailer: addDepartment === 'Контейнеры' || addDepartment === 'Авто' ? newPerson.trailer.trim() || undefined : undefined,
                       department: addDepartment,
                     },
                   ]);
@@ -3753,7 +3753,7 @@ export default function OperationsPreview() {
                     onChange={(event) => setEditPerson((prev) => (prev ? { ...prev, plate: event.target.value } : prev))}
                   />
                 </label>
-                {editPerson.department === 'Контейнеры' && (
+                {(editPerson.department === 'Контейнеры' || editPerson.department === 'Авто') && (
                   <label className="ops-control">
                     <span>Прицеп</span>
                     <input
