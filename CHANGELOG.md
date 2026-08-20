@@ -35,6 +35,11 @@
   - Fuel column «Заправлено по ППР» renamed to «Заправлено» (UI and exports).
   - Sortable headers in all directory tabs and fuel table (asc/desc/default,
     persisted per user); adaptive toolbar buttons and selects.
+- Directories: schedule-usage indicator (option A)
+  - Vehicles and trailers tables got a sortable «В графике» column: green
+    pill when the unit is used in the current month schedule (containers or
+    auto carriers), tooltip shows the section and driver; grey «свободен»
+    otherwise. Computed on the backend from the schedule state.
 - Auto carrier schedules
   - «Прицеп» column extended to auto carrier schedules (2026-08-18): grid
     column, add/edit dialogs with directory suggestions, Excel export;

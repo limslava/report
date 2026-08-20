@@ -134,12 +134,16 @@ const resolveModelByLabel = async (label: string): Promise<VehicleModel> => {
 
 export const listVehicles = async (req: Request, res: Response) => {
   const location = requireFleetViewLocation(req, req.query.location);
-  const vehicles = await vehicleRepo.find({
-    where: { location },
-    relations: { model: true },
-    order: { plate: 'ASC' },
-  });
-  res.json(vehicles);
+  const [vehicles, usage] = await Promise.all([
+    vehicleRepo.find({ where: { location }, relations: { model: true }, order: { plate: 'ASC' } }),
+    loadScheduleUsage(location),
+  ]);
+  res.json(
+    vehicles.map((vehicle) => ({
+      ...vehicle,
+      scheduleUsage: usage.vehicles.get(normalizePlateKey(vehicle.plate)) ?? null,
+    }))
+  );
 };
 
 export const saveVehicle = async (req: Request, res: Response) => {
@@ -191,7 +195,16 @@ export const deleteVehicle = async (req: Request, res: Response) => {
 
 export const listTrailers = async (req: Request, res: Response) => {
   const location = requireFleetViewLocation(req, req.query.location);
-  res.json(await trailerRepo.find({ where: { location }, order: { plate: 'ASC' } }));
+  const [trailers, usage] = await Promise.all([
+    trailerRepo.find({ where: { location }, order: { plate: 'ASC' } }),
+    loadScheduleUsage(location),
+  ]);
+  res.json(
+    trailers.map((trailer) => ({
+      ...trailer,
+      scheduleUsage: usage.trailers.get(normalizePlateKey(trailer.plate)) ?? null,
+    }))
+  );
 };
 
 export const saveTrailer = async (req: Request, res: Response) => {
@@ -346,12 +359,47 @@ type ScheduleRigRow = {
   secondName?: string;
   plate?: string;
   trailer?: string;
+  department?: string;
 };
 
 const prevMonth = (monthValue: string): string => {
   const [year, month] = monthValue.split('-').map(Number);
   const date = new Date(Date.UTC(year, month - 2, 1));
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+};
+
+export type ScheduleUsage = { section: string; driverName: string };
+
+const normalizePlateKey = (value: string | undefined | null): string =>
+  (value ?? '').replace(/\s+/g, '').toUpperCase();
+
+/**
+ * Занятость в текущем графике (индикация в справочниках, решение 2026-08-19,
+ * вариант А): машина/прицеп считается занятой, если встречается в строке
+ * контейнеровозов или автовозов текущего месяца (при пустом — предыдущего).
+ */
+const loadScheduleUsage = async (
+  location: FleetLocation
+): Promise<{ vehicles: Map<string, ScheduleUsage>; trailers: Map<string, ScheduleUsage> }> => {
+  const usage = { vehicles: new Map<string, ScheduleUsage>(), trailers: new Map<string, ScheduleUsage>() };
+  const row = await previewRepo.findOne({ where: { scopeKey: SCHEDULE_SCOPE_BY_DIRECTORY_LOCATION[location] } });
+  if (!row) return usage;
+  const payload = (row.payload ?? {}) as { state?: { peopleByMonth?: Record<string, ScheduleRigRow[]> }; peopleByMonth?: Record<string, ScheduleRigRow[]> };
+  const byMonth = payload.state?.peopleByMonth ?? payload.peopleByMonth ?? {};
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const people = (byMonth[currentMonth]?.length ? byMonth[currentMonth] : byMonth[prevMonth(currentMonth)]) ?? [];
+  for (const person of people) {
+    const department = person.department ?? '';
+    if (department !== 'Контейнеры' && department !== 'Авто') continue;
+    const section = department === 'Авто' ? 'Автовозы' : 'Контейнеровозы';
+    const driverName = (person.name ?? '').trim() || (person.secondName ?? '').trim();
+    const plateKey = normalizePlateKey(person.plate);
+    if (plateKey && !usage.vehicles.has(plateKey)) usage.vehicles.set(plateKey, { section, driverName });
+    const trailerKey = normalizePlateKey(person.trailer);
+    if (trailerKey && !usage.trailers.has(trailerKey)) usage.trailers.set(trailerKey, { section, driverName });
+  }
+  return usage;
 };
 
 /**
