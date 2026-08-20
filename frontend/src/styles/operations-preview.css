@@ -83,19 +83,12 @@
 }
 
 .ops-btn--download {
-  width: 152.23px;
-  height: 36.5px;
-  min-height: 36.5px;
-  padding: 6px 12px;
+  /* размер как у остальных .ops-btn — фиксированную ширину убрали,
+     чтобы кнопка ужималась вместе со всеми (автоподгон) */
   border-color: #90caf9;
   background: #fff;
   color: #1976d2;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   white-space: nowrap;
-  line-height: 1;
-  letter-spacing: 0;
 }
 
 .ops-btn--download:disabled {
@@ -1303,5 +1296,54 @@
     font-size: 10px;
     padding: 3px 6px;
     min-height: 26px;
+  }
+}
+
+/* ─── Адаптивные селекты панелей (Год/Месяц/Режим/Город и т.п.) ───
+   Ужимаются ступенями синхронно с кнопками. Диалоги не затрагиваются —
+   они рендерятся вне .ops-preview. */
+@media (max-width: 1720px) {
+  .ops-preview .MuiPaper-root .MuiTextField-root .MuiInputBase-root {
+    height: 38px !important;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 1560px) {
+  .ops-preview .MuiPaper-root .MuiTextField-root {
+    max-width: 140px !important;
+  }
+  .ops-preview .MuiPaper-root .MuiTextField-root .MuiInputBase-root {
+    height: 34px !important;
+    font-size: 12px;
+  }
+  .ops-preview .MuiPaper-root .MuiTextField-root .MuiInputLabel-root {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 1330px) {
+  .ops-preview .MuiPaper-root .MuiTextField-root {
+    max-width: 122px !important;
+  }
+  .ops-preview .MuiPaper-root .MuiTextField-root .MuiInputBase-root {
+    height: 30px !important;
+    font-size: 11px;
+  }
+  .ops-preview .MuiPaper-root .MuiTextField-root .MuiInputLabel-root {
+    font-size: 10.5px;
+  }
+  .ops-preview .MuiPaper-root .MuiTextField-root .MuiSelect-select {
+    padding-right: 24px !important;
+  }
+}
+
+@media (max-width: 1160px) {
+  .ops-preview .MuiPaper-root .MuiTextField-root {
+    max-width: 106px !important;
+  }
+  .ops-preview .MuiPaper-root .MuiTextField-root .MuiInputBase-root {
+    height: 27px !important;
+    font-size: 10px;
   }
 }
