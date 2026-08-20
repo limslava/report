@@ -1,7 +1,9 @@
 /* График «Топливо» — в стилистике ops-matrix (график работы) */
 
 .fuel-matrix {
-  overflow-x: auto;
+  /* свой скролл по вертикали, как в графиках: липкая шапка всегда видна */
+  overflow: auto;
+  max-height: calc(100dvh - 215px);
   border-radius: 4px;
   border: 1px solid #7f8da8;
   background: #fff;
