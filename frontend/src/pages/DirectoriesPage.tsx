@@ -64,6 +64,15 @@ import '../styles/fuel.css';
 const LOCATION_LABELS: Record<FleetLocation, string> = { vvo: 'Владивосток', mow: 'Москва' };
 const TRAILER_KIND_LABELS: Record<string, string> = { auto: 'Автовозный', container: 'Контейнерный' };
 const trailerKindLabel = (kind: string): string => TRAILER_KIND_LABELS[kind] ?? '';
+
+const usagePill = (usage: { section: string; driverName: string } | null | undefined) =>
+  usage ? (
+    <Tooltip title={`${usage.section}${usage.driverName ? ` · ${usage.driverName}` : ''}`}>
+      <span className="dir-status dir-status--ok">в графике</span>
+    </Tooltip>
+  ) : (
+    <span className="dir-status dir-status--off">свободен</span>
+  );
 const MONTH_GENITIVE = [
   'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
   'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
@@ -248,14 +257,20 @@ export default function DirectoriesPage() {
       sortRows(vehicles, sortByTab.vehicles, (row, field) =>
         field === 'modelLabel'
           ? (row.model ? `${row.model.brand} ${row.model.name}`.trim() : '')
-          : (row as unknown as Record<string, unknown>)[field]
+          : field === 'scheduleUsage'
+            ? (row.scheduleUsage ? 'в графике' : 'свободен')
+            : (row as unknown as Record<string, unknown>)[field]
       ),
     [vehicles, sortByTab.vehicles]
   );
   const sortedTrailers = useMemo(
     () =>
       sortRows(trailers, sortByTab.trailers, (row, field) =>
-        field === 'kind' ? trailerKindLabel(row.kind) : (row as unknown as Record<string, unknown>)[field]
+        field === 'kind'
+          ? trailerKindLabel(row.kind)
+          : field === 'scheduleUsage'
+            ? (row.scheduleUsage ? 'в графике' : 'свободен')
+            : (row as unknown as Record<string, unknown>)[field]
       ),
     [trailers, sortByTab.trailers]
   );
@@ -655,6 +670,7 @@ export default function DirectoriesPage() {
                   <th style={{ minWidth: 140 }}>{sortHeader('vehicles', 'vin', 'VIN')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 90 }}>{sortHeader('vehicles', 'manufactureYear', 'Год выпуска')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 90 }}>{sortHeader('vehicles', 'status', 'Статус')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 100 }}>{sortHeader('vehicles', 'scheduleUsage', 'В графике')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 70 }}>Копия</th>
                 </tr>
               </thead>
@@ -679,6 +695,7 @@ export default function DirectoriesPage() {
                         {vehicle.status === 'active' ? 'в работе' : vehicle.status === 'repair' ? 'ремонт' : 'архив'}
                       </span>
                     </td>
+                    <td className="fuel-cell--center">{usagePill(vehicle.scheduleUsage)}</td>
                     <td className="fuel-cell--center dir-actions">
                       <Tooltip title="Скопировать данные техники">
                         <IconButton
@@ -703,7 +720,7 @@ export default function DirectoriesPage() {
                 ))}
                 {vehicles.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="fuel-empty">Справочник пуст — техника появится из графиков или добавьте вручную</td>
+                    <td colSpan={9} className="fuel-empty">Справочник пуст — техника появится из графиков или добавьте вручную</td>
                   </tr>
                 )}
               </tbody>
@@ -724,6 +741,7 @@ export default function DirectoriesPage() {
                   <th className="fuel-cell--center" style={{ minWidth: 100 }}>{sortHeader('trailers', 'footage', 'Футовость')}</th>
                   <th style={{ minWidth: 200 }}>{sortHeader('trailers', 'note', 'Примечание')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 90 }}>{sortHeader('trailers', 'status', 'Статус')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 100 }}>{sortHeader('trailers', 'scheduleUsage', 'В графике')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 70 }}>Копия</th>
                 </tr>
               </thead>
@@ -742,6 +760,7 @@ export default function DirectoriesPage() {
                         {trailer.status === 'active' ? 'в работе' : trailer.status === 'repair' ? 'ремонт' : 'архив'}
                       </span>
                     </td>
+                    <td className="fuel-cell--center">{usagePill(trailer.scheduleUsage)}</td>
                     <td className="fuel-cell--center dir-actions">
                       <Tooltip title="Скопировать данные прицепа">
                         <IconButton
@@ -764,7 +783,7 @@ export default function DirectoriesPage() {
                 ))}
                 {trailers.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="fuel-empty">Справочник пуст — добавьте прицепы</td>
+                    <td colSpan={9} className="fuel-empty">Справочник пуст — добавьте прицепы</td>
                   </tr>
                 )}
               </tbody>
