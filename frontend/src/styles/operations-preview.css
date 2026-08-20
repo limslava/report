@@ -1254,3 +1254,54 @@
   margin-bottom: 10px;
   font-size: 12.5px;
 }
+
+/* ─── Адаптивные кнопки панелей (графики, топливо, справочники) ───
+   На узких экранах кнопки компактнеют (шрифт/отступы), а не переносятся
+   на вторую строку. Ступени подобраны под панель контейнеровозов с пятью
+   кнопками — самую длинную. */
+@media (max-width: 1720px) {
+  .ops-preview .ops-btn {
+    font-size: 13px;
+    padding: 6px 12px;
+  }
+}
+
+@media (max-width: 1560px) {
+  .ops-preview .ops-btn {
+    font-size: 11px;
+    padding: 4px 7px;
+    min-height: 30px;
+    letter-spacing: 0.01em;
+    /* инлайновые marginRight у кнопок пережимаем тоже */
+    margin-right: 4px !important;
+  }
+  .ops-preview .ops-btn:last-child {
+    margin-right: 0 !important;
+  }
+  /* панель фильтров: плотнее зазор между селектами и блоком кнопок */
+  .ops-preview .MuiPaper-root > .MuiBox-root {
+    gap: 8px !important;
+  }
+}
+
+@media (max-width: 1330px) {
+  .ops-preview .ops-btn,
+  .fuel-page .ops-btn,
+  .dir-page .ops-btn {
+    font-size: 10.5px;
+    padding: 4px 7px;
+    min-height: 28px;
+    letter-spacing: 0;
+    border-radius: 6px;
+  }
+}
+
+@media (max-width: 1160px) {
+  .ops-preview .ops-btn,
+  .fuel-page .ops-btn,
+  .dir-page .ops-btn {
+    font-size: 10px;
+    padding: 3px 6px;
+    min-height: 26px;
+  }
+}
