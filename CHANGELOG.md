@@ -27,6 +27,14 @@
   - Permissions: KTK managers are now read-only (view + copy, cards open
     disabled); deletion extended to KTK heads for their own region (HR keeps
     editing but cannot delete); enforced on both backend and frontend.
+- Directories & fuel (feedback round 2)
+  - Trailer type (optional: auto/container) with column and filtering of
+    schedule suggestions by section; vehicle card got «СОР» field.
+  - Excel export of every directory tab with row selection (empty = all);
+    driver export is audit-logged.
+  - Fuel column «Заправлено по ППР» renamed to «Заправлено» (UI and exports).
+  - Sortable headers in all directory tabs and fuel table (asc/desc/default,
+    persisted per user); adaptive toolbar buttons and selects.
 - Auto carrier schedules
   - «Прицеп» column extended to auto carrier schedules (2026-08-18): grid
     column, add/edit dialogs with directory suggestions, Excel export;

@@ -803,6 +803,13 @@ export default function OperationsPreview() {
   }, [selectedCell, selectedCellInCurrentView]);
   // Колонка «Прицеп» — только в графике контейнеровозов
   const showTrailerColumn = !isPersonnelSection && (filter === 'Контейнеры' || filter === 'Авто');
+
+  const trailerPlatesForDepartment = (department: Department | undefined): string[] => {
+    const typed = directoryOptions.trailerOptions;
+    if (!typed?.length) return directoryOptions.trailers;
+    const kind = department === 'Авто' ? 'auto' : 'container';
+    return typed.filter((option) => !option.kind || option.kind === kind).map((option) => option.plate);
+  };
   const dayColumnStart = 5;
   const totalColumnIndex = dayColumnStart + monthDays.length;
   const currentScopeKey = `${effectiveMode}|${monthValue}` as OverrideScopeKey;
@@ -3592,7 +3599,7 @@ export default function OperationsPreview() {
               </label>
             )}
             <datalist id="ops-trailer-options">
-              {directoryOptions.trailers.map((plate) => (
+              {trailerPlatesForDepartment(addDepartment).map((plate) => (
                 <option key={plate} value={plate} />
               ))}
             </datalist>
@@ -3767,7 +3774,7 @@ export default function OperationsPreview() {
                   </label>
                 )}
                 <datalist id="ops-edit-trailer-options">
-                  {directoryOptions.trailers.map((plate) => (
+                  {trailerPlatesForDepartment(editPerson.department).map((plate) => (
                     <option key={plate} value={plate} />
                   ))}
                 </datalist>
