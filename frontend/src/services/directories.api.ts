@@ -11,6 +11,8 @@ export type VehicleModelItem = {
   vehicleCount?: number;
 };
 
+export type ScheduleUsage = { section: string; driverName: string };
+
 export type FleetVehicleItem = {
   id: string;
   location: FleetLocation;
@@ -24,6 +26,8 @@ export type FleetVehicleItem = {
   manufactureYear: string;
   status: 'active' | 'repair' | 'archived';
   note: string;
+  /** занятость в текущем графике (только чтение, считает бэкенд) */
+  scheduleUsage?: ScheduleUsage | null;
 };
 
 /** При сохранении техники модель передаётся текстом — бэкенд найдёт существующую или создаст новую. */
@@ -39,6 +43,7 @@ export type TrailerItem = {
   footage: string;
   status: 'active' | 'repair' | 'archived';
   note: string;
+  scheduleUsage?: ScheduleUsage | null;
 };
 
 export type EmployeeItem = {
