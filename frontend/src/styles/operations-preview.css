@@ -4,7 +4,10 @@
   flex-direction: column;
   gap: 20px;
   background: #f6f7fb;
-  min-height: 100%;
+  /* страница ровно в высоту окна: внешнего скролла нет, таблица занимает
+     всё свободное место и скроллится внутри (решение 2026-08-20) */
+  height: calc(100dvh - 80px);
+  min-height: 420px;
   color: #1b1f2a;
 }
 
@@ -180,6 +183,10 @@
 }
 
 .ops-preview__matrix {
+  /* тянется на свободное место, ужимается при длинном графике */
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
   min-height: 0;
 }
 
@@ -286,15 +293,14 @@
 .ops-matrix {
   /* собственный скролл по обеим осям: шапка с днями (sticky) всегда видна,
      панель кнопок не уезжает, горизонтальный скроллбар всегда под рукой.
-     Раньше был overflow-y: visible — длинный график крутился страницей,
-     а sticky-шапка из-за overflow-x не работала вовсе. */
+     Высоту ограничивает flex-родитель .ops-preview__matrix. */
   overflow: auto;
   border-radius: 4px;
   border: 1px solid #7f8da8;
   background: #fff;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  flex: 0 1 auto;
   min-height: 0;
-  max-height: calc(100dvh - 235px);
 }
 
 .ops-matrix--fit {
