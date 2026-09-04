@@ -227,7 +227,7 @@ export default function PrintFormsPage() {
       value={value}
       onChange={(_event, item) => onChange(item)}
       renderInput={(params) => <TextField {...params} label={label} fullWidth />}
-      sx={{ minWidth: 280 }}
+      sx={{ flex: '2 1 220px', minWidth: 160 }}
     />
   );
 
@@ -243,7 +243,7 @@ export default function PrintFormsPage() {
       value={value}
       onChange={(_event, item) => onChange(item)}
       renderInput={(params) => <TextField {...params} label={label} fullWidth />}
-      sx={{ minWidth: 180 }}
+      sx={{ flex: '1 1 140px', minWidth: 110 }}
     />
   );
 
@@ -255,7 +255,7 @@ export default function PrintFormsPage() {
       value={value}
       onChange={(event) => onChange(event.target.value)}
       InputLabelProps={{ shrink: true }}
-      sx={{ width: 170 }}
+      sx={{ flex: '0 1 160px', minWidth: 125 }}
     />
   );
 
@@ -268,7 +268,7 @@ export default function PrintFormsPage() {
               <TextField
                 select size="small" label="Город" value={location}
                 onChange={(event) => setLocation(event.target.value as FleetLocation)}
-                sx={{ width: 170 }}
+                sx={{ flex: '0 1 150px', minWidth: 110 }}
               >
                 {allowedLocations.map((value) => (
                   <MenuItem key={value} value={value}>{LOCATION_LABELS[value]}</MenuItem>
@@ -278,7 +278,7 @@ export default function PrintFormsPage() {
             <TextField
               select size="small" label="Форма" value={templateKey}
               onChange={(event) => setTemplateKey(event.target.value)}
-              sx={{ minWidth: 360 }}
+              sx={{ flex: '2 1 280px', minWidth: 200, maxWidth: 440 }}
             >
               {(meta?.templates ?? []).map((item) => (
                 <MenuItem key={item.key} value={item.key}>{item.label}</MenuItem>
@@ -290,12 +290,8 @@ export default function PrintFormsPage() {
               </button>
             </Box>
           </Box>
-        </Paper>
-      </section>
 
-      <section>
-        <Paper sx={{ p: 2 }}>
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Box sx={{ mt: 1.5, display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
             {isPoa && (
               <>
                 {employeeField(employee, setEmployee, 'Сотрудник (из справочника)', employees)}
@@ -304,7 +300,7 @@ export default function PrintFormsPage() {
                   select size="small" label={templateKey === 'poa_terminal_vehicle' ? 'Терминал' : 'Склад / контрагент'}
                   value={counterparty}
                   onChange={(event) => setCounterparty(event.target.value)}
-                  sx={{ minWidth: 300 }}
+                  sx={{ flex: '2 1 220px', minWidth: 170 }}
                 >
                   {(meta?.counterparties ?? []).map((item) => (
                     <MenuItem key={item.label} value={item.label}>{item.label}</MenuItem>
@@ -314,7 +310,7 @@ export default function PrintFormsPage() {
                   size="small" label={templateKey === 'poa_pl' ? 'Номер (пусто — б/н)' : 'Номер'}
                   value={formNumber}
                   onChange={(event) => setFormNumber(event.target.value.replace(/[^\d]/g, ''))}
-                  sx={{ width: 140 }}
+                  sx={{ flex: '0 1 120px', minWidth: 90 }}
                 />
                 {dateField('Дата выдачи', issueDate, setIssueDate)}
                 {templateKey === 'poa_terminal_vehicle' && dateField('Действительна с', validFrom, setValidFrom)}
@@ -333,12 +329,12 @@ export default function PrintFormsPage() {
                   size="small" label="Договор аккредитации (№ и дата)" value={contractLine}
                   onChange={(event) => setContractLine(event.target.value)}
                   placeholder="№ АТ-ВМПП-2026/86 от «10» декабря 2025 г."
-                  sx={{ minWidth: 380 }}
+                  sx={{ flex: '2 1 280px', minWidth: 200 }}
                 />
                 <TextField
                   size="small" label="Автоперевозчик" value={carrierName}
                   onChange={(event) => setCarrierName(event.target.value)}
-                  sx={{ minWidth: 220 }}
+                  sx={{ flex: '1 1 180px', minWidth: 140 }}
                 />
               </>
             )}
@@ -349,7 +345,7 @@ export default function PrintFormsPage() {
                 value={multiEmployees}
                 onChange={(_event, value) => setMultiEmployees(value)}
                 renderInput={(params) => <TextField {...params} label="Водители" />}
-                sx={{ minWidth: 420, flex: 1 }}
+                sx={{ flex: '1 1 320px', minWidth: 220 }}
               />
             )}
             {templateKey === 'carrier_vehicles' && (
@@ -359,7 +355,7 @@ export default function PrintFormsPage() {
                 value={multiVehicles}
                 onChange={(_event, value) => setMultiVehicles(value)}
                 renderInput={(params) => <TextField {...params} label="ТС (пусто — вся активная техника)" />}
-                sx={{ minWidth: 420, flex: 1 }}
+                sx={{ flex: '1 1 320px', minWidth: 220 }}
               />
             )}
           </Box>

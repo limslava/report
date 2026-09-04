@@ -1372,3 +1372,21 @@
     font-size: 10px;
   }
 }
+
+/* ─── Печатные формы: одна панель, поля ужимаются флексом ───
+   Ступенчатые max-width селектов (выше) здесь мешают — ширину полей
+   задаёт flex-basis в разметке, а шрифты/высоты ужимаются общими
+   правилами .ops-preview. */
+.ops-preview.print-page .MuiPaper-root .MuiTextField-root {
+  max-width: none !important;
+}
+@media (max-width: 1560px) {
+  .ops-preview.print-page .MuiFormControlLabel-label {
+    font-size: 12px;
+  }
+}
+@media (max-width: 1330px) {
+  .ops-preview.print-page .MuiFormControlLabel-label {
+    font-size: 11px;
+  }
+}
