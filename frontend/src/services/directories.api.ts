@@ -117,7 +117,7 @@ export const getDirectoryOptions = (location: FleetLocation) =>
   api.get<DirectoryOptions>('/directories/options', { params: { location } });
 
 /** Экспорт вкладки справочника в Excel; пустой ids — выгрузить всех. */
-export const exportDirectoryExcel = (tab: 'drivers' | 'vehicles' | 'trailers' | 'models', location: FleetLocation, ids: string[]) =>
+export const exportDirectoryExcel = (tab: 'drivers' | 'staff' | 'vehicles' | 'trailers' | 'models', location: FleetLocation, ids: string[]) =>
   api.post('/directories/export', { tab, location, ids }, { responseType: 'blob' });
 
 // Топливо

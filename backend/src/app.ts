@@ -15,6 +15,7 @@ import { financialPlanRouter } from './routes/financial-plan.routes';
 import { operationsPreviewRouter } from './routes/operations-preview.routes';
 import { directoriesRouter } from './routes/directories.routes';
 import { fuelRouter } from './routes/fuel.routes';
+import { printFormsRouter } from './routes/print-forms.routes';
 import { errorHandler } from './middleware/error-handler';
 import { logger } from './utils/logger';
 import { getAllowedCorsOrigins } from './config/env';
@@ -98,6 +99,7 @@ export function createApp() {
   app.use('/api/operations-preview', operationsPreviewRouter);
   app.use('/api/directories', directoriesRouter);
   app.use('/api/fuel', fuelRouter);
+  app.use('/api/print-forms', printFormsRouter);
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });

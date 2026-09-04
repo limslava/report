@@ -29,6 +29,7 @@ const OperationsScheduleReportsPage = lazy(() => import('./pages/OperationsSched
 const AutoTripDirectionsReportPage = lazy(() => import('./pages/AutoTripDirectionsReportPage'));
 const FuelPage = lazy(() => import('./pages/FuelPage'));
 const DirectoriesPage = lazy(() => import('./pages/DirectoriesPage'));
+const PrintFormsPage = lazy(() => import('./pages/PrintFormsPage'));
 
 function App() {
   const { token, user } = useAuthStore();
@@ -148,6 +149,16 @@ function App() {
               <RouteAccessGuard allow={canAccessDirectories(user?.role)}>
                 <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
                   <DirectoriesPage />
+                </Suspense>
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="print-forms"
+            element={(
+              <RouteAccessGuard allow={canAccessDirectories(user?.role)}>
+                <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
+                  <PrintFormsPage />
                 </Suspense>
               </RouteAccessGuard>
             )}

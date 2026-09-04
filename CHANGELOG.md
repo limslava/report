@@ -35,6 +35,16 @@
   - Fuel column «Заправлено по ППР» renamed to «Заправлено» (UI and exports).
   - Sortable headers in all directory tabs and fuel table (asc/desc/default,
     persisted per user); adaptive toolbar buttons and selects.
+- Print forms constructor (2026-09-04, staged first)
+  - New «Печатные формы» module for KTK regions: 6 templates reproducing the
+    approved samples — 3 powers of attorney (warehouse, PL terminal, terminal
+    with vehicle), 2 VMPP forms (vehicles+drivers request, drivers approval)
+    and the carrier vehicles Excel; data pulled from directories (drivers,
+    staff, vehicles incl. SOR/year).
+  - Journal of generated forms with per-year auto-numbering, re-download and
+    audit logging; own dependency-free DOCX builder.
+  - Directories got the «Сотрудники» tab back (non-drivers with free-form
+    position) — powers of attorney can be issued to any employee.
 - Directories: schedule-usage indicator (option A)
   - Vehicles and trailers tables got a sortable «В графике» column: green
     pill when the unit is used in the current month schedule (containers or

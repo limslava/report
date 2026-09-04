@@ -78,7 +78,7 @@ const MONTH_GENITIVE = [
   'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
 ];
 
-type TabKey = 'drivers' | 'vehicles' | 'trailers' | 'models';
+type TabKey = 'drivers' | 'staff' | 'vehicles' | 'trailers' | 'models';
 
 type Feedback = { severity: 'success' | 'error'; text: string } | null;
 
@@ -109,7 +109,7 @@ export default function DirectoriesPage() {
 
   const sortStorageKey = `dir-sort-v1:${user?.id ?? 'anonymous'}`;
   const [sortByTab, setSortByTab] = useState<Record<TabKey, TableSortState>>(() =>
-    loadSortState(sortStorageKey, { drivers: null, vehicles: null, trailers: null, models: null })
+    loadSortState(sortStorageKey, { drivers: null, staff: null, vehicles: null, trailers: null, models: null })
   );
   useEffect(() => saveSortState(sortStorageKey, sortByTab), [sortStorageKey, sortByTab]);
   const toggleSort = (tabKey: TabKey, field: string) =>
@@ -252,6 +252,15 @@ export default function DirectoriesPage() {
       ),
     [employees, sortByTab.drivers]
   );
+  const staff = useMemo(
+    () =>
+      sortRows(
+        employees.filter((e) => e.position !== 'водитель'),
+        sortByTab.staff,
+        (row, field) => (row as unknown as Record<string, unknown>)[field]
+      ),
+    [employees, sortByTab.staff]
+  );
   const sortedVehicles = useMemo(
     () =>
       sortRows(vehicles, sortByTab.vehicles, (row, field) =>
@@ -305,13 +314,15 @@ export default function DirectoriesPage() {
 
   const exportOptions = useMemo(() => {
     if (tab === 'drivers') return drivers.map((d) => ({ id: d.id, label: d.fullName }));
+    if (tab === 'staff') return staff.map((d) => ({ id: d.id, label: d.fullName }));
     if (tab === 'vehicles') return sortedVehicles.map((v) => ({ id: v.id, label: v.plate }));
     if (tab === 'trailers') return sortedTrailers.map((t) => ({ id: t.id, label: t.plate }));
     return sortedModels.map((m) => ({ id: m.id, label: `${m.brand} ${m.name}`.trim() }));
-  }, [tab, drivers, sortedVehicles, sortedTrailers, sortedModels]);
+  }, [tab, drivers, staff, sortedVehicles, sortedTrailers, sortedModels]);
 
   const TAB_EXPORT_LABELS: Record<TabKey, string> = {
     drivers: 'водители',
+    staff: 'сотрудники',
     vehicles: 'техника',
     trailers: 'прицепы',
     models: 'модели_и_нормы',
@@ -511,6 +522,7 @@ export default function DirectoriesPage() {
             >
               <Tab value="drivers" label={`Водители (${drivers.length})`} />
               <Tab value="vehicles" label={`Техника (${vehicles.length})`} />
+              <Tab value="staff" label={`Сотрудники (${staff.length})`} />
               <Tab value="trailers" label={`Прицепы (${trailers.length})`} />
               <Tab value="models" label={`Модели и нормы (${models.length})`} />
             </Tabs>
@@ -569,11 +581,11 @@ export default function DirectoriesPage() {
                   Наполнить из графиков
                 </button>
               )}
-              {tab === 'drivers' && canEdit && (
+              {(tab === 'drivers' || tab === 'staff') && canEdit && (
                 <button
                   type="button"
                   className="ops-btn ops-btn--add"
-                  onClick={() => setEmployeeEdit({ position: 'водитель', status: 'active' })}
+                  onClick={() => setEmployeeEdit({ position: tab === 'drivers' ? 'водитель' : '', status: 'active' })}
                 >
                   Добавить
                 </button>
@@ -650,6 +662,52 @@ export default function DirectoriesPage() {
                 {drivers.length === 0 && (
                   <tr>
                     <td colSpan={7} className="fuel-empty">Водителей пока нет — добавьте</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === 'staff' && (
+          <div className="dir-table">
+            <table>
+              <thead>
+                <tr>
+                  {exportMode && exportCheckboxHeader}
+                  <th style={{ minWidth: 290, whiteSpace: "nowrap" }}>{sortHeader('staff', 'fullName', 'ФИО')}</th>
+                  <th style={{ minWidth: 180 }}>{sortHeader('staff', 'position', 'Должность')}</th>
+                  <th style={{ minWidth: 130 }}>{sortHeader('staff', 'phone', 'Телефон')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 110 }}>{sortHeader('staff', 'birthDate', 'Дата рождения')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>{sortHeader('staff', 'status', 'Статус')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 80 }}>Карточка</th>
+                </tr>
+              </thead>
+              <tbody>
+                {staff.map((employee) => (
+                  <tr key={employee.id} onDoubleClick={() => setEmployeeEdit(employee)}>
+                    {exportMode && exportCheckboxCell(employee.id)}
+                    <td className="fuel-cell--sticky">{employee.fullName}</td>
+                    <td className="fuel-cell--left">{employee.position || '—'}</td>
+                    <td className="fuel-cell--center">{employee.phone || '—'}</td>
+                    <td className="fuel-cell--center">{formatDateDisplay(employee.birthDate)}</td>
+                    <td className="fuel-cell--center">
+                      <span className={`dir-status ${employee.status === 'active' ? 'dir-status--ok' : 'dir-status--off'}`}>
+                        {employee.status === 'active' ? 'работает' : 'уволен'}
+                      </span>
+                    </td>
+                    <td className="fuel-cell--center dir-actions">
+                      <Tooltip title="Скопировать данные сотрудника">
+                        <IconButton size="small" onClick={() => void copyCard(employee)}>
+                          <ContentCopy sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                    </td>
+                  </tr>
+                ))}
+                {staff.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="fuel-empty">Сотрудников пока нет — добавьте (для доверенностей не на водителей)</td>
                   </tr>
                 )}
               </tbody>
@@ -877,6 +935,7 @@ export default function DirectoriesPage() {
           <fieldset disabled={!canEdit} style={{ border: 0, margin: 0, padding: 0, display: 'contents' }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mt: 1 }}>
             {textField('ФИО', employeeEdit?.fullName, (value) => setEmployeeEdit((prev) => ({ ...prev, fullName: value })))}
+            {textField('Должность', employeeEdit?.position, (value) => setEmployeeEdit((prev) => ({ ...prev, position: value })))}
             {textField('Телефон', employeeEdit?.phone, (value) => setEmployeeEdit((prev) => ({ ...prev, phone: value })))}
             <TextField
               select size="small" label="Статус" fullWidth

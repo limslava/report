@@ -44,6 +44,7 @@ import {
   LocalShipping,
   ExpandLess,
   ExpandMore,
+  Print,
 } from '@mui/icons-material';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -308,6 +309,9 @@ const DashboardLayout = () => {
       : null,
     canAccessDirectories(user?.role)
       ? { key: 'directories', label: 'Справочники', icon: <FolderShared />, onClick: () => handleNavigate('/directories'), active: location.pathname.includes('/directories') }
+      : null,
+    canAccessDirectories(user?.role)
+      ? { key: 'print-forms', label: 'Печатные формы', icon: <Print />, onClick: () => handleNavigate('/print-forms'), active: location.pathname.includes('/print-forms') }
       : null,
     canAccessAdmin(user?.role)
       ? { key: 'admin', label: 'Администрирование', icon: <People />, onClick: () => handleNavigate('/admin'), active: location.pathname.includes('/admin') }
@@ -1045,6 +1049,7 @@ const DashboardLayout = () => {
               {location.pathname.includes('/settings') && 'Настройки'}
               {location.pathname.includes('/fuel') && 'Учёт топлива'}
               {location.pathname.includes('/directories') && 'Справочники'}
+              {location.pathname.includes('/print-forms') && 'Печатные формы'}
             </Typography>
           )}
           {isTechDashboardRoute && (
