@@ -263,7 +263,7 @@ export default function PrintFormsPage() {
     <div className="ops-preview print-page">
       <section className="ops-preview__controls">
         <Paper sx={{ p: 1.5 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
             {allowedLocations.length > 1 && (
               <TextField
                 select size="small" label="Город" value={location}
@@ -278,20 +278,12 @@ export default function PrintFormsPage() {
             <TextField
               select size="small" label="Форма" value={templateKey}
               onChange={(event) => setTemplateKey(event.target.value)}
-              sx={{ flex: '2 1 280px', minWidth: 200, maxWidth: 440 }}
+              sx={{ flex: '1.5 1 220px', minWidth: 180, maxWidth: 400 }}
             >
               {(meta?.templates ?? []).map((item) => (
                 <MenuItem key={item.key} value={item.key}>{item.label}</MenuItem>
               ))}
             </TextField>
-            <Box sx={{ ml: 'auto' }}>
-              <button type="button" className="ops-btn ops-btn--add" disabled={generating} onClick={() => void runGenerate()}>
-                {generating ? 'Формирование…' : `Скачать ${template?.kind === 'xlsx' ? 'Excel' : 'Word'}`}
-              </button>
-            </Box>
-          </Box>
-
-          <Box sx={{ mt: 1.5, display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
             {isPoa && (
               <>
                 {employeeField(employee, setEmployee, 'Сотрудник (из справочника)', employees)}
@@ -358,6 +350,11 @@ export default function PrintFormsPage() {
                 sx={{ flex: '1 1 320px', minWidth: 220 }}
               />
             )}
+            <Box sx={{ ml: 'auto' }}>
+              <button type="button" className="ops-btn ops-btn--add" disabled={generating} onClick={() => void runGenerate()}>
+                {generating ? 'Формирование…' : `Скачать ${template?.kind === 'xlsx' ? 'Excel' : 'Word'}`}
+              </button>
+            </Box>
           </Box>
 
           {templateKey === 'vmpp_vehicles_request' && (

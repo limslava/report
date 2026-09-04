@@ -1380,6 +1380,28 @@
 .ops-preview.print-page .MuiPaper-root .MuiTextField-root {
   max-width: none !important;
 }
+/* на узких экранах снимаем инлайновые min-width и запрещаем перенос,
+   чтобы панель осталась одним рядом — поля ужимаются пропорционально */
+@media (max-width: 1560px) {
+  .ops-preview.print-page .MuiPaper-root .MuiTextField-root,
+  .ops-preview.print-page .MuiPaper-root .MuiAutocomplete-root {
+    min-width: 0 !important;
+  }
+  .ops-preview.print-page .MuiPaper-root > .MuiBox-root {
+    flex-wrap: nowrap !important;
+  }
+  .ops-preview.print-page .MuiFormControlLabel-root {
+    flex: 0 0 auto;
+    margin-right: 0;
+  }
+  .ops-preview.print-page .MuiFormControlLabel-label {
+    white-space: nowrap;
+  }
+  .ops-preview.print-page .ops-btn {
+    white-space: nowrap;
+    flex: 0 0 auto;
+  }
+}
 @media (max-width: 1560px) {
   .ops-preview.print-page .MuiFormControlLabel-label {
     font-size: 12px;
