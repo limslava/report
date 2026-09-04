@@ -1,7 +1,9 @@
+import fs from 'fs';
+import path from 'path';
 import { Employee } from '../models/employee.model';
 import { FleetVehicle } from '../models/fleet-vehicle.model';
 import type { FleetLocation } from '../models/fleet-vehicle.model';
-import { DocxBlock, buildDocx, p, pRuns } from './docx-builder.service';
+import { DocxBlock, DocxParagraph, buildDocx, p, pRuns } from './docx-builder.service';
 
 /**
  * Печатные формы: шаблоны воспроизводят согласованные образцы из папки
@@ -114,12 +116,45 @@ const employeeIntroLine = (employee: Employee): string => {
   return parts.join(', ');
 };
 
-const headerBlocks = (org: PrintOrgSettings): DocxBlock[] => [
-  ...org.headerLines.map((line, index) =>
-    p(line, { align: 'center', size: index === 0 ? 12 : 10, bold: index === 0, spacingAfter: 1 })
-  ),
-  p('', { spacingAfter: 6 }),
+/** Логотип бланка: ищем как остальные ассеты — от cwd и от dist. */
+const LOGO_CANDIDATES = [
+  path.resolve(process.cwd(), 'assets', 'print-forms', 'simple-way-logo.png'),
+  path.resolve(process.cwd(), 'backend', 'assets', 'print-forms', 'simple-way-logo.png'),
+  path.resolve(__dirname, '..', '..', 'assets', 'print-forms', 'simple-way-logo.png'),
 ];
+
+let cachedLogo: Buffer | null | undefined;
+const loadLogo = (): Buffer | null => {
+  if (cachedLogo !== undefined) return cachedLogo;
+  const found = LOGO_CANDIDATES.find((candidate) => fs.existsSync(candidate));
+  cachedLogo = found ? fs.readFileSync(found) : null;
+  return cachedLogo;
+};
+
+/** Шапка-бланк как в образцах: логотип слева, реквизиты мелким кеглем справа. */
+const headerBlocks = (org: PrintOrgSettings): DocxBlock[] => {
+  const requisites: DocxParagraph[] = org.headerLines.map((line, index) =>
+    pRuns([{ text: line, bold: index === 0, size: 9 }], { align: 'right', spacingAfter: 0 })
+  );
+  const logo = loadLogo();
+  if (!logo) {
+    // без логотипа (ассет не нашёлся) — реквизиты столбцом справа
+    return [...requisites, p('', { spacingAfter: 6 })];
+  }
+  return [
+    {
+      kind: 'table',
+      borders: false,
+      rows: [
+        [
+          { image: { data: logo, widthCm: 5.8, heightCm: 3.78 }, widthPct: 45, align: 'left' },
+          { paragraphs: requisites, widthPct: 55 },
+        ],
+      ],
+    },
+    p('', { spacingAfter: 6 }),
+  ];
+};
 
 const vehicleLabel = (vehicle: FleetVehicle): string => {
   const model = vehicle.model ? `${vehicle.model.brand} ${vehicle.model.name}`.trim() : '';

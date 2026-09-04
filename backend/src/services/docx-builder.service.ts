@@ -26,8 +26,19 @@ export type DocxParagraph = {
   firstLineIndentCm?: number;
 };
 
+/** Встраиваемая картинка (PNG). Размер в сантиметрах. */
+export type DocxImage = {
+  data: Buffer;
+  widthCm: number;
+  heightCm: number;
+};
+
 export type DocxTableCell = {
-  runs: DocxRun[];
+  runs?: DocxRun[];
+  /** несколько абзацев в ячейке (взаимоисключимо с runs) */
+  paragraphs?: DocxParagraph[];
+  /** картинка в ячейке (взаимоисключимо с runs/paragraphs) */
+  image?: DocxImage;
   align?: 'left' | 'center' | 'right';
   /** ширина колонки в процентах (задаётся в первой строке) */
   widthPct?: number;
@@ -37,6 +48,8 @@ export type DocxTableCell = {
 export type DocxTable = {
   kind: 'table';
   rows: DocxTableCell[][];
+  /** рамки таблицы (по умолчанию есть; шапка-бланк — без рамок) */
+  borders?: boolean;
 };
 
 export type DocxBlock = DocxParagraph | DocxTable;
@@ -71,7 +84,33 @@ function renderParagraph(p: DocxParagraph): string {
   return `<w:p><w:pPr>${spacing}${indent}${align}</w:pPr>${runs}</w:p>`;
 }
 
-function renderTable(table: DocxTable): string {
+/** Реестр картинок пакета: renderImage регистрирует, buildDocx кладёт в zip. */
+type ImageRegistry = { entries: Array<{ relId: string; fileName: string; data: Buffer }> };
+
+const EMU_PER_CM = 360000;
+
+function renderImage(image: DocxImage, registry: ImageRegistry): string {
+  const index = registry.entries.length + 1;
+  const relId = `rIdImg${index}`;
+  registry.entries.push({ relId, fileName: `image${index}.png`, data: image.data });
+  const cx = Math.round(image.widthCm * EMU_PER_CM);
+  const cy = Math.round(image.heightCm * EMU_PER_CM);
+  return (
+    `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">` +
+    `<wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>` +
+    `<wp:docPr id="${index}" name="image${index}.png"/>` +
+    `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
+    `<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+    `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+    `<pic:nvPicPr><pic:cNvPr id="${index}" name="image${index}.png"/><pic:cNvPicPr/></pic:nvPicPr>` +
+    `<pic:blipFill><a:blip r:embed="${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+    `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
+    `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>` +
+    `</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`
+  );
+}
+
+function renderTable(table: DocxTable, registry: ImageRegistry): string {
   const totalWidth = 9600; // твипы, ~A4 с полями
   const firstRow = table.rows[0] ?? [];
   const widths = firstRow.map((cell) => Math.round(((cell.widthPct ?? 100 / Math.max(firstRow.length, 1)) / 100) * totalWidth));
@@ -81,28 +120,42 @@ function renderTable(table: DocxTable): string {
       const cells = row
         .map((cell, index) => {
           const width = widths[index] ?? 1200;
-          const runs = cell.runs.map((run) => renderRun({ ...run, bold: run.bold ?? cell.bold })).join('') || renderRun({ text: '' });
           const align = cell.align ? `<w:jc w:val="${cell.align}"/>` : '';
-          return `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0"/>${align}</w:pPr>${runs}</w:p></w:tc>`;
+          let content: string;
+          if (cell.image) {
+            content = `<w:p><w:pPr><w:spacing w:after="0"/>${align}</w:pPr>${renderImage(cell.image, registry)}</w:p>`;
+          } else if (cell.paragraphs) {
+            content = cell.paragraphs.map(renderParagraph).join('');
+          } else {
+            const runs =
+              (cell.runs ?? []).map((run) => renderRun({ ...run, bold: run.bold ?? cell.bold })).join('') || renderRun({ text: '' });
+            content = `<w:p><w:pPr><w:spacing w:after="0"/>${align}</w:pPr>${runs}</w:p>`;
+          }
+          return `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>${content}</w:tc>`;
         })
         .join('');
       return `<w:tr>${cells}</w:tr>`;
     })
     .join('');
   const borders =
-    '<w:tblBorders>' +
-    ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']
-      .map((side) => `<w:${side} w:val="single" w:sz="4" w:color="000000"/>`)
-      .join('') +
-    '</w:tblBorders>';
+    table.borders === false
+      ? ''
+      : '<w:tblBorders>' +
+        ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']
+          .map((side) => `<w:${side} w:val="single" w:sz="4" w:color="000000"/>`)
+          .join('') +
+        '</w:tblBorders>';
   return `<w:tbl><w:tblPr><w:tblW w:w="${totalWidth}" w:type="dxa"/>${borders}</w:tblPr><w:tblGrid>${grid}</w:tblGrid>${rowsXml}</w:tbl>`;
 }
 
 export function buildDocx(blocks: DocxBlock[]): Buffer {
-  const body = blocks.map((block) => (block.kind === 'p' ? renderParagraph(block) : renderTable(block))).join('');
+  const registry: ImageRegistry = { entries: [] };
+  const body = blocks.map((block) => (block.kind === 'p' ? renderParagraph(block) : renderTable(block, registry))).join('');
   const documentXml =
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-    `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+    `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"` +
+    ` xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"` +
+    ` xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">` +
     `<w:body>${body}` +
     `<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="850" w:right="850" w:bottom="850" w:left="1134"/></w:sectPr>` +
     `</w:body></w:document>`;
@@ -114,6 +167,7 @@ export function buildDocx(blocks: DocxBlock[]): Buffer {
       `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
       `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
       `<Default Extension="xml" ContentType="application/xml"/>` +
+      `<Default Extension="png" ContentType="image/png"/>` +
       `<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>` +
       `</Types>`
   );
@@ -124,6 +178,23 @@ export function buildDocx(blocks: DocxBlock[]): Buffer {
       `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>` +
       `</Relationships>`
   );
+  if (registry.entries.length) {
+    zip.file(
+      'word/_rels/document.xml.rels',
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+        registry.entries
+          .map(
+            (entry) =>
+              `<Relationship Id="${entry.relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${entry.fileName}"/>`
+          )
+          .join('') +
+        `</Relationships>`
+    );
+    for (const entry of registry.entries) {
+      zip.file(`word/media/${entry.fileName}`, entry.data);
+    }
+  }
   zip.file('word/document.xml', documentXml);
   return zip.generate({ type: 'nodebuffer' });
 }
