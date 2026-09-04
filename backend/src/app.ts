@@ -23,6 +23,7 @@ import { fuelRouter } from './routes/fuel.routes';
 import { hhRouter } from './routes/hh.routes';
 import { getHhModuleHealth } from './controllers/hh-settings.controller';
 import { receiveHhWebhook } from './controllers/hh-webhooks.controller';
+import { printFormsRouter } from './routes/print-forms.routes';
 import { errorHandler } from './middleware/error-handler';
 import { logger } from './utils/logger';
 import { getAllowedCorsOrigins, isAllowedCorsOrigin } from './config/env';
@@ -144,6 +145,7 @@ export function createApp() {
   app.use('/api/directories', directoriesRouter);
   app.use('/api/fuel', fuelRouter);
   app.use('/api/hh', hhRouter);
+  app.use('/api/print-forms', printFormsRouter);
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });

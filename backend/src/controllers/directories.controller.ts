@@ -259,7 +259,8 @@ export const saveEmployee = async (req: Request, res: Response) => {
 
   employee.location = location;
   employee.fullName = fullName;
-  employee.position = trimmed(req.body?.position, 60) || 'водитель';
+  const positionRaw = typeof req.body?.position === 'string' ? req.body.position.trim().slice(0, 60) : '';
+  employee.position = positionRaw || employee.position || 'водитель';
   employee.phone = trimmed(req.body?.phone, 32);
   employee.status = req.body?.status === 'fired' ? 'fired' : 'active';
   employee.birthDate = optionalDate(req.body?.birthDate);
@@ -479,7 +480,7 @@ const formatDateRu = (value: string | null): string => {
  */
 export const exportDirectory = async (req: Request, res: Response) => {
   const tab = req.body?.tab;
-  if (tab !== 'drivers' && tab !== 'vehicles' && tab !== 'trailers' && tab !== 'models') {
+  if (tab !== 'drivers' && tab !== 'staff' && tab !== 'vehicles' && tab !== 'trailers' && tab !== 'models') {
     httpError(400, 'Unknown export tab');
   }
   const ids: string[] = Array.isArray(req.body?.ids)
@@ -496,20 +497,20 @@ export const exportDirectory = async (req: Request, res: Response) => {
   let filename = '';
   let locationLabel = '';
 
-  if (tab === 'drivers') {
+  if (tab === 'drivers' || tab === 'staff') {
     if (!DIRECTORY_ROLES.includes(req.user?.role as (typeof DIRECTORY_ROLES)[number])) {
-      httpError(403, 'Экспорт водителей доступен только справочным ролям');
+      httpError(403, 'Экспорт сотрудников доступен только справочным ролям');
     }
     const location = requireDirectoryLocation(req, req.body?.location);
     locationLabel = location === 'vvo' ? 'Владивосток' : 'Москва';
-    const rows = pick(
-      await employeeRepo.find({ where: { location, position: 'водитель' }, order: { fullName: 'ASC' } })
-    );
-    sheetName = 'Водители';
-    filename = `Справочник_водители_${locationLabel}.xlsx`;
+    const all = await employeeRepo.find({ where: { location }, order: { fullName: 'ASC' } });
+    const rows = pick(all.filter((employee) => (tab === 'drivers' ? employee.position === 'водитель' : employee.position !== 'водитель')));
+    sheetName = tab === 'drivers' ? 'Водители' : 'Сотрудники';
+    filename = `Справочник_${tab === 'drivers' ? 'водители' : 'сотрудники'}_${locationLabel}.xlsx`;
     const sheet = workbook.addWorksheet(sheetName);
     sheet.columns = [
       { header: 'ФИО', key: 'fullName', width: 34 },
+      { header: 'Должность', key: 'position', width: 20 },
       { header: 'Телефон', key: 'phone', width: 16 },
       { header: 'Статус', key: 'status', width: 12 },
       { header: 'Дата рождения', key: 'birthDate', width: 14 },
@@ -525,6 +526,7 @@ export const exportDirectory = async (req: Request, res: Response) => {
     rows.forEach((employee) =>
       sheet.addRow({
         fullName: employee.fullName,
+        position: employee.position,
         phone: employee.phone,
         status: statusLabel(employee.status),
         birthDate: formatDateRu(employee.birthDate),

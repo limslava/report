@@ -27,6 +27,7 @@ const AdminPage = lazy(() => import('../pages/AdminPage'));
 const AutoTripDirectionsReportPage = lazy(() => import('../pages/AutoTripDirectionsReportPage'));
 const FuelPage = lazy(() => import('../pages/FuelPage'));
 const DirectoriesPage = lazy(() => import('../pages/DirectoriesPage'));
+const PrintFormsPage = lazy(() => import('../pages/PrintFormsPage'));
 const BPApprovalDashboardPage = lazy(() => import('../pages/BPApprovalDashboardPage'));
 const CalendarPage = lazy(() => import('../pages/CalendarPage'));
 const CandidateChecksPage = lazy(() => import('../pages/CandidateChecksPage'));
@@ -135,6 +136,11 @@ export const authenticatedRoutes: AppRoute[] = [
     path: 'directories',
     allow: canAccessDirectories,
     element: () => withSuspense(<DirectoriesPage />),
+  },
+  {
+    path: 'print-forms',
+    allow: canAccessDirectories,
+    element: () => withSuspense(<PrintFormsPage />),
   },
   {
     path: 'sw-tech-dashboard',
