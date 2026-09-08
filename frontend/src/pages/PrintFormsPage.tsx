@@ -117,9 +117,8 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
   const [pairs, setPairs] = useState<VmppPairDraft[]>([{ employee: null, vehicle: null }]);
 
   const drivers = useMemo(() => employees.filter((item) => item.position === 'водитель'), [employees]);
-  // доверенности выдаются и на не-водителей — там выбор из всех сотрудников
-  const poaEmployeeLabel = (item: EmployeeItem) =>
-    item.position && item.position !== 'водитель' ? `${item.fullName} · ${item.position}` : item.fullName;
+  // доверенности выдаются и на не-водителей — выбор из всех сотрудников, в списке только ФИО
+  const poaEmployeeLabel = (item: EmployeeItem) => item.fullName;
   const template = meta?.templates.find((item) => item.key === templateKey) ?? null;
   const modeTemplates = (meta?.templates ?? []).filter((item) => modeKeys.includes(item.key));
   const modeJournal = journal.filter((row) => modeKeys.includes(row.templateKey));
