@@ -131,7 +131,6 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
   const [validUntil, setValidUntil] = useState(endOfYear());
 
   const [contractLine, setContractLine] = useState('');
-  const [carrierName, setCarrierName] = useState('');
   const [multiEmployees, setMultiEmployees] = useState<EmployeeItem[]>([]);
   const [multiVehicles, setMultiVehicles] = useState<FleetVehicleItem[]>([]);
   const [pairs, setPairs] = useState<VmppPairDraft[]>([{ employee: null, vehicle: null }]);
@@ -196,7 +195,6 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
       if (!counterparty && metaRes.data.counterparties.length) {
         setCounterparty(metaRes.data.counterparties[0].label);
       }
-      if (!carrierName) setCarrierName(metaRes.data.org.shortName);
     } catch (error) {
       setFeedback({ severity: 'error', text: errorText(error) });
     }
@@ -230,14 +228,13 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
     if (templateKey === 'vmpp_vehicles_request') {
       return {
         contractLine,
-        carrierName,
         pairs: pairs
           .filter((pair) => pair.employee)
           .map((pair) => ({ employeeId: pair.employee?.id, vehicleId: pair.vehicle?.id ?? null })),
       };
     }
     if (templateKey === 'vmpp_drivers_approval') {
-      return { contractLine, carrierName, employeeIds: multiEmployees.map((item) => item.id) };
+      return { contractLine, employeeIds: multiEmployees.map((item) => item.id) };
     }
     return { vehicleIds: multiVehicles.map((item) => item.id) };
   };
@@ -376,11 +373,6 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
                   onChange={(event) => setContractLine(event.target.value)}
                   placeholder="№ АТ-ВМПП-2026/86 от «10» декабря 2025 г."
                   sx={{ flex: '2 1 280px', minWidth: 200 }}
-                />
-                <TextField
-                  size="small" label="Автоперевозчик" value={carrierName}
-                  onChange={(event) => setCarrierName(event.target.value)}
-                  sx={{ flex: '1 1 180px', minWidth: 140 }}
                 />
               </>
             )}
