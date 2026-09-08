@@ -374,7 +374,19 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
             )}
             <TextField
               select size="small" label="Форма" SelectProps={COMPACT_SELECT} value={templateKey}
-              onChange={(event) => setTemplateKey(event.target.value)}
+              onChange={(event) => {
+                // смена формы очищает заполненное — поля разных форм не смешиваются
+                setTemplateKey(event.target.value);
+                setEmployee(null);
+                setVehicle(null);
+                setMultiEmployees([]);
+                setMultiVehicles([]);
+                setPairs([{ employee: null, vehicle: null }]);
+                setContractLine('');
+                setIssueDate(today());
+                setValidFrom(today());
+                setValidUntil(endOfYear());
+              }}
               sx={{ flex: '1.5 1 220px', minWidth: 180, maxWidth: 400 }}
             >
               {modeTemplates.map((item) => (
