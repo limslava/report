@@ -60,3 +60,16 @@ export async function getDocxPdfPreviewPath(readablePath: string): Promise<strin
     await fs.rm(outputDirectory, { recursive: true, force: true });
   }
 }
+
+/** Конвертация DOCX-буфера в PDF (печатные формы: открыть в браузере и распечатать). */
+export async function convertDocxBufferToPdf(buffer: Buffer): Promise<Buffer> {
+  const workDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'print-form-pdf-'));
+  try {
+    const docxPath = path.join(workDirectory, 'document.docx');
+    await fs.writeFile(docxPath, buffer);
+    const pdfPath = await getDocxPdfPreviewPath(docxPath);
+    return await fs.readFile(pdfPath);
+  } finally {
+    await fs.rm(workDirectory, { recursive: true, force: true });
+  }
+}

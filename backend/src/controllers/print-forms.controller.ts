@@ -23,6 +23,7 @@ import {
   buildVmppVehiclesRequest,
   formatDateDots,
 } from '../services/print-forms.service';
+import { convertDocxBufferToPdf } from '../services/docx-pdf-preview.service';
 import { directoryLocationsForRole, isValidLocation } from '../constants/directories';
 
 const settingsRepo = AppDataSource.getRepository(AppSetting);
@@ -267,8 +268,17 @@ async function generateByTemplate(
 const isTemplateKey = (value: unknown): value is PrintTemplateKey =>
   PRINT_FORM_TEMPLATES.some((template) => template.key === value);
 
-const sendGenerated = (res: Response, file: GeneratedFile) => {
+/** format=pdf: DOCX конвертируется в PDF и отдаётся inline — браузер открывает и печатает. */
+const sendGenerated = async (res: Response, file: GeneratedFile, format?: unknown) => {
   const isXlsx = file.filename.endsWith('.xlsx');
+  if (format === 'pdf' && !isXlsx) {
+    const pdf = await convertDocxBufferToPdf(file.buffer);
+    const pdfName = file.filename.replace(/\.docx$/i, '.pdf');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="form.pdf"; filename*=UTF-8''${encodeURIComponent(pdfName)}`);
+    res.send(pdf);
+    return;
+  }
   res.setHeader(
     'Content-Type',
     isXlsx
@@ -313,7 +323,7 @@ export const generatePrintForm = async (req: Request, res: Response) => {
     details: { templateKey, location, summary: file.summary, formNumber: file.formNumber },
     req,
   });
-  sendGenerated(res, file);
+  await sendGenerated(res, file, req.body?.format);
 };
 
 export const listPrintFormsJournal = async (req: Request, res: Response) => {
@@ -349,5 +359,5 @@ export const downloadPrintFormAgain = async (req: Request, res: Response) => {
     details: { templateKey: record.templateKey, location: record.location },
     req,
   });
-  sendGenerated(res, file);
+  await sendGenerated(res, file, req.query?.format);
 };

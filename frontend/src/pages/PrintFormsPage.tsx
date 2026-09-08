@@ -13,7 +13,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { Delete, Download } from '@mui/icons-material';
+import { Delete, Download, Print } from '@mui/icons-material';
 import { useAuthStore } from '../store/auth-store';
 import {
   EmployeeItem,
@@ -187,11 +187,21 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
     return { vehicleIds: multiVehicles.map((item) => item.id) };
   };
 
-  const runGenerate = async () => {
+  const openPdfBlob = (data: unknown) => {
+    const url = URL.createObjectURL(new Blob([data as BlobPart], { type: 'application/pdf' }));
+    const win = window.open(url, '_blank');
+    if (!win) setFeedback({ severity: 'error', text: 'Браузер заблокировал открытие вкладки — разрешите всплывающие окна' });
+  };
+
+  const runGenerate = async (print = false) => {
     setGenerating(true);
     try {
-      const response = await generatePrintForm(location, templateKey, buildParams());
-      saveBlob(response.data, filenameFromHeaders(response.headers as Record<string, unknown>, `Форма.${template?.kind ?? 'docx'}`));
+      const response = await generatePrintForm(location, templateKey, buildParams(), print ? 'pdf' : undefined);
+      if (print) {
+        openPdfBlob(response.data);
+      } else {
+        saveBlob(response.data, filenameFromHeaders(response.headers as Record<string, unknown>, `Форма.${template?.kind ?? 'docx'}`));
+      }
       setFeedback({ severity: 'success', text: 'Форма сформирована и записана в журнал' });
       const journalRes = await getPrintFormsJournal(location);
       setJournal(journalRes.data);
@@ -216,10 +226,11 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
     }
   };
 
-  const downloadAgain = async (row: PrintJournalRow) => {
+  const downloadAgain = async (row: PrintJournalRow, print = false) => {
     try {
-      const response = await downloadPrintFormAgain(row.id);
-      saveBlob(response.data, filenameFromHeaders(response.headers as Record<string, unknown>, 'Форма.docx'));
+      const response = await downloadPrintFormAgain(row.id, print ? 'pdf' : undefined);
+      if (print) openPdfBlob(response.data);
+      else saveBlob(response.data, filenameFromHeaders(response.headers as Record<string, unknown>, 'Форма.docx'));
     } catch (error) {
       setFeedback({ severity: 'error', text: errorText(error) });
     }
@@ -364,7 +375,12 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
                 sx={{ flex: '1 1 320px', minWidth: 220 }}
               />
             )}
-            <Box sx={{ ml: 'auto' }}>
+            <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>
+              {template?.kind !== 'xlsx' && (
+                <button type="button" className="ops-btn ghost" disabled={generating} onClick={() => void runGenerate(true)}>
+                  Печать
+                </button>
+              )}
               <button type="button" className="ops-btn ops-btn--add" disabled={generating} onClick={() => void runGenerate()}>
                 {generating ? 'Формирование…' : `Скачать ${template?.kind === 'xlsx' ? 'Excel' : 'Word'}`}
               </button>
@@ -421,6 +437,13 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
                   <td className="fuel-cell--left">{row.summary || '—'}</td>
                   <td className="fuel-cell--left">{row.createdBy}</td>
                   <td className="fuel-cell--center dir-actions">
+                    {row.templateKey !== 'carrier_vehicles' && (
+                      <Tooltip title="Открыть для печати (PDF)">
+                        <IconButton size="small" onClick={() => void downloadAgain(row, true)}>
+                          <Print sx={{ fontSize: 17 }} />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                     <Tooltip title="Скачать повторно (та же форма)">
                       <IconButton size="small" onClick={() => void downloadAgain(row)}>
                         <Download sx={{ fontSize: 17 }} />

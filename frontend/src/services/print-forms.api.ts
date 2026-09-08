@@ -24,11 +24,15 @@ export type PrintJournalRow = {
 export const getPrintFormsMeta = (location: FleetLocation) =>
   api.get<PrintFormsMeta>('/print-forms/meta', { params: { location } });
 
-export const generatePrintForm = (location: FleetLocation, templateKey: string, params: Record<string, unknown>) =>
-  api.post('/print-forms/generate', { location, templateKey, params }, { responseType: 'blob' });
+export const generatePrintForm = (
+  location: FleetLocation,
+  templateKey: string,
+  params: Record<string, unknown>,
+  format?: 'pdf'
+) => api.post('/print-forms/generate', { location, templateKey, params, format }, { responseType: 'blob' });
 
 export const getPrintFormsJournal = (location: FleetLocation) =>
   api.get<PrintJournalRow[]>('/print-forms/journal', { params: { location } });
 
-export const downloadPrintFormAgain = (id: string) =>
-  api.post(`/print-forms/journal/${id}/download`, {}, { responseType: 'blob' });
+export const downloadPrintFormAgain = (id: string, format?: 'pdf') =>
+  api.post(`/print-forms/journal/${id}/download`, {}, { responseType: 'blob', params: { format } });
