@@ -516,7 +516,7 @@ export default function DirectoriesPage({
     <div className="ops-preview dir-page">
       <section className="ops-preview__controls">
         <Paper sx={{ p: 1.5, width: '100%' }}>
-          <Box display="flex" alignItems="center" gap={2} sx={{ flexWrap: 'nowrap', overflow: 'hidden' }}>
+          <Box display="flex" alignItems="center" gap={2} sx={{ flexWrap: 'nowrap', minWidth: 0 }}>
             {isCounterpartyMode && (
               <>
                 <Tooltip title="К списку контрагентов">
