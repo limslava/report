@@ -95,7 +95,16 @@ const errorText = (error: unknown): string => {
   return anyError?.response?.data?.message || anyError?.message || 'Не удалось выполнить операцию';
 };
 
-export default function DirectoriesPage() {
+/**
+ * counterpartyId/-Name: страница работает как карточка контрагента —
+ * те же вкладки водители/техника/прицепы, но данные принадлежат контрагенту
+ * (в наши списки и графики не попадают). Без пропсов — «Наша организация».
+ */
+export default function DirectoriesPage({
+  counterpartyId,
+  counterpartyName,
+}: { counterpartyId?: string; counterpartyName?: string } = {}) {
+  const isCounterpartyMode = Boolean(counterpartyId);
   const { user } = useAuthStore();
   const allowedLocations = useMemo(() => directoryLocationsForRole(user?.role), [user?.role]);
   const canManageNorms = canManageFuelNormsFrontend(user?.role);
@@ -149,9 +158,9 @@ export default function DirectoriesPage() {
   const reload = useCallback(async () => {
     try {
       const [employeesRes, vehiclesRes, trailersRes, modelsRes, seasonsRes] = await Promise.all([
-        getEmployees(location).catch(() => ({ data: [] as EmployeeItem[] })),
-        getFleetVehicles(location),
-        getTrailers(location),
+        getEmployees(location, counterpartyId).catch(() => ({ data: [] as EmployeeItem[] })),
+        getFleetVehicles(location, counterpartyId),
+        getTrailers(location, counterpartyId),
         getVehicleModels(),
         getFuelSeasons().catch(() => ({ data: { winterStartMonth: 11, winterEndMonth: 3 } })),
       ]);
@@ -164,11 +173,15 @@ export default function DirectoriesPage() {
     } catch (error) {
       setFeedback({ severity: 'error', text: errorText(error) });
     }
-  }, [location]);
+  }, [location, counterpartyId]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    if (isCounterpartyMode && (tab === 'staff' || tab === 'models')) setTab('drivers');
+  }, [isCounterpartyMode, tab]);
 
   // «несохранённое» в справочниках: открытая карточка с изменениями или неприменённые сезоны
   const employeeSnapshot = useRef<string | null>(null);
@@ -246,11 +259,11 @@ export default function DirectoriesPage() {
   const drivers = useMemo(
     () =>
       sortRows(
-        employees.filter((e) => e.position === 'водитель'),
+        isCounterpartyMode ? employees : employees.filter((e) => e.position === 'водитель'),
         sortByTab.drivers,
         (row, field) => (row as unknown as Record<string, unknown>)[field]
       ),
-    [employees, sortByTab.drivers]
+    [employees, isCounterpartyMode, sortByTab.drivers]
   );
   const staff = useMemo(
     () =>
@@ -380,6 +393,7 @@ export default function DirectoriesPage() {
       ...employeeEdit,
       location,
       fullName: employeeEdit.fullName.trim(),
+      counterpartyId,
     } as EmployeePayload;
     try {
       if (employeeEdit.id) await updateEmployee(employeeEdit.id, payload);
@@ -401,7 +415,7 @@ export default function DirectoriesPage() {
       return false;
     }
     try {
-      const payload = { ...vehicleEdit, location, modelLabel: vehicleModelLabel.trim(), modelId: vehicleModelLabel.trim() ? undefined : null };
+      const payload = { ...vehicleEdit, location, modelLabel: vehicleModelLabel.trim(), modelId: vehicleModelLabel.trim() ? undefined : null, counterpartyId };
       if (vehicleEdit.id) await updateFleetVehicle(vehicleEdit.id, payload);
       else await createFleetVehicle(payload);
       setVehicleEdit(null);
@@ -421,7 +435,7 @@ export default function DirectoriesPage() {
       return false;
     }
     try {
-      const payload = { ...trailerEdit, location };
+      const payload = { ...trailerEdit, location, counterpartyId };
       if (trailerEdit.id) await updateTrailer(trailerEdit.id, payload);
       else await createTrailer(payload);
       setTrailerEdit(null);
@@ -522,12 +536,17 @@ export default function DirectoriesPage() {
             >
               <Tab value="drivers" label={`Водители (${drivers.length})`} />
               <Tab value="vehicles" label={`Техника (${vehicles.length})`} />
-              <Tab value="staff" label={`Сотрудники (${staff.length})`} />
+              {!isCounterpartyMode && <Tab value="staff" label={`Сотрудники (${staff.length})`} />}
               <Tab value="trailers" label={`Прицепы (${trailers.length})`} />
-              <Tab value="models" label={`Модели и нормы (${models.length})`} />
+              {!isCounterpartyMode && <Tab value="models" label={`Модели и нормы (${models.length})`} />}
             </Tabs>
+            {isCounterpartyMode && (
+              <Typography sx={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 320 }}>
+                {counterpartyName || 'Контрагент'}
+              </Typography>
+            )}
             <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
-              {!exportMode && (
+              {!exportMode && !isCounterpartyMode && (
                 <button
                   type="button"
                   className="ops-btn ops-btn--download"
@@ -561,7 +580,7 @@ export default function DirectoriesPage() {
                   </button>
                 </>
               )}
-              {isAdmin && (tab === 'drivers' || tab === 'vehicles') && (
+              {isAdmin && !isCounterpartyMode && (tab === 'drivers' || tab === 'vehicles') && (
                 <button
                   type="button"
                   className="ops-btn ghost"

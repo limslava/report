@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import ExcelJS from 'exceljs';
-import { ILike } from 'typeorm';
+import { ILike, IsNull } from 'typeorm';
 import { AppDataSource } from '../config/data-source';
 import { Employee } from '../models/employee.model';
 import { FleetVehicle } from '../models/fleet-vehicle.model';
@@ -43,6 +43,22 @@ const requireDirectoryLocation = (req: Request, raw: unknown): FleetLocation => 
     httpError(403, 'Access denied for this location');
   }
   return location;
+};
+
+/** Фильтр принадлежности: ?counterpartyId=<uuid> — записи контрагента, иначе наши (NULL). */
+const counterpartyFilter = (raw: unknown) => {
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  return value ? value : IsNull();
+};
+
+/** Валидация контрагента при создании записи в его карточке. */
+const resolveCounterpartyId = async (raw: unknown): Promise<string | null> => {
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  if (!value) return null;
+  const { DirectoryCounterparty } = await import('../models/directory-counterparty.model');
+  const exists = await AppDataSource.getRepository(DirectoryCounterparty).exist({ where: { id: value } });
+  if (!exists) httpError(400, 'Контрагент не найден');
+  return value;
 };
 
 /** Просмотр техники разрешён и ролям топлива (БДД), запись — только справочным ролям. */
@@ -136,7 +152,11 @@ const resolveModelByLabel = async (label: string): Promise<VehicleModel> => {
 export const listVehicles = async (req: Request, res: Response) => {
   const location = requireFleetViewLocation(req, req.query.location);
   const [vehicles, usage] = await Promise.all([
-    vehicleRepo.find({ where: { location }, relations: { model: true }, order: { plate: 'ASC' } }),
+    vehicleRepo.find({
+      where: { location, counterpartyId: counterpartyFilter(req.query.counterpartyId) },
+      relations: { model: true },
+      order: { plate: 'ASC' },
+    }),
     loadScheduleUsage(location),
   ]);
   res.json(
@@ -155,6 +175,7 @@ export const saveVehicle = async (req: Request, res: Response) => {
 
   const vehicle = id ? await vehicleRepo.findOne({ where: { id } }) : vehicleRepo.create();
   if (!vehicle) return httpError(404, 'Vehicle not found') as never;
+  if (!id) vehicle.counterpartyId = await resolveCounterpartyId(req.body?.counterpartyId);
   if (id && vehicle.location !== location) {
     // перевод между городами делает роль, имеющая доступ к целевому городу
     requireDirectoryLocation(req, vehicle.location);
@@ -197,7 +218,10 @@ export const deleteVehicle = async (req: Request, res: Response) => {
 export const listTrailers = async (req: Request, res: Response) => {
   const location = requireFleetViewLocation(req, req.query.location);
   const [trailers, usage] = await Promise.all([
-    trailerRepo.find({ where: { location }, order: { plate: 'ASC' } }),
+    trailerRepo.find({
+      where: { location, counterpartyId: counterpartyFilter(req.query.counterpartyId) },
+      order: { plate: 'ASC' },
+    }),
     loadScheduleUsage(location),
   ]);
   res.json(
@@ -216,6 +240,7 @@ export const saveTrailer = async (req: Request, res: Response) => {
 
   const trailer = id ? await trailerRepo.findOne({ where: { id } }) : trailerRepo.create();
   if (!trailer) return httpError(404, 'Trailer not found') as never;
+  if (!id) trailer.counterpartyId = await resolveCounterpartyId(req.body?.counterpartyId);
 
   const existingPlate = await trailerRepo.findOne({ where: { plate } });
   if (existingPlate && existingPlate.id !== trailer.id) httpError(409, 'Trailer with this plate already exists');
@@ -245,7 +270,10 @@ export const deleteTrailer = async (req: Request, res: Response) => {
 
 export const listEmployees = async (req: Request, res: Response) => {
   const location = requireDirectoryLocation(req, req.query.location);
-  const employees = await employeeRepo.find({ where: { location }, order: { fullName: 'ASC' } });
+  const employees = await employeeRepo.find({
+    where: { location, counterpartyId: counterpartyFilter(req.query.counterpartyId) },
+    order: { fullName: 'ASC' },
+  });
   res.json(employees);
 };
 
@@ -257,6 +285,7 @@ export const saveEmployee = async (req: Request, res: Response) => {
 
   const employee = id ? await employeeRepo.findOne({ where: { id } }) : employeeRepo.create();
   if (!employee) return httpError(404, 'Employee not found') as never;
+  if (!id) employee.counterpartyId = await resolveCounterpartyId(req.body?.counterpartyId);
 
   employee.location = location;
   employee.fullName = fullName;
@@ -451,9 +480,9 @@ export const resolveRigFromSchedule = async (
 export const getDirectoryOptions = async (req: Request, res: Response) => {
   const location = parseLocation(req.query.location);
   const [employees, vehicles, trailers] = await Promise.all([
-    employeeRepo.find({ where: { location, status: 'active' }, order: { fullName: 'ASC' } }),
-    vehicleRepo.find({ where: { location }, order: { plate: 'ASC' } }),
-    trailerRepo.find({ where: { location, status: 'active' }, order: { plate: 'ASC' } }),
+    employeeRepo.find({ where: { location, status: 'active', counterpartyId: IsNull() }, order: { fullName: 'ASC' } }),
+    vehicleRepo.find({ where: { location, counterpartyId: IsNull() }, order: { plate: 'ASC' } }),
+    trailerRepo.find({ where: { location, status: 'active', counterpartyId: IsNull() }, order: { plate: 'ASC' } }),
   ]);
   res.json({
     employees: employees.map((employee) => ({ fullName: employee.fullName, position: employee.position })),
@@ -505,7 +534,7 @@ export const exportDirectory = async (req: Request, res: Response) => {
     }
     const location = requireDirectoryLocation(req, req.body?.location);
     locationLabel = location === 'vvo' ? 'Владивосток' : 'Москва';
-    const all = await employeeRepo.find({ where: { location }, order: { fullName: 'ASC' } });
+    const all = await employeeRepo.find({ where: { location, counterpartyId: IsNull() }, order: { fullName: 'ASC' } });
     const rows = pick(all.filter((employee) => (tab === 'drivers' ? employee.position === 'водитель' : employee.position !== 'водитель')));
     sheetName = tab === 'drivers' ? 'Водители' : 'Сотрудники';
     filename = `Справочник_${tab === 'drivers' ? 'водители' : 'сотрудники'}_${locationLabel}.xlsx`;
@@ -814,11 +843,26 @@ export const createCounterpartyDirectory = async (req: Request, res: Response) =
   res.status(201).json(saved);
 };
 
+export const getCounterpartyDirectory = async (req: Request, res: Response) => {
+  const { DirectoryCounterparty } = await import('../models/directory-counterparty.model');
+  const entity = await AppDataSource.getRepository(DirectoryCounterparty).findOne({ where: { id: req.params.id } });
+  if (!entity) return httpError(404, 'Counterparty not found') as never;
+  res.json(entity);
+};
+
 export const deleteCounterpartyDirectory = async (req: Request, res: Response) => {
   const { DirectoryCounterparty } = await import('../models/directory-counterparty.model');
   const repo = AppDataSource.getRepository(DirectoryCounterparty);
   const entity = await repo.findOne({ where: { id: req.params.id } });
   if (!entity) return httpError(404, 'Counterparty not found') as never;
+  const [employees, vehicles, trailers] = await Promise.all([
+    employeeRepo.count({ where: { counterpartyId: entity.id } }),
+    vehicleRepo.count({ where: { counterpartyId: entity.id } }),
+    trailerRepo.count({ where: { counterpartyId: entity.id } }),
+  ]);
+  if (employees + vehicles + trailers > 0) {
+    httpError(409, 'У контрагента есть водители, техника или прицепы — сначала удалите их из его карточки');
+  }
   await repo.remove(entity);
   await recordAuditLog({
     action: 'DIRECTORY_COUNTERPARTY_DELETED',

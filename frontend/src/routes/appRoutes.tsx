@@ -29,6 +29,7 @@ const FuelPage = lazy(() => import('../pages/FuelPage'));
 const DirectoriesPage = lazy(() => import('../pages/DirectoriesPage'));
 const PrintFormsPage = lazy(() => import('../pages/PrintFormsPage'));
 const CounterpartiesPage = lazy(() => import('../pages/CounterpartiesPage'));
+const CounterpartyCardPage = lazy(() => import('../pages/CounterpartyCardPage'));
 const BPApprovalDashboardPage = lazy(() => import('../pages/BPApprovalDashboardPage'));
 const CalendarPage = lazy(() => import('../pages/CalendarPage'));
 const CandidateChecksPage = lazy(() => import('../pages/CandidateChecksPage'));
@@ -142,6 +143,11 @@ export const authenticatedRoutes: AppRoute[] = [
     path: 'directories/counterparties',
     allow: canAccessDirectories,
     element: () => withSuspense(<CounterpartiesPage />),
+  },
+  {
+    path: 'directories/counterparties/:id',
+    allow: canAccessDirectories,
+    element: () => withSuspense(<CounterpartyCardPage />),
   },
   {
     path: 'print-forms',

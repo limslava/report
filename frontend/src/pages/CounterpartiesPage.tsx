@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -50,6 +51,7 @@ const errorText = (error: unknown): string => {
 };
 
 export default function CounterpartiesPage() {
+  const navigate = useNavigate();
   const { user } = useAuthStore();
   const canEdit = canEditDirectoriesFrontend(user?.role);
   const canDelete = canDeleteDirectoryEntryFrontend(user?.role, 'vvo') || canDeleteDirectoryEntryFrontend(user?.role, 'mow');
@@ -160,7 +162,12 @@ export default function CounterpartiesPage() {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.id}>
+                <tr
+                  key={row.id}
+                  style={{ cursor: 'pointer' }}
+                  title="Открыть карточку контрагента"
+                  onClick={() => navigate(`/directories/counterparties/${row.id}`)}
+                >
                   <td className="fuel-cell--left">{row.nameShort || row.nameFull}</td>
                   <td className="fuel-cell--center">{row.inn}</td>
                   <td className="fuel-cell--center">{row.ogrn || '—'}</td>
@@ -169,7 +176,13 @@ export default function CounterpartiesPage() {
                   {canDelete && (
                     <td className="fuel-cell--center dir-actions">
                       <Tooltip title="Удалить из справочника">
-                        <IconButton size="small" onClick={() => void removeRow(row)}>
+                        <IconButton
+                          size="small"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void removeRow(row);
+                          }}
+                        >
                           <Delete sx={{ fontSize: 17 }} />
                         </IconButton>
                       </Tooltip>

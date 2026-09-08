@@ -21,6 +21,7 @@ import {
   getEmployeeCardText,
   createCounterpartyDirectory,
   deleteCounterpartyDirectory,
+  getCounterpartyDirectory,
   listCounterpartiesDirectory,
   listEmployees,
   listTrailers,
@@ -38,6 +39,7 @@ router.use(authenticate);
 
 // Справочник контрагентов: свой список, добавление по ИНН (реквизиты из ФНС)
 router.get('/counterparties', authorizeRole(...DIRECTORY_ROLES), asyncHandler(listCounterpartiesDirectory));
+router.get('/counterparties/:id', authorizeRole(...DIRECTORY_ROLES), asyncHandler(getCounterpartyDirectory));
 router.post('/counterparties', authorizeRole(...DIRECTORY_EDIT_ROLES), asyncHandler(createCounterpartyDirectory));
 router.delete('/counterparties/:id', authorizeRole(...DIRECTORY_DELETE_ROLES), asyncHandler(deleteCounterpartyDirectory));
 
