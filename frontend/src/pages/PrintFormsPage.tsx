@@ -21,7 +21,6 @@ import {
   Typography,
 } from '@mui/material';
 import { ArrowDropDown, Delete, Download, Print } from '@mui/icons-material';
-import { useAuthStore } from '../store/auth-store';
 import {
   EmployeeItem,
   FleetLocation,
@@ -37,12 +36,9 @@ import {
   getPrintFormsMeta,
   savePrintForm,
 } from '../services/print-forms.api';
-import { directoryLocationsForRole } from '../utils/rolePermissions';
 import { TableSortState, cycleSort, sortIndicator, sortRows } from '../utils/tableSort';
 import '../styles/operations-preview.css';
 import '../styles/fuel.css';
-
-const LOCATION_LABELS: Record<FleetLocation, string> = { vvo: 'Владивосток', mow: 'Москва' };
 
 /** Подстраницы печатных форм: доверенности и заявки — общий конструктор, разный набор шаблонов. */
 export type PrintFormsMode = 'poa' | 'requests';
@@ -116,9 +112,9 @@ const COMPACT_SELECT = { MenuProps: { PaperProps: { className: 'print-compact-me
 
 export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode }) {
   const modeKeys = MODE_TEMPLATE_KEYS[mode];
-  const { user } = useAuthStore();
-  const allowedLocations = useMemo(() => directoryLocationsForRole(user?.role), [user?.role]);
-  const [location, setLocation] = useState<FleetLocation>(allowedLocations[0] ?? 'vvo');
+  // Печатные формы пока только для Владивостока: шаблоны заточены под
+  // контрагентов ВВО. Москве добавим её формы, когда появятся образцы.
+  const location: FleetLocation = 'vvo';
   const [meta, setMeta] = useState<PrintFormsMeta | null>(null);
   const [employees, setEmployees] = useState<EmployeeItem[]>([]);
   const [vehicles, setVehicles] = useState<FleetVehicleItem[]>([]);
@@ -361,17 +357,6 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
       <section className="ops-preview__controls">
         <Paper sx={{ p: 1.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-            {allowedLocations.length > 1 && (
-              <TextField
-                select size="small" label="Город" SelectProps={COMPACT_SELECT} value={location}
-                onChange={(event) => setLocation(event.target.value as FleetLocation)}
-                sx={{ flex: '0 1 150px', minWidth: 110 }}
-              >
-                {allowedLocations.map((value) => (
-                  <MenuItem key={value} value={value}>{LOCATION_LABELS[value]}</MenuItem>
-                ))}
-              </TextField>
-            )}
             <TextField
               select size="small" label="Форма" SelectProps={COMPACT_SELECT} value={templateKey}
               onChange={(event) => {
