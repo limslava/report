@@ -71,7 +71,7 @@ export const DEFAULT_PRINT_COUNTERPARTIES: PrintCounterparty[] = [
 
 export const PRINT_FORM_TEMPLATES = [
   { key: 'poa_warehouse', label: 'Доверенность на сотрудника (склад)', kind: 'docx' },
-  { key: 'poa_pl', label: 'Доверенность на водителя (терминал ПЛ)', kind: 'docx' },
+  { key: 'poa_pl', label: 'Доверенность на сотрудника (терминал ПЛ)', kind: 'docx' },
   { key: 'poa_terminal_vehicle', label: 'Доверенность с ТС (терминал)', kind: 'docx' },
   { key: 'vmpp_vehicles_request', label: 'Заявка в ИС ВМПП: автотранспорт и водители', kind: 'docx' },
   { key: 'vmpp_drivers_approval', label: 'Согласование водителей ВМПП', kind: 'docx' },
