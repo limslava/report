@@ -3,7 +3,16 @@ import {
   Alert,
   Autocomplete,
   Box,
+  Button,
+  Checkbox,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
   IconButton,
+  List,
+  ListItem,
   MenuItem,
   Paper,
   Snackbar,
@@ -133,6 +142,10 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
   const [contractLine, setContractLine] = useState('');
   const [multiEmployees, setMultiEmployees] = useState<EmployeeItem[]>([]);
   const [multiVehicles, setMultiVehicles] = useState<FleetVehicleItem[]>([]);
+  // диалог мультивыбора с галочками (водители согласования / ТС Excel-формы)
+  const [pickerKind, setPickerKind] = useState<'drivers' | 'vehicles' | null>(null);
+  const [pickerIds, setPickerIds] = useState<string[]>([]);
+  const [pickerQuery, setPickerQuery] = useState('');
   const [pairs, setPairs] = useState<VmppPairDraft[]>([{ employee: null, vehicle: null }]);
 
   const drivers = useMemo(() => employees.filter((item) => item.position === 'водитель'), [employees]);
@@ -377,24 +390,30 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
               </>
             )}
             {templateKey === 'vmpp_drivers_approval' && (
-              <Autocomplete
-                multiple size="small" ListboxProps={COMPACT_LISTBOX} options={drivers}
-                getOptionLabel={(item) => item.fullName}
-                value={multiEmployees}
-                onChange={(_event, value) => setMultiEmployees(value)}
-                renderInput={(params) => <TextField {...params} label="Водители" />}
-                sx={{ flex: '1 1 320px', minWidth: 220 }}
-              />
+              <button
+                type="button"
+                className="ops-btn ghost"
+                onClick={() => {
+                  setPickerIds(multiEmployees.map((item) => item.id));
+                  setPickerQuery('');
+                  setPickerKind('drivers');
+                }}
+              >
+                {multiEmployees.length ? `Водители: ${multiEmployees.length}` : 'Выбрать водителей'}
+              </button>
             )}
             {templateKey === 'carrier_vehicles' && (
-              <Autocomplete
-                multiple size="small" ListboxProps={COMPACT_LISTBOX} options={vehicles}
-                getOptionLabel={(item) => item.plate}
-                value={multiVehicles}
-                onChange={(_event, value) => setMultiVehicles(value)}
-                renderInput={(params) => <TextField {...params} label="ТС (пусто — вся активная техника)" />}
-                sx={{ flex: '1 1 320px', minWidth: 220 }}
-              />
+              <button
+                type="button"
+                className="ops-btn ghost"
+                onClick={() => {
+                  setPickerIds(multiVehicles.map((item) => item.id));
+                  setPickerQuery('');
+                  setPickerKind('vehicles');
+                }}
+              >
+                {multiVehicles.length ? `ТС: ${multiVehicles.length}` : 'Выбрать ТС (пусто — вся техника)'}
+              </button>
             )}
             <TextField
               size="small"
@@ -446,7 +465,9 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
                 <th style={{ minWidth: 130 }}>{journalHeader('form', 'Форма')}</th>
                 <th style={{ minWidth: 240 }}>{journalHeader('person', mode === 'poa' ? 'ФИО' : 'Содержание')}</th>
                 <th className="fuel-cell--center" style={{ minWidth: 100 }}>{journalHeader('issueDate', 'Дата выдачи')}</th>
-                <th className="fuel-cell--center" style={{ minWidth: 110 }}>{journalHeader('validUntil', 'Действительна по')}</th>
+                {mode === 'poa' && (
+                  <th className="fuel-cell--center" style={{ minWidth: 110 }}>{journalHeader('validUntil', 'Действительна по')}</th>
+                )}
                 <th style={{ minWidth: 170 }}>{journalHeader('createdBy', 'Кем создана')}</th>
                 <th className="fuel-cell--center" style={{ minWidth: 80 }}>Действия</th>
               </tr>
@@ -459,7 +480,7 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
                   <td className="fuel-cell--left" title={templateLabel(row.templateKey)}>{journalFormLabel(row.templateKey)}</td>
                   <td className="fuel-cell--left" title={row.summary}>{journalPersonText(row)}</td>
                   <td className="fuel-cell--center">{row.issueDate}</td>
-                  <td className="fuel-cell--center">{row.validUntil || '—'}</td>
+                  {mode === 'poa' && <td className="fuel-cell--center">{row.validUntil || '—'}</td>}
                   <td className="fuel-cell--left">{row.createdBy}</td>
                   <td className="fuel-cell--center dir-actions">
                     {row.templateKey !== 'carrier_vehicles' && (
@@ -479,7 +500,7 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
               ))}
               {visibleJournal.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="fuel-empty">
+                  <td colSpan={mode === 'poa' ? 8 : 7} className="fuel-empty">
                     {journalQuery.trim() ? 'Ничего не найдено' : 'Журнал пуст — сформируйте первую форму'}
                   </td>
                 </tr>
@@ -488,6 +509,65 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
           </table>
         </div>
       </section>
+
+      <Dialog open={pickerKind !== null} onClose={() => setPickerKind(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>{pickerKind === 'drivers' ? 'Выбор водителей' : 'Выбор ТС'}</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <TextField
+            size="small" fullWidth autoFocus label="Поиск"
+            value={pickerQuery}
+            onChange={(event) => setPickerQuery(event.target.value)}
+            sx={{ mt: 1, mb: 1 }}
+          />
+          <List dense sx={{ maxHeight: 360, overflow: 'auto', py: 0 }}>
+            {(pickerKind === 'drivers'
+              ? drivers
+                  .filter((item) => item.fullName.toLowerCase().includes(pickerQuery.trim().toLowerCase()))
+                  .map((item) => ({ id: item.id, label: item.fullName }))
+              : vehicles
+                  .filter((item) => item.plate.toLowerCase().includes(pickerQuery.trim().toLowerCase()))
+                  .map((item) => ({ id: item.id, label: item.plate }))
+            ).map((option) => (
+              <ListItem key={option.id} disablePadding>
+                <FormControlLabel
+                  sx={{ width: '100%', m: 0, '& .MuiFormControlLabel-label': { fontSize: 13 } }}
+                  control={(
+                    <Checkbox
+                      size="small"
+                      checked={pickerIds.includes(option.id)}
+                      onChange={() =>
+                        setPickerIds((prev) =>
+                          prev.includes(option.id) ? prev.filter((x) => x !== option.id) : [...prev, option.id]
+                        )
+                      }
+                    />
+                  )}
+                  label={option.label}
+                />
+              </ListItem>
+            ))}
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Typography variant="caption" color="text.secondary" sx={{ mr: 'auto', ml: 1 }}>
+            Выбрано: {pickerIds.length}
+          </Typography>
+          <Button onClick={() => setPickerKind(null)}>Отмена</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              if (pickerKind === 'drivers') {
+                setMultiEmployees(drivers.filter((item) => pickerIds.includes(item.id)));
+              } else {
+                setMultiVehicles(vehicles.filter((item) => pickerIds.includes(item.id)));
+              }
+              setPickerKind(null);
+            }}
+          >
+            Готово
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={Boolean(feedback)}

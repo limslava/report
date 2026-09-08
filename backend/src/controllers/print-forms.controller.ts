@@ -216,7 +216,7 @@ async function generateByTemplate(
         buffer,
         filename: `Согласование водителей ВМПП (${employees.length}).docx`,
         formNumber: null,
-        summary: `водителей: ${employees.length}`,
+        summary: employees.map((e) => e.fullName).join(', ').slice(0, 300),
       };
     }
     const pairsRaw = Array.isArray(params.pairs) ? params.pairs : [];
@@ -232,7 +232,10 @@ async function generateByTemplate(
       buffer,
       filename: `Заявка ИС ВМПП автотранспорт (${pairs.length}).docx`,
       formNumber: null,
-      summary: `сцепок: ${pairs.length}`,
+      summary: pairs
+        .map((pair) => `${pair.employee.fullName}${pair.vehicle ? ` — ${pair.vehicle.plate}` : ''}`)
+        .join('; ')
+        .slice(0, 300),
     };
   }
 
@@ -270,7 +273,7 @@ async function generateByTemplate(
     buffer,
     filename: `Форма перевозчику ТС (${vehicles.length}).xlsx`,
     formNumber: null,
-    summary: `ТС: ${vehicles.length}`,
+    summary: `ТС (${vehicles.length}): ${vehicles.map((v) => v.plate).join(', ')}`.slice(0, 300),
   };
 }
 
