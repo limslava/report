@@ -290,7 +290,8 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
     value: EmployeeItem | null,
     onChange: (item: EmployeeItem | null) => void,
     label = 'Сотрудник (из справочника)',
-    options: EmployeeItem[] = drivers
+    options: EmployeeItem[] = drivers,
+    sx: Record<string, unknown> = { flex: '2 1 220px', minWidth: 160 }
   ) => (
     <Autocomplete
       size="small"
@@ -300,14 +301,15 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
       value={value}
       onChange={(_event, item) => onChange(item)}
       renderInput={(params) => <TextField {...params} label={label} fullWidth />}
-      sx={{ flex: '2 1 220px', minWidth: 160 }}
+      sx={sx}
     />
   );
 
   const vehicleField = (
     value: FleetVehicleItem | null,
     onChange: (item: FleetVehicleItem | null) => void,
-    label = 'ТС (из справочника)'
+    label = 'ТС (из справочника)',
+    sx: Record<string, unknown> = { flex: '1 1 140px', minWidth: 110 }
   ) => (
     <Autocomplete
       size="small"
@@ -317,7 +319,7 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
       value={value}
       onChange={(_event, item) => onChange(item)}
       renderInput={(params) => <TextField {...params} label={label} fullWidth />}
-      sx={{ flex: '1 1 140px', minWidth: 110 }}
+      sx={sx}
     />
   );
 
@@ -421,8 +423,8 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
               <Typography sx={{ fontSize: 13, color: '#6b7280' }}>Строки заявки (водитель + ТС):</Typography>
               {pairs.map((pair, index) => (
                 <Box key={index} sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
-                  {employeeField(pair.employee, (item) => setPairs((prev) => prev.map((row, i) => (i === index ? { ...row, employee: item } : row))), `Водитель ${index + 1}`)}
-                  {vehicleField(pair.vehicle, (item) => setPairs((prev) => prev.map((row, i) => (i === index ? { ...row, vehicle: item } : row))), 'ТС')}
+                  {employeeField(pair.employee, (item) => setPairs((prev) => prev.map((row, i) => (i === index ? { ...row, employee: item } : row))), `Водитель ${index + 1}`, drivers, { flex: '1 1 0', minWidth: 160 })}
+                  {vehicleField(pair.vehicle, (item) => setPairs((prev) => prev.map((row, i) => (i === index ? { ...row, vehicle: item } : row))), 'ТС', { flex: '1 1 0', minWidth: 160 })}
                   <Tooltip title="Убрать строку">
                     <span>
                       <IconButton size="small" disabled={pairs.length === 1} onClick={() => setPairs((prev) => prev.filter((_row, i) => i !== index))}>
