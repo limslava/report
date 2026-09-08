@@ -742,12 +742,14 @@ export const bootstrapDirectoriesFromSchedules = async (req: Request, res: Respo
   res.json({ createdEmployees, createdVehicles });
 };
 
-// ─── Справочник контрагентов (каркас: список организаций из общего справочника) ───
-// «Проваливание» внутрь (водители/техника/прицепы контрагента) — следующим шагом.
+// ─── Справочник контрагентов ───
+// Самостоятельный список (НЕ зеркалит БП договоров): контрагент добавляется
+// вручную по ИНН, реквизиты подтягиваются из ФНС; при недоступной ФНС можно
+// ввести наименование руками. «Проваливание» внутрь — следующим шагом.
 export const listCounterpartiesDirectory = async (req: Request, res: Response) => {
-  const { Counterparty } = await import('../models/counterparty.model');
+  const { DirectoryCounterparty } = await import('../models/directory-counterparty.model');
   const q = trimmed(req.query.q, 120);
-  const repo = AppDataSource.getRepository(Counterparty);
+  const repo = AppDataSource.getRepository(DirectoryCounterparty);
   const where = q
     ? [
         { inn: ILike(`${q}%`) },
@@ -755,14 +757,76 @@ export const listCounterpartiesDirectory = async (req: Request, res: Response) =
         { nameShort: ILike(`%${q}%`) },
       ]
     : undefined;
-  const rows = await repo.find({ where, order: { nameShort: 'ASC', nameFull: 'ASC' }, take: 300 });
-  res.json(rows.map((item) => ({
-    id: item.id,
-    inn: item.inn,
-    nameFull: item.nameFull,
-    nameShort: item.nameShort,
-    ogrn: item.ogrn,
-    kpp: item.kpp,
-    address: item.address,
-  })));
+  const rows = await repo.find({ where, order: { nameShort: 'ASC', nameFull: 'ASC' }, take: 500 });
+  res.json(rows);
+};
+
+export const createCounterpartyDirectory = async (req: Request, res: Response) => {
+  const { DirectoryCounterparty } = await import('../models/directory-counterparty.model');
+  const { fetchCounterpartyFromFnsByInn, FnsServiceUnavailableError } = await import('../services/fns-egrul.service');
+  const repo = AppDataSource.getRepository(DirectoryCounterparty);
+
+  const inn = trimmed(req.body?.inn, 12).replace(/\D/g, '');
+  if (!/^(\d{10}|\d{12})$/.test(inn)) httpError(400, 'ИНН должен содержать 10 или 12 цифр');
+
+  const existing = await repo.findOne({ where: { inn } });
+  if (existing) httpError(409, `Контрагент с ИНН ${inn} уже есть в справочнике: ${existing.nameShort || existing.nameFull}`);
+
+  const manualName = trimmed(req.body?.nameFull, 500);
+  let entity = repo.create({ inn, nameFull: manualName, source: 'manual' as const });
+  let fnsUnavailable = false;
+  try {
+    const fns = await fetchCounterpartyFromFnsByInn(inn);
+    if (fns) {
+      entity = repo.create({
+        inn,
+        nameFull: fns.nameFull,
+        nameShort: fns.nameShort ?? '',
+        ogrn: fns.ogrn ?? '',
+        kpp: fns.kpp ?? '',
+        address: fns.address ?? '',
+        source: 'fns' as const,
+      });
+    }
+  } catch (error) {
+    if (!(error instanceof FnsServiceUnavailableError)) throw error;
+    fnsUnavailable = true;
+  }
+
+  if (!entity.nameFull) {
+    httpError(
+      422,
+      fnsUnavailable
+        ? 'Сервис ФНС временно недоступен — укажите наименование вручную'
+        : 'Организация с таким ИНН не найдена в ФНС — укажите наименование вручную'
+    );
+  }
+
+  const saved = await repo.save(entity);
+  await recordAuditLog({
+    action: 'DIRECTORY_COUNTERPARTY_CREATED',
+    userId: req.user?.id ?? null,
+    entityType: 'directory_counterparty',
+    entityId: saved.id,
+    details: { inn: saved.inn, nameFull: saved.nameFull, source: saved.source },
+    req,
+  });
+  res.status(201).json(saved);
+};
+
+export const deleteCounterpartyDirectory = async (req: Request, res: Response) => {
+  const { DirectoryCounterparty } = await import('../models/directory-counterparty.model');
+  const repo = AppDataSource.getRepository(DirectoryCounterparty);
+  const entity = await repo.findOne({ where: { id: req.params.id } });
+  if (!entity) return httpError(404, 'Counterparty not found') as never;
+  await repo.remove(entity);
+  await recordAuditLog({
+    action: 'DIRECTORY_COUNTERPARTY_DELETED',
+    userId: req.user?.id ?? null,
+    entityType: 'directory_counterparty',
+    entityId: req.params.id,
+    details: { inn: entity.inn, nameFull: entity.nameFull },
+    req,
+  });
+  res.json({ ok: true });
 };
