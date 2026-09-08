@@ -269,6 +269,7 @@ export const saveEmployee = async (req: Request, res: Response) => {
   employee.passportIssueDate = optionalDate(req.body?.passportIssueDate);
   employee.passportIssuedBy = trimmed(req.body?.passportIssuedBy, 255);
   employee.registrationAddress = trimmed(req.body?.registrationAddress, 500);
+  employee.inn = trimmed(req.body?.inn, 12).replace(/\D/g, '');
   employee.licenseNumber = trimmed(req.body?.licenseNumber, 32);
   employee.licenseIssueDate = optionalDate(req.body?.licenseIssueDate);
   employee.note = trimmed(req.body?.note, 500);

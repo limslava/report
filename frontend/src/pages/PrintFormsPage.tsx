@@ -36,6 +36,17 @@ import '../styles/fuel.css';
 
 const LOCATION_LABELS: Record<FleetLocation, string> = { vvo: 'Владивосток', mow: 'Москва' };
 
+/** Подстраницы печатных форм: доверенности и заявки — общий конструктор, разный набор шаблонов. */
+export type PrintFormsMode = 'poa' | 'requests';
+const MODE_TEMPLATE_KEYS: Record<PrintFormsMode, string[]> = {
+  poa: ['poa_warehouse', 'poa_pl', 'poa_terminal_vehicle'],
+  requests: ['vmpp_vehicles_request', 'vmpp_drivers_approval', 'carrier_vehicles'],
+};
+const MODE_DEFAULT_TEMPLATE: Record<PrintFormsMode, string> = {
+  poa: 'poa_warehouse',
+  requests: 'vmpp_vehicles_request',
+};
+
 type Feedback = { severity: 'success' | 'error'; text: string } | null;
 
 const errorText = (error: unknown): string => {
@@ -73,7 +84,8 @@ const filenameFromHeaders = (headers: Record<string, unknown>, fallback: string)
 
 type VmppPairDraft = { employee: EmployeeItem | null; vehicle: FleetVehicleItem | null };
 
-export default function PrintFormsPage() {
+export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode }) {
+  const modeKeys = MODE_TEMPLATE_KEYS[mode];
   const { user } = useAuthStore();
   const allowedLocations = useMemo(() => directoryLocationsForRole(user?.role), [user?.role]);
   const [location, setLocation] = useState<FleetLocation>(allowedLocations[0] ?? 'vvo');
@@ -82,7 +94,7 @@ export default function PrintFormsPage() {
   const [vehicles, setVehicles] = useState<FleetVehicleItem[]>([]);
   const [journal, setJournal] = useState<PrintJournalRow[]>([]);
   const [feedback, setFeedback] = useState<Feedback>(null);
-  const [templateKey, setTemplateKey] = useState('poa_warehouse');
+  const [templateKey, setTemplateKey] = useState(MODE_DEFAULT_TEMPLATE[mode]);
   const [generating, setGenerating] = useState(false);
 
   // параметры форм
@@ -105,6 +117,8 @@ export default function PrintFormsPage() {
   const poaEmployeeLabel = (item: EmployeeItem) =>
     item.position && item.position !== 'водитель' ? `${item.fullName} · ${item.position}` : item.fullName;
   const template = meta?.templates.find((item) => item.key === templateKey) ?? null;
+  const modeTemplates = (meta?.templates ?? []).filter((item) => modeKeys.includes(item.key));
+  const modeJournal = journal.filter((row) => modeKeys.includes(row.templateKey));
 
   const reload = useCallback(async () => {
     try {
@@ -280,7 +294,7 @@ export default function PrintFormsPage() {
               onChange={(event) => setTemplateKey(event.target.value)}
               sx={{ flex: '1.5 1 220px', minWidth: 180, maxWidth: 400 }}
             >
-              {(meta?.templates ?? []).map((item) => (
+              {modeTemplates.map((item) => (
                 <MenuItem key={item.key} value={item.key}>{item.label}</MenuItem>
               ))}
             </TextField>
@@ -398,7 +412,7 @@ export default function PrintFormsPage() {
               </tr>
             </thead>
             <tbody>
-              {journal.map((row) => (
+              {modeJournal.map((row) => (
                 <tr key={row.id}>
                   <td className="fuel-cell--left">{new Date(row.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                   <td className="fuel-cell--left">{templateLabel(row.templateKey)}</td>
@@ -415,7 +429,7 @@ export default function PrintFormsPage() {
                   </td>
                 </tr>
               ))}
-              {journal.length === 0 && (
+              {modeJournal.length === 0 && (
                 <tr>
                   <td colSpan={7} className="fuel-empty">Журнал пуст — сформируйте первую форму</td>
                 </tr>

@@ -935,7 +935,16 @@ export default function DirectoriesPage() {
           <fieldset disabled={!canEdit} style={{ border: 0, margin: 0, padding: 0, display: 'contents' }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mt: 1 }}>
             {textField('ФИО', employeeEdit?.fullName, (value) => setEmployeeEdit((prev) => ({ ...prev, fullName: value })))}
-            {textField('Должность', employeeEdit?.position, (value) => setEmployeeEdit((prev) => ({ ...prev, position: value })))}
+            <Autocomplete
+              freeSolo
+              size="small"
+              options={['водитель', 'оперативник', 'диспетчер', 'механик']}
+              value={employeeEdit?.position ?? ''}
+              inputValue={employeeEdit?.position ?? ''}
+              onInputChange={(_event, value) => setEmployeeEdit((prev) => ({ ...prev, position: value }))}
+              disabled={!canEdit}
+              renderInput={(params) => <TextField {...params} label="Должность" fullWidth />}
+            />
             {textField('Телефон', employeeEdit?.phone, (value) => setEmployeeEdit((prev) => ({ ...prev, phone: value })))}
             <TextField
               select size="small" label="Статус" fullWidth
@@ -957,9 +966,10 @@ export default function DirectoriesPage() {
                 {textField('Кем выдан паспорт', employeeEdit?.passportIssuedBy, (value) => setEmployeeEdit((prev) => ({ ...prev, passportIssuedBy: value })))}
                 {textField('Адрес регистрации', employeeEdit?.registrationAddress, (value) => setEmployeeEdit((prev) => ({ ...prev, registrationAddress: value })))}
               </Box>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mt: 1.5 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 1.5, mt: 1.5 }}>
                 {textField('ВУ (номер)', employeeEdit?.licenseNumber, (value) => setEmployeeEdit((prev) => ({ ...prev, licenseNumber: value })))}
                 {textField('Дата выдачи ВУ', formatDateInput(employeeEdit?.licenseIssueDate), (value) => setEmployeeEdit((prev) => ({ ...prev, licenseIssueDate: value || null })), { type: 'date' })}
+                {textField('ИНН', employeeEdit?.inn, (value) => setEmployeeEdit((prev) => ({ ...prev, inn: value.replace(/\D/g, '').slice(0, 12) })))}
               </Box>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                 Машина и прицеп не закрепляются в справочнике — сцепка берётся из строки графика.

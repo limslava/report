@@ -153,12 +153,23 @@ function App() {
               </RouteAccessGuard>
             )}
           />
+          <Route path="print-forms" element={<Navigate to="/print-forms/poa" replace />} />
           <Route
-            path="print-forms"
+            path="print-forms/poa"
             element={(
               <RouteAccessGuard allow={canAccessDirectories(user?.role)}>
                 <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
-                  <PrintFormsPage />
+                  <PrintFormsPage mode="poa" />
+                </Suspense>
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="print-forms/requests"
+            element={(
+              <RouteAccessGuard allow={canAccessDirectories(user?.role)}>
+                <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
+                  <PrintFormsPage mode="requests" />
                 </Suspense>
               </RouteAccessGuard>
             )}
