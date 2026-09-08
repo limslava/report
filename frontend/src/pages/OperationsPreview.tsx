@@ -670,15 +670,23 @@ export default function OperationsPreview() {
     };
   }, [cardLocation]);
 
-  // Подсказки из справочника — только водители (контейнеровозы/автовозы).
-  // Диспетчера, оперативники/механики, гараж и СБ — свободное написание.
+  // Строгий режим (запрет свободного ввода) — по-прежнему только для водителей.
   const POSITION_BY_DEPARTMENT: Record<string, string> = {
     'Контейнеры': 'водитель',
     'Авто': 'водитель',
   };
 
+  // Подсказки из справочника: водители, диспетчеры, оперативники (ВВО) / механики (МСК).
+  // Гараж и СБ — свободное написание.
+  const suggestionPositionForDepartment = (department: string | null): string | undefined => {
+    if (department === 'Контейнеры' || department === 'Авто') return 'водитель';
+    if (department === 'Диспетчера') return 'диспетчер';
+    if (department === 'Курьеры') return activeLocation === 'ktk_mow' ? 'механик' : 'оперативник';
+    return undefined;
+  };
+
   const nameSuggestions = (department: string | null): string[] => {
-    const position = department ? POSITION_BY_DEPARTMENT[department] : undefined;
+    const position = department ? suggestionPositionForDepartment(department) : undefined;
     if (!position) return [];
     return directoryOptions.employees
       .filter((employee) => employee.position === position)
@@ -803,6 +811,9 @@ export default function OperationsPreview() {
   }, [selectedCell, selectedCellInCurrentView]);
   // Колонка «Прицеп» — только в графике контейнеровозов
   const showTrailerColumn = !isPersonnelSection && (filter === 'Контейнеры' || filter === 'Авто');
+  // Г/Н ТС у оперативников — только Владивосток (у московских механиков ТС не ведётся).
+  const showCouriersPlates = filter === 'Курьеры' && activeLocation === 'ktk_vvo';
+  const showPlateColumn = !isPersonnelSection || showCouriersPlates;
 
   const trailerPlatesForDepartment = (department: Department | undefined): string[] => {
     const typed = directoryOptions.trailerOptions;
@@ -2452,10 +2463,10 @@ export default function OperationsPreview() {
       <section className="ops-preview__matrix" ref={matrixSectionRef}>
           <div
             ref={matrixBodyRef}
-            className={`ops-matrix ops-matrix--fit${isPersonnelSection ? ' ops-matrix--personnel' : ''}`}
+            className={`ops-matrix ops-matrix--fit${isPersonnelSection ? ' ops-matrix--personnel' : ''}${showCouriersPlates ? ' ops-matrix--personnel-plates' : ''}`}
             style={{
               ['--ops-fit-scale' as string]: String(matrixScale),
-              ['--col-b' as string]: isPersonnelSection ? '0px' : '80px',
+              ['--col-b' as string]: showPlateColumn ? '80px' : '0px',
               ['--col-t' as string]: showTrailerColumn ? '90px' : '0px',
               ['--col-c' as string]: isPersonnelSection ? '0px' : '100px',
               ['--col-count' as string]: isPersonnelSection ? '130px' : '70px',
@@ -2469,7 +2480,7 @@ export default function OperationsPreview() {
                   <span className={`ops-matrix__sort-indicator is-${getSortState('name')}`} aria-hidden="true" />
                 </button>
               </div>
-              {!isPersonnelSection && (
+              {showPlateColumn && (
                 <div className="ops-matrix__cell ops-matrix__cell--sticky-second ops-matrix__cell--head-fixed" style={{ gridColumn: 2, gridRow: '1 / span 2' }}>
                   <button type="button" className="ops-matrix__sort-btn" onClick={() => toggleSort('plate')}>
                     <span>Г/Н ТС</span>
@@ -2660,7 +2671,7 @@ export default function OperationsPreview() {
                               {isPersonnelSection && !isSecond && renderRowMoveControls(person)}
                             </div>
                           </div>
-                          {!isPersonnelSection && (
+                          {showPlateColumn && (
                             <div
                               className={`ops-matrix__cell ops-matrix__cell--sticky-second${isSecond ? ' ops-matrix__cell--placeholder' : ''}`}
                             >
@@ -2674,7 +2685,7 @@ export default function OperationsPreview() {
                                   >
                                     {person.plate.trim() ? person.plate : 'без Г/Н ТС'}
                                   </span>
-                                  {renderRowMoveControls(person)}
+                                  {!isPersonnelSection && renderRowMoveControls(person)}
                                 </div>
                               )}
                             </div>
@@ -3559,9 +3570,9 @@ export default function OperationsPreview() {
                 placeholder="Иванов Иван"
               />
             </label>
-            {!isPersonnelSection && (
+            {(!isPersonnelSection || (addDepartment === 'Курьеры' && activeLocation === 'ktk_vvo')) && (
               <label className="ops-control">
-                <span>Второй водитель (опц.)</span>
+                <span>{isPersonnelSection ? 'Второй сотрудник (опц.)' : 'Второй водитель (опц.)'}</span>
                 <input
                   type="text"
                   list="ops-name-options"
@@ -3571,7 +3582,7 @@ export default function OperationsPreview() {
                 />
               </label>
             )}
-            {!isPersonnelSection && (
+            {(!isPersonnelSection || (addDepartment === 'Курьеры' && activeLocation === 'ktk_vvo')) && (
               <label className="ops-control">
                 <span>Г/Н ТС</span>
                 <input
@@ -3621,7 +3632,9 @@ export default function OperationsPreview() {
                     const validationError =
                       strictNameError(name, addDepartment) ||
                       (secondName ? strictNameError(secondName, addDepartment) : null) ||
-                      (!isPersonnelSection && plate ? strictPlateError(plate) : null);
+                      ((!isPersonnelSection || (addDepartment === 'Курьеры' && activeLocation === 'ktk_vvo')) && plate
+                        ? strictPlateError(plate)
+                        : null);
                     if (validationError) {
                       setAddError(validationError);
                       return;
@@ -3632,8 +3645,11 @@ export default function OperationsPreview() {
                     {
                       id: `p-${Date.now()}`,
                       name,
-                      secondName: isPersonnelSection ? undefined : secondName || undefined,
-                      plate: isPersonnelSection ? '' : plate || '',
+                      secondName:
+                        isPersonnelSection && !(addDepartment === 'Курьеры' && activeLocation === 'ktk_vvo')
+                          ? undefined
+                          : secondName || undefined,
+                      plate: isPersonnelSection && !(addDepartment === 'Курьеры' && activeLocation === 'ktk_vvo') ? '' : plate || '',
                       trailer: addDepartment === 'Контейнеры' || addDepartment === 'Авто' ? newPerson.trailer.trim() || undefined : undefined,
                       department: addDepartment,
                     },
@@ -3738,6 +3754,30 @@ export default function OperationsPreview() {
                 onChange={(event) => setEditPerson((prev) => (prev ? { ...prev, name: event.target.value } : prev))}
               />
             </label>
+            {editPerson.department === 'Курьеры' && activeLocation === 'ktk_vvo' && (
+              <>
+                <label className="ops-control">
+                  <span>Второй сотрудник</span>
+                  <input
+                    type="text"
+                    list="ops-edit-name-options"
+                    value={editPerson.secondName ?? ''}
+                    onChange={(event) =>
+                      setEditPerson((prev) => (prev ? { ...prev, secondName: event.target.value || undefined } : prev))
+                    }
+                  />
+                </label>
+                <label className="ops-control">
+                  <span>Г/Н ТС</span>
+                  <input
+                    type="text"
+                    list="ops-edit-plate-options"
+                    value={editPerson.plate}
+                    onChange={(event) => setEditPerson((prev) => (prev ? { ...prev, plate: event.target.value } : prev))}
+                  />
+                </label>
+              </>
+            )}
             {!isPersonnelDepartment(editPerson.department) && (
               <>
                 <label className="ops-control">

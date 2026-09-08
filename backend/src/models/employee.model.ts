@@ -57,6 +57,10 @@ export class Employee {
   @Column({ name: 'registration_address', type: 'varchar', length: 500, default: '' })
   registrationAddress!: string;
 
+  /** ИНН физлица (12 цифр); только в карточке — в выгрузки и копирование не попадает. */
+  @Column({ type: 'varchar', length: 12, default: '' })
+  inn!: string;
+
   @Column({ name: 'license_number', type: 'varchar', length: 32, default: '' })
   licenseNumber!: string;
 
@@ -65,6 +69,12 @@ export class Employee {
 
   @Column({ type: 'varchar', length: 500, default: '' })
   note!: string;
+
+  /** Принадлежность контрагенту (Справочники → Контрагенты); NULL — наша организация. */
+  @Index()
+  @Column({ name: 'counterparty_id', type: 'uuid', nullable: true })
+  counterpartyId!: string | null;
+
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

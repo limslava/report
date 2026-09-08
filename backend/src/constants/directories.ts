@@ -3,12 +3,12 @@ import type { FleetLocation } from '../models/fleet-vehicle.model';
 /**
  * Модель доступа справочников и учёта топлива.
  *
- * Справочники (сотрудники с ПДн, техника, прицепы, модели), решение 2026-08-14:
+ * Справочники (сотрудники с ПДн, техника, прицепы, модели), решение 2026-09-08:
  * - ПРОСМОТР и копирование: менеджер КТК своего региона + все ведущие роли;
- * - ВЕДЕНИЕ (создание/редактирование): руководитель КТК своего региона,
- *   отдел кадров (оба региона) и админ — менеджеры КТК ведение потеряли;
+ * - ВЕДЕНИЕ (создание/редактирование): руководитель И менеджер КТК своего
+ *   региона, отдел кадров (оба региона) и админ;
  * - УДАЛЕНИЕ (только из открытой карточки): админ (везде) и руководитель КТК
- *   своего региона — отделу кадров удаление не даётся.
+ *   своего региона — менеджерам и отделу кадров удаление не даётся.
  * Роли БДД доступа к ПДн сотрудников НЕ имеют — это осознанное решение.
  *
  * Учёт топлива ведут: админ, специалист по БДД и руководитель КТК своего региона.
@@ -28,15 +28,28 @@ export function directoryLocationsForRole(role: string | undefined): FleetLocati
   return [];
 }
 
-/** Может ли роль СОЗДАВАТЬ/РЕДАКТИРОВАТЬ записи справочников (менеджеры КТК — нет). */
+/** Может ли роль СОЗДАВАТЬ/РЕДАКТИРОВАТЬ записи справочников (регион — canEditDirectoryEntry). */
 export function canEditDirectories(role: string | undefined): boolean {
   return (
     role === 'admin' ||
     role === 'head_hr' ||
     role === 'hr_specialist' ||
     role === 'head_ktk_vvo' ||
-    role === 'head_ktk_mow'
+    role === 'head_ktk_mow' ||
+    role === 'manager_ktk_vvo' ||
+    role === 'manager_ktk_mow'
   );
+}
+
+/** Может ли роль СОЗДАВАТЬ/РЕДАКТИРОВАТЬ записи справочников в данном регионе. */
+export function canEditDirectoryEntry(
+  role: string | undefined,
+  location: FleetLocation
+): boolean {
+  if (role === 'admin' || role === 'head_hr' || role === 'hr_specialist') return true;
+  if (role === 'head_ktk_vvo' || role === 'manager_ktk_vvo') return location === 'vvo';
+  if (role === 'head_ktk_mow' || role === 'manager_ktk_mow') return location === 'mow';
+  return false;
 }
 
 /** Может ли роль УДАЛЯТЬ записи справочников в данном регионе. */
@@ -79,17 +92,30 @@ export const DIRECTORY_ROLES = [
   'hr_specialist',
 ] as const;
 
-/** Ведение справочников (без менеджеров КТК — у них просмотр и копирование). */
+/** Ведение справочников (менеджеры КТК — свой регион, проверяется в контроллере). */
 export const DIRECTORY_EDIT_ROLES = [
   'admin',
   'head_ktk_vvo',
+  'manager_ktk_vvo',
   'head_ktk_mow',
+  'manager_ktk_mow',
   'head_hr',
   'hr_specialist',
 ] as const;
 
 /** Кандидаты на удаление (регион проверяется в контроллере по записи). */
 export const DIRECTORY_DELETE_ROLES = ['admin', 'head_ktk_vvo', 'head_ktk_mow'] as const;
+
+/**
+ * Печатные формы (доверенности/заявки): пока только Владивосток — шаблоны
+ * заточены под контрагентов ВВО (ВМПП/ДКХ/ПЛ/ТК). Москве откроем, когда
+ * появятся её образцы. Отдел кадров доступа не имеет.
+ */
+export const PRINT_FORM_ROLES = [
+  'admin',
+  'head_ktk_vvo',
+  'manager_ktk_vvo',
+] as const;
 
 export const FUEL_ROLES = [
   'admin',

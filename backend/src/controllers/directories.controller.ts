@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import ExcelJS from 'exceljs';
+import { ILike, IsNull } from 'typeorm';
 import { AppDataSource } from '../config/data-source';
 import { Employee } from '../models/employee.model';
 import { FleetVehicle } from '../models/fleet-vehicle.model';
@@ -42,6 +43,22 @@ const requireDirectoryLocation = (req: Request, raw: unknown): FleetLocation => 
     httpError(403, 'Access denied for this location');
   }
   return location;
+};
+
+/** Фильтр принадлежности: ?counterpartyId=<uuid> — записи контрагента, иначе наши (NULL). */
+const counterpartyFilter = (raw: unknown) => {
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  return value ? value : IsNull();
+};
+
+/** Валидация контрагента при создании записи в его карточке. */
+const resolveCounterpartyId = async (raw: unknown): Promise<string | null> => {
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  if (!value) return null;
+  const { DirectoryCounterparty } = await import('../models/directory-counterparty.model');
+  const exists = await AppDataSource.getRepository(DirectoryCounterparty).exist({ where: { id: value } });
+  if (!exists) httpError(400, 'Контрагент не найден');
+  return value;
 };
 
 /** Просмотр техники разрешён и ролям топлива (БДД), запись — только справочным ролям. */
@@ -135,7 +152,11 @@ const resolveModelByLabel = async (label: string): Promise<VehicleModel> => {
 export const listVehicles = async (req: Request, res: Response) => {
   const location = requireFleetViewLocation(req, req.query.location);
   const [vehicles, usage] = await Promise.all([
-    vehicleRepo.find({ where: { location }, relations: { model: true }, order: { plate: 'ASC' } }),
+    vehicleRepo.find({
+      where: { location, counterpartyId: counterpartyFilter(req.query.counterpartyId) },
+      relations: { model: true },
+      order: { plate: 'ASC' },
+    }),
     loadScheduleUsage(location),
   ]);
   res.json(
@@ -154,6 +175,7 @@ export const saveVehicle = async (req: Request, res: Response) => {
 
   const vehicle = id ? await vehicleRepo.findOne({ where: { id } }) : vehicleRepo.create();
   if (!vehicle) return httpError(404, 'Vehicle not found') as never;
+  if (!id) vehicle.counterpartyId = await resolveCounterpartyId(req.body?.counterpartyId);
   if (id && vehicle.location !== location) {
     // перевод между городами делает роль, имеющая доступ к целевому городу
     requireDirectoryLocation(req, vehicle.location);
@@ -196,7 +218,10 @@ export const deleteVehicle = async (req: Request, res: Response) => {
 export const listTrailers = async (req: Request, res: Response) => {
   const location = requireFleetViewLocation(req, req.query.location);
   const [trailers, usage] = await Promise.all([
-    trailerRepo.find({ where: { location }, order: { plate: 'ASC' } }),
+    trailerRepo.find({
+      where: { location, counterpartyId: counterpartyFilter(req.query.counterpartyId) },
+      order: { plate: 'ASC' },
+    }),
     loadScheduleUsage(location),
   ]);
   res.json(
@@ -215,6 +240,7 @@ export const saveTrailer = async (req: Request, res: Response) => {
 
   const trailer = id ? await trailerRepo.findOne({ where: { id } }) : trailerRepo.create();
   if (!trailer) return httpError(404, 'Trailer not found') as never;
+  if (!id) trailer.counterpartyId = await resolveCounterpartyId(req.body?.counterpartyId);
 
   const existingPlate = await trailerRepo.findOne({ where: { plate } });
   if (existingPlate && existingPlate.id !== trailer.id) httpError(409, 'Trailer with this plate already exists');
@@ -244,7 +270,10 @@ export const deleteTrailer = async (req: Request, res: Response) => {
 
 export const listEmployees = async (req: Request, res: Response) => {
   const location = requireDirectoryLocation(req, req.query.location);
-  const employees = await employeeRepo.find({ where: { location }, order: { fullName: 'ASC' } });
+  const employees = await employeeRepo.find({
+    where: { location, counterpartyId: counterpartyFilter(req.query.counterpartyId) },
+    order: { fullName: 'ASC' },
+  });
   res.json(employees);
 };
 
@@ -256,10 +285,12 @@ export const saveEmployee = async (req: Request, res: Response) => {
 
   const employee = id ? await employeeRepo.findOne({ where: { id } }) : employeeRepo.create();
   if (!employee) return httpError(404, 'Employee not found') as never;
+  if (!id) employee.counterpartyId = await resolveCounterpartyId(req.body?.counterpartyId);
 
   employee.location = location;
   employee.fullName = fullName;
-  employee.position = trimmed(req.body?.position, 60) || 'водитель';
+  const positionRaw = typeof req.body?.position === 'string' ? req.body.position.trim().slice(0, 60) : '';
+  employee.position = positionRaw || employee.position || 'водитель';
   employee.phone = trimmed(req.body?.phone, 32);
   employee.status = req.body?.status === 'fired' ? 'fired' : 'active';
   employee.birthDate = optionalDate(req.body?.birthDate);
@@ -268,6 +299,7 @@ export const saveEmployee = async (req: Request, res: Response) => {
   employee.passportIssueDate = optionalDate(req.body?.passportIssueDate);
   employee.passportIssuedBy = trimmed(req.body?.passportIssuedBy, 255);
   employee.registrationAddress = trimmed(req.body?.registrationAddress, 500);
+  employee.inn = trimmed(req.body?.inn, 12).replace(/\D/g, '');
   employee.licenseNumber = trimmed(req.body?.licenseNumber, 32);
   employee.licenseIssueDate = optionalDate(req.body?.licenseIssueDate);
   employee.note = trimmed(req.body?.note, 500);
@@ -448,9 +480,9 @@ export const resolveRigFromSchedule = async (
 export const getDirectoryOptions = async (req: Request, res: Response) => {
   const location = parseLocation(req.query.location);
   const [employees, vehicles, trailers] = await Promise.all([
-    employeeRepo.find({ where: { location, status: 'active' }, order: { fullName: 'ASC' } }),
-    vehicleRepo.find({ where: { location }, order: { plate: 'ASC' } }),
-    trailerRepo.find({ where: { location, status: 'active' }, order: { plate: 'ASC' } }),
+    employeeRepo.find({ where: { location, status: 'active', counterpartyId: IsNull() }, order: { fullName: 'ASC' } }),
+    vehicleRepo.find({ where: { location, counterpartyId: IsNull() }, order: { plate: 'ASC' } }),
+    trailerRepo.find({ where: { location, status: 'active', counterpartyId: IsNull() }, order: { plate: 'ASC' } }),
   ]);
   res.json({
     employees: employees.map((employee) => ({ fullName: employee.fullName, position: employee.position })),
@@ -479,7 +511,7 @@ const formatDateRu = (value: string | null): string => {
  */
 export const exportDirectory = async (req: Request, res: Response) => {
   const tab = req.body?.tab;
-  if (tab !== 'drivers' && tab !== 'vehicles' && tab !== 'trailers' && tab !== 'models') {
+  if (tab !== 'drivers' && tab !== 'staff' && tab !== 'vehicles' && tab !== 'trailers' && tab !== 'models') {
     httpError(400, 'Unknown export tab');
   }
   const ids: string[] = Array.isArray(req.body?.ids)
@@ -496,20 +528,20 @@ export const exportDirectory = async (req: Request, res: Response) => {
   let filename = '';
   let locationLabel = '';
 
-  if (tab === 'drivers') {
+  if (tab === 'drivers' || tab === 'staff') {
     if (!DIRECTORY_ROLES.includes(req.user?.role as (typeof DIRECTORY_ROLES)[number])) {
-      httpError(403, 'Экспорт водителей доступен только справочным ролям');
+      httpError(403, 'Экспорт сотрудников доступен только справочным ролям');
     }
     const location = requireDirectoryLocation(req, req.body?.location);
     locationLabel = location === 'vvo' ? 'Владивосток' : 'Москва';
-    const rows = pick(
-      await employeeRepo.find({ where: { location, position: 'водитель' }, order: { fullName: 'ASC' } })
-    );
-    sheetName = 'Водители';
-    filename = `Справочник_водители_${locationLabel}.xlsx`;
+    const all = await employeeRepo.find({ where: { location, counterpartyId: IsNull() }, order: { fullName: 'ASC' } });
+    const rows = pick(all.filter((employee) => (tab === 'drivers' ? employee.position === 'водитель' : employee.position !== 'водитель')));
+    sheetName = tab === 'drivers' ? 'Водители' : 'Сотрудники';
+    filename = `Справочник_${tab === 'drivers' ? 'водители' : 'сотрудники'}_${locationLabel}.xlsx`;
     const sheet = workbook.addWorksheet(sheetName);
     sheet.columns = [
       { header: 'ФИО', key: 'fullName', width: 34 },
+      { header: 'Должность', key: 'position', width: 20 },
       { header: 'Телефон', key: 'phone', width: 16 },
       { header: 'Статус', key: 'status', width: 12 },
       { header: 'Дата рождения', key: 'birthDate', width: 14 },
@@ -525,6 +557,7 @@ export const exportDirectory = async (req: Request, res: Response) => {
     rows.forEach((employee) =>
       sheet.addRow({
         fullName: employee.fullName,
+        position: employee.position,
         phone: employee.phone,
         status: statusLabel(employee.status),
         birthDate: formatDateRu(employee.birthDate),
@@ -736,4 +769,108 @@ export const bootstrapDirectoriesFromSchedules = async (req: Request, res: Respo
     req,
   });
   res.json({ createdEmployees, createdVehicles });
+};
+
+// ─── Справочник контрагентов ───
+// Самостоятельный список (НЕ зеркалит БП договоров): контрагент добавляется
+// вручную по ИНН, реквизиты подтягиваются из ФНС; при недоступной ФНС можно
+// ввести наименование руками. «Проваливание» внутрь — следующим шагом.
+export const listCounterpartiesDirectory = async (req: Request, res: Response) => {
+  const { DirectoryCounterparty } = await import('../models/directory-counterparty.model');
+  const q = trimmed(req.query.q, 120);
+  const repo = AppDataSource.getRepository(DirectoryCounterparty);
+  const where = q
+    ? [
+        { inn: ILike(`${q}%`) },
+        { nameFull: ILike(`%${q}%`) },
+        { nameShort: ILike(`%${q}%`) },
+      ]
+    : undefined;
+  const rows = await repo.find({ where, order: { nameShort: 'ASC', nameFull: 'ASC' }, take: 500 });
+  res.json(rows);
+};
+
+export const createCounterpartyDirectory = async (req: Request, res: Response) => {
+  const { DirectoryCounterparty } = await import('../models/directory-counterparty.model');
+  const { fetchCounterpartyFromFnsByInn, FnsServiceUnavailableError } = await import('../services/fns-egrul.service');
+  const repo = AppDataSource.getRepository(DirectoryCounterparty);
+
+  const inn = trimmed(req.body?.inn, 12).replace(/\D/g, '');
+  if (!/^(\d{10}|\d{12})$/.test(inn)) httpError(400, 'ИНН должен содержать 10 или 12 цифр');
+
+  const existing = await repo.findOne({ where: { inn } });
+  if (existing) httpError(409, `Контрагент с ИНН ${inn} уже есть в справочнике: ${existing.nameShort || existing.nameFull}`);
+
+  const manualName = trimmed(req.body?.nameFull, 500);
+  let entity = repo.create({ inn, nameFull: manualName, source: 'manual' as const });
+  let fnsUnavailable = false;
+  try {
+    const fns = await fetchCounterpartyFromFnsByInn(inn);
+    if (fns) {
+      entity = repo.create({
+        inn,
+        nameFull: fns.nameFull,
+        nameShort: fns.nameShort ?? '',
+        ogrn: fns.ogrn ?? '',
+        kpp: fns.kpp ?? '',
+        address: fns.address ?? '',
+        source: 'fns' as const,
+      });
+    }
+  } catch (error) {
+    if (!(error instanceof FnsServiceUnavailableError)) throw error;
+    fnsUnavailable = true;
+  }
+
+  if (!entity.nameFull) {
+    httpError(
+      422,
+      fnsUnavailable
+        ? 'Сервис ФНС временно недоступен — укажите наименование вручную'
+        : 'Организация с таким ИНН не найдена в ФНС — укажите наименование вручную'
+    );
+  }
+
+  const saved = await repo.save(entity);
+  await recordAuditLog({
+    action: 'DIRECTORY_COUNTERPARTY_CREATED',
+    userId: req.user?.id ?? null,
+    entityType: 'directory_counterparty',
+    entityId: saved.id,
+    details: { inn: saved.inn, nameFull: saved.nameFull, source: saved.source },
+    req,
+  });
+  res.status(201).json(saved);
+};
+
+export const getCounterpartyDirectory = async (req: Request, res: Response) => {
+  const { DirectoryCounterparty } = await import('../models/directory-counterparty.model');
+  const entity = await AppDataSource.getRepository(DirectoryCounterparty).findOne({ where: { id: req.params.id } });
+  if (!entity) return httpError(404, 'Counterparty not found') as never;
+  res.json(entity);
+};
+
+export const deleteCounterpartyDirectory = async (req: Request, res: Response) => {
+  const { DirectoryCounterparty } = await import('../models/directory-counterparty.model');
+  const repo = AppDataSource.getRepository(DirectoryCounterparty);
+  const entity = await repo.findOne({ where: { id: req.params.id } });
+  if (!entity) return httpError(404, 'Counterparty not found') as never;
+  const [employees, vehicles, trailers] = await Promise.all([
+    employeeRepo.count({ where: { counterpartyId: entity.id } }),
+    vehicleRepo.count({ where: { counterpartyId: entity.id } }),
+    trailerRepo.count({ where: { counterpartyId: entity.id } }),
+  ]);
+  if (employees + vehicles + trailers > 0) {
+    httpError(409, 'У контрагента есть водители, техника или прицепы — сначала удалите их из его карточки');
+  }
+  await repo.remove(entity);
+  await recordAuditLog({
+    action: 'DIRECTORY_COUNTERPARTY_DELETED',
+    userId: req.user?.id ?? null,
+    entityType: 'directory_counterparty',
+    entityId: req.params.id,
+    details: { inn: entity.inn, nameFull: entity.nameFull },
+    req,
+  });
+  res.json({ ok: true });
 };

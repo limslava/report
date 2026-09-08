@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   Autocomplete,
@@ -19,7 +20,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { ContentCopy } from '@mui/icons-material';
+import { ArrowBack, ContentCopy } from '@mui/icons-material';
 import { useAuthStore } from '../store/auth-store';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import {
@@ -78,7 +79,7 @@ const MONTH_GENITIVE = [
   'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
 ];
 
-type TabKey = 'drivers' | 'vehicles' | 'trailers' | 'models';
+type TabKey = 'drivers' | 'staff' | 'vehicles' | 'trailers' | 'models';
 
 type Feedback = { severity: 'success' | 'error'; text: string } | null;
 
@@ -95,7 +96,18 @@ const errorText = (error: unknown): string => {
   return anyError?.response?.data?.message || anyError?.message || 'Не удалось выполнить операцию';
 };
 
-export default function DirectoriesPage() {
+/**
+ * counterpartyId/-Name: страница работает как карточка контрагента —
+ * те же вкладки водители/техника/прицепы, но данные принадлежат контрагенту
+ * (в наши списки и графики не попадают). Без пропсов — «Наша организация».
+ */
+export default function DirectoriesPage({
+  counterpartyId,
+  counterpartyName,
+  counterpartyInn,
+}: { counterpartyId?: string; counterpartyName?: string; counterpartyInn?: string } = {}) {
+  const isCounterpartyMode = Boolean(counterpartyId);
+  const navigate = useNavigate();
   const { user } = useAuthStore();
   const allowedLocations = useMemo(() => directoryLocationsForRole(user?.role), [user?.role]);
   const canManageNorms = canManageFuelNormsFrontend(user?.role);
@@ -109,7 +121,7 @@ export default function DirectoriesPage() {
 
   const sortStorageKey = `dir-sort-v1:${user?.id ?? 'anonymous'}`;
   const [sortByTab, setSortByTab] = useState<Record<TabKey, TableSortState>>(() =>
-    loadSortState(sortStorageKey, { drivers: null, vehicles: null, trailers: null, models: null })
+    loadSortState(sortStorageKey, { drivers: null, staff: null, vehicles: null, trailers: null, models: null })
   );
   useEffect(() => saveSortState(sortStorageKey, sortByTab), [sortStorageKey, sortByTab]);
   const toggleSort = (tabKey: TabKey, field: string) =>
@@ -149,9 +161,9 @@ export default function DirectoriesPage() {
   const reload = useCallback(async () => {
     try {
       const [employeesRes, vehiclesRes, trailersRes, modelsRes, seasonsRes] = await Promise.all([
-        getEmployees(location).catch(() => ({ data: [] as EmployeeItem[] })),
-        getFleetVehicles(location),
-        getTrailers(location),
+        getEmployees(location, counterpartyId).catch(() => ({ data: [] as EmployeeItem[] })),
+        getFleetVehicles(location, counterpartyId),
+        getTrailers(location, counterpartyId),
         getVehicleModels(),
         getFuelSeasons().catch(() => ({ data: { winterStartMonth: 11, winterEndMonth: 3 } })),
       ]);
@@ -164,11 +176,15 @@ export default function DirectoriesPage() {
     } catch (error) {
       setFeedback({ severity: 'error', text: errorText(error) });
     }
-  }, [location]);
+  }, [location, counterpartyId]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    if (isCounterpartyMode && (tab === 'staff' || tab === 'models')) setTab('drivers');
+  }, [isCounterpartyMode, tab]);
 
   // «несохранённое» в справочниках: открытая карточка с изменениями или неприменённые сезоны
   const employeeSnapshot = useRef<string | null>(null);
@@ -246,11 +262,20 @@ export default function DirectoriesPage() {
   const drivers = useMemo(
     () =>
       sortRows(
-        employees.filter((e) => e.position === 'водитель'),
+        isCounterpartyMode ? employees : employees.filter((e) => e.position === 'водитель'),
         sortByTab.drivers,
         (row, field) => (row as unknown as Record<string, unknown>)[field]
       ),
-    [employees, sortByTab.drivers]
+    [employees, isCounterpartyMode, sortByTab.drivers]
+  );
+  const staff = useMemo(
+    () =>
+      sortRows(
+        employees.filter((e) => e.position !== 'водитель'),
+        sortByTab.staff,
+        (row, field) => (row as unknown as Record<string, unknown>)[field]
+      ),
+    [employees, sortByTab.staff]
   );
   const sortedVehicles = useMemo(
     () =>
@@ -305,13 +330,15 @@ export default function DirectoriesPage() {
 
   const exportOptions = useMemo(() => {
     if (tab === 'drivers') return drivers.map((d) => ({ id: d.id, label: d.fullName }));
+    if (tab === 'staff') return staff.map((d) => ({ id: d.id, label: d.fullName }));
     if (tab === 'vehicles') return sortedVehicles.map((v) => ({ id: v.id, label: v.plate }));
     if (tab === 'trailers') return sortedTrailers.map((t) => ({ id: t.id, label: t.plate }));
     return sortedModels.map((m) => ({ id: m.id, label: `${m.brand} ${m.name}`.trim() }));
-  }, [tab, drivers, sortedVehicles, sortedTrailers, sortedModels]);
+  }, [tab, drivers, staff, sortedVehicles, sortedTrailers, sortedModels]);
 
   const TAB_EXPORT_LABELS: Record<TabKey, string> = {
     drivers: 'водители',
+    staff: 'сотрудники',
     vehicles: 'техника',
     trailers: 'прицепы',
     models: 'модели_и_нормы',
@@ -369,6 +396,7 @@ export default function DirectoriesPage() {
       ...employeeEdit,
       location,
       fullName: employeeEdit.fullName.trim(),
+      counterpartyId,
     } as EmployeePayload;
     try {
       if (employeeEdit.id) await updateEmployee(employeeEdit.id, payload);
@@ -390,7 +418,7 @@ export default function DirectoriesPage() {
       return false;
     }
     try {
-      const payload = { ...vehicleEdit, location, modelLabel: vehicleModelLabel.trim(), modelId: vehicleModelLabel.trim() ? undefined : null };
+      const payload = { ...vehicleEdit, location, modelLabel: vehicleModelLabel.trim(), modelId: vehicleModelLabel.trim() ? undefined : null, counterpartyId };
       if (vehicleEdit.id) await updateFleetVehicle(vehicleEdit.id, payload);
       else await createFleetVehicle(payload);
       setVehicleEdit(null);
@@ -410,7 +438,7 @@ export default function DirectoriesPage() {
       return false;
     }
     try {
-      const payload = { ...trailerEdit, location };
+      const payload = { ...trailerEdit, location, counterpartyId };
       if (trailerEdit.id) await updateTrailer(trailerEdit.id, payload);
       else await createTrailer(payload);
       setTrailerEdit(null);
@@ -488,7 +516,26 @@ export default function DirectoriesPage() {
     <div className="ops-preview dir-page">
       <section className="ops-preview__controls">
         <Paper sx={{ p: 1.5, width: '100%' }}>
-          <Box display="flex" alignItems="center" gap={2} sx={{ flexWrap: 'nowrap', overflow: 'hidden' }}>
+          <Box display="flex" alignItems="center" gap={2} sx={{ flexWrap: 'nowrap', minWidth: 0 }}>
+            {isCounterpartyMode && (
+              <>
+                <Tooltip title="К списку контрагентов">
+                  <IconButton size="small" onClick={() => navigate('/directories/counterparties')}>
+                    <ArrowBack sx={{ fontSize: 20 }} />
+                  </IconButton>
+                </Tooltip>
+                <Box sx={{ minWidth: 0, flexShrink: 0, maxWidth: 280 }}>
+                  <Typography sx={{ fontWeight: 600, fontSize: 14, lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {counterpartyName || 'Контрагент'}
+                  </Typography>
+                  {counterpartyInn && (
+                    <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap', lineHeight: 1 }}>
+                      ИНН {counterpartyInn}
+                    </Typography>
+                  )}
+                </Box>
+              </>
+            )}
             {allowedLocations.length > 1 && (
               <TextField
                 label="Город"
@@ -511,11 +558,12 @@ export default function DirectoriesPage() {
             >
               <Tab value="drivers" label={`Водители (${drivers.length})`} />
               <Tab value="vehicles" label={`Техника (${vehicles.length})`} />
+              {!isCounterpartyMode && <Tab value="staff" label={`Сотрудники (${staff.length})`} />}
               <Tab value="trailers" label={`Прицепы (${trailers.length})`} />
-              <Tab value="models" label={`Модели и нормы (${models.length})`} />
+              {!isCounterpartyMode && <Tab value="models" label={`Модели и нормы (${models.length})`} />}
             </Tabs>
             <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
-              {!exportMode && (
+              {!exportMode && !isCounterpartyMode && (
                 <button
                   type="button"
                   className="ops-btn ops-btn--download"
@@ -549,7 +597,7 @@ export default function DirectoriesPage() {
                   </button>
                 </>
               )}
-              {isAdmin && (tab === 'drivers' || tab === 'vehicles') && (
+              {isAdmin && !isCounterpartyMode && (tab === 'drivers' || tab === 'vehicles') && (
                 <button
                   type="button"
                   className="ops-btn ghost"
@@ -569,11 +617,11 @@ export default function DirectoriesPage() {
                   Наполнить из графиков
                 </button>
               )}
-              {tab === 'drivers' && canEdit && (
+              {(tab === 'drivers' || tab === 'staff') && canEdit && (
                 <button
                   type="button"
                   className="ops-btn ops-btn--add"
-                  onClick={() => setEmployeeEdit({ position: 'водитель', status: 'active' })}
+                  onClick={() => setEmployeeEdit({ position: tab === 'drivers' ? 'водитель' : '', status: 'active' })}
                 >
                   Добавить
                 </button>
@@ -650,6 +698,52 @@ export default function DirectoriesPage() {
                 {drivers.length === 0 && (
                   <tr>
                     <td colSpan={7} className="fuel-empty">Водителей пока нет — добавьте</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === 'staff' && (
+          <div className="dir-table">
+            <table>
+              <thead>
+                <tr>
+                  {exportMode && exportCheckboxHeader}
+                  <th style={{ minWidth: 290, whiteSpace: "nowrap" }}>{sortHeader('staff', 'fullName', 'ФИО')}</th>
+                  <th style={{ minWidth: 180 }}>{sortHeader('staff', 'position', 'Должность')}</th>
+                  <th style={{ minWidth: 130 }}>{sortHeader('staff', 'phone', 'Телефон')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 110 }}>{sortHeader('staff', 'birthDate', 'Дата рождения')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>{sortHeader('staff', 'status', 'Статус')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 80 }}>Карточка</th>
+                </tr>
+              </thead>
+              <tbody>
+                {staff.map((employee) => (
+                  <tr key={employee.id} onDoubleClick={() => setEmployeeEdit(employee)}>
+                    {exportMode && exportCheckboxCell(employee.id)}
+                    <td className="fuel-cell--sticky">{employee.fullName}</td>
+                    <td className="fuel-cell--left">{employee.position || '—'}</td>
+                    <td className="fuel-cell--center">{employee.phone || '—'}</td>
+                    <td className="fuel-cell--center">{formatDateDisplay(employee.birthDate)}</td>
+                    <td className="fuel-cell--center">
+                      <span className={`dir-status ${employee.status === 'active' ? 'dir-status--ok' : 'dir-status--off'}`}>
+                        {employee.status === 'active' ? 'работает' : 'уволен'}
+                      </span>
+                    </td>
+                    <td className="fuel-cell--center dir-actions">
+                      <Tooltip title="Скопировать данные сотрудника">
+                        <IconButton size="small" onClick={() => void copyCard(employee)}>
+                          <ContentCopy sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                    </td>
+                  </tr>
+                ))}
+                {staff.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="fuel-empty">Сотрудников пока нет — добавьте (для доверенностей не на водителей)</td>
                   </tr>
                 )}
               </tbody>
@@ -877,6 +971,16 @@ export default function DirectoriesPage() {
           <fieldset disabled={!canEdit} style={{ border: 0, margin: 0, padding: 0, display: 'contents' }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mt: 1 }}>
             {textField('ФИО', employeeEdit?.fullName, (value) => setEmployeeEdit((prev) => ({ ...prev, fullName: value })))}
+            <Autocomplete
+              freeSolo
+              size="small"
+              options={['водитель', 'оперативник', 'диспетчер', 'механик']}
+              value={employeeEdit?.position ?? ''}
+              inputValue={employeeEdit?.position ?? ''}
+              onInputChange={(_event, value) => setEmployeeEdit((prev) => ({ ...prev, position: value }))}
+              disabled={!canEdit}
+              renderInput={(params) => <TextField {...params} label="Должность" fullWidth />}
+            />
             {textField('Телефон', employeeEdit?.phone, (value) => setEmployeeEdit((prev) => ({ ...prev, phone: value })))}
             <TextField
               select size="small" label="Статус" fullWidth
@@ -898,9 +1002,10 @@ export default function DirectoriesPage() {
                 {textField('Кем выдан паспорт', employeeEdit?.passportIssuedBy, (value) => setEmployeeEdit((prev) => ({ ...prev, passportIssuedBy: value })))}
                 {textField('Адрес регистрации', employeeEdit?.registrationAddress, (value) => setEmployeeEdit((prev) => ({ ...prev, registrationAddress: value })))}
               </Box>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mt: 1.5 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 1.5, mt: 1.5 }}>
                 {textField('ВУ (номер)', employeeEdit?.licenseNumber, (value) => setEmployeeEdit((prev) => ({ ...prev, licenseNumber: value })))}
                 {textField('Дата выдачи ВУ', formatDateInput(employeeEdit?.licenseIssueDate), (value) => setEmployeeEdit((prev) => ({ ...prev, licenseIssueDate: value || null })), { type: 'date' })}
+                {textField('ИНН', employeeEdit?.inn, (value) => setEmployeeEdit((prev) => ({ ...prev, inn: value.replace(/\D/g, '').slice(0, 12) })))}
               </Box>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                 Машина и прицеп не закрепляются в справочнике — сцепка берётся из строки графика.

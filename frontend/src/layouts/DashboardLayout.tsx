@@ -44,6 +44,7 @@ import {
   LocalShipping,
   ExpandLess,
   ExpandMore,
+  Print,
 } from '@mui/icons-material';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -54,6 +55,7 @@ import {
   canViewCalendar,
   canAccessFuel,
   canAccessDirectories,
+  canAccessPrintForms,
   canViewOperationsEfficiency,
   canViewFinancialPlan,
   canViewSummary,
@@ -307,14 +309,38 @@ const DashboardLayout = () => {
       ? { key: 'fuel', label: 'Топливо', icon: <LocalGasStation />, onClick: () => handleNavigate('/fuel'), active: location.pathname.includes('/fuel') }
       : null,
     canAccessDirectories(user?.role)
-      ? { key: 'directories', label: 'Справочники', icon: <FolderShared />, onClick: () => handleNavigate('/directories'), active: location.pathname.includes('/directories') }
+      ? {
+          key: 'directories', label: 'Справочники', icon: <FolderShared />,
+          onClick: () => handleNavigate('/directories'), active: location.pathname.includes('/directories'),
+          children: [
+            { key: 'directories-own', label: 'Наша организация', onClick: () => handleNavigate('/directories'), active: location.pathname.endsWith('/directories') },
+            { key: 'directories-counterparties', label: 'Контрагенты', onClick: () => handleNavigate('/directories/counterparties'), active: location.pathname.includes('/directories/counterparties') },
+          ],
+        }
+      : null,
+    canAccessPrintForms(user?.role)
+      ? {
+          key: 'print-forms', label: 'Печатные формы', icon: <Print />,
+          onClick: () => handleNavigate('/print-forms/poa'), active: location.pathname.includes('/print-forms'),
+          children: [
+            { key: 'print-poa', label: 'Доверенности', onClick: () => handleNavigate('/print-forms/poa'), active: location.pathname.includes('/print-forms/poa') },
+            { key: 'print-requests', label: 'Заявки', onClick: () => handleNavigate('/print-forms/requests'), active: location.pathname.includes('/print-forms/requests') },
+          ],
+        }
       : null,
     canAccessAdmin(user?.role)
       ? { key: 'admin', label: 'Администрирование', icon: <People />, onClick: () => handleNavigate('/admin'), active: location.pathname.includes('/admin') }
       : null,
     { key: 'settings', label: 'Настройки', icon: <Settings />, onClick: () => handleNavigate('/settings'), active: location.pathname.includes('/settings') },
     { key: 'logout', label: 'Выход', icon: <Logout />, onClick: handleLogout, active: false },
-  ].filter(Boolean) as Array<{ key: string; label: string; icon: JSX.Element; onClick: () => void; active: boolean }>;
+  ].filter(Boolean) as Array<{
+    key: string;
+    label: string;
+    icon: JSX.Element;
+    onClick: () => void;
+    active: boolean;
+    children?: Array<{ key: string; label: string; onClick: () => void; active: boolean }>;
+  }>;
 
   useEffect(() => {
     const loadTitle = async () => {
@@ -978,14 +1004,23 @@ const DashboardLayout = () => {
           </>
         )}
         {menuItems.map((item) => (
-          <ListItem disablePadding key={item.key}>
-            <Tooltip title={!isPinnedOpen ? item.label : ''} placement="right">
-              <ListItemButton selected={item.active} onClick={item.onClick}>
-                <ListItemIcon sx={{ minWidth: isPinnedOpen ? 40 : 0, justifyContent: 'center' }}>{item.icon}</ListItemIcon>
-                {isPinnedOpen && <ListItemText primary={item.label} />}
-              </ListItemButton>
-            </Tooltip>
-          </ListItem>
+          <Box key={item.key}>
+            <ListItem disablePadding>
+              <Tooltip title={!isPinnedOpen ? item.label : ''} placement="right">
+                <ListItemButton selected={item.active && !item.children} onClick={item.onClick}>
+                  <ListItemIcon sx={{ minWidth: isPinnedOpen ? 40 : 0, justifyContent: 'center' }}>{item.icon}</ListItemIcon>
+                  {isPinnedOpen && <ListItemText primary={item.label} />}
+                </ListItemButton>
+              </Tooltip>
+            </ListItem>
+            {isPinnedOpen && item.children?.map((child) => (
+              <ListItem disablePadding key={child.key} sx={{ pl: 6 }}>
+                <ListItemButton selected={child.active} onClick={child.onClick} sx={{ py: 0.5, minHeight: 32 }}>
+                  <ListItemText primary={child.label} primaryTypographyProps={{ fontSize: 13 }} />
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </Box>
         ))}
       </List>
     </Box>
@@ -1044,7 +1079,8 @@ const DashboardLayout = () => {
               {location.pathname.includes('/admin') && 'Администрирование'}
               {location.pathname.includes('/settings') && 'Настройки'}
               {location.pathname.includes('/fuel') && 'Учёт топлива'}
-              {location.pathname.includes('/directories') && 'Справочники'}
+              {location.pathname.includes('/directories/counterparties') ? 'Справочники — Контрагенты' : location.pathname.includes('/directories') ? 'Справочники' : ''}
+              {location.pathname.includes('/print-forms/requests') ? 'Печатные формы — Заявки' : location.pathname.includes('/print-forms') ? 'Печатные формы — Доверенности' : ''}
             </Typography>
           )}
           {isTechDashboardRoute && (

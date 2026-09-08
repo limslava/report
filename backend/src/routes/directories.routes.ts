@@ -19,6 +19,10 @@ import {
   deleteVehicleModel,
   findEmployeeCardByName,
   getEmployeeCardText,
+  createCounterpartyDirectory,
+  deleteCounterpartyDirectory,
+  getCounterpartyDirectory,
+  listCounterpartiesDirectory,
   listEmployees,
   listTrailers,
   listVehicleModels,
@@ -32,6 +36,12 @@ import {
 const router = Router();
 
 router.use(authenticate);
+
+// Справочник контрагентов: свой список, добавление по ИНН (реквизиты из ФНС)
+router.get('/counterparties', authorizeRole(...DIRECTORY_ROLES), asyncHandler(listCounterpartiesDirectory));
+router.get('/counterparties/:id', authorizeRole(...DIRECTORY_ROLES), asyncHandler(getCounterpartyDirectory));
+router.post('/counterparties', authorizeRole(...DIRECTORY_EDIT_ROLES), asyncHandler(createCounterpartyDirectory));
+router.delete('/counterparties/:id', authorizeRole(...DIRECTORY_DELETE_ROLES), asyncHandler(deleteCounterpartyDirectory));
 
 // Модели и нормы: читают все причастные, пишут БДД/рук. КТК/админ (проверка в контроллере)
 router.get('/models', authorizeRole(...FLEET_VIEW_ROLES), asyncHandler(listVehicleModels));

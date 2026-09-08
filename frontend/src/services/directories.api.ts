@@ -31,7 +31,7 @@ export type FleetVehicleItem = {
 };
 
 /** При сохранении техники модель передаётся текстом — бэкенд найдёт существующую или создаст новую. */
-export type FleetVehiclePayload = Partial<FleetVehicleItem> & { modelLabel?: string };
+export type FleetVehiclePayload = Partial<FleetVehicleItem> & { modelLabel?: string; counterpartyId?: string };
 
 export type TrailerItem = {
   id: string;
@@ -59,6 +59,8 @@ export type EmployeeItem = {
   passportIssueDate: string | null;
   passportIssuedBy: string;
   registrationAddress: string;
+  /** ИНН физлица — только в карточке, в выгрузки и копирование не попадает */
+  inn: string;
   licenseNumber: string;
   licenseIssueDate: string | null;
   note: string;
@@ -67,6 +69,7 @@ export type EmployeeItem = {
 export type EmployeePayload = Partial<Omit<EmployeeItem, 'id'>> & {
   location: FleetLocation;
   fullName: string;
+  counterpartyId?: string;
 };
 
 // Модели и нормы
@@ -76,24 +79,25 @@ export const updateVehicleModel = (id: string, data: Partial<VehicleModelItem>) 
   api.put<VehicleModelItem>(`/directories/models/${id}`, data);
 export const deleteVehicleModel = (id: string) => api.delete(`/directories/models/${id}`);
 
-// Техника
-export const getFleetVehicles = (location: FleetLocation) =>
-  api.get<FleetVehicleItem[]>('/directories/vehicles', { params: { location } });
+// Техника (counterpartyId — записи контрагента; без него — наша организация)
+export const getFleetVehicles = (location: FleetLocation, counterpartyId?: string) =>
+  api.get<FleetVehicleItem[]>('/directories/vehicles', { params: { location, counterpartyId } });
 export const createFleetVehicle = (data: FleetVehiclePayload) => api.post<FleetVehicleItem>('/directories/vehicles', data);
 export const updateFleetVehicle = (id: string, data: FleetVehiclePayload) =>
   api.put<FleetVehicleItem>(`/directories/vehicles/${id}`, data);
 export const deleteFleetVehicle = (id: string) => api.delete(`/directories/vehicles/${id}`);
 
 // Прицепы
-export const getTrailers = (location: FleetLocation) =>
-  api.get<TrailerItem[]>('/directories/trailers', { params: { location } });
-export const createTrailer = (data: Partial<TrailerItem>) => api.post<TrailerItem>('/directories/trailers', data);
+export const getTrailers = (location: FleetLocation, counterpartyId?: string) =>
+  api.get<TrailerItem[]>('/directories/trailers', { params: { location, counterpartyId } });
+export const createTrailer = (data: Partial<TrailerItem> & { counterpartyId?: string }) =>
+  api.post<TrailerItem>('/directories/trailers', data);
 export const updateTrailer = (id: string, data: Partial<TrailerItem>) => api.put<TrailerItem>(`/directories/trailers/${id}`, data);
 export const deleteTrailer = (id: string) => api.delete(`/directories/trailers/${id}`);
 
 // Сотрудники (ПДн)
-export const getEmployees = (location: FleetLocation) =>
-  api.get<EmployeeItem[]>('/directories/employees', { params: { location } });
+export const getEmployees = (location: FleetLocation, counterpartyId?: string) =>
+  api.get<EmployeeItem[]>('/directories/employees', { params: { location, counterpartyId } });
 export const createEmployee = (data: EmployeePayload) => api.post<EmployeeItem>('/directories/employees', data);
 export const updateEmployee = (id: string, data: EmployeePayload) => api.put<EmployeeItem>(`/directories/employees/${id}`, data);
 export const deleteEmployee = (id: string) => api.delete(`/directories/employees/${id}`);
@@ -117,7 +121,7 @@ export const getDirectoryOptions = (location: FleetLocation) =>
   api.get<DirectoryOptions>('/directories/options', { params: { location } });
 
 /** Экспорт вкладки справочника в Excel; пустой ids — выгрузить всех. */
-export const exportDirectoryExcel = (tab: 'drivers' | 'vehicles' | 'trailers' | 'models', location: FleetLocation, ids: string[]) =>
+export const exportDirectoryExcel = (tab: 'drivers' | 'staff' | 'vehicles' | 'trailers' | 'models', location: FleetLocation, ids: string[]) =>
   api.post('/directories/export', { tab, location, ids }, { responseType: 'blob' });
 
 // Топливо

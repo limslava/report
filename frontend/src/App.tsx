@@ -14,6 +14,7 @@ import RouteAccessGuard from './components/auth/RouteAccessGuard';
 import {
   canAccessAdmin,
   canAccessDirectories,
+  canAccessPrintForms,
   canAccessFuel,
   canAccessOperationsPreview,
   canViewOperationsEfficiency,
@@ -29,6 +30,9 @@ const OperationsScheduleReportsPage = lazy(() => import('./pages/OperationsSched
 const AutoTripDirectionsReportPage = lazy(() => import('./pages/AutoTripDirectionsReportPage'));
 const FuelPage = lazy(() => import('./pages/FuelPage'));
 const DirectoriesPage = lazy(() => import('./pages/DirectoriesPage'));
+const PrintFormsPage = lazy(() => import('./pages/PrintFormsPage'));
+const CounterpartiesPage = lazy(() => import('./pages/CounterpartiesPage'));
+const CounterpartyCardPage = lazy(() => import('./pages/CounterpartyCardPage'));
 
 function App() {
   const { token, user } = useAuthStore();
@@ -148,6 +152,47 @@ function App() {
               <RouteAccessGuard allow={canAccessDirectories(user?.role)}>
                 <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
                   <DirectoriesPage />
+                </Suspense>
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="directories/counterparties"
+            element={(
+              <RouteAccessGuard allow={canAccessDirectories(user?.role)}>
+                <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
+                  <CounterpartiesPage />
+                </Suspense>
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="directories/counterparties/:id"
+            element={(
+              <RouteAccessGuard allow={canAccessDirectories(user?.role)}>
+                <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
+                  <CounterpartyCardPage />
+                </Suspense>
+              </RouteAccessGuard>
+            )}
+          />
+          <Route path="print-forms" element={<Navigate to="/print-forms/poa" replace />} />
+          <Route
+            path="print-forms/poa"
+            element={(
+              <RouteAccessGuard allow={canAccessPrintForms(user?.role)}>
+                <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
+                  <PrintFormsPage key="poa" mode="poa" />
+                </Suspense>
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="print-forms/requests"
+            element={(
+              <RouteAccessGuard allow={canAccessPrintForms(user?.role)}>
+                <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
+                  <PrintFormsPage key="requests" mode="requests" />
                 </Suspense>
               </RouteAccessGuard>
             )}
