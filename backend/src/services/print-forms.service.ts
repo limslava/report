@@ -36,7 +36,7 @@ export const DEFAULT_PRINT_ORG: PrintOrgSettings = {
     'Телефон: 8-999-618-55-65',
     'e-mail: zakazauto@simplewayllc.ru',
     'Сайт: www.simplewayllc.pro',
-    'Адрес: юридический / фактический: 690108 г.Владивосток, ул.Артековская 1 – 135 / 690077 г.Владивосток, ул.Вилкова 5а, 3 этаж',
+    'Адрес: юридический / фактический: 690108 г.Владивосток, ул.Артековская 1 – 135 / 690077 г.Владивосток, ул.Вилкова 5а,\u00A03\u00A0этаж',
   ],
   fullName: 'Общество с ограниченной ответственностью «Симпл Вэй»',
   shortName: 'ООО «Симпл Вэй»',
@@ -145,14 +145,16 @@ const headerBlocks = (org: PrintOrgSettings): DocxBlock[] => {
     {
       kind: 'table',
       borders: false,
+      // отбивка шапки-бланка линией, как в согласованных образцах
+      bottomBorder: true,
       rows: [
         [
-          { image: { data: logo, widthCm: 5.8, heightCm: 3.78 }, widthPct: 45, align: 'left' },
-          { paragraphs: requisites, widthPct: 55 },
+          { image: { data: logo, widthCm: 5.8, heightCm: 3.78 }, widthPct: 40, align: 'left' },
+          { paragraphs: requisites, widthPct: 60 },
         ],
       ],
     },
-    p('', { spacingAfter: 6 }),
+    p('', { spacingAfter: 8 }),
   ];
 };
 
