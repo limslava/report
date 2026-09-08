@@ -395,6 +395,11 @@
   display: none;
 }
 
+/* Оперативники ВВО: колонка Г/Н ТС видима, остальное персонал-скрытие в силе */
+.ops-matrix--personnel.ops-matrix--personnel-plates .ops-matrix__cell--sticky-second {
+  display: block;
+}
+
 .ops-matrix__cell {
   padding: 4px 3px;
   font-size: 12px;

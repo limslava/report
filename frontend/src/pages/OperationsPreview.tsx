@@ -2463,7 +2463,7 @@ export default function OperationsPreview() {
       <section className="ops-preview__matrix" ref={matrixSectionRef}>
           <div
             ref={matrixBodyRef}
-            className={`ops-matrix ops-matrix--fit${isPersonnelSection ? ' ops-matrix--personnel' : ''}`}
+            className={`ops-matrix ops-matrix--fit${isPersonnelSection ? ' ops-matrix--personnel' : ''}${showCouriersPlates ? ' ops-matrix--personnel-plates' : ''}`}
             style={{
               ['--ops-fit-scale' as string]: String(matrixScale),
               ['--col-b' as string]: showPlateColumn ? '80px' : '0px',
