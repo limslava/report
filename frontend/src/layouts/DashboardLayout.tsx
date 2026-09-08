@@ -407,6 +407,11 @@ const DashboardLayout = () => {
     </Box>
   );
 
+  // подменю плоских пунктов (Справочники/Печатные формы): клик раскрывает
+  // и переходит на первый подпункт, повторный клик сворачивает;
+  // активный раздел раскрыт по умолчанию
+  const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
+
   const menuItems = [
     canAccessWarehouse(user?.role)
       ? {
@@ -1336,25 +1341,47 @@ const DashboardLayout = () => {
             )}
           </>
         )}
-        {menuItems.map((item) => (
-          <Box key={item.key}>
-            <ListItem disablePadding>
-              <Tooltip title={!isPinnedOpen ? item.label : ''} placement="right">
-                <ListItemButton selected={item.active && !item.children} onClick={item.onClick}>
-                  <ListItemIcon sx={{ minWidth: isPinnedOpen ? 40 : 0, justifyContent: 'center' }}>{item.icon}</ListItemIcon>
-                  {isPinnedOpen && <ListItemText primary={item.label} />}
-                </ListItemButton>
-              </Tooltip>
-            </ListItem>
-            {isPinnedOpen && item.children?.map((child) => (
-              <ListItem disablePadding key={child.key} sx={{ pl: 6 }}>
-                <ListItemButton selected={child.active} onClick={child.onClick} sx={{ py: 0.5, minHeight: 32 }}>
-                  <ListItemText primary={child.label} primaryTypographyProps={{ fontSize: 13 }} />
-                </ListItemButton>
+        {menuItems.map((item) => {
+          const submenuOpen = item.children
+            ? openSubmenus[item.key] !== undefined
+              ? openSubmenus[item.key]
+              : item.active
+            : false;
+          return (
+            <Box key={item.key}>
+              <ListItem disablePadding>
+                <Tooltip title={!isPinnedOpen ? item.label : ''} placement="right">
+                  <ListItemButton
+                    selected={item.active && !item.children}
+                    onClick={() => {
+                      if (!item.children || !isPinnedOpen) {
+                        item.onClick();
+                        return;
+                      }
+                      if (submenuOpen) {
+                        setOpenSubmenus((prev) => ({ ...prev, [item.key]: false }));
+                      } else {
+                        setOpenSubmenus((prev) => ({ ...prev, [item.key]: true }));
+                        item.children[0]?.onClick();
+                      }
+                    }}
+                  >
+                    <ListItemIcon sx={{ minWidth: isPinnedOpen ? 40 : 0, justifyContent: 'center' }}>{item.icon}</ListItemIcon>
+                    {isPinnedOpen && <ListItemText primary={item.label} />}
+                    {isPinnedOpen && item.children && (submenuOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />)}
+                  </ListItemButton>
+                </Tooltip>
               </ListItem>
-            ))}
-          </Box>
-        ))}
+              {isPinnedOpen && submenuOpen && item.children?.map((child) => (
+                <ListItem disablePadding key={child.key} sx={{ pl: 6 }}>
+                  <ListItemButton selected={child.active} onClick={child.onClick} sx={{ py: 0.5, minHeight: 32 }}>
+                    <ListItemText primary={child.label} primaryTypographyProps={{ fontSize: 13 }} />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </Box>
+          );
+        })}
       </List>
     </Box>
   );
