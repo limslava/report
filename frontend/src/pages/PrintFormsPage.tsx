@@ -20,7 +20,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { Delete, Download, Print } from '@mui/icons-material';
+import { ArrowDropDown, Delete, Download, Print } from '@mui/icons-material';
 import { useAuthStore } from '../store/auth-store';
 import {
   EmployeeItem,
@@ -413,30 +413,34 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
               </>
             )}
             {templateKey === 'vmpp_drivers_approval' && (
-              <button
-                type="button"
-                className="ops-btn ghost"
+              <TextField
+                size="small"
+                label="Водители"
+                value={multiEmployees.length ? `Выбрано: ${multiEmployees.length}` : ''}
+                placeholder="Выбрать…"
                 onClick={() => {
                   setPickerIds(multiEmployees.map((item) => item.id));
                   setPickerQuery('');
                   setPickerKind('drivers');
                 }}
-              >
-                {multiEmployees.length ? `Водители: ${multiEmployees.length}` : 'Выбрать водителей'}
-              </button>
+                InputProps={{ readOnly: true, endAdornment: <ArrowDropDown sx={{ color: 'rgba(0,0,0,0.54)' }} /> }}
+                sx={{ flex: '1 1 170px', minWidth: 0, '& input': { cursor: 'pointer', caretColor: 'transparent' } }}
+              />
             )}
             {templateKey === 'carrier_vehicles' && (
-              <button
-                type="button"
-                className="ops-btn ghost"
+              <TextField
+                size="small"
+                label="ТС"
+                value={multiVehicles.length ? `Выбрано: ${multiVehicles.length}` : ''}
+                placeholder="Выбрать…"
                 onClick={() => {
                   setPickerIds(multiVehicles.map((item) => item.id));
                   setPickerQuery('');
                   setPickerKind('vehicles');
                 }}
-              >
-                {multiVehicles.length ? `ТС: ${multiVehicles.length}` : 'Выбрать ТС (пусто — вся техника)'}
-              </button>
+                InputProps={{ readOnly: true, endAdornment: <ArrowDropDown sx={{ color: 'rgba(0,0,0,0.54)' }} /> }}
+                sx={{ flex: '1 1 170px', minWidth: 0, '& input': { cursor: 'pointer', caretColor: 'transparent' } }}
+              />
             )}
             <TextField
               size="small"
