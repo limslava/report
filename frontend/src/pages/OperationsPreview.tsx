@@ -2668,7 +2668,7 @@ export default function OperationsPreview() {
                           >
                             <div className="ops-matrix__name">
                               {renderEditableLabel(name, emptyNamePlaceholder)}
-                              {isPersonnelSection && !showCouriersPlates && !isSecond && renderRowMoveControls(person)}
+                              {isPersonnelSection && !isSecond && renderRowMoveControls(person)}
                             </div>
                           </div>
                           {showPlateColumn && (
@@ -2685,7 +2685,7 @@ export default function OperationsPreview() {
                                   >
                                     {person.plate.trim() ? person.plate : 'без Г/Н ТС'}
                                   </span>
-                                  {renderRowMoveControls(person)}
+                                  {!isPersonnelSection && renderRowMoveControls(person)}
                                 </div>
                               )}
                             </div>
@@ -2903,7 +2903,7 @@ export default function OperationsPreview() {
                             >
                               <div className="ops-matrix__name">
                                 {renderEditableLabel(person.name, emptyNamePlaceholder)}
-                                {isPersonnelSection && !showCouriersPlates && renderRowMoveControls(person)}
+                                {isPersonnelSection && renderRowMoveControls(person)}
                               </div>
                             </div>
                             <div
@@ -2926,7 +2926,7 @@ export default function OperationsPreview() {
                             >
                               <div className="ops-matrix__plate">
                                 {renderEditableLabel(person.plate, 'без Г/Н ТС')}
-                                  {(!isPersonnelSection || showCouriersPlates) && renderRowMoveControls(person)}
+                                  {!isPersonnelSection && renderRowMoveControls(person)}
                               </div>
                             </div>
                             {showTrailerColumn && (
@@ -3570,9 +3570,9 @@ export default function OperationsPreview() {
                 placeholder="Иванов Иван"
               />
             </label>
-            {!isPersonnelSection && (
+            {(!isPersonnelSection || (addDepartment === 'Курьеры' && activeLocation === 'ktk_vvo')) && (
               <label className="ops-control">
-                <span>Второй водитель (опц.)</span>
+                <span>{isPersonnelSection ? 'Второй сотрудник (опц.)' : 'Второй водитель (опц.)'}</span>
                 <input
                   type="text"
                   list="ops-name-options"
@@ -3645,7 +3645,10 @@ export default function OperationsPreview() {
                     {
                       id: `p-${Date.now()}`,
                       name,
-                      secondName: isPersonnelSection ? undefined : secondName || undefined,
+                      secondName:
+                        isPersonnelSection && !(addDepartment === 'Курьеры' && activeLocation === 'ktk_vvo')
+                          ? undefined
+                          : secondName || undefined,
                       plate: isPersonnelSection && !(addDepartment === 'Курьеры' && activeLocation === 'ktk_vvo') ? '' : plate || '',
                       trailer: addDepartment === 'Контейнеры' || addDepartment === 'Авто' ? newPerson.trailer.trim() || undefined : undefined,
                       department: addDepartment,
@@ -3752,15 +3755,28 @@ export default function OperationsPreview() {
               />
             </label>
             {editPerson.department === 'Курьеры' && activeLocation === 'ktk_vvo' && (
-              <label className="ops-control">
-                <span>Г/Н ТС</span>
-                <input
-                  type="text"
-                  list="ops-edit-plate-options"
-                  value={editPerson.plate}
-                  onChange={(event) => setEditPerson((prev) => (prev ? { ...prev, plate: event.target.value } : prev))}
-                />
-              </label>
+              <>
+                <label className="ops-control">
+                  <span>Второй сотрудник</span>
+                  <input
+                    type="text"
+                    list="ops-edit-name-options"
+                    value={editPerson.secondName ?? ''}
+                    onChange={(event) =>
+                      setEditPerson((prev) => (prev ? { ...prev, secondName: event.target.value || undefined } : prev))
+                    }
+                  />
+                </label>
+                <label className="ops-control">
+                  <span>Г/Н ТС</span>
+                  <input
+                    type="text"
+                    list="ops-edit-plate-options"
+                    value={editPerson.plate}
+                    onChange={(event) => setEditPerson((prev) => (prev ? { ...prev, plate: event.target.value } : prev))}
+                  />
+                </label>
+              </>
             )}
             {!isPersonnelDepartment(editPerson.department) && (
               <>
