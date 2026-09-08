@@ -158,12 +158,13 @@ export const authenticatedRoutes: AppRoute[] = [
   {
     path: 'print-forms/poa',
     allow: canAccessPrintForms,
-    element: () => withSuspense(<PrintFormsPage mode="poa" />),
+    // key: страницы делят компонент — без пересоздания состояние заявок «переезжало» в доверенности
+    element: () => withSuspense(<PrintFormsPage key="poa" mode="poa" />),
   },
   {
     path: 'print-forms/requests',
     allow: canAccessPrintForms,
-    element: () => withSuspense(<PrintFormsPage mode="requests" />),
+    element: () => withSuspense(<PrintFormsPage key="requests" mode="requests" />),
   },
   {
     path: 'sw-tech-dashboard',
