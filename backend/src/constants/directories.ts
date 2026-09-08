@@ -106,6 +106,15 @@ export const DIRECTORY_EDIT_ROLES = [
 /** Кандидаты на удаление (регион проверяется в контроллере по записи). */
 export const DIRECTORY_DELETE_ROLES = ['admin', 'head_ktk_vvo', 'head_ktk_mow'] as const;
 
+/** Печатные формы (доверенности/заявки): роли КТК и админ — отдел кадров доступа не имеет. */
+export const PRINT_FORM_ROLES = [
+  'admin',
+  'head_ktk_vvo',
+  'manager_ktk_vvo',
+  'head_ktk_mow',
+  'manager_ktk_mow',
+] as const;
+
 export const FUEL_ROLES = [
   'admin',
   'bdd_specialist_vvo',

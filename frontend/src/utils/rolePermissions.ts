@@ -102,6 +102,15 @@ export function canAccessDirectories(role?: string | null): boolean {
   return directoryLocationsForRole(role).length > 0;
 }
 
+/** Печатные формы: роли КТК и админ — отдел кадров раздел не видит. */
+export function canAccessPrintForms(role?: string | null): boolean {
+  return role === 'admin'
+    || role === 'head_ktk_vvo'
+    || role === 'manager_ktk_vvo'
+    || role === 'head_ktk_mow'
+    || role === 'manager_ktk_mow';
+}
+
 /** Ведение справочников: руководители и менеджеры КТК — свой регион (регион даёт directoryLocationsForRole). */
 export function canEditDirectoriesFrontend(role?: string | null): boolean {
   return role === 'admin'

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate';
 import { authorizeRole } from '../middleware/authorize';
 import { asyncHandler } from '../middleware/error-handler';
-import { DIRECTORY_ROLES } from '../constants/directories';
+import { PRINT_FORM_ROLES } from '../constants/directories';
 import {
   downloadPrintFormAgain,
   generatePrintForm,
@@ -14,7 +14,7 @@ const router = Router();
 
 router.use(authenticate);
 // печать = чтение ПДн водителей, поэтому круг ролей тот же, что у справочников
-router.use(authorizeRole(...DIRECTORY_ROLES));
+router.use(authorizeRole(...PRINT_FORM_ROLES));
 
 router.get('/meta', asyncHandler(getPrintFormsMeta));
 router.post('/generate', asyncHandler(generatePrintForm));

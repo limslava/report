@@ -4,6 +4,7 @@ import RouteAccessGuard from '../components/auth/RouteAccessGuard';
 import {
   canAccessAdmin,
   canAccessDirectories,
+  canAccessPrintForms,
   canAccessFuel,
   canAccessBillOfLading,
   canAccessCandidateChecks,
@@ -151,17 +152,17 @@ export const authenticatedRoutes: AppRoute[] = [
   },
   {
     path: 'print-forms',
-    allow: canAccessDirectories,
+    allow: canAccessPrintForms,
     element: () => <Navigate to="/print-forms/poa" replace />,
   },
   {
     path: 'print-forms/poa',
-    allow: canAccessDirectories,
+    allow: canAccessPrintForms,
     element: () => withSuspense(<PrintFormsPage mode="poa" />),
   },
   {
     path: 'print-forms/requests',
-    allow: canAccessDirectories,
+    allow: canAccessPrintForms,
     element: () => withSuspense(<PrintFormsPage mode="requests" />),
   },
   {

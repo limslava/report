@@ -257,6 +257,13 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
         severity: 'success',
         text: `Сохранено в журнал${response.data.formNumber ? ` — №${response.data.formNumber}` : ''}. Печать и скачивание — в «Действиях».`,
       });
+      // выбранные люди и машины сбрасываются (защита от дублей),
+      // контекст — город, форма, даты, договор — остаётся для серии форм
+      setEmployee(null);
+      setVehicle(null);
+      setMultiEmployees([]);
+      setMultiVehicles([]);
+      setPairs([{ employee: null, vehicle: null }]);
       const journalRes = await getPrintFormsJournal(location);
       setJournal(journalRes.data);
     } catch (error) {

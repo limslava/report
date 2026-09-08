@@ -62,6 +62,7 @@ import {
   canViewCalendar,
   canAccessFuel,
   canAccessDirectories,
+  canAccessPrintForms,
   canViewOperationsEfficiency,
   canViewFinancialPlan,
   canViewPlans,
@@ -435,7 +436,7 @@ const DashboardLayout = () => {
           ],
         }
       : null,
-    canAccessDirectories(user?.role)
+    canAccessPrintForms(user?.role)
       ? {
           key: 'print-forms', label: 'Печатные формы', icon: <Print />,
           onClick: () => handleNavigate('/print-forms/poa'), active: location.pathname.includes('/print-forms'),
