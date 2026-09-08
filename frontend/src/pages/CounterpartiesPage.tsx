@@ -13,7 +13,6 @@ import {
   Snackbar,
   TextField,
   Tooltip,
-  Typography,
 } from '@mui/material';
 import { Delete } from '@mui/icons-material';
 import api from '../services/api';
@@ -223,9 +222,6 @@ export default function CounterpartiesPage() {
                 helperText="ФНС не дала данных — введите наименование вручную"
               />
             )}
-            <Typography variant="caption" color="text.secondary">
-              Справочник ведётся вручную и не связан с реестром БП договоров.
-            </Typography>
           </Box>
         </DialogContent>
         <DialogActions>
