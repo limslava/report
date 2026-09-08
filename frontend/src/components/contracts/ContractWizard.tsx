@@ -199,13 +199,14 @@ export function ContractWizard({
                 <InputLabel>К основному договору</InputLabel>
                 <Select
                   label="К основному договору"
-                  value={wizard.parentContractId}
+                  // пустое значение MUI Select не отображает — «нет в системе» кодируем маркером
+                  value={wizard.parentContractId || 'none'}
                   onChange={(event) => setWizard({
                     ...wizard,
-                    parentContractId: event.target.value,
+                    parentContractId: event.target.value === 'none' ? '' : event.target.value,
                   })}
                 >
-                  <MenuItem value="">Договора нет в системе</MenuItem>
+                  <MenuItem value="none">Договора нет в системе</MenuItem>
                   {parentContracts.map((contract) => (
                     <MenuItem key={contract.id} value={contract.id}>
                       {contract.contractNumber} - {contract.counterpartyShortName || contract.counterpartyName}
