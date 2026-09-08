@@ -22,7 +22,9 @@ import {
   buildVmppDriversApproval,
   buildVmppVehiclesRequest,
   formatDateDots,
+  POA_VARIANTS,
 } from '../services/print-forms.service';
+import { convertDocxBufferToPdf } from '../services/docx-pdf-preview.service';
 import { directoryLocationsForRole, isValidLocation } from '../constants/directories';
 
 const settingsRepo = AppDataSource.getRepository(AppSetting);
@@ -66,16 +68,23 @@ async function loadPrintSettings(): Promise<PrintSettings> {
 }
 
 /** Следующий номер доверенности: сквозной по региону и году выдачи. */
-async function nextPoaNumber(location: FleetLocation, issueDate: string): Promise<number> {
+/** Ключи заявок — у них своя сквозная нумерация, отдельная от доверенностей. */
+const REQUEST_TEMPLATE_KEYS = ['vmpp_vehicles_request', 'vmpp_drivers_approval', 'carrier_vehicles'];
+
+async function nextFormNumber(location: FleetLocation, issueDate: string, requestKeys: boolean): Promise<number> {
   const year = issueDate.slice(0, 4);
-  const row = await formRepo
+  const query = formRepo
     .createQueryBuilder('form')
     .select('MAX(form.form_number)', 'max')
     .where('form.location = :location', { location })
-    .andWhere("to_char(form.issue_date, 'YYYY') = :year", { year })
-    .getRawOne<{ max: number | null }>();
+    .andWhere("to_char(form.issue_date, 'YYYY') = :year", { year });
+  if (requestKeys) query.andWhere('form.template_key IN (:...keys)', { keys: REQUEST_TEMPLATE_KEYS });
+  else query.andWhere('form.template_key NOT IN (:...keys)', { keys: REQUEST_TEMPLATE_KEYS });
+  const row = await query.getRawOne<{ max: number | null }>();
   return (row?.max ?? 0) + 1;
 }
+
+const nextPoaNumber = (location: FleetLocation, issueDate: string) => nextFormNumber(location, issueDate, false);
 
 export const getPrintFormsMeta = async (req: Request, res: Response) => {
   const location = requireLocation(req, req.query.location);
@@ -113,12 +122,20 @@ const loadVehicle = async (id: unknown, location: FleetLocation): Promise<FleetV
 type GeneratedFile = { buffer: Buffer; filename: string; formNumber: number | null; summary: string };
 
 async function generateByTemplate(
-  templateKey: PrintTemplateKey,
+  rawTemplateKey: string,
   location: FleetLocation,
-  params: Record<string, unknown>
+  rawParams: Record<string, unknown>
 ): Promise<GeneratedFile> {
   const settings = await loadPrintSettings();
   const org = settings.org;
+
+  // Вариант доверенности → базовый шаблон с зашитым контрагентом.
+  // Старые ключи журнала (poa_warehouse/poa_terminal_vehicle с counterparty в params) обрабатываются как есть.
+  const variant = POA_VARIANTS[rawTemplateKey];
+  const templateKey = variant ? variant.base : rawTemplateKey;
+  const params = variant
+    ? { ...rawParams, counterparty: variant.counterparty, withSignature: variant.withSignature }
+    : rawParams;
 
   if (templateKey === 'poa_warehouse' || templateKey === 'poa_pl') {
     const employee = await loadEmployee(params.employeeId, location);
@@ -206,7 +223,7 @@ async function generateByTemplate(
         buffer,
         filename: `Согласование водителей ВМПП (${employees.length}).docx`,
         formNumber: null,
-        summary: `водителей: ${employees.length}`,
+        summary: employees.map((e) => e.fullName).join(', ').slice(0, 300),
       };
     }
     const pairsRaw = Array.isArray(params.pairs) ? params.pairs : [];
@@ -222,7 +239,10 @@ async function generateByTemplate(
       buffer,
       filename: `Заявка ИС ВМПП автотранспорт (${pairs.length}).docx`,
       formNumber: null,
-      summary: `сцепок: ${pairs.length}`,
+      summary: pairs
+        .map((pair) => `${pair.employee.fullName}${pair.vehicle ? ` — ${pair.vehicle.plate}` : ''}`)
+        .join('; ')
+        .slice(0, 300),
     };
   }
 
@@ -260,15 +280,24 @@ async function generateByTemplate(
     buffer,
     filename: `Форма перевозчику ТС (${vehicles.length}).xlsx`,
     formNumber: null,
-    summary: `ТС: ${vehicles.length}`,
+    summary: `ТС (${vehicles.length}): ${vehicles.map((v) => v.plate).join(', ')}`.slice(0, 300),
   };
 }
 
 const isTemplateKey = (value: unknown): value is PrintTemplateKey =>
   PRINT_FORM_TEMPLATES.some((template) => template.key === value);
 
-const sendGenerated = (res: Response, file: GeneratedFile) => {
+/** format=pdf: DOCX конвертируется в PDF и отдаётся inline — браузер открывает и печатает. */
+const sendGenerated = async (res: Response, file: GeneratedFile, format?: unknown) => {
   const isXlsx = file.filename.endsWith('.xlsx');
+  if (format === 'pdf' && !isXlsx) {
+    const pdf = await convertDocxBufferToPdf(file.buffer);
+    const pdfName = file.filename.replace(/\.docx$/i, '.pdf');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="form.pdf"; filename*=UTF-8''${encodeURIComponent(pdfName)}`);
+    res.send(pdf);
+    return;
+  }
   res.setHeader(
     'Content-Type',
     isXlsx
@@ -292,7 +321,19 @@ export const generatePrintForm = async (req: Request, res: Response) => {
       ? (params.issueDate as string)
       : new Date().toISOString().slice(0, 10);
 
+  // Номер присваивается автоматически (сквозной по региону и году; у заявок
+  // свой счётчик, отдельный от доверенностей); при перегенерации из журнала
+  // используется сохранённый номер из params.
+  const isRequestForm = REQUEST_TEMPLATE_KEYS.includes(templateKey);
+  const autoNumber =
+    params.number === undefined || params.number === null || params.number === ''
+      ? await nextFormNumber(location, issueDateForJournal, isRequestForm)
+      : null;
+  if (POA_VARIANTS[templateKey] && autoNumber !== null) params.number = autoNumber;
+
   const file = await generateByTemplate(templateKey, location, params);
+  // заявки: номер только для журнала («для себя»), в сам документ не печатается
+  if (isRequestForm && file.formNumber === null && autoNumber !== null) file.formNumber = autoNumber;
 
   const record = await formRepo.save(
     formRepo.create({
@@ -313,7 +354,12 @@ export const generatePrintForm = async (req: Request, res: Response) => {
     details: { templateKey, location, summary: file.summary, formNumber: file.formNumber },
     req,
   });
-  sendGenerated(res, file);
+  // saveOnly: форма только записывается в журнал, файл забирают из «Действий»
+  if (req.body?.saveOnly) {
+    res.status(201).json({ ok: true, id: record.id, formNumber: file.formNumber, summary: file.summary });
+    return;
+  }
+  await sendGenerated(res, file, req.body?.format);
 };
 
 export const listPrintFormsJournal = async (req: Request, res: Response) => {
@@ -328,6 +374,10 @@ export const listPrintFormsJournal = async (req: Request, res: Response) => {
       templateKey: row.templateKey,
       formNumber: row.formNumber,
       issueDate: formatDateDots(row.issueDate),
+      validUntil:
+        typeof (row.params as Record<string, unknown>)?.validUntil === 'string'
+          ? formatDateDots((row.params as Record<string, string>).validUntil)
+          : '',
       summary: row.summary,
       createdBy: row.createdByUserId ? nameById.get(row.createdByUserId) ?? '—' : '—',
       createdAt: row.createdAt,
@@ -349,5 +399,5 @@ export const downloadPrintFormAgain = async (req: Request, res: Response) => {
     details: { templateKey: record.templateKey, location: record.location },
     req,
   });
-  sendGenerated(res, file);
+  await sendGenerated(res, file, req.query?.format);
 };

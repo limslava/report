@@ -63,6 +63,12 @@ export class FleetVehicle {
   @Column({ type: 'varchar', length: 500, default: '' })
   note!: string;
 
+
+  /** Принадлежность контрагенту (Справочники → Контрагенты); NULL — наша организация. */
+  @Index()
+  @Column({ name: 'counterparty_id', type: 'uuid', nullable: true })
+  counterpartyId!: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

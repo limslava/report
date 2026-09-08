@@ -16,6 +16,7 @@ export type PrintJournalRow = {
   templateKey: string;
   formNumber: number | null;
   issueDate: string;
+  validUntil?: string;
   summary: string;
   createdBy: string;
   createdAt: string;
@@ -24,11 +25,22 @@ export type PrintJournalRow = {
 export const getPrintFormsMeta = (location: FleetLocation) =>
   api.get<PrintFormsMeta>('/print-forms/meta', { params: { location } });
 
-export const generatePrintForm = (location: FleetLocation, templateKey: string, params: Record<string, unknown>) =>
-  api.post('/print-forms/generate', { location, templateKey, params }, { responseType: 'blob' });
+export const generatePrintForm = (
+  location: FleetLocation,
+  templateKey: string,
+  params: Record<string, unknown>,
+  format?: 'pdf'
+) => api.post('/print-forms/generate', { location, templateKey, params, format }, { responseType: 'blob' });
+
+/** Сохранение формы в журнал без выгрузки файла — печать/скачивание из «Действий». */
+export const savePrintForm = (location: FleetLocation, templateKey: string, params: Record<string, unknown>) =>
+  api.post<{ ok: boolean; id: string; formNumber: number | null; summary: string }>(
+    '/print-forms/generate',
+    { location, templateKey, params, saveOnly: true }
+  );
 
 export const getPrintFormsJournal = (location: FleetLocation) =>
   api.get<PrintJournalRow[]>('/print-forms/journal', { params: { location } });
 
-export const downloadPrintFormAgain = (id: string) =>
-  api.post(`/print-forms/journal/${id}/download`, {}, { responseType: 'blob' });
+export const downloadPrintFormAgain = (id: string, format?: 'pdf') =>
+  api.post(`/print-forms/journal/${id}/download`, {}, { responseType: 'blob', params: { format } });

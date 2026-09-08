@@ -47,6 +47,13 @@ export function canAccessDirectories(role?: string | null): boolean {
   return directoryLocationsForRole(role).length > 0;
 }
 
+/** Печатные формы: пока только Владивосток (шаблоны под контрагентов ВВО) + админ. */
+export function canAccessPrintForms(role?: string | null): boolean {
+  return role === 'admin'
+    || role === 'head_ktk_vvo'
+    || role === 'manager_ktk_vvo';
+}
+
 /** Ведение справочников: руководители и менеджеры КТК — свой регион (регион даёт directoryLocationsForRole). */
 export function canEditDirectoriesFrontend(role?: string | null): boolean {
   return role === 'admin'

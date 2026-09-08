@@ -1385,26 +1385,79 @@
 .ops-preview.print-page .MuiPaper-root .MuiTextField-root {
   max-width: none !important;
 }
-/* на узких экранах снимаем инлайновые min-width и запрещаем перенос,
-   чтобы панель осталась одним рядом — поля ужимаются пропорционально */
+/* панель всегда одним рядом: перенос запрещён, инлайновые min-width сняты —
+   при нехватке места поля ужимаются пропорционально, а шрифты уменьшают
+   общие ступени .ops-preview */
+.ops-preview.print-page .MuiPaper-root .MuiTextField-root,
+.ops-preview.print-page .MuiPaper-root .MuiAutocomplete-root {
+  min-width: 0 !important;
+}
+.ops-preview.print-page .MuiPaper-root > .MuiBox-root {
+  flex-wrap: nowrap !important;
+}
+.ops-preview.print-page .MuiFormControlLabel-root {
+  flex: 0 0 auto;
+  margin-right: 0;
+}
+.ops-preview.print-page .MuiFormControlLabel-label {
+  white-space: nowrap;
+}
+.ops-preview.print-page .ops-btn {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+/* Плотная панель печатных форм: текст в полях и кнопках уменьшен всегда,
+   свои ступени ужатия (перекрывают общие ступени .ops-preview). */
+.ops-preview.print-page .MuiPaper-root .MuiTextField-root .MuiInputBase-root {
+  height: 36px !important;
+  font-size: 12.5px;
+}
+.ops-preview.print-page .MuiPaper-root .MuiTextField-root .MuiInputLabel-root {
+  font-size: 11.5px;
+}
+.ops-preview.print-page .MuiFormControlLabel-label {
+  font-size: 12.5px;
+}
+.ops-preview.print-page .ops-btn {
+  font-size: 12px;
+  padding: 5px 10px;
+  min-height: 32px;
+}
+
 @media (max-width: 1560px) {
-  .ops-preview.print-page .MuiPaper-root .MuiTextField-root,
-  .ops-preview.print-page .MuiPaper-root .MuiAutocomplete-root {
-    min-width: 0 !important;
+  .ops-preview.print-page .MuiPaper-root .MuiTextField-root .MuiInputBase-root {
+    height: 32px !important;
+    font-size: 11.5px;
   }
-  .ops-preview.print-page .MuiPaper-root > .MuiBox-root {
-    flex-wrap: nowrap !important;
-  }
-  .ops-preview.print-page .MuiFormControlLabel-root {
-    flex: 0 0 auto;
-    margin-right: 0;
+  .ops-preview.print-page .MuiPaper-root .MuiTextField-root .MuiInputLabel-root {
+    font-size: 10.5px;
   }
   .ops-preview.print-page .MuiFormControlLabel-label {
-    white-space: nowrap;
+    font-size: 11.5px;
   }
   .ops-preview.print-page .ops-btn {
-    white-space: nowrap;
-    flex: 0 0 auto;
+    font-size: 11px;
+    padding: 4px 8px;
+    min-height: 29px;
+  }
+}
+
+@media (max-width: 1330px) {
+  .ops-preview.print-page .MuiPaper-root .MuiTextField-root .MuiInputBase-root {
+    height: 29px !important;
+    font-size: 10.5px;
+  }
+  .ops-preview.print-page .MuiPaper-root .MuiTextField-root .MuiInputLabel-root {
+    font-size: 10px;
+  }
+  .ops-preview.print-page .MuiFormControlLabel-label {
+    font-size: 10.5px;
+  }
+  .ops-preview.print-page .ops-btn {
+    font-size: 10px;
+    padding: 3px 7px;
+    min-height: 26px;
   }
 }
 @media (max-width: 1560px) {
@@ -1416,4 +1469,27 @@
   .ops-preview.print-page .MuiFormControlLabel-label {
     font-size: 11px;
   }
+}
+
+/* Компактные выпадающие списки печатных форм (рендерятся в оверлее) */
+.print-compact-listbox .MuiAutocomplete-option {
+  font-size: 12px;
+  min-height: 30px;
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+.print-compact-menu .MuiMenuItem-root {
+  font-size: 12px;
+  min-height: 30px;
+}
+
+/* Журнал печатных форм — компактный шрифт */
+.print-page .dir-table th,
+.print-page .dir-table td {
+  font-size: 12px;
+}
+
+/* Только что сохранённая форма в журнале */
+.print-page .dir-table tr.print-journal-row--new td {
+  background: #e8f5e9;
 }

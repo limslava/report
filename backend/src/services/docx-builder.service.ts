@@ -24,6 +24,8 @@ export type DocxParagraph = {
   spacingAfter?: number;
   /** отступ первой строки в см (красная строка) */
   firstLineIndentCm?: number;
+  /** линия под абзацем (отбивка шапки-бланка) */
+  bottomBorder?: boolean;
 };
 
 /** Встраиваемая картинка (PNG). Размер в сантиметрах. */
@@ -50,6 +52,8 @@ export type DocxTable = {
   rows: DocxTableCell[][];
   /** рамки таблицы (по умолчанию есть; шапка-бланк — без рамок) */
   borders?: boolean;
+  /** только нижняя линия (отбивка шапки-бланка) */
+  bottomBorder?: boolean;
 };
 
 export type DocxBlock = DocxParagraph | DocxTable;
@@ -80,8 +84,12 @@ function renderParagraph(p: DocxParagraph): string {
   const spacing = `<w:spacing w:after="${Math.round((p.spacingAfter ?? 6) * 20)}" w:line="276" w:lineRule="auto"/>`;
   const align = p.align ? `<w:jc w:val="${ALIGN_MAP[p.align]}"/>` : '';
   const indent = p.firstLineIndentCm ? `<w:ind w:firstLine="${Math.round(p.firstLineIndentCm * 567)}"/>` : '';
+  const border = p.bottomBorder
+    ? '<w:pBdr><w:bottom w:val="single" w:sz="8" w:space="4" w:color="000000"/></w:pBdr>'
+    : '';
   const runs = p.runs.length ? p.runs.map(renderRun).join('') : renderRun({ text: '' });
-  return `<w:p><w:pPr>${spacing}${indent}${align}</w:pPr>${runs}</w:p>`;
+  // порядок по схеме pPr: pBdr -> spacing -> ind -> jc
+  return `<w:p><w:pPr>${border}${spacing}${indent}${align}</w:pPr>${runs}</w:p>`;
 }
 
 /** Реестр картинок пакета: renderImage регистрирует, buildDocx кладёт в zip. */
@@ -139,7 +147,9 @@ function renderTable(table: DocxTable, registry: ImageRegistry): string {
     .join('');
   const borders =
     table.borders === false
-      ? ''
+      ? table.bottomBorder
+        ? '<w:tblBorders><w:bottom w:val="single" w:sz="16" w:color="000000"/></w:tblBorders>'
+        : ''
       : '<w:tblBorders>' +
         ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']
           .map((side) => `<w:${side} w:val="single" w:sz="4" w:color="000000"/>`)

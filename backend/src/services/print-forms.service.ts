@@ -36,7 +36,7 @@ export const DEFAULT_PRINT_ORG: PrintOrgSettings = {
     'Телефон: 8-999-618-55-65',
     'e-mail: zakazauto@simplewayllc.ru',
     'Сайт: www.simplewayllc.pro',
-    'Адрес: юридический / фактический: 690108 г.Владивосток, ул.Артековская 1 – 135 / 690077 г.Владивосток, ул.Вилкова 5а, 3 этаж',
+    'Адрес: юридический / фактический: 690108 г.Владивосток, ул.Артековская 1 – 135 / 690077 г.Владивосток, ул.Вилкова 5а,\u00A03\u00A0этаж',
   ],
   fullName: 'Общество с ограниченной ответственностью «Симпл Вэй»',
   shortName: 'ООО «Симпл Вэй»',
@@ -69,16 +69,37 @@ export const DEFAULT_PRINT_COUNTERPARTIES: PrintCounterparty[] = [
   },
 ];
 
+/**
+ * Формы выбираются конкретные — контрагент зашит в форму, отдельного выбора
+ * склада/терминала нет (решение пользователя 2026-09-08, чтобы исключить
+ * бессмысленные комбинации «форма × контрагент»).
+ */
 export const PRINT_FORM_TEMPLATES = [
-  { key: 'poa_warehouse', label: 'Доверенность на сотрудника (склад)', kind: 'docx' },
-  { key: 'poa_pl', label: 'Доверенность на водителя (терминал ПЛ)', kind: 'docx' },
-  { key: 'poa_terminal_vehicle', label: 'Доверенность с ТС (терминал)', kind: 'docx' },
+  { key: 'poa_vmpp', label: 'Доверенность на сотрудника (ВМПП)', kind: 'docx' },
+  { key: 'poa_dkh', label: 'Доверенность на сотрудника (ДКХ)', kind: 'docx' },
+  { key: 'poa_pl', label: 'Доверенность на сотрудника (терминал ПЛ)', kind: 'docx' },
+  { key: 'poa_tk_vehicle', label: 'Доверенность с ТС (ТрансКонтейнер)', kind: 'docx' },
   { key: 'vmpp_vehicles_request', label: 'Заявка в ИС ВМПП: автотранспорт и водители', kind: 'docx' },
   { key: 'vmpp_drivers_approval', label: 'Согласование водителей ВМПП', kind: 'docx' },
   { key: 'carrier_vehicles', label: 'Форма перевозчику: список ТС (Excel)', kind: 'xlsx' },
 ] as const;
 
 export type PrintTemplateKey = (typeof PRINT_FORM_TEMPLATES)[number]['key'];
+
+/**
+ * Вариант доверенности → базовый шаблон + зашитый контрагент.
+ * Подпись доверенного — строго по образцам: ВМПП и ПЛ — есть, ДКХ — нет,
+ * ТК (с ТС) печатает «Личную подпись … удостоверяем» всегда.
+ */
+export const POA_VARIANTS: Record<
+  string,
+  { base: 'poa_warehouse' | 'poa_pl' | 'poa_terminal_vehicle'; counterparty: string; withSignature: boolean }
+> = {
+  poa_vmpp: { base: 'poa_warehouse', counterparty: 'ООО ВМП «Первомайский»', withSignature: true },
+  poa_dkh: { base: 'poa_warehouse', counterparty: 'АО «ДАЛЬКОМХОЛОД»', withSignature: false },
+  poa_pl: { base: 'poa_pl', counterparty: 'ООО «ПЛ»', withSignature: true },
+  poa_tk_vehicle: { base: 'poa_terminal_vehicle', counterparty: 'Контейнерный терминал Первая Речка ПАО «ТрансКонтейнер»', withSignature: true },
+};
 
 const MONTHS_GENITIVE = [
   'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
@@ -136,6 +157,8 @@ const headerBlocks = (org: PrintOrgSettings): DocxBlock[] => {
   const requisites: DocxParagraph[] = org.headerLines.map((line, index) =>
     pRuns([{ text: line, bold: index === 0, size: 9 }], { align: 'right', spacingAfter: 0 })
   );
+  // небольшой зазор между адресом и линией-отбивкой (граница таблицы)
+  requisites.push(pRuns([{ text: '', size: 5 }], { spacingAfter: 0 }));
   const logo = loadLogo();
   if (!logo) {
     // без логотипа (ассет не нашёлся) — реквизиты столбцом справа
@@ -145,14 +168,16 @@ const headerBlocks = (org: PrintOrgSettings): DocxBlock[] => {
     {
       kind: 'table',
       borders: false,
+      // отбивка шапки-бланка линией, как в согласованных образцах
+      bottomBorder: true,
       rows: [
         [
-          { image: { data: logo, widthCm: 5.8, heightCm: 3.78 }, widthPct: 45, align: 'left' },
-          { paragraphs: requisites, widthPct: 55 },
+          { image: { data: logo, widthCm: 5.8, heightCm: 3.78 }, widthPct: 40, align: 'left' },
+          { paragraphs: requisites, widthPct: 60 },
         ],
       ],
     },
-    p('', { spacingAfter: 6 }),
+    p('', { spacingAfter: 8 }),
   ];
 };
 
@@ -338,6 +363,7 @@ export function buildPoaTerminalVehicle(
       `Настоящая доверенность действительна с ${formatDateDots(params.validFrom)}г. по ${formatDateDots(params.validUntil)}г.`,
       { spacingAfter: 14 }
     ),
+    p(`Личную подпись    ${employee.fullName} __________ удостоверяем.`, { spacingAfter: 14 }),
     pRuns(
       [
         { text: `Генеральный директор ${org.shortName}   ` },
