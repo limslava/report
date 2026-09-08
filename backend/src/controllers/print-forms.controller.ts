@@ -68,16 +68,23 @@ async function loadPrintSettings(): Promise<PrintSettings> {
 }
 
 /** Следующий номер доверенности: сквозной по региону и году выдачи. */
-async function nextPoaNumber(location: FleetLocation, issueDate: string): Promise<number> {
+/** Ключи заявок — у них своя сквозная нумерация, отдельная от доверенностей. */
+const REQUEST_TEMPLATE_KEYS = ['vmpp_vehicles_request', 'vmpp_drivers_approval', 'carrier_vehicles'];
+
+async function nextFormNumber(location: FleetLocation, issueDate: string, requestKeys: boolean): Promise<number> {
   const year = issueDate.slice(0, 4);
-  const row = await formRepo
+  const query = formRepo
     .createQueryBuilder('form')
     .select('MAX(form.form_number)', 'max')
     .where('form.location = :location', { location })
-    .andWhere("to_char(form.issue_date, 'YYYY') = :year", { year })
-    .getRawOne<{ max: number | null }>();
+    .andWhere("to_char(form.issue_date, 'YYYY') = :year", { year });
+  if (requestKeys) query.andWhere('form.template_key IN (:...keys)', { keys: REQUEST_TEMPLATE_KEYS });
+  else query.andWhere('form.template_key NOT IN (:...keys)', { keys: REQUEST_TEMPLATE_KEYS });
+  const row = await query.getRawOne<{ max: number | null }>();
   return (row?.max ?? 0) + 1;
 }
+
+const nextPoaNumber = (location: FleetLocation, issueDate: string) => nextFormNumber(location, issueDate, false);
 
 export const getPrintFormsMeta = async (req: Request, res: Response) => {
   const location = requireLocation(req, req.query.location);
@@ -314,13 +321,19 @@ export const generatePrintForm = async (req: Request, res: Response) => {
       ? (params.issueDate as string)
       : new Date().toISOString().slice(0, 10);
 
-  // Номер доверенности присваивается автоматически (сквозной по региону и году);
-  // при перегенерации из журнала используется сохранённый номер из params.
-  if (POA_VARIANTS[templateKey] && (params.number === undefined || params.number === null || params.number === '')) {
-    params.number = await nextPoaNumber(location, issueDateForJournal);
-  }
+  // Номер присваивается автоматически (сквозной по региону и году; у заявок
+  // свой счётчик, отдельный от доверенностей); при перегенерации из журнала
+  // используется сохранённый номер из params.
+  const isRequestForm = REQUEST_TEMPLATE_KEYS.includes(templateKey);
+  const autoNumber =
+    params.number === undefined || params.number === null || params.number === ''
+      ? await nextFormNumber(location, issueDateForJournal, isRequestForm)
+      : null;
+  if (POA_VARIANTS[templateKey] && autoNumber !== null) params.number = autoNumber;
 
   const file = await generateByTemplate(templateKey, location, params);
+  // заявки: номер только для журнала («для себя»), в сам документ не печатается
+  if (isRequestForm && file.formNumber === null && autoNumber !== null) file.formNumber = autoNumber;
 
   const record = await formRepo.save(
     formRepo.create({
