@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import ExcelJS from 'exceljs';
+import { ILike } from 'typeorm';
 import { AppDataSource } from '../config/data-source';
 import { Employee } from '../models/employee.model';
 import { FleetVehicle } from '../models/fleet-vehicle.model';
@@ -739,4 +740,29 @@ export const bootstrapDirectoriesFromSchedules = async (req: Request, res: Respo
     req,
   });
   res.json({ createdEmployees, createdVehicles });
+};
+
+// ─── Справочник контрагентов (каркас: список организаций из общего справочника) ───
+// «Проваливание» внутрь (водители/техника/прицепы контрагента) — следующим шагом.
+export const listCounterpartiesDirectory = async (req: Request, res: Response) => {
+  const { Counterparty } = await import('../models/counterparty.model');
+  const q = trimmed(req.query.q, 120);
+  const repo = AppDataSource.getRepository(Counterparty);
+  const where = q
+    ? [
+        { inn: ILike(`${q}%`) },
+        { nameFull: ILike(`%${q}%`) },
+        { nameShort: ILike(`%${q}%`) },
+      ]
+    : undefined;
+  const rows = await repo.find({ where, order: { nameShort: 'ASC', nameFull: 'ASC' }, take: 300 });
+  res.json(rows.map((item) => ({
+    id: item.id,
+    inn: item.inn,
+    nameFull: item.nameFull,
+    nameShort: item.nameShort,
+    ogrn: item.ogrn,
+    kpp: item.kpp,
+    address: item.address,
+  })));
 };

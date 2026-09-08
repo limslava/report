@@ -19,6 +19,7 @@ import {
   deleteVehicleModel,
   findEmployeeCardByName,
   getEmployeeCardText,
+  listCounterpartiesDirectory,
   listEmployees,
   listTrailers,
   listVehicleModels,
@@ -32,6 +33,9 @@ import {
 const router = Router();
 
 router.use(authenticate);
+
+// Справочник контрагентов (каркас) — те же роли, что видят справочники
+router.get('/counterparties', authorizeRole(...DIRECTORY_ROLES), asyncHandler(listCounterpartiesDirectory));
 
 // Модели и нормы: читают все причастные, пишут БДД/рук. КТК/админ (проверка в контроллере)
 router.get('/models', authorizeRole(...FLEET_VIEW_ROLES), asyncHandler(listVehicleModels));

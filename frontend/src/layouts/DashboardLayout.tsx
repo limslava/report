@@ -430,7 +430,8 @@ const DashboardLayout = () => {
           key: 'directories', label: 'Справочники', icon: <FolderShared />,
           onClick: () => handleNavigate('/directories'), active: location.pathname.includes('/directories'),
           children: [
-            { key: 'directories-own', label: 'Наша организация', onClick: () => handleNavigate('/directories'), active: location.pathname.includes('/directories') },
+            { key: 'directories-own', label: 'Наша организация', onClick: () => handleNavigate('/directories'), active: location.pathname.endsWith('/directories') },
+            { key: 'directories-counterparties', label: 'Контрагенты', onClick: () => handleNavigate('/directories/counterparties'), active: location.pathname.includes('/directories/counterparties') },
           ],
         }
       : null,
@@ -1428,7 +1429,7 @@ const DashboardLayout = () => {
               )}
               {location.pathname.includes('/settings') && 'Настройки'}
               {location.pathname.includes('/fuel') && 'Учёт топлива'}
-              {location.pathname.includes('/directories') && 'Справочники'}
+              {location.pathname.includes('/directories/counterparties') ? 'Справочники — Контрагенты' : location.pathname.includes('/directories') ? 'Справочники' : ''}
               {location.pathname.includes('/print-forms/requests') ? 'Печатные формы — Заявки' : location.pathname.includes('/print-forms') ? 'Печатные формы — Доверенности' : ''}
             </Typography>
           )}
