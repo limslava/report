@@ -186,6 +186,17 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
     journalSort,
     journalSortValue
   );
+  const pickerOptions =
+    pickerKind === 'drivers'
+      ? drivers
+          .filter((item) => item.fullName.toLowerCase().includes(pickerQuery.trim().toLowerCase()))
+          .map((item) => ({ id: item.id, label: item.fullName }))
+      : pickerKind === 'vehicles'
+        ? vehicles
+            .filter((item) => item.plate.toLowerCase().includes(pickerQuery.trim().toLowerCase()))
+            .map((item) => ({ id: item.id, label: item.plate }))
+        : [];
+
   const journalHeader = (field: string, label: string) => (
     <button type="button" className="ops-matrix__sort-btn" onClick={() => setJournalSort((prev) => cycleSort(prev, field))}>
       <span>{label}</span>
@@ -519,15 +530,19 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
             onChange={(event) => setPickerQuery(event.target.value)}
             sx={{ mt: 1, mb: 1 }}
           />
+          <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+            <Button
+              size="small"
+              onClick={() => setPickerIds((prev) => [...new Set([...prev, ...pickerOptions.map((o) => o.id)])])}
+            >
+              Выделить все
+            </Button>
+            <Button size="small" onClick={() => setPickerIds([])}>
+              Снять все
+            </Button>
+          </Box>
           <List dense sx={{ maxHeight: 360, overflow: 'auto', py: 0 }}>
-            {(pickerKind === 'drivers'
-              ? drivers
-                  .filter((item) => item.fullName.toLowerCase().includes(pickerQuery.trim().toLowerCase()))
-                  .map((item) => ({ id: item.id, label: item.fullName }))
-              : vehicles
-                  .filter((item) => item.plate.toLowerCase().includes(pickerQuery.trim().toLowerCase()))
-                  .map((item) => ({ id: item.id, label: item.plate }))
-            ).map((option) => (
+            {pickerOptions.map((option) => (
               <ListItem key={option.id} disablePadding>
                 <FormControlLabel
                   sx={{ width: '100%', m: 0, '& .MuiFormControlLabel-label': { fontSize: 13 } }}
