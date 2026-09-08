@@ -24,9 +24,9 @@ import {
   PrintFormsMeta,
   PrintJournalRow,
   downloadPrintFormAgain,
-  generatePrintForm,
   getPrintFormsJournal,
   getPrintFormsMeta,
+  savePrintForm,
 } from '../services/print-forms.api';
 import { directoryLocationsForRole } from '../utils/rolePermissions';
 import { TableSortState, cycleSort, sortIndicator, sortRows } from '../utils/tableSort';
@@ -117,6 +117,7 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [templateKey, setTemplateKey] = useState(MODE_DEFAULT_TEMPLATE[mode]);
   const [generating, setGenerating] = useState(false);
+  const [lastSavedId, setLastSavedId] = useState<string | null>(null);
   // журнал: поиск и сортировка по заголовкам (как в справочниках)
   const [journalQuery, setJournalQuery] = useState('');
   const [journalSort, setJournalSort] = useState<TableSortState>(null);
@@ -138,7 +139,6 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
   const drivers = useMemo(() => employees.filter((item) => item.position === 'водитель'), [employees]);
   // доверенности выдаются и на не-водителей — выбор из всех сотрудников, в списке только ФИО
   const poaEmployeeLabel = (item: EmployeeItem) => item.fullName;
-  const template = meta?.templates.find((item) => item.key === templateKey) ?? null;
   const modeTemplates = (meta?.templates ?? []).filter((item) => modeKeys.includes(item.key));
   const modeJournal = journal.filter((row) => MODE_JOURNAL_KEYS[mode].includes(row.templateKey));
 
@@ -248,33 +248,19 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
     if (!win) setFeedback({ severity: 'error', text: 'Браузер заблокировал открытие вкладки — разрешите всплывающие окна' });
   };
 
-  const runGenerate = async (print = false) => {
+  const runSave = async () => {
     setGenerating(true);
     try {
-      const response = await generatePrintForm(location, templateKey, buildParams(), print ? 'pdf' : undefined);
-      if (print) {
-        openPdfBlob(response.data);
-      } else {
-        saveBlob(response.data, filenameFromHeaders(response.headers as Record<string, unknown>, `Форма.${template?.kind ?? 'docx'}`));
-      }
-      setFeedback({ severity: 'success', text: 'Форма сформирована и записана в журнал' });
+      const response = await savePrintForm(location, templateKey, buildParams());
+      setLastSavedId(response.data.id);
+      setFeedback({
+        severity: 'success',
+        text: `Сохранено в журнал${response.data.formNumber ? ` — №${response.data.formNumber}` : ''}. Печать и скачивание — в «Действиях».`,
+      });
       const journalRes = await getPrintFormsJournal(location);
       setJournal(journalRes.data);
-      const metaRes = await getPrintFormsMeta(location);
-      setMeta(metaRes.data);
     } catch (error) {
-      // ошибка приходит blob'ом — вытащим текст
-      const anyError = error as any;
-      if (anyError?.response?.data instanceof Blob) {
-        try {
-          const parsed = JSON.parse(await anyError.response.data.text());
-          setFeedback({ severity: 'error', text: parsed?.message ?? 'Не удалось сформировать форму' });
-        } catch {
-          setFeedback({ severity: 'error', text: 'Не удалось сформировать форму' });
-        }
-      } else {
-        setFeedback({ severity: 'error', text: errorText(error) });
-      }
+      setFeedback({ severity: 'error', text: errorText(error) });
     } finally {
       setGenerating(false);
     }
@@ -416,14 +402,9 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
               onChange={(event) => setJournalQuery(event.target.value)}
               sx={{ flex: '1 1 150px', minWidth: 0 }}
             />
-            <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>
-              {template?.kind !== 'xlsx' && (
-                <button type="button" className="ops-btn ghost" disabled={generating} onClick={() => void runGenerate(true)}>
-                  Печать
-                </button>
-              )}
-              <button type="button" className="ops-btn ops-btn--add" disabled={generating} onClick={() => void runGenerate()}>
-                {generating ? 'Формирование…' : `Скачать ${template?.kind === 'xlsx' ? 'Excel' : 'Word'}`}
+            <Box sx={{ ml: 'auto' }}>
+              <button type="button" className="ops-btn ops-btn--add" disabled={generating} onClick={() => void runSave()}>
+                {generating ? 'Сохранение…' : 'Сохранить'}
               </button>
             </Box>
           </Box>
@@ -471,7 +452,7 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
             </thead>
             <tbody>
               {visibleJournal.map((row) => (
-                <tr key={row.id}>
+                <tr key={row.id} className={row.id === lastSavedId ? 'print-journal-row--new' : undefined}>
                   <td className="fuel-cell--center">{row.formNumber ?? 'б/н'}</td>
                   <td className="fuel-cell--left">{new Date(row.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                   <td className="fuel-cell--left" title={templateLabel(row.templateKey)}>{journalFormLabel(row.templateKey)}</td>

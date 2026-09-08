@@ -1488,3 +1488,8 @@
 .print-page .dir-table td {
   font-size: 12px;
 }
+
+/* Только что сохранённая форма в журнале */
+.print-page .dir-table tr.print-journal-row--new td {
+  background: #e8f5e9;
+}

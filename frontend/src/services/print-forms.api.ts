@@ -32,6 +32,13 @@ export const generatePrintForm = (
   format?: 'pdf'
 ) => api.post('/print-forms/generate', { location, templateKey, params, format }, { responseType: 'blob' });
 
+/** Сохранение формы в журнал без выгрузки файла — печать/скачивание из «Действий». */
+export const savePrintForm = (location: FleetLocation, templateKey: string, params: Record<string, unknown>) =>
+  api.post<{ ok: boolean; id: string; formNumber: number | null; summary: string }>(
+    '/print-forms/generate',
+    { location, templateKey, params, saveOnly: true }
+  );
+
 export const getPrintFormsJournal = (location: FleetLocation) =>
   api.get<PrintJournalRow[]>('/print-forms/journal', { params: { location } });
 

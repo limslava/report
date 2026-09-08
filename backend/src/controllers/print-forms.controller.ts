@@ -338,6 +338,11 @@ export const generatePrintForm = async (req: Request, res: Response) => {
     details: { templateKey, location, summary: file.summary, formNumber: file.formNumber },
     req,
   });
+  // saveOnly: форма только записывается в журнал, файл забирают из «Действий»
+  if (req.body?.saveOnly) {
+    res.status(201).json({ ok: true, id: record.id, formNumber: file.formNumber, summary: file.summary });
+    return;
+  }
   await sendGenerated(res, file, req.body?.format);
 };
 
