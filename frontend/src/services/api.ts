@@ -190,6 +190,7 @@ export const createContract = (data: {
   contractNumber?: string | null;
   documentKind?: 'master' | 'addendum';
   parentContractId?: string | null;
+  parentContractRef?: string | null;
   contractType: 'expense' | 'income';
   incomeSubtype?: 'standard' | 'with_psr' | null;
   incomeKind?: 'teu' | 'agency' | null;

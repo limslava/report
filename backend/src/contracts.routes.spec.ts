@@ -107,18 +107,16 @@ describe('Contracts routes validation', () => {
     expect(createContract).toHaveBeenCalled();
   });
 
-  it('rejects addendum creation without a parent contract', async () => {
+  it('allows addendum creation without a parent contract (реквизиты текстом опциональны)', async () => {
     const app = createApp();
     const res = await request(app).post('/api/contracts').send({
       ...incomeContractPayload,
       documentKind: 'addendum',
+      parentContractRef: '№ 12/2023 от 15.03.2023',
     });
 
-    expect(res.status).toBe(400);
-    expect(res.body.details).toEqual(
-      expect.arrayContaining([expect.objectContaining({ field: 'parentContractId' })]),
-    );
-    expect(createContract).not.toHaveBeenCalled();
+    expect(res.status).toBe(201);
+    expect(createContract).toHaveBeenCalled();
   });
 
   it('allows draft update without a manual number', async () => {

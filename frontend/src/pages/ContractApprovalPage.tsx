@@ -264,6 +264,7 @@ export default function ContractApprovalPage() {
     clientRequestId: crypto.randomUUID(),
     documentKind: 'master',
     parentContractId: '',
+    parentContractRef: '',
     counterpartyInn: '',
     contractType: 'expense' as 'expense' | 'income',
     psrMode: 'without_psr' as 'with_psr' | 'without_psr',
@@ -471,6 +472,7 @@ export default function ContractApprovalPage() {
       clientRequestId: crypto.randomUUID(),
       documentKind: 'master',
       parentContractId: '',
+      parentContractRef: '',
       counterpartyInn: '',
       contractType: 'expense',
       psrMode: 'without_psr',
@@ -492,6 +494,7 @@ export default function ContractApprovalPage() {
       ...prev,
       documentKind,
       parentContractId: '',
+      parentContractRef: '',
     }));
     setWizardOpen(true);
   };
@@ -529,6 +532,7 @@ export default function ContractApprovalPage() {
       clientRequestId: crypto.randomUUID(),
       documentKind: draft.documentKind || 'master',
       parentContractId: draft.parentContractId || '',
+      parentContractRef: draft.parentContractRef || '',
       counterpartyInn: draft.counterpartyInn,
       counterpartyName: draft.counterpartyName,
       counterpartyShortName: draft.counterpartyShortName || '',
@@ -733,10 +737,6 @@ export default function ContractApprovalPage() {
         setError('Некорректный ИНН: допустимо 10 или 12 цифр');
         return;
       }
-      if (wizard.documentKind === 'addendum' && !wizard.parentContractId) {
-        setError('Для доп. соглашения выберите основной договор');
-        return;
-      }
 
       let resolved = wizardPrefill;
       if (!resolved?.counterpartyName) {
@@ -815,7 +815,10 @@ export default function ContractApprovalPage() {
       const contractPayload: Parameters<typeof createContract>[0] = {
         clientRequestId: wizard.clientRequestId,
         documentKind: wizard.documentKind,
-        parentContractId: wizard.documentKind === 'addendum' ? wizard.parentContractId : null,
+        parentContractId: wizard.documentKind === 'addendum' ? wizard.parentContractId || null : null,
+        parentContractRef: wizard.documentKind === 'addendum' && !wizard.parentContractId
+          ? wizard.parentContractRef.trim() || null
+          : null,
         contractNumber: isIncomeContractWizard && !wizardImportSigned && wizard.documentKind !== 'addendum'
           ? null
           : wizard.contractNumber.trim(),

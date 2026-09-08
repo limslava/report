@@ -11,6 +11,7 @@ export type ContractRecord = {
   documentKind: 'master' | 'addendum';
   parentContractId: string | null;
   parentContractNumber?: string | null;
+  parentContractRef?: string | null;
   contractType: 'expense' | 'income';
   incomeSubtype: 'standard' | 'with_psr' | null;
   incomeKind: 'teu' | 'agency' | null;
@@ -68,6 +69,7 @@ export type ContractWizardForm = {
   clientRequestId: string;
   documentKind: 'master' | 'addendum';
   parentContractId: string;
+  parentContractRef: string;
   counterpartyInn: string;
   counterpartyName: string;
   counterpartyShortName: string;
@@ -171,6 +173,7 @@ export type ApprovalSheet = {
     documentKind: 'master' | 'addendum';
     parentContractId: string | null;
     parentContractNumber?: string | null;
+    parentContractRef?: string | null;
     contractType: 'expense' | 'income';
     incomeSubtype: 'standard' | 'with_psr' | null;
     incomeKind: 'teu' | 'agency' | null;

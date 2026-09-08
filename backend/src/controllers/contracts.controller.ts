@@ -1334,6 +1334,7 @@ export const listContracts = async (_req: Request, res: Response, next: NextFunc
         documentKind: contract.documentKind,
         parentContractId: contract.parentContractId,
         parentContractNumber: contract.parentContract?.contractNumber ?? null,
+        parentContractRef: contract.parentContractRef ?? null,
         assignedGeneralDirectorId: contract.assignedGeneralDirectorId,
         assignedGeneralDirector: null,
         initiator: contract.initiator
@@ -1783,6 +1784,7 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       allowDuplicate,
       documentKind,
       parentContractId,
+      parentContractRef,
       clientRequestId,
     } = req.body as {
       contractNumber?: string | null;
@@ -1815,16 +1817,14 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       allowDuplicate?: boolean;
       documentKind?: ContractDocumentKind;
       parentContractId?: string | null;
+      parentContractRef?: string | null;
       clientRequestId?: string | null;
     };
 
     const normalizedDocumentKind = documentKind ?? ContractDocumentKind.MASTER;
 
-    if (normalizedDocumentKind === ContractDocumentKind.ADDENDUM && !parentContractId) {
-      const error: any = new Error('Для допсоглашения нужно выбрать базовый договор');
-      error.statusCode = 400;
-      throw error;
-    }
+    // Допсоглашение можно завести и без договора в системе — тогда реквизиты
+    // основного договора (если известны) сохраняются текстом в parentContractRef.
 
     if (parentContractId) {
       const parentExists = await contractRepository.exist({ where: { id: parentContractId } });
@@ -1943,6 +1943,10 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
       assignedGeneralDirectorId: null,
       documentKind: normalizedDocumentKind,
       parentContractId: parentContractId || null,
+      parentContractRef:
+        normalizedDocumentKind === ContractDocumentKind.ADDENDUM && !parentContractId
+          ? normalizeNullableString(parentContractRef)
+          : null,
       initiatorId: req.user.id,
       clientRequestId: normalizedClientRequestId,
     });
@@ -1992,6 +1996,7 @@ export const importSignedContract = async (req: Request, res: Response, next: Ne
       allowDuplicate,
       documentKind,
       parentContractId,
+      parentContractRef,
       files,
     } = req.body as {
       contractNumber: string;
@@ -2024,6 +2029,7 @@ export const importSignedContract = async (req: Request, res: Response, next: Ne
       allowDuplicate?: boolean;
       documentKind?: ContractDocumentKind;
       parentContractId?: string | null;
+      parentContractRef?: string | null;
       files: Array<{ name: string; mimeType?: string | null; size?: number; contentBase64: string }>;
     };
 
@@ -2034,11 +2040,8 @@ export const importSignedContract = async (req: Request, res: Response, next: Ne
     }
 
     const normalizedDocumentKind = documentKind ?? ContractDocumentKind.MASTER;
-    if (normalizedDocumentKind === ContractDocumentKind.ADDENDUM && !parentContractId) {
-      const error: any = new Error('Для допсоглашения нужно выбрать базовый договор');
-      error.statusCode = 400;
-      throw error;
-    }
+    // Импортировать допсоглашение можно и без договора в системе —
+    // реквизиты основного договора (если известны) хранятся текстом.
     if (parentContractId) {
       const parentExists = await contractRepository.exist({ where: { id: parentContractId } });
       if (!parentExists) {
@@ -2143,6 +2146,10 @@ export const importSignedContract = async (req: Request, res: Response, next: Ne
       assignedGeneralDirectorId: null,
       documentKind: normalizedDocumentKind,
       parentContractId: parentContractId || null,
+      parentContractRef:
+        normalizedDocumentKind === ContractDocumentKind.ADDENDUM && !parentContractId
+          ? normalizeNullableString(parentContractRef)
+          : null,
       initiatorId: req.user.id,
       clientRequestId: null,
     });
@@ -2209,6 +2216,8 @@ export const updateDraftContract = async (req: Request, res: Response, next: Nex
       contractDate,
       psrFlag,
       signingMethod,
+      parentContractId,
+      parentContractRef,
     } = req.body as {
       contractNumber: string;
       contractType: ContractType;
@@ -2236,6 +2245,8 @@ export const updateDraftContract = async (req: Request, res: Response, next: Nex
       contractDate?: string | null;
       psrFlag?: boolean;
       signingMethod?: ContractSigningMethod;
+      parentContractId?: string | null;
+      parentContractRef?: string | null;
     };
 
     const parsedContractDate = contractDate ? new Date(contractDate) : null;
@@ -2243,6 +2254,18 @@ export const updateDraftContract = async (req: Request, res: Response, next: Nex
       const error: any = new Error('Некорректная дата договора');
       error.statusCode = 400;
       throw error;
+    }
+    if (contract.documentKind === ContractDocumentKind.ADDENDUM && parentContractId !== undefined) {
+      if (parentContractId) {
+        const parentExists = await contractRepository.exist({ where: { id: parentContractId } });
+        if (!parentExists) {
+          const error: any = new Error('Базовый договор не найден');
+          error.statusCode = 400;
+          throw error;
+        }
+      }
+      contract.parentContractId = parentContractId || null;
+      contract.parentContractRef = parentContractId ? null : normalizeNullableString(parentContractRef);
     }
     validateInnByCounterpartyForm(counterpartyInn.trim(), counterpartyForm ?? null);
 

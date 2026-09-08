@@ -170,6 +170,10 @@ export class Contract {
   @OneToMany(() => Contract, (contract) => contract.parentContract)
   addendums!: Contract[];
 
+  /** Реквизиты основного договора текстом, когда самого договора нет в системе. */
+  @Column({ name: 'parent_contract_ref', type: 'varchar', length: 255, nullable: true })
+  parentContractRef!: string | null;
+
   @ManyToOne(() => User, { nullable: false })
   @JoinColumn({ name: 'initiator_id' })
   initiator!: User;

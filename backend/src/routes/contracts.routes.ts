@@ -178,11 +178,8 @@ router.post(
     body('signingMethod').optional().isIn(['edo', 'post']),
     body('allowDuplicate').optional().isBoolean(),
     body('documentKind').optional().isIn(['master', 'addendum']),
-    body('parentContractId')
-      .custom((value, { req }) => req.body.documentKind !== 'addendum' || Boolean(value))
-      .withMessage('Для допсоглашения нужно выбрать базовый договор')
-      .bail(),
     body('parentContractId').optional({ nullable: true }).isUUID(),
+    body('parentContractRef').optional({ nullable: true }).isString().isLength({ max: 255 }),
     body('files').isArray({ min: 1, max: 10 }),
     body('files.*.name').isString().trim().notEmpty().isLength({ max: 255 }),
     body('files.*.mimeType').optional({ nullable: true }).isString().isLength({ max: 120 }),
@@ -226,11 +223,8 @@ router.post(
     body('signingMethod').optional().isIn(['edo', 'post']),
     body('allowDuplicate').optional().isBoolean(),
     body('documentKind').optional().isIn(['master', 'addendum']),
-    body('parentContractId')
-      .custom((value, { req }) => req.body.documentKind !== 'addendum' || Boolean(value))
-      .withMessage('Для допсоглашения нужно выбрать базовый договор')
-      .bail(),
     body('parentContractId').optional({ nullable: true }).isUUID(),
+    body('parentContractRef').optional({ nullable: true }).isString().isLength({ max: 255 }),
   ],
   handleValidationErrors,
   createContract,

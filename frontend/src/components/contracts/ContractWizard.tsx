@@ -205,11 +205,7 @@ export function ContractWizard({
                     parentContractId: event.target.value,
                   })}
                 >
-                  {!parentContracts.length && (
-                    <MenuItem disabled value="">
-                      Нет основных договоров этого контрагента и типа
-                    </MenuItem>
-                  )}
+                  <MenuItem value="">Договора нет в системе</MenuItem>
                   {parentContracts.map((contract) => (
                     <MenuItem key={contract.id} value={contract.id}>
                       {contract.contractNumber} - {contract.counterpartyShortName || contract.counterpartyName}
@@ -217,6 +213,16 @@ export function ContractWizard({
                   ))}
                 </Select>
               </FormControl>
+            )}
+            {isAddendum && !wizard.parentContractId && (
+              <TextField
+                fullWidth
+                label="Основной договор (№ и дата, текстом)"
+                placeholder="№ 12/2023 от 15.03.2023"
+                value={wizard.parentContractRef}
+                onChange={(event) => setWizard({ ...wizard, parentContractRef: event.target.value })}
+                helperText="Необязательно: если договора нет в системе, укажите его реквизиты — они будут видны в реестре."
+              />
             )}
             <FormControl fullWidth>
               <InputLabel>Тип договора</InputLabel>
@@ -554,7 +560,7 @@ export function ContractWizard({
           <Button
             variant="contained"
             onClick={onCheck}
-            disabled={!isInnValidLength || innResolving || submitting || (isAddendum && !wizard.parentContractId)}
+            disabled={!isInnValidLength || innResolving || submitting}
           >
             {isAddendum ? 'Далее' : 'Проверить'}
           </Button>

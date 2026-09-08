@@ -235,6 +235,9 @@ export function ContractArchiveTable({
                       {row.parentContractNumber && (
                         <span className="contract-archive-parent-ref">к {row.parentContractNumber}</span>
                       )}
+                      {!row.parentContractNumber && row.parentContractRef && (
+                        <span className="contract-archive-parent-ref">к {row.parentContractRef} (не в системе)</span>
+                      )}
                     </Box>
                   ) : (
                     <Box className="contract-archive-master-cell">

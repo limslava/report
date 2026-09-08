@@ -85,7 +85,9 @@ function counterpartyText(contract: ContractRecord): string {
 }
 function subjectText(contract: ContractRecord): string {
   if (contract.documentKind === 'addendum') {
-    return contract.parentContractNumber ? `Допник к договору ${contract.parentContractNumber}` : 'Допник к основному договору';
+    if (contract.parentContractNumber) return `Допник к договору ${contract.parentContractNumber}`;
+    if (contract.parentContractRef) return `Допник к договору ${contract.parentContractRef} (не в системе)`;
+    return 'Допник без основного договора в системе';
   }
   return contract.subject || '';
 }
@@ -294,7 +296,7 @@ export function ContractRegistryTable({
                 </TableCell>
                 <TableCell>{formatContractBaseTypeLabel(row.contractType)}</TableCell>
                 <TableCell>{formatContractSubtypeLabel(row.contractType, row.incomeSubtype)}</TableCell>
-                <TableCell title={row.documentKind === 'addendum' ? (row.parentContractNumber || '') : (row.subject || '')}>
+                <TableCell title={row.documentKind === 'addendum' ? (row.parentContractNumber || row.parentContractRef || '') : (row.subject || '')}>
                   {subjectText(row) || '—'}
                 </TableCell>
                 <TableCell>{row.contractNumber}</TableCell>
