@@ -43,19 +43,10 @@ export default function CounterpartyCardPage() {
   }
 
   return (
-    <Box>
-      <Box sx={{ px: 2, pt: 1.5, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-        <button type="button" className="ops-btn ghost" onClick={() => navigate('/directories/counterparties')}>
-          ← Контрагенты
-        </button>
-        <Typography variant="caption" color="text.secondary">
-          {counterparty ? `ИНН ${counterparty.inn}` : ''}
-        </Typography>
-      </Box>
-      <DirectoriesPage
-        counterpartyId={id}
-        counterpartyName={counterparty ? counterparty.nameShort || counterparty.nameFull : undefined}
-      />
-    </Box>
+    <DirectoriesPage
+      counterpartyId={id}
+      counterpartyName={counterparty ? counterparty.nameShort || counterparty.nameFull : undefined}
+      counterpartyInn={counterparty?.inn}
+    />
   );
 }

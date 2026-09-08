@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   Autocomplete,
@@ -19,7 +20,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { ContentCopy } from '@mui/icons-material';
+import { ArrowBack, ContentCopy } from '@mui/icons-material';
 import { useAuthStore } from '../store/auth-store';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import {
@@ -103,8 +104,10 @@ const errorText = (error: unknown): string => {
 export default function DirectoriesPage({
   counterpartyId,
   counterpartyName,
-}: { counterpartyId?: string; counterpartyName?: string } = {}) {
+  counterpartyInn,
+}: { counterpartyId?: string; counterpartyName?: string; counterpartyInn?: string } = {}) {
   const isCounterpartyMode = Boolean(counterpartyId);
+  const navigate = useNavigate();
   const { user } = useAuthStore();
   const allowedLocations = useMemo(() => directoryLocationsForRole(user?.role), [user?.role]);
   const canManageNorms = canManageFuelNormsFrontend(user?.role);
@@ -514,6 +517,25 @@ export default function DirectoriesPage({
       <section className="ops-preview__controls">
         <Paper sx={{ p: 1.5, width: '100%' }}>
           <Box display="flex" alignItems="center" gap={2} sx={{ flexWrap: 'nowrap', overflow: 'hidden' }}>
+            {isCounterpartyMode && (
+              <>
+                <Tooltip title="К списку контрагентов">
+                  <IconButton size="small" onClick={() => navigate('/directories/counterparties')}>
+                    <ArrowBack sx={{ fontSize: 20 }} />
+                  </IconButton>
+                </Tooltip>
+                <Box sx={{ minWidth: 0, flexShrink: 0, maxWidth: 280 }}>
+                  <Typography sx={{ fontWeight: 600, fontSize: 14, lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {counterpartyName || 'Контрагент'}
+                  </Typography>
+                  {counterpartyInn && (
+                    <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap', lineHeight: 1 }}>
+                      ИНН {counterpartyInn}
+                    </Typography>
+                  )}
+                </Box>
+              </>
+            )}
             {allowedLocations.length > 1 && (
               <TextField
                 label="Город"
@@ -540,11 +562,6 @@ export default function DirectoriesPage({
               <Tab value="trailers" label={`Прицепы (${trailers.length})`} />
               {!isCounterpartyMode && <Tab value="models" label={`Модели и нормы (${models.length})`} />}
             </Tabs>
-            {isCounterpartyMode && (
-              <Typography sx={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 320 }}>
-                {counterpartyName || 'Контрагент'}
-              </Typography>
-            )}
             <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
               {!exportMode && !isCounterpartyMode && (
                 <button
