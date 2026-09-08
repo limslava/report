@@ -69,16 +69,30 @@ export const DEFAULT_PRINT_COUNTERPARTIES: PrintCounterparty[] = [
   },
 ];
 
+/**
+ * Формы выбираются конкретные — контрагент зашит в форму, отдельного выбора
+ * склада/терминала нет (решение пользователя 2026-09-08, чтобы исключить
+ * бессмысленные комбинации «форма × контрагент»).
+ */
 export const PRINT_FORM_TEMPLATES = [
-  { key: 'poa_warehouse', label: 'Доверенность на сотрудника (склад)', kind: 'docx' },
+  { key: 'poa_vmpp', label: 'Доверенность на сотрудника (ВМПП)', kind: 'docx' },
+  { key: 'poa_dkh', label: 'Доверенность на сотрудника (ДКХ)', kind: 'docx' },
   { key: 'poa_pl', label: 'Доверенность на сотрудника (терминал ПЛ)', kind: 'docx' },
-  { key: 'poa_terminal_vehicle', label: 'Доверенность с ТС (терминал)', kind: 'docx' },
+  { key: 'poa_tk_vehicle', label: 'Доверенность с ТС (ТрансКонтейнер)', kind: 'docx' },
   { key: 'vmpp_vehicles_request', label: 'Заявка в ИС ВМПП: автотранспорт и водители', kind: 'docx' },
   { key: 'vmpp_drivers_approval', label: 'Согласование водителей ВМПП', kind: 'docx' },
   { key: 'carrier_vehicles', label: 'Форма перевозчику: список ТС (Excel)', kind: 'xlsx' },
 ] as const;
 
 export type PrintTemplateKey = (typeof PRINT_FORM_TEMPLATES)[number]['key'];
+
+/** Вариант доверенности → базовый шаблон + зашитый контрагент. */
+export const POA_VARIANTS: Record<string, { base: 'poa_warehouse' | 'poa_pl' | 'poa_terminal_vehicle'; counterparty: string }> = {
+  poa_vmpp: { base: 'poa_warehouse', counterparty: 'ООО ВМП «Первомайский»' },
+  poa_dkh: { base: 'poa_warehouse', counterparty: 'АО «ДАЛЬКОМХОЛОД»' },
+  poa_pl: { base: 'poa_pl', counterparty: 'ООО «ПЛ»' },
+  poa_tk_vehicle: { base: 'poa_terminal_vehicle', counterparty: 'Контейнерный терминал Первая Речка ПАО «ТрансКонтейнер»' },
+};
 
 const MONTHS_GENITIVE = [
   'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',

@@ -22,6 +22,7 @@ import {
   buildVmppDriversApproval,
   buildVmppVehiclesRequest,
   formatDateDots,
+  POA_VARIANTS,
 } from '../services/print-forms.service';
 import { convertDocxBufferToPdf } from '../services/docx-pdf-preview.service';
 import { directoryLocationsForRole, isValidLocation } from '../constants/directories';
@@ -114,12 +115,18 @@ const loadVehicle = async (id: unknown, location: FleetLocation): Promise<FleetV
 type GeneratedFile = { buffer: Buffer; filename: string; formNumber: number | null; summary: string };
 
 async function generateByTemplate(
-  templateKey: PrintTemplateKey,
+  rawTemplateKey: string,
   location: FleetLocation,
-  params: Record<string, unknown>
+  rawParams: Record<string, unknown>
 ): Promise<GeneratedFile> {
   const settings = await loadPrintSettings();
   const org = settings.org;
+
+  // Вариант доверенности → базовый шаблон с зашитым контрагентом.
+  // Старые ключи журнала (poa_warehouse/poa_terminal_vehicle с counterparty в params) обрабатываются как есть.
+  const variant = POA_VARIANTS[rawTemplateKey];
+  const templateKey = variant ? variant.base : rawTemplateKey;
+  const params = variant ? { ...rawParams, counterparty: variant.counterparty } : rawParams;
 
   if (templateKey === 'poa_warehouse' || templateKey === 'poa_pl') {
     const employee = await loadEmployee(params.employeeId, location);

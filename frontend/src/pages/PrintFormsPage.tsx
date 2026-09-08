@@ -39,11 +39,20 @@ const LOCATION_LABELS: Record<FleetLocation, string> = { vvo: 'Владивос�
 /** Подстраницы печатных форм: доверенности и заявки — общий конструктор, разный набор шаблонов. */
 export type PrintFormsMode = 'poa' | 'requests';
 const MODE_TEMPLATE_KEYS: Record<PrintFormsMode, string[]> = {
-  poa: ['poa_warehouse', 'poa_pl', 'poa_terminal_vehicle'],
+  poa: ['poa_vmpp', 'poa_dkh', 'poa_pl', 'poa_tk_vehicle'],
   requests: ['vmpp_vehicles_request', 'vmpp_drivers_approval', 'carrier_vehicles'],
 };
+/** В журнале видны и записи старых ключей (до фиксации контрагента в форме). */
+const MODE_JOURNAL_KEYS: Record<PrintFormsMode, string[]> = {
+  poa: [...MODE_TEMPLATE_KEYS.poa, 'poa_warehouse', 'poa_terminal_vehicle'],
+  requests: MODE_TEMPLATE_KEYS.requests,
+};
+const LEGACY_TEMPLATE_LABELS: Record<string, string> = {
+  poa_warehouse: 'Доверенность на сотрудника (склад)',
+  poa_terminal_vehicle: 'Доверенность с ТС (терминал)',
+};
 const MODE_DEFAULT_TEMPLATE: Record<PrintFormsMode, string> = {
-  poa: 'poa_warehouse',
+  poa: 'poa_vmpp',
   requests: 'vmpp_vehicles_request',
 };
 
@@ -121,7 +130,7 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
   const poaEmployeeLabel = (item: EmployeeItem) => item.fullName;
   const template = meta?.templates.find((item) => item.key === templateKey) ?? null;
   const modeTemplates = (meta?.templates ?? []).filter((item) => modeKeys.includes(item.key));
-  const modeJournal = journal.filter((row) => modeKeys.includes(row.templateKey));
+  const modeJournal = journal.filter((row) => MODE_JOURNAL_KEYS[mode].includes(row.templateKey));
 
   const reload = useCallback(async () => {
     try {
@@ -151,24 +160,23 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
     void reload();
   }, [reload]);
 
-  const templateLabel = (key: string): string => meta?.templates.find((item) => item.key === key)?.label ?? key;
+  const templateLabel = (key: string): string =>
+    meta?.templates.find((item) => item.key === key)?.label ?? LEGACY_TEMPLATE_LABELS[key] ?? key;
 
   const buildParams = (): Record<string, unknown> => {
-    if (templateKey === 'poa_warehouse' || templateKey === 'poa_pl') {
+    if (templateKey === 'poa_vmpp' || templateKey === 'poa_dkh' || templateKey === 'poa_pl') {
       return {
         employeeId: employee?.id ?? null,
-        counterparty,
         issueDate,
         validUntil,
         number: formNumber.trim() === '' ? null : Number(formNumber),
         withSignature,
       };
     }
-    if (templateKey === 'poa_terminal_vehicle') {
+    if (templateKey === 'poa_tk_vehicle') {
       return {
         employeeId: employee?.id ?? null,
         vehicleId: vehicle?.id ?? null,
-        counterparty,
         issueDate,
         validFrom,
         validUntil,
@@ -317,18 +325,7 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
             {isPoa && (
               <>
                 {employeeField(employee, setEmployee, 'Сотрудник (из справочника)', employees)}
-                {templateKey === 'poa_terminal_vehicle' && vehicleField(vehicle, setVehicle)}
-                <TextField
-                  select size="small" SelectProps={COMPACT_SELECT}
-                  label={templateKey === 'poa_terminal_vehicle' ? 'Терминал' : 'Склад / контрагент'}
-                  value={counterparty}
-                  onChange={(event) => setCounterparty(event.target.value)}
-                  sx={{ flex: '2 1 220px', minWidth: 170 }}
-                >
-                  {(meta?.counterparties ?? []).map((item) => (
-                    <MenuItem key={item.label} value={item.label}>{item.label}</MenuItem>
-                  ))}
-                </TextField>
+                {templateKey === 'poa_tk_vehicle' && vehicleField(vehicle, setVehicle)}
                 <TextField
                   size="small" label={templateKey === 'poa_pl' ? 'Номер (пусто — б/н)' : 'Номер'}
                   value={formNumber}
@@ -336,9 +333,9 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
                   sx={{ flex: '0 1 120px', minWidth: 90 }}
                 />
                 {dateField('Дата выдачи', issueDate, setIssueDate)}
-                {templateKey === 'poa_terminal_vehicle' && dateField('Действительна с', validFrom, setValidFrom)}
+                {templateKey === 'poa_tk_vehicle' && dateField('Действительна с', validFrom, setValidFrom)}
                 {dateField('Действительна по', validUntil, setValidUntil)}
-                {templateKey !== 'poa_terminal_vehicle' && (
+                {templateKey !== 'poa_tk_vehicle' && (
                   <FormControlLabel
                     control={<Checkbox size="small" checked={withSignature} onChange={(event) => setWithSignature(event.target.checked)} />}
                     label="Строка подписи доверенного"
