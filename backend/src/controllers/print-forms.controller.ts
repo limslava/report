@@ -347,6 +347,10 @@ export const listPrintFormsJournal = async (req: Request, res: Response) => {
       templateKey: row.templateKey,
       formNumber: row.formNumber,
       issueDate: formatDateDots(row.issueDate),
+      validUntil:
+        typeof (row.params as Record<string, unknown>)?.validUntil === 'string'
+          ? formatDateDots((row.params as Record<string, string>).validUntil)
+          : '',
       summary: row.summary,
       createdBy: row.createdByUserId ? nameById.get(row.createdByUserId) ?? '—' : '—',
       createdAt: row.createdAt,

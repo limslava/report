@@ -16,6 +16,7 @@ export type PrintJournalRow = {
   templateKey: string;
   formNumber: number | null;
   issueDate: string;
+  validUntil?: string;
   summary: string;
   createdBy: string;
   createdAt: string;

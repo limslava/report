@@ -49,6 +49,15 @@ const LEGACY_TEMPLATE_LABELS: Record<string, string> = {
   poa_warehouse: 'Доверенность на сотрудника (склад)',
   poa_terminal_vehicle: 'Доверенность с ТС (терминал)',
 };
+/** Короткие имена доверенностей для журнала. */
+const SHORT_FORM_LABELS: Record<string, string> = {
+  poa_vmpp: 'ВМПП',
+  poa_dkh: 'ДКХ',
+  poa_pl: 'ПЛ',
+  poa_tk_vehicle: 'ТрансКонтейнер',
+  poa_warehouse: 'Склад (ВМПП/ДКХ)',
+  poa_terminal_vehicle: 'ТрансКонтейнер',
+};
 const MODE_DEFAULT_TEMPLATE: Record<PrintFormsMode, string> = {
   poa: 'poa_vmpp',
   requests: 'vmpp_vehicles_request',
@@ -159,6 +168,10 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
 
   const templateLabel = (key: string): string =>
     meta?.templates.find((item) => item.key === key)?.label ?? LEGACY_TEMPLATE_LABELS[key] ?? key;
+  const journalFormLabel = (key: string): string => SHORT_FORM_LABELS[key] ?? templateLabel(key);
+  /** У доверенностей summary = «ФИО · контрагент» — в журнале показываем только ФИО. */
+  const journalPersonText = (row: PrintJournalRow): string =>
+    mode === 'poa' ? (row.summary.split(' · ')[0] || '—') : (row.summary || '—');
 
   const buildParams = (): Record<string, unknown> => {
     if (templateKey === 'poa_vmpp' || templateKey === 'poa_dkh' || templateKey === 'poa_pl') {
@@ -411,23 +424,25 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
           <table>
             <thead>
               <tr>
-                <th style={{ minWidth: 130 }}>Создано</th>
-                <th style={{ minWidth: 280 }}>Форма</th>
-                <th className="fuel-cell--center" style={{ minWidth: 70 }}>№</th>
-                <th className="fuel-cell--center" style={{ minWidth: 110 }}>Дата выдачи</th>
-                <th style={{ minWidth: 260 }}>Содержание</th>
-                <th style={{ minWidth: 180 }}>Кем создана</th>
-                <th className="fuel-cell--center" style={{ minWidth: 90 }}>Скачать</th>
+                <th className="fuel-cell--center" style={{ minWidth: 60 }}>№</th>
+                <th style={{ minWidth: 120 }}>Создано</th>
+                <th style={{ minWidth: 130 }}>Форма</th>
+                <th style={{ minWidth: 240 }}>{mode === 'poa' ? 'ФИО' : 'Содержание'}</th>
+                <th className="fuel-cell--center" style={{ minWidth: 100 }}>Дата выдачи</th>
+                <th className="fuel-cell--center" style={{ minWidth: 110 }}>Действительна по</th>
+                <th style={{ minWidth: 170 }}>Кем создана</th>
+                <th className="fuel-cell--center" style={{ minWidth: 80 }}>Скачать</th>
               </tr>
             </thead>
             <tbody>
               {modeJournal.map((row) => (
                 <tr key={row.id}>
-                  <td className="fuel-cell--left">{new Date(row.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-                  <td className="fuel-cell--left">{templateLabel(row.templateKey)}</td>
                   <td className="fuel-cell--center">{row.formNumber ?? 'б/н'}</td>
+                  <td className="fuel-cell--left">{new Date(row.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                  <td className="fuel-cell--left" title={templateLabel(row.templateKey)}>{journalFormLabel(row.templateKey)}</td>
+                  <td className="fuel-cell--left" title={row.summary}>{journalPersonText(row)}</td>
                   <td className="fuel-cell--center">{row.issueDate}</td>
-                  <td className="fuel-cell--left">{row.summary || '—'}</td>
+                  <td className="fuel-cell--center">{row.validUntil || '—'}</td>
                   <td className="fuel-cell--left">{row.createdBy}</td>
                   <td className="fuel-cell--center dir-actions">
                     {row.templateKey !== 'carrier_vehicles' && (
@@ -447,7 +462,7 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
               ))}
               {modeJournal.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="fuel-empty">Журнал пуст — сформируйте первую форму</td>
+                  <td colSpan={8} className="fuel-empty">Журнал пуст — сформируйте первую форму</td>
                 </tr>
               )}
             </tbody>

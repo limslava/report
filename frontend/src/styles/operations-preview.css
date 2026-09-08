@@ -1482,3 +1482,9 @@
   font-size: 12px;
   min-height: 30px;
 }
+
+/* Журнал печатных форм — компактный шрифт */
+.print-page .dir-table th,
+.print-page .dir-table td {
+  font-size: 12px;
+}
