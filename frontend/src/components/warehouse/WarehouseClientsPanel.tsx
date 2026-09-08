@@ -79,6 +79,8 @@ const WarehouseClientsPanel = forwardRef<WarehouseClientsPanelHandle, WarehouseC
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<WarehouseClient | null>(null);
   const [selectedCounterparty, setSelectedCounterparty] = useState<WarehouseCounterparty | null>(null);
+  const [counterpartySearch, setCounterpartySearch] = useState('');
+  const [searching, setSearching] = useState(false);
   const [form, setForm] = useState<WarehouseClientPayload>(emptyForm);
   const [query, setQuery] = useState('');
   const [activityFilter, setActivityFilter] = useState<'all' | 'active' | 'inactive'>('all');
@@ -97,6 +99,7 @@ const WarehouseClientsPanel = forwardRef<WarehouseClientsPanelHandle, WarehouseC
   const openCreate = async () => {
     setEditing(null);
     setSelectedCounterparty(null);
+    setCounterpartySearch('');
     setForm(emptyForm());
     setError(null);
     try {
@@ -107,6 +110,24 @@ const WarehouseClientsPanel = forwardRef<WarehouseClientsPanelHandle, WarehouseC
     }
     setDialogOpen(true);
   };
+
+  // Серверный поиск по мере ввода: локальный справочник по ИНН/названию,
+  // а полный ИНН, которого там нет, бэкенд дотягивает из ФНС (как в договорах).
+  useEffect(() => {
+    if (!dialogOpen || editing) return undefined;
+    const timer = window.setTimeout(async () => {
+      setSearching(true);
+      try {
+        const response = await getAvailableWarehouseCounterparties(counterpartySearch.trim());
+        setAvailable(response.data);
+      } catch {
+        // сбой поиска не должен ломать диалог — оставляем прежний список
+      } finally {
+        setSearching(false);
+      }
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [counterpartySearch, dialogOpen, editing]);
 
   useImperativeHandle(ref, () => ({
     openCreate: () => {
@@ -325,13 +346,19 @@ const WarehouseClientsPanel = forwardRef<WarehouseClientsPanelHandle, WarehouseC
                 options={available}
                 value={selectedCounterparty}
                 onChange={(_event, value) => handleCounterpartySelection(value)}
+                inputValue={counterpartySearch}
+                onInputChange={(_event, value) => setCounterpartySearch(value)}
+                filterOptions={(options) => options}
+                loading={searching}
+                loadingText="Поиск…"
+                noOptionsText="Не найдено — введите полный ИНН (10/12 цифр) или заполните вручную"
                 getOptionLabel={(option) => `${option.nameShort || option.nameFull} — ${option.inn}`}
                 isOptionEqualToValue={(option, value) => option.id === value.id}
                 renderInput={(params) => (
                   <TextField
                     {...params}
-                    label="Найти в общем справочнике"
-                    helperText="Можно выбрать существующую организацию или заполнить реквизиты вручную."
+                    label="Найти по ИНН или названию"
+                    helperText="Ищет по общему справочнику; новый полный ИНН подтягивается из ФНС. Можно заполнить реквизиты вручную."
                   />
                 )}
               />

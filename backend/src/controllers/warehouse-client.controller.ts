@@ -4,6 +4,10 @@ import { AppDataSource } from '../config/data-source';
 import { Counterparty } from '../models/counterparty.model';
 import { WarehouseClient } from '../models/warehouse-client.model';
 import { recordAuditLog } from '../services/audit-log.service';
+import {
+  FnsServiceUnavailableError,
+  fetchCounterpartyFromFnsByInn,
+} from '../services/fns-egrul.service';
 import { getWarehouseContractState } from '../utils/warehouse-contract';
 
 const normalizeNullable = (value: unknown): string | null => {
@@ -205,7 +209,8 @@ export const searchAvailableCounterparties = async (
 ) => {
   try {
     const q = String(req.query.q ?? '').trim();
-    const counterparties = await AppDataSource.getRepository(Counterparty).find({
+    const counterpartyRepository = AppDataSource.getRepository(Counterparty);
+    let counterparties = await counterpartyRepository.find({
       where: q
         ? [
             { inn: ILike(`${q}%`) },
@@ -216,6 +221,28 @@ export const searchAvailableCounterparties = async (
       order: { updatedAt: 'DESC' },
       take: 20,
     });
+    // Полный ИНН, которого нет в справочнике, — подтягиваем из ФНС (как в БП договоров).
+    if (!counterparties.length && /^(\d{10}|\d{12})$/.test(q)) {
+      try {
+        const fns = await fetchCounterpartyFromFnsByInn(q);
+        if (fns) {
+          const saved = await counterpartyRepository.save(counterpartyRepository.create({
+            inn: fns.inn,
+            nameFull: fns.nameFull,
+            nameShort: fns.nameShort,
+            counterpartyForm: fns.counterpartyForm,
+            ogrn: fns.ogrn,
+            kpp: fns.kpp,
+            address: fns.address,
+            source: 'fns',
+            sourcePayload: fns.sourcePayload,
+          }));
+          counterparties = [saved];
+        }
+      } catch (error) {
+        if (!(error instanceof FnsServiceUnavailableError)) throw error;
+      }
+    }
     const clientCounterpartyIds = new Set(
       (await AppDataSource.getRepository(WarehouseClient).find({
         select: { counterpartyId: true },
