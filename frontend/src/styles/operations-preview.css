@@ -1470,3 +1470,15 @@
     font-size: 11px;
   }
 }
+
+/* Компактные выпадающие списки печатных форм (рендерятся в оверлее) */
+.print-compact-listbox .MuiAutocomplete-option {
+  font-size: 12px;
+  min-height: 30px;
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+.print-compact-menu .MuiMenuItem-root {
+  font-size: 12px;
+  min-height: 30px;
+}

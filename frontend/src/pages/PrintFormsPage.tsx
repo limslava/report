@@ -84,6 +84,10 @@ const filenameFromHeaders = (headers: Record<string, unknown>, fallback: string)
 
 type VmppPairDraft = { employee: EmployeeItem | null; vehicle: FleetVehicleItem | null };
 
+/** Выпадашки рендерятся в оверлее вне страницы — компактный текст задаём классом. */
+const COMPACT_LISTBOX = { className: 'print-compact-listbox' };
+const COMPACT_SELECT = { MenuProps: { PaperProps: { className: 'print-compact-menu' } } } as const;
+
 export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode }) {
   const modeKeys = MODE_TEMPLATE_KEYS[mode];
   const { user } = useAuthStore();
@@ -247,6 +251,7 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
   ) => (
     <Autocomplete
       size="small"
+      ListboxProps={COMPACT_LISTBOX}
       options={options}
       getOptionLabel={(item) => poaEmployeeLabel(item)}
       value={value}
@@ -263,6 +268,7 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
   ) => (
     <Autocomplete
       size="small"
+      ListboxProps={COMPACT_LISTBOX}
       options={vehicles}
       getOptionLabel={(item) => item.plate}
       value={value}
@@ -291,7 +297,7 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
             {allowedLocations.length > 1 && (
               <TextField
-                select size="small" label="Город" value={location}
+                select size="small" label="Город" SelectProps={COMPACT_SELECT} value={location}
                 onChange={(event) => setLocation(event.target.value as FleetLocation)}
                 sx={{ flex: '0 1 150px', minWidth: 110 }}
               >
@@ -301,7 +307,7 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
               </TextField>
             )}
             <TextField
-              select size="small" label="Форма" value={templateKey}
+              select size="small" label="Форма" SelectProps={COMPACT_SELECT} value={templateKey}
               onChange={(event) => setTemplateKey(event.target.value)}
               sx={{ flex: '1.5 1 220px', minWidth: 180, maxWidth: 400 }}
             >
@@ -314,7 +320,8 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
                 {employeeField(employee, setEmployee, 'Сотрудник (из справочника)', employees)}
                 {templateKey === 'poa_terminal_vehicle' && vehicleField(vehicle, setVehicle)}
                 <TextField
-                  select size="small" label={templateKey === 'poa_terminal_vehicle' ? 'Терминал' : 'Склад / контрагент'}
+                  select size="small" SelectProps={COMPACT_SELECT}
+                  label={templateKey === 'poa_terminal_vehicle' ? 'Терминал' : 'Склад / контрагент'}
                   value={counterparty}
                   onChange={(event) => setCounterparty(event.target.value)}
                   sx={{ flex: '2 1 220px', minWidth: 170 }}
@@ -357,7 +364,7 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
             )}
             {templateKey === 'vmpp_drivers_approval' && (
               <Autocomplete
-                multiple size="small" options={drivers}
+                multiple size="small" ListboxProps={COMPACT_LISTBOX} options={drivers}
                 getOptionLabel={(item) => item.fullName}
                 value={multiEmployees}
                 onChange={(_event, value) => setMultiEmployees(value)}
@@ -367,7 +374,7 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
             )}
             {templateKey === 'carrier_vehicles' && (
               <Autocomplete
-                multiple size="small" options={vehicles}
+                multiple size="small" ListboxProps={COMPACT_LISTBOX} options={vehicles}
                 getOptionLabel={(item) => item.plate}
                 value={multiVehicles}
                 onChange={(_event, value) => setMultiVehicles(value)}
