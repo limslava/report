@@ -157,6 +157,8 @@ const headerBlocks = (org: PrintOrgSettings): DocxBlock[] => {
   const requisites: DocxParagraph[] = org.headerLines.map((line, index) =>
     pRuns([{ text: line, bold: index === 0, size: 9 }], { align: 'right', spacingAfter: 0 })
   );
+  // небольшой зазор между адресом и линией-отбивкой (граница таблицы)
+  requisites.push(pRuns([{ text: '', size: 5 }], { spacingAfter: 0 }));
   const logo = loadLogo();
   if (!logo) {
     // без логотипа (ассет не нашёлся) — реквизиты столбцом справа

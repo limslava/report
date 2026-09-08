@@ -29,6 +29,7 @@ import {
   getPrintFormsMeta,
 } from '../services/print-forms.api';
 import { directoryLocationsForRole } from '../utils/rolePermissions';
+import { TableSortState, cycleSort, sortIndicator, sortRows } from '../utils/tableSort';
 import '../styles/operations-preview.css';
 import '../styles/fuel.css';
 
@@ -116,6 +117,9 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [templateKey, setTemplateKey] = useState(MODE_DEFAULT_TEMPLATE[mode]);
   const [generating, setGenerating] = useState(false);
+  // журнал: поиск и сортировка по заголовкам (как в справочниках)
+  const [journalQuery, setJournalQuery] = useState('');
+  const [journalSort, setJournalSort] = useState<TableSortState>(null);
 
   // параметры форм
   const [employee, setEmployee] = useState<EmployeeItem | null>(null);
@@ -124,7 +128,7 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
   const [issueDate, setIssueDate] = useState(today());
   const [validFrom, setValidFrom] = useState(today());
   const [validUntil, setValidUntil] = useState(endOfYear());
-  const [formNumber, setFormNumber] = useState<string>('');
+
   const [contractLine, setContractLine] = useState('');
   const [carrierName, setCarrierName] = useState('');
   const [multiEmployees, setMultiEmployees] = useState<EmployeeItem[]>([]);
@@ -138,6 +142,45 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
   const modeTemplates = (meta?.templates ?? []).filter((item) => modeKeys.includes(item.key));
   const modeJournal = journal.filter((row) => MODE_JOURNAL_KEYS[mode].includes(row.templateKey));
 
+  const templateLabel = (key: string): string =>
+    meta?.templates.find((item) => item.key === key)?.label ?? LEGACY_TEMPLATE_LABELS[key] ?? key;
+  const journalFormLabel = (key: string): string => SHORT_FORM_LABELS[key] ?? templateLabel(key);
+  /** У доверенностей summary = «ФИО · контрагент» — в журнале показываем только ФИО. */
+  const journalPersonText = (row: PrintJournalRow): string =>
+    mode === 'poa' ? (row.summary.split(' · ')[0] || '—') : (row.summary || '—');
+
+
+  const dotsDateKey = (value: string | undefined): string =>
+    value ? value.split('.').reverse().join('-') : '';
+  const journalSortValue = (row: PrintJournalRow, field: string): unknown => {
+    if (field === 'formNumber') return row.formNumber;
+    if (field === 'createdAt') return row.createdAt;
+    if (field === 'form') return journalFormLabel(row.templateKey);
+    if (field === 'person') return journalPersonText(row);
+    if (field === 'issueDate') return dotsDateKey(row.issueDate);
+    if (field === 'validUntil') return dotsDateKey(row.validUntil);
+    if (field === 'createdBy') return row.createdBy;
+    return '';
+  };
+  const visibleJournal = sortRows(
+    modeJournal.filter((row) => {
+      const q = journalQuery.trim().toLowerCase();
+      if (!q) return true;
+      return [String(row.formNumber ?? ''), row.summary, row.createdBy, journalFormLabel(row.templateKey), row.issueDate, row.validUntil ?? '']
+        .join(' ')
+        .toLowerCase()
+        .includes(q);
+    }),
+    journalSort,
+    journalSortValue
+  );
+  const journalHeader = (field: string, label: string) => (
+    <button type="button" className="ops-matrix__sort-btn" onClick={() => setJournalSort((prev) => cycleSort(prev, field))}>
+      <span>{label}</span>
+      <span className={`ops-matrix__sort-indicator is-${sortIndicator(journalSort, field)}`} aria-hidden="true" />
+    </button>
+  );
+
   const reload = useCallback(async () => {
     try {
       const [metaRes, employeesRes, vehiclesRes, journalRes] = await Promise.all([
@@ -150,7 +193,6 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
       setEmployees(employeesRes.data);
       setVehicles(vehiclesRes.data);
       setJournal(journalRes.data);
-      setFormNumber(String(metaRes.data.nextNumber));
       if (!counterparty && metaRes.data.counterparties.length) {
         setCounterparty(metaRes.data.counterparties[0].label);
       }
@@ -166,20 +208,14 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
     void reload();
   }, [reload]);
 
-  const templateLabel = (key: string): string =>
-    meta?.templates.find((item) => item.key === key)?.label ?? LEGACY_TEMPLATE_LABELS[key] ?? key;
-  const journalFormLabel = (key: string): string => SHORT_FORM_LABELS[key] ?? templateLabel(key);
-  /** У доверенностей summary = «ФИО · контрагент» — в журнале показываем только ФИО. */
-  const journalPersonText = (row: PrintJournalRow): string =>
-    mode === 'poa' ? (row.summary.split(' · ')[0] || '—') : (row.summary || '—');
 
   const buildParams = (): Record<string, unknown> => {
+    // номер присваивается на сервере автоматически (сквозной по региону и году)
     if (templateKey === 'poa_vmpp' || templateKey === 'poa_dkh' || templateKey === 'poa_pl') {
       return {
         employeeId: employee?.id ?? null,
         issueDate,
         validUntil,
-        number: formNumber.trim() === '' ? null : Number(formNumber),
       };
     }
     if (templateKey === 'poa_tk_vehicle') {
@@ -189,7 +225,6 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
         issueDate,
         validFrom,
         validUntil,
-        number: Number(formNumber),
       };
     }
     if (templateKey === 'vmpp_vehicles_request') {
@@ -227,7 +262,6 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
       setJournal(journalRes.data);
       const metaRes = await getPrintFormsMeta(location);
       setMeta(metaRes.data);
-      setFormNumber(String(metaRes.data.nextNumber));
     } catch (error) {
       // ошибка приходит blob'ом — вытащим текст
       const anyError = error as any;
@@ -335,12 +369,6 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
               <>
                 {employeeField(employee, setEmployee, 'Сотрудник (из справочника)', employees)}
                 {templateKey === 'poa_tk_vehicle' && vehicleField(vehicle, setVehicle)}
-                <TextField
-                  size="small" label={templateKey === 'poa_pl' ? 'Номер (пусто — б/н)' : 'Номер'}
-                  value={formNumber}
-                  onChange={(event) => setFormNumber(event.target.value.replace(/[^\d]/g, ''))}
-                  sx={{ flex: '0 1 120px', minWidth: 90 }}
-                />
                 {dateField('Дата выдачи', issueDate, setIssueDate)}
                 {templateKey === 'poa_tk_vehicle' && dateField('Действительна с', validFrom, setValidFrom)}
                 {dateField('Действительна по', validUntil, setValidUntil)}
@@ -381,6 +409,13 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
                 sx={{ flex: '1 1 320px', minWidth: 220 }}
               />
             )}
+            <TextField
+              size="small"
+              label="Поиск по журналу"
+              value={journalQuery}
+              onChange={(event) => setJournalQuery(event.target.value)}
+              sx={{ flex: '1 1 150px', minWidth: 0 }}
+            />
             <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>
               {template?.kind !== 'xlsx' && (
                 <button type="button" className="ops-btn ghost" disabled={generating} onClick={() => void runGenerate(true)}>
@@ -424,18 +459,18 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
           <table>
             <thead>
               <tr>
-                <th className="fuel-cell--center" style={{ minWidth: 60 }}>№</th>
-                <th style={{ minWidth: 120 }}>Создано</th>
-                <th style={{ minWidth: 130 }}>Форма</th>
-                <th style={{ minWidth: 240 }}>{mode === 'poa' ? 'ФИО' : 'Содержание'}</th>
-                <th className="fuel-cell--center" style={{ minWidth: 100 }}>Дата выдачи</th>
-                <th className="fuel-cell--center" style={{ minWidth: 110 }}>Действительна по</th>
-                <th style={{ minWidth: 170 }}>Кем создана</th>
-                <th className="fuel-cell--center" style={{ minWidth: 80 }}>Скачать</th>
+                <th className="fuel-cell--center" style={{ minWidth: 60 }}>{journalHeader('formNumber', '№')}</th>
+                <th style={{ minWidth: 120 }}>{journalHeader('createdAt', 'Создано')}</th>
+                <th style={{ minWidth: 130 }}>{journalHeader('form', 'Форма')}</th>
+                <th style={{ minWidth: 240 }}>{journalHeader('person', mode === 'poa' ? 'ФИО' : 'Содержание')}</th>
+                <th className="fuel-cell--center" style={{ minWidth: 100 }}>{journalHeader('issueDate', 'Дата выдачи')}</th>
+                <th className="fuel-cell--center" style={{ minWidth: 110 }}>{journalHeader('validUntil', 'Действительна по')}</th>
+                <th style={{ minWidth: 170 }}>{journalHeader('createdBy', 'Кем создана')}</th>
+                <th className="fuel-cell--center" style={{ minWidth: 80 }}>Действия</th>
               </tr>
             </thead>
             <tbody>
-              {modeJournal.map((row) => (
+              {visibleJournal.map((row) => (
                 <tr key={row.id}>
                   <td className="fuel-cell--center">{row.formNumber ?? 'б/н'}</td>
                   <td className="fuel-cell--left">{new Date(row.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
@@ -460,9 +495,11 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
                   </td>
                 </tr>
               ))}
-              {modeJournal.length === 0 && (
+              {visibleJournal.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="fuel-empty">Журнал пуст — сформируйте первую форму</td>
+                  <td colSpan={8} className="fuel-empty">
+                    {journalQuery.trim() ? 'Ничего не найдено' : 'Журнал пуст — сформируйте первую форму'}
+                  </td>
                 </tr>
               )}
             </tbody>

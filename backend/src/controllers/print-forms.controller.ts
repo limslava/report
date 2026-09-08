@@ -311,6 +311,12 @@ export const generatePrintForm = async (req: Request, res: Response) => {
       ? (params.issueDate as string)
       : new Date().toISOString().slice(0, 10);
 
+  // Номер доверенности присваивается автоматически (сквозной по региону и году);
+  // при перегенерации из журнала используется сохранённый номер из params.
+  if (POA_VARIANTS[templateKey] && (params.number === undefined || params.number === null || params.number === '')) {
+    params.number = await nextPoaNumber(location, issueDateForJournal);
+  }
+
   const file = await generateByTemplate(templateKey, location, params);
 
   const record = await formRepo.save(
