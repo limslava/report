@@ -126,7 +126,9 @@ async function generateByTemplate(
   // Старые ключи журнала (poa_warehouse/poa_terminal_vehicle с counterparty в params) обрабатываются как есть.
   const variant = POA_VARIANTS[rawTemplateKey];
   const templateKey = variant ? variant.base : rawTemplateKey;
-  const params = variant ? { ...rawParams, counterparty: variant.counterparty } : rawParams;
+  const params = variant
+    ? { ...rawParams, counterparty: variant.counterparty, withSignature: variant.withSignature }
+    : rawParams;
 
   if (templateKey === 'poa_warehouse' || templateKey === 'poa_pl') {
     const employee = await loadEmployee(params.employeeId, location);

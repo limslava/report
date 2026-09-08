@@ -3,8 +3,6 @@ import {
   Alert,
   Autocomplete,
   Box,
-  Checkbox,
-  FormControlLabel,
   IconButton,
   MenuItem,
   Paper,
@@ -118,7 +116,6 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
   const [validFrom, setValidFrom] = useState(today());
   const [validUntil, setValidUntil] = useState(endOfYear());
   const [formNumber, setFormNumber] = useState<string>('');
-  const [withSignature, setWithSignature] = useState(true);
   const [contractLine, setContractLine] = useState('');
   const [carrierName, setCarrierName] = useState('');
   const [multiEmployees, setMultiEmployees] = useState<EmployeeItem[]>([]);
@@ -170,7 +167,6 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
         issueDate,
         validUntil,
         number: formNumber.trim() === '' ? null : Number(formNumber),
-        withSignature,
       };
     }
     if (templateKey === 'poa_tk_vehicle') {
@@ -335,12 +331,6 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
                 {dateField('Дата выдачи', issueDate, setIssueDate)}
                 {templateKey === 'poa_tk_vehicle' && dateField('Действительна с', validFrom, setValidFrom)}
                 {dateField('Действительна по', validUntil, setValidUntil)}
-                {templateKey !== 'poa_tk_vehicle' && (
-                  <FormControlLabel
-                    control={<Checkbox size="small" checked={withSignature} onChange={(event) => setWithSignature(event.target.checked)} />}
-                    label="Строка подписи доверенного"
-                  />
-                )}
               </>
             )}
             {isVmpp && (

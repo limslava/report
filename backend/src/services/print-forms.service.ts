@@ -86,12 +86,19 @@ export const PRINT_FORM_TEMPLATES = [
 
 export type PrintTemplateKey = (typeof PRINT_FORM_TEMPLATES)[number]['key'];
 
-/** Вариант доверенности → базовый шаблон + зашитый контрагент. */
-export const POA_VARIANTS: Record<string, { base: 'poa_warehouse' | 'poa_pl' | 'poa_terminal_vehicle'; counterparty: string }> = {
-  poa_vmpp: { base: 'poa_warehouse', counterparty: 'ООО ВМП «Первомайский»' },
-  poa_dkh: { base: 'poa_warehouse', counterparty: 'АО «ДАЛЬКОМХОЛОД»' },
-  poa_pl: { base: 'poa_pl', counterparty: 'ООО «ПЛ»' },
-  poa_tk_vehicle: { base: 'poa_terminal_vehicle', counterparty: 'Контейнерный терминал Первая Речка ПАО «ТрансКонтейнер»' },
+/**
+ * Вариант доверенности → базовый шаблон + зашитый контрагент.
+ * Подпись доверенного — строго по образцам: ВМПП и ПЛ — есть, ДКХ — нет,
+ * ТК (с ТС) печатает «Личную подпись … удостоверяем» всегда.
+ */
+export const POA_VARIANTS: Record<
+  string,
+  { base: 'poa_warehouse' | 'poa_pl' | 'poa_terminal_vehicle'; counterparty: string; withSignature: boolean }
+> = {
+  poa_vmpp: { base: 'poa_warehouse', counterparty: 'ООО ВМП «Первомайский»', withSignature: true },
+  poa_dkh: { base: 'poa_warehouse', counterparty: 'АО «ДАЛЬКОМХОЛОД»', withSignature: false },
+  poa_pl: { base: 'poa_pl', counterparty: 'ООО «ПЛ»', withSignature: true },
+  poa_tk_vehicle: { base: 'poa_terminal_vehicle', counterparty: 'Контейнерный терминал Первая Речка ПАО «ТрансКонтейнер»', withSignature: true },
 };
 
 const MONTHS_GENITIVE = [
@@ -354,6 +361,7 @@ export function buildPoaTerminalVehicle(
       `Настоящая доверенность действительна с ${formatDateDots(params.validFrom)}г. по ${formatDateDots(params.validUntil)}г.`,
       { spacingAfter: 14 }
     ),
+    p(`Личную подпись    ${employee.fullName} __________ удостоверяем.`, { spacingAfter: 14 }),
     pRuns(
       [
         { text: `Генеральный директор ${org.shortName}   ` },
