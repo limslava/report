@@ -102,13 +102,15 @@ export function canAccessDirectories(role?: string | null): boolean {
   return directoryLocationsForRole(role).length > 0;
 }
 
-/** Ведение справочников: менеджеры КТК — только просмотр и копирование. */
+/** Ведение справочников: руководители и менеджеры КТК — свой регион (регион даёт directoryLocationsForRole). */
 export function canEditDirectoriesFrontend(role?: string | null): boolean {
   return role === 'admin'
     || role === 'head_hr'
     || role === 'hr_specialist'
     || role === 'head_ktk_vvo'
-    || role === 'head_ktk_mow';
+    || role === 'head_ktk_mow'
+    || role === 'manager_ktk_vvo'
+    || role === 'manager_ktk_mow';
 }
 
 /** Удаление в справочниках: админ везде, руководитель КТК — свой регион. */

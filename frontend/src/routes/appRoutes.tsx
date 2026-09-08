@@ -140,7 +140,17 @@ export const authenticatedRoutes: AppRoute[] = [
   {
     path: 'print-forms',
     allow: canAccessDirectories,
-    element: () => withSuspense(<PrintFormsPage />),
+    element: () => <Navigate to="/print-forms/poa" replace />,
+  },
+  {
+    path: 'print-forms/poa',
+    allow: canAccessDirectories,
+    element: () => withSuspense(<PrintFormsPage mode="poa" />),
+  },
+  {
+    path: 'print-forms/requests',
+    allow: canAccessDirectories,
+    element: () => withSuspense(<PrintFormsPage mode="requests" />),
   },
   {
     path: 'sw-tech-dashboard',

@@ -59,6 +59,8 @@ export type EmployeeItem = {
   passportIssueDate: string | null;
   passportIssuedBy: string;
   registrationAddress: string;
+  /** ИНН физлица — только в карточке, в выгрузки и копирование не попадает */
+  inn: string;
   licenseNumber: string;
   licenseIssueDate: string | null;
   note: string;
