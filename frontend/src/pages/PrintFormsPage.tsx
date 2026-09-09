@@ -76,6 +76,20 @@ const errorText = (error: unknown): string => {
   return anyError?.response?.data?.message || anyError?.message || 'Не удалось выполнить операцию';
 };
 
+/** При responseType: 'blob' тело ошибки приходит Blob'ом — достаём из него message. */
+const blobErrorText = async (error: unknown): Promise<string> => {
+  const data = (error as any)?.response?.data;
+  if (typeof Blob !== 'undefined' && data instanceof Blob) {
+    try {
+      const parsed = JSON.parse(await data.text());
+      if (parsed?.message) return String(parsed.message);
+    } catch {
+      // не JSON — покажем общий текст
+    }
+  }
+  return errorText(error);
+};
+
 const today = () => new Date().toISOString().slice(0, 10);
 const endOfYear = () => `${new Date().getFullYear()}-12-31`;
 
@@ -296,7 +310,7 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
       if (print) openPdfBlob(response.data);
       else saveBlob(response.data, filenameFromHeaders(response.headers as Record<string, unknown>, 'Форма.docx'));
     } catch (error) {
-      setFeedback({ severity: 'error', text: errorText(error) });
+      setFeedback({ severity: 'error', text: await blobErrorText(error) });
     }
   };
 
