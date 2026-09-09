@@ -31,6 +31,7 @@ export type FleetVehicleItem = {
   note: string;
   /** занятость в текущем графике (только чтение, считает бэкенд) */
   scheduleUsage?: ScheduleUsage | null;
+  attachments?: AttachmentSummary[];
 };
 
 /** При сохранении техники модель передаётся текстом — бэкенд найдёт существующую или создаст новую. */
@@ -47,7 +48,11 @@ export type TrailerItem = {
   status: 'active' | 'repair' | 'archived';
   note: string;
   scheduleUsage?: ScheduleUsage | null;
+  attachments?: AttachmentSummary[];
 };
+
+/** Сводка сканов записи для колонки «Документы» в таблицах. */
+export type AttachmentSummary = { id: string; kind: DirectoryAttachmentKind; originalName: string };
 
 export type EmployeeItem = {
   id: string;
@@ -67,6 +72,7 @@ export type EmployeeItem = {
   licenseNumber: string;
   licenseIssueDate: string | null;
   note: string;
+  attachments?: AttachmentSummary[];
 };
 
 export type EmployeePayload = Partial<Omit<EmployeeItem, 'id'>> & {
