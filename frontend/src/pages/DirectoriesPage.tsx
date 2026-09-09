@@ -11,6 +11,7 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  Menu,
   MenuItem,
   Paper,
   Popover,
@@ -25,6 +26,9 @@ import { ArrowBack, ContentCopy, DragIndicator, KeyboardArrowDown, KeyboardArrow
 import { useAuthStore } from '../store/auth-store';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import {
+  AttachmentSummary,
+  DirectoryAttachmentKind,
+  downloadDirectoryAttachment,
   EmployeeItem,
   bootstrapDirectories,
   EmployeePayload,
@@ -99,6 +103,78 @@ const errorText = (error: unknown): string => {
   return anyError?.response?.data?.message || anyError?.message || 'Не удалось выполнить операцию';
 };
 
+const saveBlobFile = (data: Blob, filename: string) => {
+  const url = URL.createObjectURL(data);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
+
+const DOC_KIND_LABELS: Record<string, string> = { passport: 'Паспорт', license: 'В/У', sor: 'СОР' };
+
+/**
+ * Ячейка «Документы»: чип на каждый вид скана — синий (клик = скачать,
+ * несколько файлов = меню), серый — не загружен.
+ */
+function DocsCell({ attachments, kinds }: { attachments?: AttachmentSummary[]; kinds: DirectoryAttachmentKind[] }) {
+  const [menu, setMenu] = useState<{ anchor: HTMLElement; files: AttachmentSummary[] } | null>(null);
+  const download = async (file: AttachmentSummary) => {
+    try {
+      const response = await downloadDirectoryAttachment(file.id);
+      saveBlobFile(response.data as Blob, file.originalName);
+    } catch {
+      window.alert('Не удалось скачать файл');
+    }
+  };
+  return (
+    <span onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
+      {kinds.map((kind) => {
+        const files = (attachments ?? []).filter((file) => file.kind === kind);
+        const label = DOC_KIND_LABELS[kind] ?? kind;
+        if (!files.length) {
+          return (
+            <span key={kind} className="dir-doc-chip dir-doc-chip--off" title="Скан не загружен — прикрепите в карточке">
+              {label}
+            </span>
+          );
+        }
+        return (
+          <span
+            key={kind}
+            className="dir-doc-chip"
+            title={`Скачать: ${files.map((file) => file.originalName).join(', ')}`}
+            onClick={(event) => {
+              if (files.length === 1) void download(files[0]);
+              else setMenu({ anchor: event.currentTarget as HTMLElement, files });
+            }}
+          >
+            {label}
+            {files.length > 1 ? ` (${files.length})` : ''}
+          </span>
+        );
+      })}
+      <Menu open={Boolean(menu)} anchorEl={menu?.anchor ?? null} onClose={() => setMenu(null)}>
+        {(menu?.files ?? []).map((file) => (
+          <MenuItem
+            key={file.id}
+            sx={{ fontSize: 13 }}
+            onClick={() => {
+              setMenu(null);
+              void download(file);
+            }}
+          >
+            {file.originalName}
+          </MenuItem>
+        ))}
+      </Menu>
+    </span>
+  );
+}
+
 const employeeStatusPill = (status: string) => (
   <span className={`dir-status ${status === 'active' ? 'dir-status--ok' : 'dir-status--off'}`}>
     {status === 'active' ? 'работает' : 'уволен'}
@@ -123,6 +199,8 @@ type DirColumn<T> = {
   thCenter?: boolean;
   tdClass: string;
   defaultHidden?: boolean;
+  /** колонка без сортировки (например «Документы») */
+  noSort?: boolean;
   render: (row: T) => React.ReactNode;
 };
 /** Поля карточки сотрудника, доступные как скрытые колонки (общие для водителей и сотрудников). */
@@ -140,6 +218,7 @@ const DRIVER_COLUMNS: DirColumn<EmployeeItem>[] = [
   { key: 'inn', label: 'ИНН', minWidth: 120, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => e.inn || '—' },
   { key: 'birthDate', label: 'Дата рождения', minWidth: 110, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => formatDateDisplay(e.birthDate) },
   ...EMPLOYEE_CARD_COLUMNS,
+  { key: 'docs', label: 'Документы', minWidth: 140, thCenter: true, tdClass: 'fuel-cell--center', noSort: true, render: (e) => <DocsCell attachments={e.attachments} kinds={['passport', 'license']} /> },
   { key: 'status', label: 'Статус', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => employeeStatusPill(e.status) },
 ];
 const STAFF_COLUMNS: DirColumn<EmployeeItem>[] = [
@@ -150,6 +229,7 @@ const STAFF_COLUMNS: DirColumn<EmployeeItem>[] = [
   { key: 'licenseNumber', label: 'ВУ (номер)', minWidth: 120, tdClass: 'fuel-cell--center', defaultHidden: true, render: (e) => e.licenseNumber || '—' },
   { key: 'licenseIssueDate', label: 'Дата выдачи ВУ', minWidth: 110, thCenter: true, tdClass: 'fuel-cell--center', defaultHidden: true, render: (e) => formatDateDisplay(e.licenseIssueDate) },
   ...EMPLOYEE_CARD_COLUMNS,
+  { key: 'docs', label: 'Документы', minWidth: 100, thCenter: true, tdClass: 'fuel-cell--center', noSort: true, render: (e) => <DocsCell attachments={e.attachments} kinds={['passport']} /> },
   { key: 'status', label: 'Статус', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => employeeStatusPill(e.status) },
 ];
 const VEHICLE_COLUMNS: DirColumn<FleetVehicleItem>[] = [
@@ -161,6 +241,7 @@ const VEHICLE_COLUMNS: DirColumn<FleetVehicleItem>[] = [
   { key: 'sorIssueDate', label: 'Дата выдачи СОР', minWidth: 120, thCenter: true, tdClass: 'fuel-cell--center', defaultHidden: true, render: (v) => formatDateDisplay(v.sorIssueDate) },
   { key: 'owner', label: 'Собственник', minWidth: 160, tdClass: 'fuel-cell--left', defaultHidden: true, render: (v) => v.owner || '—' },
   { key: 'manufactureYear', label: 'Год выпуска', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (v) => v.manufactureYear || '—' },
+  { key: 'docs', label: 'Документы', minWidth: 80, thCenter: true, tdClass: 'fuel-cell--center', noSort: true, render: (v) => <DocsCell attachments={v.attachments} kinds={['sor']} /> },
   { key: 'status', label: 'Статус', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (v) => techStatusPill(v.status) },
   { key: 'scheduleUsage', label: 'В графике', minWidth: 100, thCenter: true, tdClass: 'fuel-cell--center', render: (v) => usagePill(v.scheduleUsage) },
 ];
@@ -170,6 +251,7 @@ const TRAILER_COLUMNS: DirColumn<TrailerItem>[] = [
   { key: 'axles', label: 'Оси', minWidth: 70, thCenter: true, tdClass: 'fuel-cell--center', render: (t) => t.axles || '—' },
   { key: 'footage', label: 'Футовость', minWidth: 100, thCenter: true, tdClass: 'fuel-cell--center', render: (t) => t.footage || '—' },
   { key: 'note', label: 'Примечание', minWidth: 200, tdClass: 'fuel-cell--left', render: (t) => t.note || '—' },
+  { key: 'docs', label: 'Документы', minWidth: 80, thCenter: true, tdClass: 'fuel-cell--center', noSort: true, render: (t) => <DocsCell attachments={t.attachments} kinds={['sor']} /> },
   { key: 'status', label: 'Статус', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (t) => techStatusPill(t.status) },
   { key: 'scheduleUsage', label: 'В графике', minWidth: 100, thCenter: true, tdClass: 'fuel-cell--center', render: (t) => usagePill(t.scheduleUsage) },
 ];
@@ -232,7 +314,7 @@ export default function DirectoriesPage({
   };
   const columnTh = (tabKey: TabKey, column: DirColumn<any>) => (
     <th key={column.key} className={column.thCenter ? 'fuel-cell--center' : undefined} style={{ minWidth: column.minWidth }}>
-      {sortHeader(tabKey, column.key, column.label)}
+      {column.noSort ? <span>{column.label}</span> : sortHeader(tabKey, column.key, column.label)}
     </th>
   );
   const columnTd = (column: DirColumn<any>, row: unknown) => (

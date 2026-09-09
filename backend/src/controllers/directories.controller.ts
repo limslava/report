@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import ExcelJS from 'exceljs';
-import { ILike, IsNull } from 'typeorm';
+import { ILike, In, IsNull } from 'typeorm';
 import { AppDataSource } from '../config/data-source';
 import { Employee } from '../models/employee.model';
 import { FleetVehicle } from '../models/fleet-vehicle.model';
@@ -164,10 +164,12 @@ export const listVehicles = async (req: Request, res: Response) => {
     }),
     loadScheduleUsage(location),
   ]);
+  const attachments = await loadAttachmentsSummary('vehicle', vehicles.map((v) => v.id));
   res.json(
     vehicles.map((vehicle) => ({
       ...vehicle,
       scheduleUsage: usage.vehicles.get(normalizePlateKey(vehicle.plate)) ?? null,
+      attachments: attachments.get(vehicle.id) ?? [],
     }))
   );
 };
@@ -231,10 +233,12 @@ export const listTrailers = async (req: Request, res: Response) => {
     }),
     loadScheduleUsage(location),
   ]);
+  const attachments = await loadAttachmentsSummary('trailer', trailers.map((t) => t.id));
   res.json(
     trailers.map((trailer) => ({
       ...trailer,
       scheduleUsage: usage.trailers.get(normalizePlateKey(trailer.plate)) ?? null,
+      attachments: attachments.get(trailer.id) ?? [],
     }))
   );
 };
@@ -275,13 +279,34 @@ export const deleteTrailer = async (req: Request, res: Response) => {
 
 // ─────────────────────────── Сотрудники (ПДн) ───────────────────────────
 
+/** Сводка сканов для колонки «Документы»: entityId → [{id, kind, originalName}]. */
+const loadAttachmentsSummary = async (
+  entityType: 'employee' | 'vehicle' | 'trailer',
+  ids: string[],
+): Promise<Map<string, { id: string; kind: string; originalName: string }[]>> => {
+  const summary = new Map<string, { id: string; kind: string; originalName: string }[]>();
+  if (!ids.length) return summary;
+  const { DirectoryAttachment } = await import('../models/directory-attachment.model');
+  const rows = await AppDataSource.getRepository(DirectoryAttachment).find({
+    where: { entityType, entityId: In(ids) },
+    order: { createdAt: 'ASC' },
+  });
+  for (const row of rows) {
+    const list = summary.get(row.entityId) ?? [];
+    list.push({ id: row.id, kind: row.kind, originalName: row.originalName });
+    summary.set(row.entityId, list);
+  }
+  return summary;
+};
+
 export const listEmployees = async (req: Request, res: Response) => {
   const location = requireDirectoryLocation(req, req.query.location);
   const employees = await employeeRepo.find({
     where: { location, counterpartyId: counterpartyFilter(req.query.counterpartyId) },
     order: { fullName: 'ASC' },
   });
-  res.json(employees);
+  const attachments = await loadAttachmentsSummary('employee', employees.map((e) => e.id));
+  res.json(employees.map((employee) => ({ ...employee, attachments: attachments.get(employee.id) ?? [] })));
 };
 
 export const saveEmployee = async (req: Request, res: Response) => {

@@ -1494,6 +1494,30 @@
   background: #e8f5e9;
 }
 
+/* Чипы колонки «Документы» в справочниках: синий — скачать, серый — не загружен */
+.dir-doc-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  background: #e0e7ff;
+  color: #3730a3;
+  cursor: pointer;
+  margin: 0 2px;
+  white-space: nowrap;
+}
+.dir-doc-chip:hover {
+  background: #c7d2fe;
+}
+.dir-doc-chip--off {
+  background: #f3f4f6;
+  color: #9ca3af;
+  cursor: default;
+}
+.dir-doc-chip--off:hover {
+  background: #f3f4f6;
+}
+
 /* «Содержание» заявки: сводка не растягивает таблицу, полностью — по клику */
 .print-page .dir-table td.print-summary-cell {
   max-width: 420px;
