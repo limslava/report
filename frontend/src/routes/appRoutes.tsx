@@ -1,6 +1,7 @@
 import { Suspense, lazy, ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import RouteAccessGuard from '../components/auth/RouteAccessGuard';
+import { isModuleEnabled } from '../utils/appModules';
 import {
   canAccessAdmin,
   canAccessDirectories,
@@ -69,6 +70,7 @@ function withSuspense(element: ReactNode): ReactNode {
 }
 
 function canAccessWarehouseOperations(role?: string | null): boolean {
+  if (!isModuleEnabled('warehouse')) return false;
   return Boolean(role && WAREHOUSE_OPERATION_ROLES.has(role));
 }
 

@@ -1,3 +1,4 @@
+import { isModuleEnabled } from '../utils/appModules';
 import {
   canAccessContractApproval,
   canViewBPDashboard,
@@ -6,8 +7,8 @@ import {
 } from '../utils/rolePermissions';
 
 export function getDefaultAuthenticatedRoute(role?: string | null): string {
-  if (role === 'warehouse_keeper') return '/warehouse/operations';
-  if (role === 'counterparty_user') return '/warehouse';
+  if (role === 'warehouse_keeper' && isModuleEnabled('warehouse')) return '/warehouse/operations';
+  if (role === 'counterparty_user' && isModuleEnabled('warehouse')) return '/warehouse';
   if (canViewTechDashboard(role)) return '/sw-tech-dashboard';
   if (role === 'garage_head_vvo') {
     return '/operations-preview?location=garage_vvo&section=mechanics';

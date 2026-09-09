@@ -31,9 +31,11 @@ import {
   WarehouseVehicle,
 } from '../../services/warehouse.api';
 import {
+  createWarehousePhotoClientHash,
   enqueueWarehousePhoto,
   listWarehousePhotoQueue,
   removeWarehousePhotoQueueItem,
+  updateWarehousePhotoQueueItem,
 } from '../../utils/warehouse-photo-queue';
 import { prepareWarehousePhoto } from '../../utils/warehouse-photo-processing';
 
@@ -66,31 +68,80 @@ export default function WarehousePhotoDialog({
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoPreview | null>(null);
+  const [fullPhotoUrl, setFullPhotoUrl] = useState<string | null>(null);
   const objectUrls = useRef<string[]>([]);
   const processingRef = useRef(false);
+
+  // Полноразмерное фото качаем только при открытии просмотра (в сетке — миниатюры).
+  useEffect(() => {
+    if (!selectedPhoto || !vehicle) {
+      setFullPhotoUrl(null);
+      return undefined;
+    }
+    let cancelled = false;
+    let url: string | null = null;
+    downloadWarehouseVehiclePhoto(vehicle.id, selectedPhoto.id)
+      .then((response) => {
+        if (cancelled) return;
+        url = URL.createObjectURL(response.data);
+        setFullPhotoUrl(url);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+      setFullPhotoUrl(null);
+    };
+  }, [selectedPhoto, vehicle]);
 
   const clearObjectUrls = useCallback(() => {
     objectUrls.current.forEach((url) => URL.revokeObjectURL(url));
     objectUrls.current = [];
   }, []);
 
+  const loadGenerationRef = useRef(0);
+
+  // Список показываем сразу по метаданным, а картинки подтягиваем лениво
+  // маленькими миниатюрами по 2 параллельно: раньше при открытии качались
+  // ВСЕ фото в полном размере разом — на плохой связи это не заканчивалось
+  // никогда, а на телефоне ещё и убивало вкладку по памяти.
   const loadPhotos = useCallback(async () => {
     if (!vehicle) return;
+    const generation = loadGenerationRef.current + 1;
+    loadGenerationRef.current = generation;
     setLoading(true);
     setError(null);
     try {
       const listResponse = await getWarehouseVehiclePhotos(vehicle.id);
-      const nextPhotos = await Promise.all(listResponse.data.map(async (photo) => {
-        const imageResponse = await downloadWarehouseVehiclePhoto(vehicle.id, photo.id);
-        const url = URL.createObjectURL(imageResponse.data);
-        return { ...photo, url };
-      }));
+      if (loadGenerationRef.current !== generation) return;
       clearObjectUrls();
-      objectUrls.current = nextPhotos.map((photo) => photo.url);
-      setPhotos(nextPhotos);
+      setPhotos(listResponse.data.map((photo) => ({ ...photo, url: '' })));
+      setLoading(false);
+
+      const queue = [...listResponse.data];
+      const worker = async () => {
+        while (queue.length > 0) {
+          if (loadGenerationRef.current !== generation) return;
+          const photo = queue.shift();
+          if (!photo) return;
+          try {
+            const imageResponse = await downloadWarehouseVehiclePhoto(vehicle.id, photo.id, 'thumb');
+            if (loadGenerationRef.current !== generation) return;
+            const url = URL.createObjectURL(imageResponse.data);
+            objectUrls.current.push(url);
+            setPhotos((current) => current.map((item) => (
+              item.id === photo.id ? { ...item, url } : item
+            )));
+          } catch {
+            // миниатюра не доехала — карточка остаётся с именем файла,
+            // фото можно открыть на просмотр отдельно
+          }
+        }
+      };
+      await Promise.all([worker(), worker()]);
     } catch (loadError) {
+      if (loadGenerationRef.current !== generation) return;
       setError(loadError instanceof Error ? loadError.message : 'Не удалось загрузить фотографии.');
-    } finally {
       setLoading(false);
     }
   }, [clearObjectUrls, vehicle]);
@@ -103,14 +154,42 @@ export default function WarehousePhotoDialog({
       const queue = await listWarehousePhotoQueue(vehicle.id);
       setProgress({ done: 0, total: queue.length });
       let done = 0;
+      let failed = 0;
+      let lastFailure: unknown = null;
       for (const item of queue) {
         if (!item.id) continue;
-        await uploadWarehouseVehiclePhoto(vehicle.id, item.blob, item.name);
-        await removeWarehousePhotoQueueItem(item.id);
-        done += 1;
+        // Хеш фиксируем до отправки: повтор после обрыва не создаст дубль.
+        let clientHash = item.clientHash;
+        if (!clientHash) {
+          clientHash = createWarehousePhotoClientHash();
+          await updateWarehousePhotoQueueItem(item.id, { clientHash });
+        }
+        let uploaded = false;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            await uploadWarehouseVehiclePhoto(vehicle.id, item.blob, item.name, 'reception', item.checklistItem, clientHash);
+            uploaded = true;
+            break;
+          } catch (uploadError) {
+            lastFailure = uploadError;
+            const status = (uploadError as { response?: { status?: number } })?.response?.status;
+            if (status === 409) break; // лимит фотографий — повтор не поможет
+            await new Promise((resolve) => window.setTimeout(resolve, 700 * (attempt + 1)));
+          }
+        }
+        if (uploaded) {
+          await removeWarehousePhotoQueueItem(item.id);
+          done += 1;
+        } else {
+          failed += 1;
+        }
         setProgress({ done, total: queue.length });
       }
-      if (queue.length > 0) await loadPhotos();
+      if (failed > 0) {
+        const reason = lastFailure instanceof Error ? lastFailure.message : 'сеть недоступна';
+        setError(`Загружено ${done} из ${queue.length}, не удалось ${failed} (${reason}). Нажмите «Повторить очередь» — загрузка продолжится.`);
+      }
+      if (done > 0) await loadPhotos();
     } catch (uploadError) {
       setError(
         uploadError instanceof Error
@@ -157,6 +236,7 @@ export default function WarehousePhotoDialog({
           vehicleId: vehicle.id,
           name: prepared.name,
           blob: prepared.blob,
+          clientHash: createWarehousePhotoClientHash(),
         });
         done += 1;
         setProgress({ done, total: files.length });
@@ -290,20 +370,37 @@ export default function WarehousePhotoDialog({
                     bgcolor: 'grey.100',
                   }}
                 >
-                  <Box
-                    component="img"
-                    src={photo.url}
-                    alt={`Фото ${index + 1}`}
-                    loading="lazy"
-                    onClick={() => setSelectedPhoto(photo)}
-                    sx={{
-                      display: 'block',
-                      width: '100%',
-                      aspectRatio: '4 / 3',
-                      objectFit: 'cover',
-                      cursor: 'zoom-in',
-                    }}
-                  />
+                  {photo.url ? (
+                    <Box
+                      component="img"
+                      src={photo.url}
+                      alt={`Фото ${index + 1}`}
+                      loading="lazy"
+                      onClick={() => setSelectedPhoto(photo)}
+                      sx={{
+                        display: 'block',
+                        width: '100%',
+                        aspectRatio: '4 / 3',
+                        objectFit: 'cover',
+                        cursor: 'zoom-in',
+                      }}
+                    />
+                  ) : (
+                    <Box
+                      onClick={() => setSelectedPhoto(photo)}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '100%',
+                        aspectRatio: '4 / 3',
+                        color: 'text.disabled',
+                        cursor: 'zoom-in',
+                      }}
+                    >
+                      <CircularProgress size={22} />
+                    </Box>
+                  )}
                   <Box sx={{ px: 1, py: 0.75 }}>
                     <Typography variant="caption" noWrap display="block">{photo.originalName}</Typography>
                     <Typography variant="caption" color="text.secondary">{formatBytes(photo.sizeBytes)}</Typography>
@@ -351,16 +448,26 @@ export default function WarehousePhotoDialog({
           }}
         >
           {selectedPhoto && (
-            <Box
-              component="img"
-              src={selectedPhoto.url}
-              alt={selectedPhoto.originalName}
-              sx={{
-                maxWidth: '100%',
-                maxHeight: '100%',
-                objectFit: 'contain',
-              }}
-            />
+            <>
+              {(fullPhotoUrl || selectedPhoto.url) ? (
+                <Box
+                  component="img"
+                  src={fullPhotoUrl || selectedPhoto.url}
+                  alt={selectedPhoto.originalName}
+                  sx={{
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    objectFit: 'contain',
+                  }}
+                />
+              ) : null}
+              {!fullPhotoUrl && (
+                <CircularProgress
+                  size={32}
+                  sx={{ position: 'absolute', top: 16, right: 16, color: 'common.white' }}
+                />
+              )}
+            </>
           )}
         </Box>
       </Modal>

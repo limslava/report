@@ -75,6 +75,21 @@ export function getAppPort(): number {
   return parsedPort;
 }
 
+const TOGGLEABLE_MODULES = new Set(['warehouse', 'hh', 'bill_of_lading']);
+
+/**
+ * Отключённые модули приложения (env DISABLED_MODULES, через запятую:
+ * warehouse, hh, bill_of_lading). Нужен для развёртываний, где часть
+ * модулей ещё не введена в эксплуатацию (корп. сервер): их API отвечает 403,
+ * фронтенд прячет меню и маршруты по GET /api/app-config.
+ */
+export function getDisabledModules(): string[] {
+  return (process.env.DISABLED_MODULES || '')
+    .split(',')
+    .map((module) => module.trim().toLowerCase())
+    .filter((module) => TOGGLEABLE_MODULES.has(module));
+}
+
 export function getHhCryptoKey(): string {
   const key = process.env.HH_CRYPTO_KEY || '';
   if (isProductionEnv() && !key) {

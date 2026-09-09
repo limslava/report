@@ -232,8 +232,10 @@ export default function WarehouseDamageScheme({ value, vehicleType, onChange }: 
           onTouchEnd={handlePointer}
           sx={{
             position: 'relative',
-            width: { xs: scheme.minWidth, sm: '100%' },
-            maxWidth: { sm: '100%' },
+            // Схема вписывается в ширину экрана и на телефоне: с фиксированной
+            // шириной правый край уходил за экран (замечание тестирования 09.09).
+            width: '100%',
+            maxWidth: '100%',
             border: 1,
             borderColor: 'divider',
             borderRadius: 1,

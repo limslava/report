@@ -20,6 +20,7 @@ import {
   attachWarehousePendingPhotoFile,
   deleteWarehousePendingPhotoFile,
   deleteWarehousePhotoFile,
+  ensureWarehousePhotoThumbnail,
   isAllowedWarehousePhotoMime,
   MAX_WAREHOUSE_PHOTO_BYTES,
   MAX_WAREHOUSE_PHOTOS_PER_VEHICLE,
@@ -1041,6 +1042,22 @@ export const uploadWarehouseVehiclePhoto = async (
       return;
     }
 
+    // Идемпотентность по клиентскому хешу: на плохой связи клиент может не
+    // получить ответ и повторить отправку — без этой проверки плодились дубли.
+    const clientHashHeader = normalizeNullable(req.headers['x-client-hash']);
+    const clientHash = clientHashHeader && /^[A-Za-z0-9_-]{8,80}$/.test(clientHashHeader)
+      ? clientHashHeader
+      : null;
+    if (clientHash) {
+      const existing = await photoRepository.findOne({
+        where: { vehicleId: vehicle.id, clientHash },
+      });
+      if (existing) {
+        res.status(200).json(serializePhoto(existing));
+        return;
+      }
+    }
+
     const photoCount = await photoRepository.count({ where: { vehicleId: vehicle.id } });
     if (photoCount >= MAX_WAREHOUSE_PHOTOS_PER_VEHICLE) {
       res.status(409).json({
@@ -1068,7 +1085,7 @@ export const uploadWarehouseVehiclePhoto = async (
       originalName,
       mimeType,
       sizeBytes: req.body.length,
-      clientHash: null,
+      clientHash,
       phase,
       checklistItem,
       uploadedById: req.user!.id,
@@ -1116,6 +1133,17 @@ export const getWarehouseVehiclePhoto = async (
       return;
     }
     await assertVehicleScope(req, vehicle);
+    if (req.query.size === 'thumb') {
+      const thumbnailPath = await ensureWarehousePhotoThumbnail(photo.vehicleId, photo.storedName);
+      if (thumbnailPath) {
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Cache-Control', 'private, max-age=86400');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.sendFile(thumbnailPath);
+        return;
+      }
+      // миниатюру сделать не удалось — отдаём оригинал ниже
+    }
     const filePath = resolveWarehousePhotoPath(photo.vehicleId, photo.storedName);
     if (!filePath || !fs.existsSync(filePath)) {
       res.status(404).json({ message: 'Файл фотографии не найден' });

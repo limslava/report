@@ -6,13 +6,12 @@ const routeByPath = new Map(authenticatedRoutes.map((route) => [route.path, rout
 describe('warehouse route access', () => {
   it.each([
     ['warehouse', 'warehouse_keeper', true],
-    ['warehouse', 'warehouse_manager', true],
-    ['warehouse', 'warehouse_manager_vvo', false],
+    // Консолидация ролей 2026-09: warehouse_manager влит в warehouse_manager_vvo
+    ['warehouse', 'warehouse_manager_vvo', true],
     ['warehouse', 'counterparty_user', true],
     ['warehouse', 'financer', true],
     ['warehouse/operations', 'warehouse_keeper', true],
-    ['warehouse/operations', 'warehouse_manager', true],
-    ['warehouse/operations', 'warehouse_manager_vvo', false],
+    ['warehouse/operations', 'warehouse_manager_vvo', true],
     ['warehouse/operations', 'counterparty_user', false],
     ['warehouse/operations', 'financer', false],
     ['warehouse/on-site', 'warehouse_keeper', true],

@@ -26,7 +26,7 @@ import { receiveHhWebhook } from './controllers/hh-webhooks.controller';
 import { printFormsRouter } from './routes/print-forms.routes';
 import { errorHandler } from './middleware/error-handler';
 import { logger } from './utils/logger';
-import { getAllowedCorsOrigins, isAllowedCorsOrigin } from './config/env';
+import { getAllowedCorsOrigins, getDisabledModules, isAllowedCorsOrigin } from './config/env';
 import { createRateLimiter } from './middleware/rate-limit';
 import { authenticate } from './middleware/authenticate';
 import { authorizeRole } from './middleware/authorize';
@@ -73,8 +73,19 @@ export function createApp() {
     const warehouseTusServer = await warehouseTusServerPromise;
     warehouseTusServer.handle(req, res);
   };
-  app.all('/api/warehouse/uploads', authenticate, authorizeRole(...WAREHOUSE_STAFF_ROLES), handleWarehouseTusUpload);
-  app.all('/api/warehouse/uploads/*', authenticate, authorizeRole(...WAREHOUSE_STAFF_ROLES), handleWarehouseTusUpload);
+  // Выключатель модулей (env DISABLED_MODULES): API отключённого модуля
+  // отвечает 403, фронтенд узнаёт список через /api/app-config и прячет меню.
+  const disabledModules = new Set(getDisabledModules());
+  const rejectDisabledModule = (module: string) =>
+    (_req: express.Request, res: express.Response, next: express.NextFunction) => {
+      if (disabledModules.has(module)) {
+        res.status(403).json({ message: 'Модуль отключён на этом сервере' });
+        return;
+      }
+      next();
+    };
+  app.all('/api/warehouse/uploads', rejectDisabledModule('warehouse'), authenticate, authorizeRole(...WAREHOUSE_STAFF_ROLES), handleWarehouseTusUpload);
+  app.all('/api/warehouse/uploads/*', rejectDisabledModule('warehouse'), authenticate, authorizeRole(...WAREHOUSE_STAFF_ROLES), handleWarehouseTusUpload);
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true }));
   app.use('/api', (req, res, next) => {
@@ -141,10 +152,14 @@ export function createApp() {
   app.use('/api/candidate-checks', candidateChecksRouter);
   app.use('/api/counterparties', counterpartiesRouter);
   app.use('/api/carriers', carriersRouter);
-  app.use('/api/warehouse', warehouseRouter);
+  app.use('/api/warehouse', rejectDisabledModule('warehouse'), warehouseRouter);
   app.use('/api/directories', directoriesRouter);
   app.use('/api/fuel', fuelRouter);
-  app.use('/api/hh', hhRouter);
+  app.use('/api/hh', rejectDisabledModule('hh'), hhRouter);
+
+  app.get('/api/app-config', authenticate, (_req, res) => {
+    res.json({ disabledModules: getDisabledModules() });
+  });
   app.use('/api/print-forms', printFormsRouter);
 
   app.get('/health', (_req, res) => {

@@ -8,6 +8,9 @@ export interface WarehousePhotoQueueItem {
   name: string;
   blob: Blob;
   previewDataUrl?: string | null;
+  // Маленькое превью для списков; полноразмерный previewDataUrl держим только
+  // в IndexedDB (страховка от протухших Blob в iOS), в состояние страниц не тащим.
+  thumbDataUrl?: string | null;
   checklistItem?: string | null;
   uploadSessionId?: string | null;
   clientHash?: string | null;
@@ -18,6 +21,13 @@ export interface WarehousePhotoQueueItem {
   errorMessage?: string | null;
   createdAt: number;
 }
+
+export const createWarehousePhotoClientHash = (): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID().replace(/-/g, '');
+  }
+  return `${Date.now()}${Math.random().toString(16).slice(2)}`.replace(/[^a-zA-Z0-9]/g, '');
+};
 
 const openQueueDb = (): Promise<IDBDatabase> => new Promise((resolve, reject) => {
   const request = indexedDB.open(DB_NAME, DB_VERSION);

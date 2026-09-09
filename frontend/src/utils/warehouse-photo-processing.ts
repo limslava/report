@@ -58,8 +58,8 @@ const prepareOriginalPhoto = (file: File): { blob: Blob; name: string } => {
   };
 };
 
-const loadImage = (file: File): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
-  const url = URL.createObjectURL(file);
+const loadImage = (source: Blob, name = 'файл'): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
+  const url = URL.createObjectURL(source);
   const image = new Image();
   image.onload = () => {
     URL.revokeObjectURL(url);
@@ -67,10 +67,33 @@ const loadImage = (file: File): Promise<HTMLImageElement> => new Promise((resolv
   };
   image.onerror = () => {
     URL.revokeObjectURL(url);
-    reject(new Error(`Не удалось прочитать ${file.name}`));
+    reject(new Error(`Не удалось прочитать ${name}`));
   };
   image.src = url;
 });
+
+const THUMBNAIL_MAX_SIDE = 320;
+const THUMBNAIL_JPEG_QUALITY = 0.7;
+
+// Маленькое превью (data URL) для списков: держать в памяти/состоянии полноразмерные
+// base64-фото нельзя — на телефоне десятки таких превью убивают вкладку.
+export const createWarehousePhotoThumbnail = async (source: Blob): Promise<string | null> => {
+  try {
+    const image = await loadImage(source);
+    const scale = Math.min(1, THUMBNAIL_MAX_SIDE / Math.max(image.naturalWidth, image.naturalHeight));
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+    context.drawImage(image, 0, 0, width, height);
+    return canvas.toDataURL('image/jpeg', THUMBNAIL_JPEG_QUALITY);
+  } catch {
+    return null;
+  }
+};
 
 export const prepareWarehousePhoto = async (
   file: File,

@@ -72,7 +72,7 @@ import {
   updateWarehousePhotoQueueItem,
   WarehousePhotoQueueItem,
 } from '../utils/warehouse-photo-queue';
-import { prepareWarehousePhoto } from '../utils/warehouse-photo-processing';
+import { createWarehousePhotoThumbnail, prepareWarehousePhoto } from '../utils/warehouse-photo-processing';
 import { uploadWarehousePhotoViaTus } from '../utils/warehouse-tus-upload';
 
 const DRAFT_KEY = 'warehouse-reception-draft-v1';
@@ -208,8 +208,11 @@ const mergeDraftPhotosWithPreviews = (
 
     return {
       ...photo,
+      // Полноразмерный base64 не тащим в состояние: у 40–60 фото это сотни МБ
+      // и мобильный браузер убивает вкладку. Для показа — маленький thumb.
+      previewDataUrl: null,
       blob: liveBlob,
-      previewUrl: photo.previewDataUrl || (
+      previewUrl: photo.thumbDataUrl || photo.previewDataUrl || (
         photo.id && previewById.has(photo.id)
           ? previewById.get(photo.id)!
           : URL.createObjectURL(liveBlob)
@@ -220,7 +223,7 @@ const mergeDraftPhotosWithPreviews = (
   const nextIds = new Set(next.map((photo) => photo.id).filter((id): id is number => Boolean(id)));
   current.forEach((photo) => {
     if (!photo.id || nextIds.has(photo.id)) return;
-    if (!photo.previewDataUrl) {
+    if (photo.previewUrl.startsWith('blob:')) {
       URL.revokeObjectURL(photo.previewUrl);
     }
   });
@@ -388,13 +391,15 @@ export default function WarehouseReceptionPage() {
     return () => window.clearTimeout(timer);
   }, [activeStep, completedVehicle, form, inspection, loading, uploadSessionId]);
 
+  const photosRef = useRef(photos);
+  photosRef.current = photos;
   useEffect(() => () => {
-    photos.forEach((photo) => {
-      if (!photo.previewDataUrl) {
+    photosRef.current.forEach((photo) => {
+      if (photo.previewUrl.startsWith('blob:')) {
         URL.revokeObjectURL(photo.previewUrl);
       }
     });
-  }, [photos]);
+  }, []);
 
   const selectedCounterparty = useMemo(
     () => counterparties.find((item) => item.id === form.counterpartyId) ?? null,
@@ -617,11 +622,13 @@ export default function WarehouseReceptionPage() {
       for (const file of files) {
         const prepared = await prepareWarehousePhoto(file);
         const previewDataUrl = await blobToDataUrl(prepared.blob).catch(() => null);
+        const thumbDataUrl = await createWarehousePhotoThumbnail(prepared.blob);
         const queueId = await enqueueWarehousePhoto({
           vehicleId: DRAFT_PHOTO_KEY,
           name: prepared.name,
           blob: prepared.blob,
           previewDataUrl,
+          thumbDataUrl,
           checklistItem,
           uploadSessionId,
           clientHash: createClientHash(),

@@ -1,4 +1,5 @@
 import { PlanningSegment } from '../types/planning-v2.types';
+import { isModuleEnabled } from './appModules';
 import { SUMMARY_ROLES, SEGMENT_BY_ROLE } from './roles';
 
 const CONTRACT_APPROVAL_ACCESS_ROLES = new Set([
@@ -32,6 +33,7 @@ export function canAccessAdmin(role?: string | null): boolean {
 }
 
 export function canAccessWarehouse(role?: string | null): boolean {
+  if (!isModuleEnabled('warehouse')) return false;
   return role === 'admin'
     || role === 'director'
     || role === 'general_director'
@@ -172,6 +174,7 @@ export function canShowBPDashboardMenu(role?: string | null): boolean {
 }
 
 export function canAccessBillOfLading(role?: string | null): boolean {
+  if (!isModuleEnabled('bill_of_lading')) return false;
   return role === 'admin';
 }
 
@@ -224,11 +227,13 @@ const HR_REQUESTER_ROLES = new Set([
 
 /** Ведёт подбор: кандидаты, вакансии, воронка, интервью, импорт. */
 export function canRunHrRecruiting(role?: string | null): boolean {
+  if (!isModuleEnabled('hh')) return false;
   return Boolean(role && HR_RECRUITING_ROLES.has(role));
 }
 
 /** Подаёт заявки на подбор и рассматривает присланных по ним кандидатов. */
 export function canCreateHiringRequest(role?: string | null): boolean {
+  if (!isModuleEnabled('hh')) return false;
   return Boolean(role && HR_REQUESTER_ROLES.has(role));
 }
 

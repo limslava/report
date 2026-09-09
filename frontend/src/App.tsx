@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store/auth-store';
 import DashboardLayout from './layouts/DashboardLayout';
@@ -9,11 +10,25 @@ import {
   getDefaultAuthenticatedRoute,
   guardedRouteElement,
 } from './routes/appRoutes';
+import { getAppConfig } from './services/app-config.api';
+import { setDisabledModules } from './utils/appModules';
 
 function App() {
   const { token, user } = useAuthStore();
   const location = useLocation();
   const isAuthenticated = !!token;
+  // Версия конфига модулей: после загрузки списка отключённых модулей
+  // перерисовываем дерево, чтобы меню и маршруты пересчитались.
+  const [, setAppConfigVersion] = useState(0);
+  useEffect(() => {
+    if (!token) return;
+    getAppConfig()
+      .then((response) => {
+        setDisabledModules(response.data.disabledModules ?? []);
+        setAppConfigVersion((version) => version + 1);
+      })
+      .catch(() => undefined);
+  }, [token]);
   const defaultAuthenticatedRoute = getDefaultAuthenticatedRoute(user?.role);
   const returnTo = `${location.pathname}${location.search}${location.hash}`;
 

@@ -30,9 +30,11 @@ import {
 } from '../services/warehouse.api';
 import { warehouseVehicleTypeLabel } from '../constants/warehouse';
 import {
+  createWarehousePhotoClientHash,
   listAllWarehousePhotoQueue,
   listWarehousePhotoQueue,
   removeWarehousePhotoQueueItem,
+  updateWarehousePhotoQueueItem,
 } from '../utils/warehouse-photo-queue';
 
 const formatOperationDateTime = (value: string) => new Intl.DateTimeFormat('ru-RU', {
@@ -116,13 +118,49 @@ export default function WarehouseOnSitePage() {
     try {
       const queue = await listWarehousePhotoQueue(vehicle.id);
       let done = 0;
+      let failed = 0;
+      let lastFailure: unknown = null;
       setUploadProgress({ done, total: queue.length });
       for (const item of queue) {
         if (!item.id) continue;
-        await uploadWarehouseVehiclePhoto(vehicle.id, item.blob, item.name, 'reception', item.checklistItem);
-        await removeWarehousePhotoQueueItem(item.id);
-        done += 1;
+        // Хеш фиксируем в очереди ДО отправки: повтор после обрыва связи
+        // уйдёт с тем же хешем, и сервер не создаст дубль.
+        let clientHash = item.clientHash;
+        if (!clientHash) {
+          clientHash = createWarehousePhotoClientHash();
+          await updateWarehousePhotoQueueItem(item.id, { clientHash });
+        }
+        let uploaded = false;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            await uploadWarehouseVehiclePhoto(
+              vehicle.id,
+              item.blob,
+              item.name,
+              'reception',
+              item.checklistItem,
+              clientHash,
+            );
+            uploaded = true;
+            break;
+          } catch (uploadError) {
+            lastFailure = uploadError;
+            const status = (uploadError as { response?: { status?: number } })?.response?.status;
+            if (status === 409) break; // лимит фотографий — повторять бессмысленно
+            await new Promise((resolve) => window.setTimeout(resolve, 700 * (attempt + 1)));
+          }
+        }
+        if (uploaded) {
+          await removeWarehousePhotoQueueItem(item.id);
+          done += 1;
+        } else {
+          failed += 1;
+        }
         setUploadProgress({ done, total: queue.length });
+      }
+      if (failed > 0) {
+        const reason = messageFromError(lastFailure);
+        setError(`Загружено ${done} из ${queue.length}. Не удалось: ${failed} (${reason}). Нажмите «Догрузить фото» ещё раз — загрузка продолжится с места остановки.`);
       }
       await loadPendingUploads();
       await loadVehicles();

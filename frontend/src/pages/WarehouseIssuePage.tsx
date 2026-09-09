@@ -64,7 +64,7 @@ import {
   updateWarehousePhotoQueueItem,
   WarehousePhotoQueueItem,
 } from '../utils/warehouse-photo-queue';
-import { prepareWarehousePhoto } from '../utils/warehouse-photo-processing';
+import { createWarehousePhotoThumbnail, prepareWarehousePhoto } from '../utils/warehouse-photo-processing';
 import { uploadWarehousePhotoViaTus } from '../utils/warehouse-tus-upload';
 
 const STEPS = ['Выбор ТС', 'Проверка', 'Фото выдачи', 'Подтверждение'];
@@ -201,8 +201,10 @@ const mergeDraftPhotosWithPreviews = (
 
     return {
       ...photo,
+      // Полноразмерный base64 не тащим в состояние (см. WarehouseReceptionPage).
+      previewDataUrl: null,
       blob: liveBlob,
-      previewUrl: photo.previewDataUrl || (
+      previewUrl: photo.thumbDataUrl || photo.previewDataUrl || (
         photo.id && previewById.has(photo.id)
           ? previewById.get(photo.id)!
           : URL.createObjectURL(liveBlob)
@@ -213,7 +215,7 @@ const mergeDraftPhotosWithPreviews = (
   const nextIds = new Set(next.map((photo) => photo.id).filter((id): id is number => Boolean(id)));
   current.forEach((photo) => {
     if (!photo.id || nextIds.has(photo.id)) return;
-    if (!photo.previewDataUrl) {
+    if (photo.previewUrl.startsWith('blob:')) {
       URL.revokeObjectURL(photo.previewUrl);
     }
   });
@@ -382,13 +384,15 @@ export default function WarehouseIssuePage() {
     };
   }, [loadDraftPhotos, queueKey, syncPendingPhotosFromServer]);
 
+  const draftPhotosRef = useRef(draftPhotos);
+  draftPhotosRef.current = draftPhotos;
   useEffect(() => () => {
-    draftPhotos.forEach((photo) => {
-      if (!photo.previewDataUrl) {
+    draftPhotosRef.current.forEach((photo) => {
+      if (photo.previewUrl.startsWith('blob:')) {
         URL.revokeObjectURL(photo.previewUrl);
       }
     });
-  }, [draftPhotos]);
+  }, []);
 
   const filteredVehicles = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -596,11 +600,13 @@ export default function WarehouseIssuePage() {
       for (const file of files) {
         const prepared = await prepareWarehousePhoto(file);
         const previewDataUrl = await blobToDataUrl(prepared.blob).catch(() => null);
+        const thumbDataUrl = await createWarehousePhotoThumbnail(prepared.blob);
         const queueId = await enqueueWarehousePhoto({
           vehicleId: queueKey,
           name: prepared.name,
           blob: prepared.blob,
           previewDataUrl,
+          thumbDataUrl,
           checklistItem,
           uploadSessionId,
           clientHash: createClientHash(),

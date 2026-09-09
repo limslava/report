@@ -272,12 +272,15 @@ export const uploadWarehouseVehiclePhoto = (
   originalName: string,
   phase: 'reception' | 'issue' = 'reception',
   checklistItem?: string | null,
+  clientHash?: string | null,
 ) => api.post<WarehousePhoto>(`/warehouse/vehicles/${vehicleId}/photos`, file, {
   headers: {
     'Content-Type': file.type || 'image/jpeg',
     'X-File-Name': encodeURIComponent(originalName),
     'X-Photo-Phase': phase,
     ...(checklistItem ? { 'X-Photo-Checklist-Item': checklistItem } : {}),
+    // Идемпотентность: при обрыве связи повтор с тем же хешем не создаёт дубль
+    ...(clientHash ? { 'X-Client-Hash': clientHash } : {}),
   },
   timeout: 120_000,
 });
@@ -320,10 +323,11 @@ export const attachWarehousePendingPhotos = (
   { uploadSessionId, clientHashes },
 );
 
-export const downloadWarehouseVehiclePhoto = (vehicleId: string, photoId: string) =>
+export const downloadWarehouseVehiclePhoto = (vehicleId: string, photoId: string, size?: 'thumb') =>
   api.get<Blob>(`/warehouse/vehicles/${vehicleId}/photos/${photoId}`, {
     responseType: 'blob',
     timeout: 60_000,
+    ...(size ? { params: { size } } : {}),
   });
 
 export const deleteWarehouseVehiclePhoto = (vehicleId: string, photoId: string) =>

@@ -161,10 +161,64 @@ export const resolveWarehousePhotoPath = (
   return resolveStoredFile(storageRoot, vehicleId, storedName);
 };
 
+const THUMBNAIL_MAX_SIDE = 480;
+const THUMBNAIL_DIR = '_thumbs';
+
+const resolveThumbnailPath = (vehicleId: string, storedName: string): string | null => {
+  const directory = path.resolve(storageRoot, vehicleId, THUMBNAIL_DIR);
+  const filePath = path.resolve(directory, `${path.basename(storedName)}.jpg`);
+  if (!filePath.startsWith(`${directory}${path.sep}`)) return null;
+  return filePath;
+};
+
+/**
+ * Миниатюра фотографии (генерируется лениво, кэшируется на диске рядом
+ * с оригиналом). Нужна спискам фото на телефонах: качать десятки
+ * полноразмерных снимков на плохой связи нельзя.
+ */
+export const ensureWarehousePhotoThumbnail = async (
+  vehicleId: string,
+  storedName: string,
+): Promise<string | null> => {
+  const originalPath = resolveWarehousePhotoPath(vehicleId, storedName);
+  const thumbnailPath = resolveThumbnailPath(vehicleId, storedName);
+  if (!originalPath || !thumbnailPath) return null;
+  try {
+    await fs.access(thumbnailPath);
+    return thumbnailPath;
+  } catch {
+    // миниатюры ещё нет — генерируем
+  }
+  try {
+    const { default: sharp } = await import('sharp');
+    await fs.mkdir(path.dirname(thumbnailPath), { recursive: true });
+    const temporaryPath = `${thumbnailPath}.tmp-${crypto.randomBytes(6).toString('hex')}`;
+    await sharp(originalPath)
+      .rotate()
+      .resize(THUMBNAIL_MAX_SIDE, THUMBNAIL_MAX_SIDE, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 72 })
+      .toFile(temporaryPath);
+    await fs.rename(temporaryPath, thumbnailPath);
+    return thumbnailPath;
+  } catch {
+    return null;
+  }
+};
+
+const deleteWarehousePhotoThumbnail = async (
+  vehicleId: string,
+  storedName: string,
+): Promise<void> => {
+  const thumbnailPath = resolveThumbnailPath(vehicleId, storedName);
+  if (!thumbnailPath) return;
+  await fs.unlink(thumbnailPath).catch(() => undefined);
+};
+
 export const deleteWarehousePhotoFile = async (
   vehicleId: string,
   storedName: string,
 ): Promise<void> => {
+  await deleteWarehousePhotoThumbnail(vehicleId, storedName);
   const filePath = resolveWarehousePhotoPath(vehicleId, storedName);
   if (!filePath) return;
   await fs.unlink(filePath).catch((error: NodeJS.ErrnoException) => {
