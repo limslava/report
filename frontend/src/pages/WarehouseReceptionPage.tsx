@@ -40,6 +40,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   attachWarehousePendingPhotos,
+  getWarehouseVehiclePhotos,
   createWarehouseVehicle,
   downloadWarehouseVehicleInspectionAct,
   getWarehouseClients,
@@ -307,6 +308,18 @@ export default function WarehouseReceptionPage() {
     await Promise.all(queued.map((photo) => {
       if (!photo.id || !photo.clientHash) return Promise.resolve();
       if (!uploadedHashes.has(photo.clientHash)) {
+        // Сервер этого фото НЕ видит. Если клиент считал его загруженным —
+        // файл утерян на сервере (перекат/чистка pending): возвращаем в
+        // pending, блоб на устройстве жив и перезальётся автоматически.
+        if (photo.uploadStatus === 'uploaded') {
+          logUploadEvent('reception:sync:lost-on-server', { name: photo.name });
+          return updateWarehousePhotoQueueItem(photo.id, {
+            uploadStatus: 'pending',
+            shouldResumeUpload: false,
+            uploadedAt: null,
+            errorMessage: null,
+          });
+        }
         if (!photo.shouldResumeUpload) return Promise.resolve();
         return updateWarehousePhotoQueueItem(photo.id, {
           shouldResumeUpload: false,
@@ -756,14 +769,45 @@ export default function WarehouseReceptionPage() {
     setSaving(true);
     setUploadWarning(null);
     try {
-      await uploadQueuedPhotos(completedVehicle.id, photoUploadStatus.total);
+      // Самолечение (случай из полевого отчёта 09.09): часть фото может быть
+      // уже привязана, часть — утеряна на сервере при перекате. Порядок:
+      // 1) выкидываем из очереди то, что уже привязано к карточке;
+      // 2) сверка с сервером возвращает утерянные в pending;
+      // 3) перезаливаем их с устройства; 4) привязываем остаток.
+      const attachedResponse = await getWarehouseVehiclePhotos(completedVehicle.id).catch(() => null);
+      if (attachedResponse) {
+        const attachedHashes = new Set(
+          attachedResponse.data.map((photo) => photo.clientHash).filter(Boolean),
+        );
+        const queue = await listWarehousePhotoQueue(DRAFT_PHOTO_KEY);
+        await Promise.all(queue.map((item) => (
+          item.id && item.clientHash && attachedHashes.has(item.clientHash)
+            ? removeWarehousePhotoQueueItem(item.id)
+            : Promise.resolve()
+        )));
+      }
+      await syncPendingPhotosFromServer().catch(() => undefined);
+      const toReupload = (await listWarehousePhotoQueue(DRAFT_PHOTO_KEY))
+        .filter((item) => item.uploadStatus !== 'uploaded');
+      for (const item of toReupload) {
+        // eslint-disable-next-line no-await-in-loop
+        await uploadDraftPhotoToPending({ ...item, previewUrl: '' });
+      }
+      const originalTotal = photoUploadStatus.total;
+      const remaining = await listWarehousePhotoQueue(DRAFT_PHOTO_KEY);
+      if (remaining.length > 0) {
+        await uploadQueuedPhotos(completedVehicle.id, remaining.length);
+      }
+      // дошли без исключений — всё загружено и привязано
+      setPhotoUploadStatus({ uploaded: originalTotal, total: originalTotal, pending: 0 });
     } catch (attachError) {
       logUploadEvent('reception:attach:error', { vehicleId: completedVehicle.id, error: messageFromError(attachError) });
       const draftQueue = await listWarehousePhotoQueue(DRAFT_PHOTO_KEY).catch(() => []);
       const pending = draftQueue.filter((item) => item.uploadStatus !== 'uploaded').length;
       setPhotoUploadStatus((current) => ({
         ...current,
-        uploaded: draftQueue.filter((item) => item.uploadStatus === 'uploaded').length,
+        uploaded: Math.max(0, current.total - draftQueue.length)
+          + draftQueue.filter((item) => item.uploadStatus === 'uploaded').length,
         pending,
       }));
       setUploadWarning('Не удалось привязать все фотографии. Проверьте интернет и повторите попытку.');

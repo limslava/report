@@ -276,6 +276,17 @@ export default function WarehouseIssuePage() {
     await Promise.all(queued.map((photo) => {
       if (!photo.id || !photo.clientHash) return Promise.resolve();
       if (!uploadedHashes.has(photo.clientHash)) {
+        // Файл утерян на сервере (перекат/чистка pending) — возвращаем в
+        // pending: блоб жив на устройстве и перезальётся автоматически.
+        if (photo.uploadStatus === 'uploaded') {
+          logUploadEvent('issue:sync:lost-on-server', { name: photo.name });
+          return updateWarehousePhotoQueueItem(photo.id, {
+            uploadStatus: 'pending',
+            shouldResumeUpload: false,
+            uploadedAt: null,
+            errorMessage: null,
+          });
+        }
         if (!photo.shouldResumeUpload) return Promise.resolve();
         return updateWarehousePhotoQueueItem(photo.id, {
           shouldResumeUpload: false,
