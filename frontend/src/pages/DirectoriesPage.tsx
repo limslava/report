@@ -59,6 +59,7 @@ import {
   canManageFuelNormsFrontend,
   directoryLocationsForRole,
 } from '../utils/rolePermissions';
+import AttachmentsSection from '../components/directories/AttachmentsSection';
 import '../styles/operations-preview.css';
 import '../styles/fuel.css';
 
@@ -1026,6 +1027,18 @@ export default function DirectoriesPage({
               </Typography>
           </>
           </fieldset>
+          <AttachmentsSection
+            entityType="employee"
+            entityId={employeeEdit?.id}
+            kinds={
+              (employeeEdit?.position ?? '').trim().toLowerCase() === 'водитель'
+                ? [{ kind: 'passport', label: 'Паспорт' }, { kind: 'license', label: 'В/У' }]
+                : [{ kind: 'passport', label: 'Паспорт' }]
+            }
+            canEdit={canEdit}
+            onError={(text) => setFeedback({ severity: 'error', text })}
+            onSuccess={(text) => setFeedback({ severity: 'success', text })}
+          />
         </DialogContent>
         <DialogActions>
           {canDelete && employeeEdit?.id && (
@@ -1088,6 +1101,14 @@ export default function DirectoriesPage({
             </TextField>
           </Box>
           </fieldset>
+          <AttachmentsSection
+            entityType="vehicle"
+            entityId={vehicleEdit?.id}
+            kinds={[{ kind: 'sor', label: 'СОР' }]}
+            canEdit={canEdit}
+            onError={(text) => setFeedback({ severity: 'error', text })}
+            onSuccess={(text) => setFeedback({ severity: 'success', text })}
+          />
         </DialogContent>
         <DialogActions>
           {canDelete && vehicleEdit?.id && (
@@ -1135,6 +1156,14 @@ export default function DirectoriesPage({
             {textField('Примечание', trailerEdit?.note, (value) => setTrailerEdit((prev) => ({ ...prev, note: value })))}
           </Box>
           </fieldset>
+          <AttachmentsSection
+            entityType="trailer"
+            entityId={trailerEdit?.id}
+            kinds={[{ kind: 'sor', label: 'СОР' }]}
+            canEdit={canEdit}
+            onError={(text) => setFeedback({ severity: 'error', text })}
+            onSuccess={(text) => setFeedback({ severity: 'success', text })}
+          />
         </DialogContent>
         <DialogActions>
           {canDelete && trailerEdit?.id && (
