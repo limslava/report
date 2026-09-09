@@ -277,6 +277,14 @@ export default function DirectoriesPage({
       ),
     [employees, sortByTab.staff]
   );
+  /** Подсказки собственника — из уже введённых значений (как направления в графике). */
+  const ownerSuggestions = useMemo(
+    () =>
+      [...new Set(vehicles.map((vehicle) => vehicle.owner?.trim()).filter(Boolean) as string[])].sort((a, b) =>
+        a.localeCompare(b, 'ru')
+      ),
+    [vehicles]
+  );
   const sortedVehicles = useMemo(
     () =>
       sortRows(vehicles, sortByTab.vehicles, (row, field) =>
@@ -766,6 +774,7 @@ export default function DirectoriesPage({
                   <th style={{ minWidth: 150 }}>{sortHeader('vehicles', 'modelLabel', 'Модель')}</th>
                   <th style={{ minWidth: 90 }}>{sortHeader('vehicles', 'color', 'Цвет')}</th>
                   <th style={{ minWidth: 140 }}>{sortHeader('vehicles', 'vin', 'VIN')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 120 }}>{sortHeader('vehicles', 'sor', 'СОР')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 90 }}>{sortHeader('vehicles', 'manufactureYear', 'Год выпуска')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 90 }}>{sortHeader('vehicles', 'status', 'Статус')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 100 }}>{sortHeader('vehicles', 'scheduleUsage', 'В графике')}</th>
@@ -787,6 +796,7 @@ export default function DirectoriesPage({
                     <td className="fuel-cell--left">{vehicle.model ? `${vehicle.model.brand} ${vehicle.model.name}`.trim() : '—'}</td>
                     <td className="fuel-cell--center">{vehicle.color || '—'}</td>
                     <td className="fuel-cell--left">{vehicle.vin || '—'}</td>
+                    <td className="fuel-cell--center">{vehicle.sor || '—'}</td>
                     <td className="fuel-cell--center">{vehicle.manufactureYear || '—'}</td>
                     <td className="fuel-cell--center">
                       <span className={`dir-status ${vehicle.status === 'active' ? 'dir-status--ok' : vehicle.status === 'repair' ? 'dir-status--warn' : 'dir-status--off'}`}>
@@ -818,7 +828,7 @@ export default function DirectoriesPage({
                 ))}
                 {vehicles.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="fuel-empty">Справочник пуст — техника появится из графиков или добавьте вручную</td>
+                    <td colSpan={10} className="fuel-empty">Справочник пуст — техника появится из графиков или добавьте вручную</td>
                   </tr>
                 )}
               </tbody>
@@ -1054,6 +1064,18 @@ export default function DirectoriesPage({
             {textField('Цвет', vehicleEdit?.color, (value) => setVehicleEdit((prev) => ({ ...prev, color: value })))}
             {textField('VIN', vehicleEdit?.vin, (value) => setVehicleEdit((prev) => ({ ...prev, vin: value })))}
             {textField('СОР', vehicleEdit?.sor, (value) => setVehicleEdit((prev) => ({ ...prev, sor: value })))}
+            {textField('Дата выдачи СОР', formatDateInput(vehicleEdit?.sorIssueDate), (value) => setVehicleEdit((prev) => ({ ...prev, sorIssueDate: value || null })), { type: 'date' })}
+            <Autocomplete
+              freeSolo
+              size="small"
+              options={ownerSuggestions}
+              value={vehicleEdit?.owner ?? ''}
+              onChange={(_event, value) => setVehicleEdit((prev) => ({ ...prev, owner: value ?? '' }))}
+              onInputChange={(_event, value) => setVehicleEdit((prev) => ({ ...prev, owner: value }))}
+              renderInput={(params) => (
+                <TextField {...params} label="Собственник" placeholder="Начните вводить — или выберите" fullWidth />
+              )}
+            />
             {textField('Год выпуска', vehicleEdit?.manufactureYear, (value) => setVehicleEdit((prev) => ({ ...prev, manufactureYear: value })))}
             <TextField
               select size="small" label="Статус" fullWidth

@@ -53,6 +53,14 @@ export class FleetVehicle {
   @Column({ type: 'varchar', length: 40, default: '' })
   sor!: string;
 
+  /** Дата выдачи СОР (в Excel перевозчику выводится «номер от даты»). */
+  @Column({ name: 'sor_issue_date', type: 'date', nullable: true })
+  sorIssueDate!: string | null;
+
+  /** Собственник ТС; свободный ввод с подсказками из уже введённых значений. */
+  @Column({ type: 'varchar', length: 200, default: '' })
+  owner!: string;
+
   /** Год выпуска; текстом — как вводят (в фикс. карточку водителя не входит). */
   @Column({ name: 'manufacture_year', type: 'varchar', length: 10, default: '' })
   manufactureYear!: string;

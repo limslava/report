@@ -266,10 +266,16 @@ async function generateByTemplate(
   sheet.getRow(1).font = { bold: true };
   sheet.getRow(1).alignment = { horizontal: 'center' };
   sheet.getRow(2).font = { bold: true };
+  const sorWithDate = (vehicle: (typeof vehicles)[number]): string => {
+    if (!vehicle.sor) return '';
+    if (!vehicle.sorIssueDate) return vehicle.sor;
+    const [year, month, day] = vehicle.sorIssueDate.slice(0, 10).split('-');
+    return day && month && year ? `${vehicle.sor} от ${day}.${month}.${year}` : vehicle.sor;
+  };
   vehicles.forEach((vehicle) =>
     sheet.addRow({
       model: vehicle.model ? `${vehicle.model.brand} ${vehicle.model.name}`.trim() : '',
-      sor: vehicle.sor,
+      sor: sorWithDate(vehicle),
       plate: vehicle.plate,
       vin: vehicle.vin,
       year: vehicle.manufactureYear,

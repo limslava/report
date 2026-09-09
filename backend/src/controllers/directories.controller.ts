@@ -202,6 +202,8 @@ export const saveVehicle = async (req: Request, res: Response) => {
   vehicle.vin = trimmed(req.body?.vin, 40);
   vehicle.manufactureYear = trimmed(req.body?.manufactureYear, 10);
   vehicle.sor = trimmed(req.body?.sor, 40);
+  vehicle.sorIssueDate = typeof req.body?.sorIssueDate === 'string' && req.body.sorIssueDate ? req.body.sorIssueDate.slice(0, 10) : null;
+  vehicle.owner = trimmed(req.body?.owner, 200);
   vehicle.note = trimmed(req.body?.note, 500);
   const status = req.body?.status;
   vehicle.status = status === 'repair' || status === 'archived' ? status : 'active';
@@ -598,6 +600,8 @@ export const exportDirectory = async (req: Request, res: Response) => {
       { header: 'Цвет', key: 'color', width: 12 },
       { header: 'VIN', key: 'vin', width: 22 },
       { header: 'СОР', key: 'sor', width: 16 },
+      { header: 'Дата выдачи СОР', key: 'sorIssueDate', width: 16 },
+      { header: 'Собственник', key: 'owner', width: 24 },
       { header: 'Год выпуска', key: 'manufactureYear', width: 12 },
       { header: 'Статус', key: 'status', width: 12 },
       { header: 'Примечание', key: 'note', width: 30 },
@@ -610,6 +614,8 @@ export const exportDirectory = async (req: Request, res: Response) => {
         color: vehicle.color,
         vin: vehicle.vin,
         sor: vehicle.sor,
+        sorIssueDate: formatDateRu(vehicle.sorIssueDate),
+        owner: vehicle.owner,
         manufactureYear: vehicle.manufactureYear,
         status: statusLabel(vehicle.status),
         note: vehicle.note,

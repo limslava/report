@@ -24,6 +24,8 @@ export type FleetVehicleItem = {
   color: string;
   vin: string;
   sor: string;
+  sorIssueDate: string | null;
+  owner: string;
   manufactureYear: string;
   status: 'active' | 'repair' | 'archived';
   note: string;
