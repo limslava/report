@@ -95,36 +95,96 @@ export const createWarehousePhotoThumbnail = async (source: Blob): Promise<strin
   }
 };
 
+// Целевой размер файла после сжатия: на канале 2 Мбит/с каждое фото >1 МБ —
+// это лишние секунды загрузки и лишние обрывы. Дожимаем итеративно: сначала
+// качеством (до 0.5), затем стороной (минус 20% за шаг, но не ниже 900 px).
+const TARGET_PHOTO_BYTES = 1 * 1024 * 1024;
+const MIN_JPEG_QUALITY = 0.5;
+const MIN_IMAGE_SIDE = 900;
+const MAX_COMPRESS_ITERATIONS = 7;
+
+type DrawableImage = HTMLImageElement | ImageBitmap;
+
+const imageSizeOf = (image: DrawableImage): { width: number; height: number } => (
+  'naturalWidth' in image
+    ? { width: image.naturalWidth, height: image.naturalHeight }
+    : { width: image.width, height: image.height }
+);
+
+// createImageBitmap декодирует быстрее и экономнее по памяти, чем <img>,
+// но есть не во всех браузерах — при неудаче откатываемся на loadImage.
+const decodeImage = async (file: File): Promise<DrawableImage> => {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      return await createImageBitmap(file);
+    } catch {
+      // не смог — пробуем через <img>
+    }
+  }
+  return loadImage(file, file.name);
+};
+
+const releaseImage = (image: DrawableImage): void => {
+  if ('close' in image) {
+    try {
+      image.close();
+    } catch {
+      // ImageBitmap уже закрыт — не страшно
+    }
+  }
+};
+
+const canvasToJpeg = (canvas: HTMLCanvasElement, quality: number, name: string): Promise<Blob> =>
+  new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (result) => (result ? resolve(result) : reject(new Error(`Не удалось сжать ${name}`))),
+      'image/jpeg',
+      quality,
+    );
+  });
+
 export const prepareWarehousePhoto = async (
   file: File,
 ): Promise<{ blob: Blob; name: string }> => {
-  let image: HTMLImageElement;
+  let image: DrawableImage;
   try {
-    image = await loadImage(file);
+    image = await decodeImage(file);
   } catch {
     return prepareOriginalPhoto(file);
   }
-  const scale = Math.min(1, MAX_IMAGE_SIDE / Math.max(image.naturalWidth, image.naturalHeight));
-  const width = Math.max(1, Math.round(image.naturalWidth * scale));
-  const height = Math.max(1, Math.round(image.naturalHeight * scale));
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext('2d');
-  if (!context) throw new Error('Браузер не поддерживает обработку фотографий');
-  context.drawImage(image, 0, 0, width, height);
-  let blob: Blob;
   try {
-    blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(
-        (result) => result ? resolve(result) : reject(new Error(`Не удалось сжать ${file.name}`)),
-        'image/jpeg',
-        JPEG_QUALITY,
-      );
-    });
+    const { width: sourceWidth, height: sourceHeight } = imageSizeOf(image);
+    let maxSide = Math.min(MAX_IMAGE_SIDE, Math.max(sourceWidth, sourceHeight));
+    let quality = JPEG_QUALITY;
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Браузер не поддерживает обработку фотографий');
+
+    const renderAt = (side: number): void => {
+      const scale = Math.min(1, side / Math.max(sourceWidth, sourceHeight));
+      canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+      canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    };
+
+    renderAt(maxSide);
+    let blob = await canvasToJpeg(canvas, quality, file.name);
+    for (let iteration = 0; iteration < MAX_COMPRESS_ITERATIONS && blob.size > TARGET_PHOTO_BYTES; iteration += 1) {
+      if (quality > MIN_JPEG_QUALITY) {
+        quality = Math.max(MIN_JPEG_QUALITY, quality - 0.1);
+      } else if (maxSide > MIN_IMAGE_SIDE) {
+        maxSide = Math.max(MIN_IMAGE_SIDE, Math.round(maxSide * 0.8));
+        renderAt(maxSide);
+      } else {
+        break;
+      }
+      blob = await canvasToJpeg(canvas, quality, file.name);
+    }
+    const baseName = file.name.replace(/\.[^.]+$/, '').slice(0, 180) || 'photo';
+    return { blob, name: `${baseName}.jpg` };
   } catch {
     return prepareOriginalPhoto(file);
+  } finally {
+    releaseImage(image);
   }
-  const baseName = file.name.replace(/\.[^.]+$/, '').slice(0, 180) || 'photo';
-  return { blob, name: `${baseName}.jpg` };
 };

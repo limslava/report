@@ -38,6 +38,8 @@ import {
   updateWarehousePhotoQueueItem,
 } from '../../utils/warehouse-photo-queue';
 import { prepareWarehousePhoto } from '../../utils/warehouse-photo-processing';
+import { logUploadEvent } from '../../utils/warehouse-upload-log';
+import UploadReportButton from './UploadReportButton';
 
 interface WarehousePhotoDialogProps {
   open: boolean;
@@ -173,14 +175,17 @@ export default function WarehousePhotoDialog({
           } catch (uploadError) {
             lastFailure = uploadError;
             const status = (uploadError as { response?: { status?: number } })?.response?.status;
+            logUploadEvent('dialog:upload:retry', { name: item.name, attempt: attempt + 1, status });
             if (status === 409) break; // лимит фотографий — повтор не поможет
             await new Promise((resolve) => window.setTimeout(resolve, 700 * (attempt + 1)));
           }
         }
         if (uploaded) {
+          logUploadEvent('dialog:upload:done', { name: item.name });
           await removeWarehousePhotoQueueItem(item.id);
           done += 1;
         } else {
+          logUploadEvent('dialog:upload:failed', { name: item.name });
           failed += 1;
         }
         setProgress({ done, total: queue.length });
@@ -284,7 +289,11 @@ export default function WarehousePhotoDialog({
       </DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2}>
-          {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
+          {error && (
+            <Alert severity="error" onClose={() => setError(null)} action={<UploadReportButton />}>
+              {error}
+            </Alert>
+          )}
           {vehicle?.status !== 'on_site' && (
             <Alert severity="info">
               ТС выдано. Фотографии удалены согласно сроку хранения.

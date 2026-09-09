@@ -66,6 +66,7 @@ import {
 } from '../utils/warehouse-photo-queue';
 import { createWarehousePhotoThumbnail, prepareWarehousePhoto } from '../utils/warehouse-photo-processing';
 import { uploadWarehousePhotoViaTus } from '../utils/warehouse-tus-upload';
+import { logUploadEvent } from '../utils/warehouse-upload-log';
 
 const STEPS = ['Выбор ТС', 'Проверка', 'Фото выдачи', 'Подтверждение'];
 const ISSUE_QUEUE_PREFIX = 'draft:warehouse-issue:';
@@ -478,10 +479,12 @@ export default function WarehouseIssuePage() {
         } catch (uploadError) {
           lastError = uploadError;
           if (!isRetriablePhotoUploadError(uploadError) || attempt === 2) break;
+          logUploadEvent('issue:upload:retry', { name: photo.name, attempt: attempt + 1, error: messageFromError(uploadError) });
           await wait(700 * (attempt + 1));
         }
       }
       if (!uploaded) throw lastError;
+      logUploadEvent('issue:upload:done', { name: photo.name });
       await updateWarehousePhotoQueueItem(photo.id, {
         uploadSessionId,
         clientHash,
@@ -493,6 +496,7 @@ export default function WarehouseIssuePage() {
       });
     } catch (uploadError) {
       const retriable = isRetriablePhotoUploadError(uploadError);
+      logUploadEvent('issue:upload:error', { name: photo.name, retriable, error: messageFromError(uploadError) });
       await updateWarehousePhotoQueueItem(photo.id, {
         uploadSessionId,
         clientHash,

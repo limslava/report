@@ -74,6 +74,8 @@ import {
 } from '../utils/warehouse-photo-queue';
 import { createWarehousePhotoThumbnail, prepareWarehousePhoto } from '../utils/warehouse-photo-processing';
 import { uploadWarehousePhotoViaTus } from '../utils/warehouse-tus-upload';
+import { logUploadEvent } from '../utils/warehouse-upload-log';
+import UploadReportButton from '../components/warehouse/UploadReportButton';
 
 const DRAFT_KEY = 'warehouse-reception-draft-v1';
 const DRAFT_PHOTO_KEY = 'draft:warehouse-reception';
@@ -477,6 +479,7 @@ export default function WarehouseReceptionPage() {
       errorMessage: null,
     });
     await loadDraftPhotos();
+    logUploadEvent('reception:upload:start', { name: photo.name, size: photo.blob?.size, resume: Boolean(photo.shouldResumeUpload) });
     try {
       let uploaded = false;
       let lastError: unknown = null;
@@ -496,10 +499,12 @@ export default function WarehouseReceptionPage() {
         } catch (uploadError) {
           lastError = uploadError;
           if (!isRetriablePhotoUploadError(uploadError) || attempt === 2) break;
+          logUploadEvent('reception:upload:retry', { name: photo.name, attempt: attempt + 1, error: messageFromError(uploadError) });
           await wait(700 * (attempt + 1));
         }
       }
       if (!uploaded) throw lastError;
+      logUploadEvent('reception:upload:done', { name: photo.name });
       await updateWarehousePhotoQueueItem(photo.id, {
         uploadSessionId,
         clientHash,
@@ -511,6 +516,7 @@ export default function WarehouseReceptionPage() {
       });
     } catch (uploadError) {
       const retriable = isRetriablePhotoUploadError(uploadError);
+      logUploadEvent('reception:upload:error', { name: photo.name, retriable, error: messageFromError(uploadError) });
       await updateWarehousePhotoQueueItem(photo.id, {
         uploadSessionId,
         clientHash,
@@ -542,6 +548,7 @@ export default function WarehouseReceptionPage() {
         activeUploadsRef.current.delete(photoId);
         activeUploadStartedAtRef.current.delete(photoId);
         if (isStaleActiveSlot && uploadingPhotoIds.has(photoId)) {
+          logUploadEvent('reception:upload:stale-restart', { photoId });
           void updateWarehousePhotoQueueItem(photoId, {
             uploadStatus: 'pending',
             shouldResumeUpload: true,
@@ -621,6 +628,7 @@ export default function WarehouseReceptionPage() {
       let done = 0;
       for (const file of files) {
         const prepared = await prepareWarehousePhoto(file);
+        logUploadEvent('reception:prepare', { name: prepared.name, from: file.size, to: prepared.blob.size });
         const previewDataUrl = await blobToDataUrl(prepared.blob).catch(() => null);
         const thumbDataUrl = await createWarehousePhotoThumbnail(prepared.blob);
         const queueId = await enqueueWarehousePhoto({
@@ -1267,6 +1275,8 @@ export default function WarehouseReceptionPage() {
                     {photoUploadSummary.uploading > 0 && ` Загружается: ${photoUploadSummary.uploading}.`}
                     {photoUploadSummary.pending > 0 && ` В очереди: ${photoUploadSummary.pending}.`}
                     {photoUploadSummary.failed > 0 && ` Ошибок: ${photoUploadSummary.failed}.`}
+                    {!photoUploadSummary.ready && photoUploadSummary.failed === 0
+                      && ' Загрузка идёт в фоне — можно продолжать заполнять акт.'}
                   </Alert>
                 )}
                 {photos.length > 0 && !photoUploadSummary.ready && photoUploadSummary.failed === 0 && (
@@ -1278,14 +1288,17 @@ export default function WarehouseReceptionPage() {
                   />
                 )}
                 {photoUploadSummary.failed > 0 && (
-                  <Button
-                    variant="contained"
-                    color="warning"
-                    startIcon={<Refresh />}
-                    onClick={() => void retryFailedPhotos()}
-                  >
-                    Повторить загрузку фото
-                  </Button>
+                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                    <Button
+                      variant="contained"
+                      color="warning"
+                      startIcon={<Refresh />}
+                      onClick={() => void retryFailedPhotos()}
+                    >
+                      Повторить загрузку фото
+                    </Button>
+                    <UploadReportButton />
+                  </Stack>
                 )}
                 {photoLimitWarning && (
                   <Alert severity="warning" onClose={() => setPhotoLimitWarning(null)}>
@@ -1437,14 +1450,17 @@ export default function WarehouseReceptionPage() {
                   : 0}
               />
               {photoUploadSummary.failed > 0 && (
-                <Button
-                  variant="contained"
-                  color="warning"
-                  startIcon={<Refresh />}
-                  onClick={() => void retryFailedPhotos()}
-                >
-                  Повторить загрузку фото
-                </Button>
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                  <Button
+                    variant="contained"
+                    color="warning"
+                    startIcon={<Refresh />}
+                    onClick={() => void retryFailedPhotos()}
+                  >
+                    Повторить загрузку фото
+                  </Button>
+                  <UploadReportButton />
+                </Stack>
               )}
               <Button
                 variant="text"

@@ -21,6 +21,7 @@ import {
 } from '@mui/material';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import UploadReportButton from '../components/warehouse/UploadReportButton';
 import WarehousePhotoDialog from '../components/warehouse/WarehousePhotoDialog';
 import WarehouseServicesDialog from '../components/warehouse/WarehouseServicesDialog';
 import {
@@ -36,6 +37,7 @@ import {
   removeWarehousePhotoQueueItem,
   updateWarehousePhotoQueueItem,
 } from '../utils/warehouse-photo-queue';
+import { logUploadEvent } from '../utils/warehouse-upload-log';
 
 const formatOperationDateTime = (value: string) => new Intl.DateTimeFormat('ru-RU', {
   timeZone: 'Asia/Vladivostok',
@@ -146,14 +148,17 @@ export default function WarehouseOnSitePage() {
           } catch (uploadError) {
             lastFailure = uploadError;
             const status = (uploadError as { response?: { status?: number } })?.response?.status;
+            logUploadEvent('onsite:upload:retry', { name: item.name, attempt: attempt + 1, status, error: messageFromError(uploadError) });
             if (status === 409) break; // лимит фотографий — повторять бессмысленно
             await new Promise((resolve) => window.setTimeout(resolve, 700 * (attempt + 1)));
           }
         }
         if (uploaded) {
+          logUploadEvent('onsite:upload:done', { name: item.name });
           await removeWarehousePhotoQueueItem(item.id);
           done += 1;
         } else {
+          logUploadEvent('onsite:upload:failed', { name: item.name });
           failed += 1;
         }
         setUploadProgress({ done, total: queue.length });
@@ -199,7 +204,11 @@ export default function WarehouseOnSitePage() {
           </Button>
         </Stack>
 
-        {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
+        {error && (
+          <Alert severity="error" onClose={() => setError(null)} action={<UploadReportButton />}>
+            {error}
+          </Alert>
+        )}
 
         <TextField
           autoFocus
