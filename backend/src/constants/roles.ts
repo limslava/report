@@ -8,7 +8,6 @@ export const DEPARTMENT_ROLES = [
   'manager_auto',
   'manager_rail',
   'manager_extra',
-  'manager_to',
   'manager_sales',
   'head_sales',
 ] as const;

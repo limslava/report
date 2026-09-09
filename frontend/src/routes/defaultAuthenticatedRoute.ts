@@ -7,9 +7,9 @@ import {
 
 export function getDefaultAuthenticatedRoute(role?: string | null): string {
   if (role === 'warehouse_keeper') return '/warehouse/operations';
-  if (role === 'warehouse_manager' || role === 'counterparty_user') return '/warehouse';
+  if (role === 'counterparty_user') return '/warehouse';
   if (canViewTechDashboard(role)) return '/sw-tech-dashboard';
-  if (role === 'garage_head' || role === 'garage_head_vvo') {
+  if (role === 'garage_head_vvo') {
     return '/operations-preview?location=garage_vvo&section=mechanics';
   }
   if (role === 'warehouse_manager_vvo') {

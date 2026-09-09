@@ -10,5 +10,5 @@ export const SEGMENT_BY_ROLE: Record<string, PlanningSegment['code'] | null> = {
   manager_auto: 'AUTO',
   manager_rail: 'RAIL',
   manager_extra: 'EXTRA',
-  manager_to: 'TO',
+  warehouse_manager_vvo: 'TO',
 };

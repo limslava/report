@@ -41,6 +41,7 @@ import { buildContentDisposition } from '../utils/content-disposition';
 import {
   CONTRACT_APPROVAL_DASHBOARD_ROLES,
   CONTRACT_PARALLEL_APPROVAL_ROLES,
+  approvalRoleForUser,
   contractApprovalRoleLabel,
 } from '../constants/contract-approval';
 import {
@@ -657,10 +658,18 @@ async function resolveApproverUserId(roleCode: string, contract: Contract): Prom
     return gd.id;
   }
 
-  const approver = await userRepository.findOne({
+  let approver = await userRepository.findOne({
     where: { role: roleCode as any, isActive: true },
     order: { createdAt: 'ASC' },
   });
+
+  // шаг «Главный бухгалтер»: при отсутствии активного главбуха назначается заму
+  if (!approver && roleCode === 'chief_accountant') {
+    approver = await userRepository.findOne({
+      where: { role: 'deputy_chief_accountant' as any, isActive: true },
+      order: { createdAt: 'ASC' },
+    });
+  }
 
   if (!approver) {
     const error: any = new Error(`Не найден активный пользователь для роли: ${contractApprovalRoleLabel(roleCode)}`);
@@ -1463,8 +1472,10 @@ export const listMyApprovalInbox = async (req: Request, res: Response, next: Nex
       error.statusCode = 401;
       throw error;
     }
-    if (!currentUserRole || !CONTRACT_PARALLEL_APPROVAL_ROLES.includes(currentUserRole as typeof CONTRACT_PARALLEL_APPROVAL_ROLES[number])
-      && currentUserRole !== 'secretary') {
+    // зам главбуха работает с очередью шагов «Главный бухгалтер»
+    const stepRoleCode = approvalRoleForUser(currentUserRole);
+    if (!stepRoleCode || !CONTRACT_PARALLEL_APPROVAL_ROLES.includes(stepRoleCode as typeof CONTRACT_PARALLEL_APPROVAL_ROLES[number])
+      && stepRoleCode !== 'secretary') {
       const error: any = new Error('Для роли недоступна очередь согласования');
       error.statusCode = 403;
       throw error;
@@ -1481,7 +1492,7 @@ export const listMyApprovalInbox = async (req: Request, res: Response, next: Nex
     startOfMonth.setHours(0, 0, 0, 0);
 
     const steps = await stepRepository.find({
-      where: { roleCode: currentUserRole, approverUserId: currentUserId },
+      where: { roleCode: stepRoleCode as any, approverUserId: currentUserId },
       relations: ['contract', 'contract.initiator'],
       order: { createdAt: 'DESC' },
     });

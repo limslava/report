@@ -241,7 +241,7 @@ export default function OperationsPreview() {
   const userId = useAuthStore((state) => state.user?.id);
   const userRole = useAuthStore((state) => state.user?.role);
   const isHrScheduleRole = userRole === 'head_hr' || userRole === 'hr_specialist';
-  const isWarehouseStaffScheduleOperator = userRole === 'warehouse_manager_vvo' || userRole === 'manager_to';
+  const isWarehouseStaffScheduleOperator = userRole === 'warehouse_manager_vvo';
   const canManagePlanFact = (
     userRole === 'admin'
     || userRole === 'head_ktk_vvo'

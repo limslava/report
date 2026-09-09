@@ -137,15 +137,15 @@ const errorMessage = (error: unknown, fallback: string): string => {
 export default function WarehousePage() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
-  const canOperateWarehouse = ['admin', 'warehouse_manager', 'warehouse_keeper']
+  const canOperateWarehouse = ['admin', 'warehouse_manager_vvo', 'warehouse_keeper']
     .includes(user?.role ?? '');
-  const canEditServices = ['admin', 'warehouse_manager', 'warehouse_keeper', 'financer']
+  const canEditServices = ['admin', 'warehouse_manager_vvo', 'warehouse_keeper', 'financer']
     .includes(user?.role ?? '');
-  const canManageClients = user?.role === 'admin' || user?.role === 'warehouse_manager';
-  const canManageTariffs = ['admin', 'warehouse_manager', 'financer'].includes(user?.role ?? '');
+  const canManageClients = user?.role === 'admin' || user?.role === 'warehouse_manager_vvo';
+  const canManageTariffs = ['admin', 'warehouse_manager_vvo', 'financer'].includes(user?.role ?? '');
   const canViewBilling = user?.role !== 'warehouse_keeper';
-  const canCloseBilling = ['admin', 'warehouse_manager', 'financer'].includes(user?.role ?? '');
-  const canCorrectDates = user?.role === 'admin' || user?.role === 'warehouse_manager';
+  const canCloseBilling = ['admin', 'warehouse_manager_vvo', 'financer'].includes(user?.role ?? '');
+  const canCorrectDates = user?.role === 'admin' || user?.role === 'warehouse_manager_vvo';
   const showTabs = canManageClients || canManageTariffs || canViewBilling;
   const [tab, setTab] = useState<'registry' | 'clients' | 'tariffs' | 'billing'>('registry');
   const [vehicles, setVehicles] = useState<WarehouseVehicle[]>([]);

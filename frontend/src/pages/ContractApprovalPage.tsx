@@ -160,8 +160,8 @@ export default function ContractApprovalPage() {
   const currentUser = useAuthStore((state) => state.user);
   const isSecurity = currentUser?.role === 'security';
   const isSecretary = currentUser?.role === 'secretary';
-  const isApprovalWorkRole = ['lawyer', 'chief_accountant', 'financer', 'secretary'].includes(currentUser?.role ?? '');
-  const isChiefAccountant = currentUser?.role === 'chief_accountant';
+  const isApprovalWorkRole = ['lawyer', 'chief_accountant', 'deputy_chief_accountant', 'financer', 'secretary'].includes(currentUser?.role ?? '');
+  const isChiefAccountant = currentUser?.role === 'chief_accountant' || currentUser?.role === 'deputy_chief_accountant';
   const isAdmin = currentUser?.role === 'admin';
   const isReadOnlyRegistry = currentUser?.role === 'general_director';
   // Офис-менеджеру (секретарю) вкладка «Мои договоры» не нужна — она только подписывает.

@@ -22,9 +22,18 @@ export const CONTRACT_INITIATOR_ROLES = [
   'manager_auto',
   'manager_rail',
   'manager_extra',
-  'manager_to',
+  'warehouse_manager_vvo',
 ] as const;
 export const CONTRACT_APPROVAL_DASHBOARD_ROLES = new Set<string>(CONTRACT_APPROVAL_WORK_ROLES);
+
+/**
+ * Роль пользователя в терминах шага согласования: заместитель главного
+ * бухгалтера действует на шаге «Главный бухгалтер» (решение 2026-09-10).
+ */
+export function approvalRoleForUser(role?: string | null): string | null {
+  if (role === 'deputy_chief_accountant') return 'chief_accountant';
+  return role ?? null;
+}
 
 export function contractApprovalRoleLabel(roleCode: string): string {
   return CONTRACT_APPROVAL_ROLE_LABELS[roleCode as ContractApprovalRoleCode] ?? roleCode;

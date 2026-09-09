@@ -62,7 +62,7 @@ type AppRoute = {
 };
 
 const lazyFallback = <div className="calendar-loading">Загрузка...</div>;
-const WAREHOUSE_OPERATION_ROLES = new Set(['admin', 'warehouse_manager', 'warehouse_keeper']);
+const WAREHOUSE_OPERATION_ROLES = new Set(['admin', 'warehouse_manager_vvo', 'warehouse_keeper']);
 
 function withSuspense(element: ReactNode): ReactNode {
   return <Suspense fallback={lazyFallback}>{element}</Suspense>;

@@ -223,6 +223,7 @@ export class PlanWebSocketService {
       || role === 'security'
       || role === 'lawyer'
       || role === 'chief_accountant'
+      || role === 'deputy_chief_accountant'
       || role === 'financer'
       || role === 'secretary';
   }

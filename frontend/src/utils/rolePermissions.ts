@@ -7,6 +7,7 @@ const CONTRACT_APPROVAL_ACCESS_ROLES = new Set([
   'security',
   'lawyer',
   'chief_accountant',
+  'deputy_chief_accountant',
   'financer',
   'secretary',
   'manager_sales',
@@ -35,7 +36,7 @@ export function canAccessWarehouse(role?: string | null): boolean {
     || role === 'director'
     || role === 'general_director'
     || role === 'financer'
-    || role === 'warehouse_manager'
+    || role === 'warehouse_manager_vvo'
     || role === 'warehouse_keeper'
     || role === 'counterparty_user';
 }
@@ -45,14 +46,12 @@ export function canViewTotalsInPlans(role?: string | null): boolean {
     && role !== 'security'
     && role !== 'lawyer'
     && role !== 'chief_accountant'
+    && role !== 'deputy_chief_accountant'
     && role !== 'secretary'
     && role !== 'head_hr'
     && role !== 'hr_specialist'
     && role !== 'hr_recruiter'
-    && role !== 'garage_head'
     && role !== 'garage_head_vvo'
-    && role !== 'warehouse_manager_vvo'
-    && role !== 'warehouse_manager'
     && role !== 'warehouse_keeper'
     && role !== 'counterparty_user'
     && role !== 'bdd_specialist_vvo'
@@ -64,14 +63,12 @@ export function canViewPlans(role?: string | null): boolean {
     && role !== 'security'
     && role !== 'lawyer'
     && role !== 'chief_accountant'
+    && role !== 'deputy_chief_accountant'
     && role !== 'secretary'
     && role !== 'head_hr'
     && role !== 'hr_specialist'
     && role !== 'hr_recruiter'
-    && role !== 'garage_head'
     && role !== 'garage_head_vvo'
-    && role !== 'warehouse_manager_vvo'
-    && role !== 'warehouse_manager'
     && role !== 'warehouse_keeper'
     && role !== 'counterparty_user'
     && role !== 'bdd_specialist_vvo'
@@ -164,6 +161,7 @@ export function canViewBPDashboard(role?: string | null): boolean {
     || role === 'security'
     || role === 'lawyer'
     || role === 'chief_accountant'
+    || role === 'deputy_chief_accountant'
     || role === 'financer'
     || role === 'secretary'
     || role === 'hr_recruiter';
@@ -187,9 +185,7 @@ export function canAccessOperationsPreview(role?: string | null): boolean {
     role === 'head_hr' ||
     role === 'hr_specialist' ||
     role === 'garage_head_vvo' ||
-    role === 'garage_head' ||
     role === 'warehouse_manager_vvo' ||
-    role === 'manager_to' ||
     role === 'security'
   );
 }
@@ -219,12 +215,11 @@ const HR_REQUESTER_ROLES = new Set([
   'head_ktk_vvo',
   'head_ktk_mow',
   'head_hr',
-  'garage_head',
   'garage_head_vvo',
-  'warehouse_manager',
   'warehouse_manager_vvo',
   'security',
   'chief_accountant',
+  'deputy_chief_accountant',
 ]);
 
 /** Ведёт подбор: кандидаты, вакансии, воронка, интервью, импорт. */

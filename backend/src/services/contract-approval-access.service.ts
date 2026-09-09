@@ -1,3 +1,4 @@
+import { approvalRoleForUser } from '../constants/contract-approval';
 import { Contract, ContractStatus } from '../models/contract.model';
 import { ContractApprovalStep } from '../models/contract-approval-step.model';
 
@@ -13,7 +14,7 @@ export function hasContractDetailAccess(
   if (contract.status === ContractStatus.APPROVED) return true;
   if (contract.initiatorId === userId) return true;
 
-  return steps.some((step) => step.approverUserId === userId || step.roleCode === userRole);
+  return steps.some((step) => step.approverUserId === userId || step.roleCode === approvalRoleForUser(userRole));
 }
 
 // Прикреплённые к листу согласования файлы (сам договор и вложения по шагам)
@@ -25,6 +26,7 @@ export const CONTRACT_ATTACHMENT_VIEW_ROLES = new Set<string>([
   'security',
   'financer',
   'chief_accountant',
+  'deputy_chief_accountant',
   'lawyer',
 ]);
 

@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Alert,
-  Autocomplete,
   Collapse,
   Typography,
   Paper,
@@ -46,6 +45,7 @@ import {
   type ContractTemplateVersion,
 } from '../services/api';
 import useNotesUnreadStore from '../store/notes-unread-store';
+import { ROLE_REGION_LABELS, RoleRegion, roleCatalogEntry, roleDepts, roleRegions, rolesFor } from '../constants/roleCatalog';
 import { getWarehouseClients, WarehouseClient } from '../services/warehouse.api';
 
 const AdminPage = () => {
@@ -85,6 +85,9 @@ const AdminPage = () => {
     endDate: '',
     limit: '200',
   });
+  // каскад выбора роли: регион → отдел → роль (раскладка в constants/roleCatalog.ts)
+  const [roleRegion, setRoleRegion] = useState<RoleRegion | ''>('');
+  const [roleDept, setRoleDept] = useState('');
   const [formData, setFormData] = useState({
     email: '',
     fullName: '',
@@ -235,13 +238,10 @@ const AdminPage = () => {
     hr_specialist: 'Специалист отдела кадров',
     hr_recruiter: 'HR-рекрутер',
     garage_head_vvo: 'Начальник гаража Владивосток',
-    garage_head: 'Начальник гаража Владивосток',
     manager_auto: 'Менеджер отправки авто',
     manager_rail: 'Менеджер ЖД',
     manager_extra: 'Менеджер доп.услуг',
-    manager_to: 'Менеджер ТО авто',
     warehouse_manager_vvo: 'Заведующий складом Владивосток',
-    warehouse_manager: 'Руководитель склада',
     warehouse_keeper: 'Кладовщик',
     counterparty_user: 'Представитель контрагента',
     bdd_specialist_vvo: 'Специалист по БДД Владивосток',
@@ -253,6 +253,7 @@ const AdminPage = () => {
     admin: 'Администратор',
     financer: 'Финансист',
     chief_accountant: 'Главный бухгалтер',
+    deputy_chief_accountant: 'Зам. главного бухгалтера',
     lawyer: 'Юрист',
     security: 'Руководитель СБ',
     secretary: 'Офис-менеджер',
@@ -273,36 +274,6 @@ const AdminPage = () => {
     { value: 'WAREHOUSE_DATES_CORRECTED', label: 'WAREHOUSE_DATES_CORRECTED' },
   ];
 
-  const roles = [
-    { value: 'manager_ktk_vvo', label: 'Менеджер КТК Владивосток' },
-    { value: 'head_ktk_vvo', label: 'Руководитель КТК Владивосток' },
-    { value: 'manager_ktk_mow', label: 'Менеджер КТК Москва' },
-    { value: 'head_ktk_mow', label: 'Руководитель КТК Москва' },
-    { value: 'head_hr', label: 'Руководитель отдела кадров' },
-    { value: 'hr_specialist', label: 'Специалист отдела кадров' },
-    { value: 'hr_recruiter', label: 'HR-рекрутер' },
-    { value: 'garage_head_vvo', label: 'Начальник гаража Владивосток' },
-    { value: 'manager_auto', label: 'Менеджер отправки авто' },
-    { value: 'manager_rail', label: 'Менеджер ЖД' },
-    { value: 'manager_extra', label: 'Менеджер доп.услуг' },
-    { value: 'manager_to', label: 'Менеджер ТО авто' },
-    { value: 'warehouse_manager_vvo', label: 'Заведующий складом Владивосток' },
-    { value: 'warehouse_manager', label: 'Руководитель склада' },
-    { value: 'warehouse_keeper', label: 'Кладовщик' },
-    { value: 'counterparty_user', label: 'Представитель контрагента' },
-    { value: 'bdd_specialist_vvo', label: 'Специалист по БДД Владивосток' },
-    { value: 'bdd_specialist_mow', label: 'Специалист по БДД Москва' },
-    { value: 'manager_sales', label: 'Менеджер по продажам' },
-    { value: 'head_sales', label: 'Руководитель отдела продаж' },
-    { value: 'director', label: 'Директор' },
-    { value: 'general_director', label: 'Генеральный директор' },
-    { value: 'admin', label: 'Администратор' },
-    { value: 'financer', label: 'Финансист' },
-    { value: 'chief_accountant', label: 'Главный бухгалтер' },
-    { value: 'lawyer', label: 'Юрист' },
-    { value: 'security', label: 'Руководитель СБ' },
-    { value: 'secretary', label: 'Офис-менеджер' },
-  ];
 
   const userNameById = users.reduce<Record<string, string>>((acc, user) => {
     acc[user.id] = user.fullName || user.email || user.id;
@@ -446,6 +417,9 @@ const AdminPage = () => {
         workdays: userWorkdays.length > 0 ? userWorkdays : [1, 2, 3, 4, 5],
         warehouseClientId: user.warehouseClientId || '',
       });
+      const entry = roleCatalogEntry(user.role);
+      setRoleRegion(entry?.region ?? '');
+      setRoleDept(entry?.dept ?? '');
     } else {
       setFormData({
         email: '',
@@ -457,6 +431,8 @@ const AdminPage = () => {
         workdays: [1, 2, 3, 4, 5],
         warehouseClientId: '',
       });
+      setRoleRegion('');
+      setRoleDept('');
     }
     setOpenDialog(true);
   };
@@ -1026,27 +1002,58 @@ const AdminPage = () => {
               onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
               fullWidth
             />
-            <Autocomplete
-              options={roles}
-              value={roles.find((role) => role.value === formData.role) ?? null}
-              onChange={(_event, value) => setFormData({
-                ...formData,
-                role: value?.value ?? '',
-                warehouseClientId: value?.value === 'counterparty_user'
-                  ? formData.warehouseClientId
-                  : '',
-              })}
-              isOptionEqualToValue={(option, value) => option.value === value.value}
-              getOptionLabel={(option) => option.label}
-              noOptionsText="Роль не найдена"
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Роль"
-                  placeholder="Начните вводить название"
-                />
-              )}
-            />
+            <FormControl fullWidth>
+              <InputLabel>Регион</InputLabel>
+              <Select
+                label="Регион"
+                value={roleRegion}
+                onChange={(e) => {
+                  setRoleRegion(e.target.value as RoleRegion);
+                  setRoleDept('');
+                  setFormData((prev) => ({ ...prev, role: '', warehouseClientId: '' }));
+                }}
+              >
+                {roleRegions().map((region) => (
+                  <MenuItem key={region} value={region}>{ROLE_REGION_LABELS[region]}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth disabled={!roleRegion}>
+              <InputLabel>Отдел</InputLabel>
+              <Select
+                label="Отдел"
+                value={roleDept}
+                onChange={(e) => {
+                  setRoleDept(e.target.value);
+                  setFormData((prev) => ({ ...prev, role: '', warehouseClientId: '' }));
+                }}
+              >
+                {(roleRegion ? roleDepts(roleRegion) : []).map((dept) => (
+                  <MenuItem key={dept} value={dept}>{dept}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth disabled={!roleRegion || !roleDept}>
+              <InputLabel>Роль</InputLabel>
+              <Select
+                label="Роль"
+                value={formData.role}
+                onChange={(e) => setFormData((prev) => ({
+                  ...prev,
+                  role: e.target.value,
+                  warehouseClientId: e.target.value === 'counterparty_user' ? prev.warehouseClientId : '',
+                }))}
+              >
+                {(roleRegion && roleDept ? rolesFor(roleRegion, roleDept) : []).map((role) => (
+                  <MenuItem key={role.value} value={role.value}>{role.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {formData.role && roleCatalogEntry(formData.role) && (
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                {roleCatalogEntry(formData.role)!.desc}
+              </Typography>
+            )}
             {formData.role === 'counterparty_user' && (
               <>
                 <Alert severity="info">

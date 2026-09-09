@@ -29,12 +29,11 @@ export const HH_REQUESTER_ROLES = [
   'head_ktk_vvo',
   'head_ktk_mow',
   'head_hr',
-  'garage_head',
   'garage_head_vvo',
-  'warehouse_manager',
   'warehouse_manager_vvo',
   'security',
   'chief_accountant',
+  'deputy_chief_accountant',
 ] as const;
 
 /**

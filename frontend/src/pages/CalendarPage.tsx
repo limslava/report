@@ -178,6 +178,7 @@ const ROLE_LABELS: Record<string, string> = {
   general_director: 'Генеральный директор',
   financer: 'Финансовая дирекция',
   chief_accountant: 'Главный бухгалтер',
+  deputy_chief_accountant: 'Зам. главного бухгалтера',
   lawyer: 'Юрист',
   security: 'Руководитель СБ',
   secretary: 'Офис-менеджер',
@@ -191,14 +192,12 @@ const ROLE_LABELS: Record<string, string> = {
   hr_specialist: 'Специалист отдела кадров',
   hr_recruiter: 'HR-рекрутер',
   garage_head_vvo: 'Начальник гаража Влд',
-  garage_head: 'Начальник гаража Влд',
   warehouse_manager_vvo: 'Заведующий складом Владивосток',
   bdd_specialist_vvo: 'Специалист по БДД Влд',
   bdd_specialist_mow: 'Специалист по БДД Мск',
   manager_auto: 'Отдел перевозок автомобилей',
   manager_rail: 'Отдел Железнодорожных перевозок',
   manager_extra: 'Экспедирование',
-  manager_to: 'Тех.обслуживание',
 };
 
 export default function CalendarPage() {

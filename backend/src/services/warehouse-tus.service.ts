@@ -22,7 +22,7 @@ const TUS_TEMP_DIR = path.resolve(
 const TUS_CLEANUP_MAX_AGE_HOURS = Number(process.env.WAREHOUSE_TUS_CLEANUP_MAX_AGE_HOURS || 24);
 const TUS_CLEANUP_INTERVAL_HOURS = Number(process.env.WAREHOUSE_TUS_CLEANUP_INTERVAL_HOURS || 1);
 const PENDING_UPLOAD_TTL_HOURS = Number(process.env.WAREHOUSE_PENDING_UPLOAD_TTL_HOURS || 24);
-const WAREHOUSE_TUS_ROLES = new Set<User['role']>(['admin', 'warehouse_manager', 'warehouse_keeper']);
+const WAREHOUSE_TUS_ROLES = new Set<User['role']>(['admin', 'warehouse_manager_vvo', 'warehouse_keeper']);
 
 let cleanupStarted = false;
 const dynamicImport = new Function('specifier', 'return import(specifier)') as <T>(specifier: string) => Promise<T>;

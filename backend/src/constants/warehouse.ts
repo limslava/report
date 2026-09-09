@@ -3,43 +3,43 @@ export const WAREHOUSE_ACCESS_ROLES = [
   'director',
   'general_director',
   'financer',
-  'warehouse_manager',
+  'warehouse_manager_vvo',
   'warehouse_keeper',
   'counterparty_user',
 ] as const;
 
 export const WAREHOUSE_STAFF_ROLES = [
   'admin',
-  'warehouse_manager',
+  'warehouse_manager_vvo',
   'warehouse_keeper',
 ] as const;
 
 export const WAREHOUSE_DATE_CORRECTION_ROLES = [
   'admin',
-  'warehouse_manager',
+  'warehouse_manager_vvo',
 ] as const;
 
 export const WAREHOUSE_CLIENT_MANAGEMENT_ROLES = [
   'admin',
-  'warehouse_manager',
+  'warehouse_manager_vvo',
 ] as const;
 
 export const WAREHOUSE_TARIFF_MANAGEMENT_ROLES = [
   'admin',
-  'warehouse_manager',
+  'warehouse_manager_vvo',
   'financer',
 ] as const;
 
 export const WAREHOUSE_SERVICE_EXECUTION_ROLES = [
   'admin',
-  'warehouse_manager',
+  'warehouse_manager_vvo',
   'warehouse_keeper',
   'financer',
 ] as const;
 
 export const WAREHOUSE_BILLING_MANAGEMENT_ROLES = [
   'admin',
-  'warehouse_manager',
+  'warehouse_manager_vvo',
   'financer',
 ] as const;
 
@@ -48,7 +48,7 @@ export const WAREHOUSE_BILLING_VIEW_ROLES = [
   'director',
   'general_director',
   'financer',
-  'warehouse_manager',
+  'warehouse_manager_vvo',
   'counterparty_user',
 ] as const;
 

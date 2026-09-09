@@ -175,8 +175,8 @@ const DashboardLayout = () => {
   const isKtkMowManager = user?.role === 'manager_ktk_mow' || user?.role === 'head_ktk_mow';
   const isKtkDispatchRole = isKtkVvoManager || isKtkMowManager;
   const isHrScheduleRole = user?.role === 'head_hr' || user?.role === 'hr_specialist';
-  const isGarageHead = user?.role === 'garage_head' || user?.role === 'garage_head_vvo';
-  const isWarehouseStaffScheduleOperator = user?.role === 'warehouse_manager_vvo' || user?.role === 'manager_to';
+  const isGarageHead = user?.role === 'garage_head_vvo';
+  const isWarehouseStaffScheduleOperator = user?.role === 'warehouse_manager_vvo';
   const isSecurityHead = user?.role === 'security';
   const isAdmin = canAccessAdmin(user?.role);
   const canUseWorkSchedule = canAccessOperationsPreview(user?.role);
@@ -212,7 +212,7 @@ const DashboardLayout = () => {
       : canOpenBillOfLading
         ? '/business-processes/bill-of-lading'
         : '/business-processes/dashboard';
-  const homeRoute = user?.role === 'warehouse_manager'
+  const homeRoute = user?.role === 'warehouse_manager_vvo'
     || user?.role === 'counterparty_user'
     ? '/warehouse'
     : user?.role === 'warehouse_keeper'

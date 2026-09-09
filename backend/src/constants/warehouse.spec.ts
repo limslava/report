@@ -12,7 +12,7 @@ describe('warehouse role matrix', () => {
   it('limits physical warehouse operations to operational roles', () => {
     expect(WAREHOUSE_STAFF_ROLES).toEqual([
       'admin',
-      'warehouse_manager',
+      'warehouse_manager_vvo',
       'warehouse_keeper',
     ]);
   });
@@ -20,7 +20,7 @@ describe('warehouse role matrix', () => {
   it('limits date correction to manager and administrator', () => {
     expect(WAREHOUSE_DATE_CORRECTION_ROLES).toEqual([
       'admin',
-      'warehouse_manager',
+      'warehouse_manager_vvo',
     ]);
   });
 
