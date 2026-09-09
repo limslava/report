@@ -4,6 +4,7 @@ export type FleetLocation = 'vvo' | 'mow';
 
 export type VehicleModelItem = {
   id: string;
+  location?: FleetLocation;
   brand: string;
   name: string;
   fuelNormWinter: string | null;
@@ -72,8 +73,9 @@ export type EmployeePayload = Partial<Omit<EmployeeItem, 'id'>> & {
   counterpartyId?: string;
 };
 
-// Модели и нормы
-export const getVehicleModels = () => api.get<VehicleModelItem[]>('/directories/models');
+// Модели и нормы (раздельны по городам)
+export const getVehicleModels = (location: FleetLocation) =>
+  api.get<VehicleModelItem[]>('/directories/models', { params: { location } });
 export const createVehicleModel = (data: Partial<VehicleModelItem>) => api.post<VehicleModelItem>('/directories/models', data);
 export const updateVehicleModel = (id: string, data: Partial<VehicleModelItem>) =>
   api.put<VehicleModelItem>(`/directories/models/${id}`, data);

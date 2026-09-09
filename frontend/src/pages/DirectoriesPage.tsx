@@ -164,7 +164,7 @@ export default function DirectoriesPage({
         getEmployees(location, counterpartyId).catch(() => ({ data: [] as EmployeeItem[] })),
         getFleetVehicles(location, counterpartyId),
         getTrailers(location, counterpartyId),
-        getVehicleModels(),
+        getVehicleModels(location),
         getFuelSeasons().catch(() => ({ data: { winterStartMonth: 11, winterEndMonth: 3 } })),
       ]);
       setEmployees(employeesRes.data);
@@ -459,7 +459,7 @@ export default function DirectoriesPage({
     }
     try {
       if (modelEdit.id) await updateVehicleModel(modelEdit.id, modelEdit);
-      else await createVehicleModel(modelEdit);
+      else await createVehicleModel({ ...modelEdit, location });
       setModelEdit(null);
       await reload();
       setFeedback({ severity: 'success', text: 'Модель сохранена' });

@@ -3,12 +3,18 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 /**
  * Справочник моделей техники. Нормы расхода живут на модели, а не на машине:
  * одна запись «Volvo FH — 41,5/38,0» покрывает весь парк этой модели.
+ * Модели раздельны по городам (решение 2026-09-09): у ВВО и МСК свои списки
+ * и свои нормы, существующие записи закреплены за 'vvo'.
  */
 @Entity('vehicle_models')
-@Index(['brand', 'name'], { unique: true })
+@Index(['brand', 'name', 'location'], { unique: true })
 export class VehicleModel {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
+
+  @Index()
+  @Column({ type: 'varchar', length: 8, default: 'vvo' })
+  location!: 'vvo' | 'mow';
 
   @Column({ type: 'varchar', length: 120 })
   brand!: string;

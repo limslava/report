@@ -90,13 +90,15 @@ const optionalNumeric = (value: unknown): string | null => {
 
 // ─────────────────────────── Модели техники и нормы ───────────────────────────
 
-export const listVehicleModels = async (_req: Request, res: Response) => {
-  const models = await modelRepo.find({ order: { brand: 'ASC', name: 'ASC' } });
+export const listVehicleModels = async (req: Request, res: Response) => {
+  const location = parseLocation(req.query.location);
+  const models = await modelRepo.find({ where: { location }, order: { brand: 'ASC', name: 'ASC' } });
   const vehicleCounts = await vehicleRepo
     .createQueryBuilder('vehicle')
     .select('vehicle.model_id', 'modelId')
     .addSelect('COUNT(*)', 'count')
     .where('vehicle.model_id IS NOT NULL')
+    .andWhere('vehicle.location = :location', { location })
     .groupBy('vehicle.model_id')
     .getRawMany<{ modelId: string; count: string }>();
   const countByModel = new Map(vehicleCounts.map((row) => [row.modelId, Number(row.count)]));
@@ -111,7 +113,7 @@ export const saveVehicleModel = async (req: Request, res: Response) => {
 
   const model = id
     ? await modelRepo.findOne({ where: { id } })
-    : modelRepo.create();
+    : modelRepo.create({ location: parseLocation(req.body?.location) });
   if (!model) return httpError(404, 'Model not found') as never;
 
   model.brand = brand;
@@ -137,14 +139,17 @@ export const deleteVehicleModel = async (req: Request, res: Response) => {
  * регистра (чтобы 11 одинаковых машин не породили 11 моделей), иначе создаём.
  * Нормы расхода к новой модели добавляют БДД/руководители КТК в «Модели и нормы».
  */
-const resolveModelByLabel = async (label: string): Promise<VehicleModel> => {
+const resolveModelByLabel = async (label: string, location: FleetLocation): Promise<VehicleModel> => {
   const existing = await modelRepo
     .createQueryBuilder('model')
-    .where("LOWER(TRIM(model.brand || ' ' || model.name)) = LOWER(:label)", { label })
-    .orWhere('LOWER(model.brand) = LOWER(:label)', { label })
+    .where('model.location = :location', { location })
+    .andWhere(
+      "(LOWER(TRIM(model.brand || ' ' || model.name)) = LOWER(:label) OR LOWER(model.brand) = LOWER(:label))",
+      { label },
+    )
     .getOne();
   if (existing) return existing;
-  return modelRepo.save(modelRepo.create({ brand: label, name: '' }));
+  return modelRepo.save(modelRepo.create({ brand: label, name: '', location }));
 };
 
 // ─────────────────────────── Техника ───────────────────────────
@@ -189,7 +194,7 @@ export const saveVehicle = async (req: Request, res: Response) => {
   vehicle.vehicleKind = trimmed(req.body?.vehicleKind, 120);
   const modelLabel = trimmed(req.body?.modelLabel, 240);
   if (modelLabel) {
-    vehicle.modelId = (await resolveModelByLabel(modelLabel)).id;
+    vehicle.modelId = (await resolveModelByLabel(modelLabel, location)).id;
   } else {
     vehicle.modelId = typeof req.body?.modelId === 'string' && req.body.modelId ? req.body.modelId : null;
   }
@@ -638,7 +643,8 @@ export const exportDirectory = async (req: Request, res: Response) => {
       })
     );
   } else {
-    const rows = pick(await modelRepo.find({ order: { brand: 'ASC', name: 'ASC' } }));
+    const location = requireDirectoryLocation(req, req.body?.location);
+    const rows = pick(await modelRepo.find({ where: { location }, order: { brand: 'ASC', name: 'ASC' } }));
     sheetName = 'Модели и нормы';
     filename = 'Справочник_модели_и_нормы.xlsx';
     const sheet = workbook.addWorksheet(sheetName);
