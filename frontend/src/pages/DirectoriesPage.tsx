@@ -29,6 +29,7 @@ import {
   AttachmentSummary,
   DirectoryAttachmentKind,
   downloadDirectoryAttachment,
+  uploadDirectoryAttachment,
   EmployeeItem,
   bootstrapDirectories,
   EmployeePayload,
@@ -65,7 +66,7 @@ import {
   canManageFuelNormsFrontend,
   directoryLocationsForRole,
 } from '../utils/rolePermissions';
-import AttachmentsSection from '../components/directories/AttachmentsSection';
+import AttachmentsSection, { PendingDoc, fileToBase64 } from '../components/directories/AttachmentsSection';
 import '../styles/operations-preview.css';
 import '../styles/fuel.css';
 
@@ -218,8 +219,8 @@ const DRIVER_COLUMNS: DirColumn<EmployeeItem>[] = [
   { key: 'inn', label: 'ИНН', minWidth: 120, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => e.inn || '—' },
   { key: 'birthDate', label: 'Дата рождения', minWidth: 110, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => formatDateDisplay(e.birthDate) },
   ...EMPLOYEE_CARD_COLUMNS,
-  { key: 'docs', label: 'Документы', minWidth: 140, thCenter: true, tdClass: 'fuel-cell--center', noSort: true, render: (e) => <DocsCell attachments={e.attachments} kinds={['passport', 'license']} /> },
   { key: 'status', label: 'Статус', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => employeeStatusPill(e.status) },
+  { key: 'docs', label: 'Документы', minWidth: 140, thCenter: true, tdClass: 'fuel-cell--center', noSort: true, render: (e) => <DocsCell attachments={e.attachments} kinds={['passport', 'license']} /> },
 ];
 const STAFF_COLUMNS: DirColumn<EmployeeItem>[] = [
   { key: 'position', label: 'Должность', minWidth: 180, tdClass: 'fuel-cell--left', render: (e) => e.position || '—' },
@@ -229,8 +230,8 @@ const STAFF_COLUMNS: DirColumn<EmployeeItem>[] = [
   { key: 'licenseNumber', label: 'ВУ (номер)', minWidth: 120, tdClass: 'fuel-cell--center', defaultHidden: true, render: (e) => e.licenseNumber || '—' },
   { key: 'licenseIssueDate', label: 'Дата выдачи ВУ', minWidth: 110, thCenter: true, tdClass: 'fuel-cell--center', defaultHidden: true, render: (e) => formatDateDisplay(e.licenseIssueDate) },
   ...EMPLOYEE_CARD_COLUMNS,
-  { key: 'docs', label: 'Документы', minWidth: 100, thCenter: true, tdClass: 'fuel-cell--center', noSort: true, render: (e) => <DocsCell attachments={e.attachments} kinds={['passport']} /> },
   { key: 'status', label: 'Статус', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => employeeStatusPill(e.status) },
+  { key: 'docs', label: 'Документы', minWidth: 100, thCenter: true, tdClass: 'fuel-cell--center', noSort: true, render: (e) => <DocsCell attachments={e.attachments} kinds={['passport']} /> },
 ];
 const VEHICLE_COLUMNS: DirColumn<FleetVehicleItem>[] = [
   { key: 'vehicleKind', label: 'Тип ТС', minWidth: 170, tdClass: 'fuel-cell--left', render: (v) => v.vehicleKind || '—' },
@@ -241,9 +242,9 @@ const VEHICLE_COLUMNS: DirColumn<FleetVehicleItem>[] = [
   { key: 'sorIssueDate', label: 'Дата выдачи СОР', minWidth: 120, thCenter: true, tdClass: 'fuel-cell--center', defaultHidden: true, render: (v) => formatDateDisplay(v.sorIssueDate) },
   { key: 'owner', label: 'Собственник', minWidth: 160, tdClass: 'fuel-cell--left', defaultHidden: true, render: (v) => v.owner || '—' },
   { key: 'manufactureYear', label: 'Год выпуска', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (v) => v.manufactureYear || '—' },
-  { key: 'docs', label: 'Документы', minWidth: 80, thCenter: true, tdClass: 'fuel-cell--center', noSort: true, render: (v) => <DocsCell attachments={v.attachments} kinds={['sor']} /> },
   { key: 'status', label: 'Статус', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (v) => techStatusPill(v.status) },
   { key: 'scheduleUsage', label: 'В графике', minWidth: 100, thCenter: true, tdClass: 'fuel-cell--center', render: (v) => usagePill(v.scheduleUsage) },
+  { key: 'docs', label: 'Документы', minWidth: 80, thCenter: true, tdClass: 'fuel-cell--center', noSort: true, render: (v) => <DocsCell attachments={v.attachments} kinds={['sor']} /> },
 ];
 const TRAILER_COLUMNS: DirColumn<TrailerItem>[] = [
   { key: 'kind', label: 'Тип', minWidth: 130, tdClass: 'fuel-cell--left', render: (t) => trailerKindLabel(t.kind) || '—' },
@@ -251,9 +252,9 @@ const TRAILER_COLUMNS: DirColumn<TrailerItem>[] = [
   { key: 'axles', label: 'Оси', minWidth: 70, thCenter: true, tdClass: 'fuel-cell--center', render: (t) => t.axles || '—' },
   { key: 'footage', label: 'Футовость', minWidth: 100, thCenter: true, tdClass: 'fuel-cell--center', render: (t) => t.footage || '—' },
   { key: 'note', label: 'Примечание', minWidth: 200, tdClass: 'fuel-cell--left', render: (t) => t.note || '—' },
-  { key: 'docs', label: 'Документы', minWidth: 80, thCenter: true, tdClass: 'fuel-cell--center', noSort: true, render: (t) => <DocsCell attachments={t.attachments} kinds={['sor']} /> },
   { key: 'status', label: 'Статус', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (t) => techStatusPill(t.status) },
   { key: 'scheduleUsage', label: 'В графике', minWidth: 100, thCenter: true, tdClass: 'fuel-cell--center', render: (t) => usagePill(t.scheduleUsage) },
+  { key: 'docs', label: 'Документы', minWidth: 80, thCenter: true, tdClass: 'fuel-cell--center', noSort: true, render: (t) => <DocsCell attachments={t.attachments} kinds={['sor']} /> },
 ];
 const MODEL_COLUMNS: DirColumn<VehicleModelItem>[] = [
   { key: 'fuelNormWinter', label: 'Норма зима, л/100км', minWidth: 140, thCenter: true, tdClass: 'fuel-cell--center', render: (m) => m.fuelNormWinter ?? '—' },
@@ -343,6 +344,10 @@ export default function DirectoriesPage({
   const [vehicleEdit, setVehicleEdit] = useState<Partial<FleetVehicleItem> | null>(null);
   const [vehicleModelLabel, setVehicleModelLabel] = useState('');
   const [trailerEdit, setTrailerEdit] = useState<Partial<TrailerItem> | null>(null);
+  // сканы, выбранные в НОВЫХ карточках — загружаются после создания записи
+  const [employeePendingDocs, setEmployeePendingDocs] = useState<PendingDoc[]>([]);
+  const [vehiclePendingDocs, setVehiclePendingDocs] = useState<PendingDoc[]>([]);
+  const [trailerPendingDocs, setTrailerPendingDocs] = useState<PendingDoc[]>([]);
   const [modelEdit, setModelEdit] = useState<Partial<VehicleModelItem> | null>(null);
   // экспорт: режим галочек слева в таблице (решение пользователя 2026-08-19)
   const [exportMode, setExportMode] = useState(false);
@@ -392,12 +397,15 @@ export default function DirectoriesPage({
 
   useEffect(() => {
     employeeSnapshot.current = employeeEdit ? (employeeSnapshot.current ?? JSON.stringify(employeeEdit)) : null;
+    if (!employeeEdit) setEmployeePendingDocs([]);
   }, [employeeEdit === null]);
   useEffect(() => {
     vehicleSnapshot.current = vehicleEdit ? (vehicleSnapshot.current ?? JSON.stringify({ ...vehicleEdit, __label: vehicleModelLabel })) : null;
+    if (!vehicleEdit) setVehiclePendingDocs([]);
   }, [vehicleEdit === null]);
   useEffect(() => {
     trailerSnapshot.current = trailerEdit ? (trailerSnapshot.current ?? JSON.stringify(trailerEdit)) : null;
+    if (!trailerEdit) setTrailerPendingDocs([]);
   }, [trailerEdit === null]);
   useEffect(() => {
     modelSnapshot.current = modelEdit ? (modelSnapshot.current ?? JSON.stringify(modelEdit)) : null;
@@ -591,6 +599,26 @@ export default function DirectoriesPage({
     </td>
   );
 
+  /** Загрузка сканов, выбранных в новой карточке, после создания записи. */
+  const uploadPendingDocs = async (
+    entityType: 'employee' | 'vehicle' | 'trailer',
+    entityId: string,
+    pending: PendingDoc[],
+  ) => {
+    for (const item of pending) {
+      try {
+        await uploadDirectoryAttachment({
+          entityType,
+          entityId,
+          kind: item.kind,
+          file: { name: item.file.name, mimeType: item.file.type, contentBase64: await fileToBase64(item.file) },
+        });
+      } catch {
+        setFeedback({ severity: 'error', text: `Не удалось загрузить «${item.file.name}» — прикрепите в карточке` });
+      }
+    }
+  };
+
   const saveEmployeeEdit = async (): Promise<boolean> => {
     if (!employeeEdit) return true;
     if (!employeeEdit.fullName?.trim()) {
@@ -605,8 +633,12 @@ export default function DirectoriesPage({
     } as EmployeePayload;
     try {
       if (employeeEdit.id) await updateEmployee(employeeEdit.id, payload);
-      else await createEmployee(payload);
+      else {
+        const { data: created } = await createEmployee(payload);
+        if (employeePendingDocs.length) await uploadPendingDocs('employee', created.id, employeePendingDocs);
+      }
       setEmployeeEdit(null);
+      setEmployeePendingDocs([]);
       await reload();
       setFeedback({ severity: 'success', text: 'Сотрудник сохранён' });
       return true;
@@ -625,8 +657,12 @@ export default function DirectoriesPage({
     try {
       const payload = { ...vehicleEdit, location, modelLabel: vehicleModelLabel.trim(), modelId: vehicleModelLabel.trim() ? undefined : null, counterpartyId };
       if (vehicleEdit.id) await updateFleetVehicle(vehicleEdit.id, payload);
-      else await createFleetVehicle(payload);
+      else {
+        const { data: created } = await createFleetVehicle(payload);
+        if (vehiclePendingDocs.length) await uploadPendingDocs('vehicle', created.id, vehiclePendingDocs);
+      }
       setVehicleEdit(null);
+      setVehiclePendingDocs([]);
       await reload();
       setFeedback({ severity: 'success', text: 'Техника сохранена' });
       return true;
@@ -645,8 +681,12 @@ export default function DirectoriesPage({
     try {
       const payload = { ...trailerEdit, location, counterpartyId };
       if (trailerEdit.id) await updateTrailer(trailerEdit.id, payload);
-      else await createTrailer(payload);
+      else {
+        const { data: created } = await createTrailer(payload);
+        if (trailerPendingDocs.length) await uploadPendingDocs('trailer', created.id, trailerPendingDocs);
+      }
       setTrailerEdit(null);
+      setTrailerPendingDocs([]);
       await reload();
       setFeedback({ severity: 'success', text: 'Прицеп сохранён' });
       return true;
@@ -1012,7 +1052,7 @@ export default function DirectoriesPage({
                 ))}
                 {staff.length === 0 && (
                   <tr>
-                    <td colSpan={visibleColumns('staff').length + 3} className="fuel-empty">Сотрудников пока нет — добавьте (для доверенностей не на водителей)</td>
+                    <td colSpan={visibleColumns('staff').length + 3} className="fuel-empty">Сотрудников пока нет — добавьте. Здесь ведутся все, кроме водителей: оперативники, диспетчеры, механики и т.д.</td>
                   </tr>
                 )}
               </tbody>
@@ -1234,6 +1274,8 @@ export default function DirectoriesPage({
           <AttachmentsSection
             entityType="employee"
             entityId={employeeEdit?.id}
+            pendingFiles={employeePendingDocs}
+            onPendingChange={setEmployeePendingDocs}
             kinds={
               (employeeEdit?.position ?? '').trim().toLowerCase() === 'водитель'
                 ? [{ kind: 'passport', label: 'Паспорт' }, { kind: 'license', label: 'В/У' }]
@@ -1308,6 +1350,8 @@ export default function DirectoriesPage({
           <AttachmentsSection
             entityType="vehicle"
             entityId={vehicleEdit?.id}
+            pendingFiles={vehiclePendingDocs}
+            onPendingChange={setVehiclePendingDocs}
             kinds={[{ kind: 'sor', label: 'СОР' }]}
             canEdit={canEdit}
             onError={(text) => setFeedback({ severity: 'error', text })}
@@ -1363,6 +1407,8 @@ export default function DirectoriesPage({
           <AttachmentsSection
             entityType="trailer"
             entityId={trailerEdit?.id}
+            pendingFiles={trailerPendingDocs}
+            onPendingChange={setTrailerPendingDocs}
             kinds={[{ kind: 'sor', label: 'СОР' }]}
             canEdit={canEdit}
             onError={(text) => setFeedback({ severity: 'error', text })}
