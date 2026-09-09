@@ -17,7 +17,6 @@ export function canViewTotalsInPlans(role?: string | null): boolean {
     && role !== 'head_hr'
     && role !== 'hr_specialist'
     && role !== 'garage_head_vvo'
-    && role !== 'warehouse_manager_vvo'
     && role !== 'bdd_specialist_vvo'
     && role !== 'bdd_specialist_mow';
 }
