@@ -38,6 +38,7 @@ import {
   updateWarehousePhotoQueueItem,
 } from '../utils/warehouse-photo-queue';
 import { logUploadEvent } from '../utils/warehouse-upload-log';
+import { isCoarsePointer } from '../utils/device';
 
 const formatOperationDateTime = (value: string) => new Intl.DateTimeFormat('ru-RU', {
   timeZone: 'Asia/Vladivostok',
@@ -211,7 +212,7 @@ export default function WarehouseOnSitePage() {
         )}
 
         <TextField
-          autoFocus
+          autoFocus={!isCoarsePointer()}
           placeholder="Складской номер, VIN, госномер"
           value={search}
           onChange={(event) => setSearch(event.target.value)}

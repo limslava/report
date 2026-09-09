@@ -135,6 +135,21 @@ export default function WarehouseDamageScheme({ value, vehicleType, onChange }: 
     setSelectedMarkId(mark.id);
   };
 
+  // Тап отличаем от свайпа: схема на телефоне занимает почти весь экран,
+  // и без этой проверки каждый скролл-жест по ней на отпускании пальца
+  // ставил случайную отметку («скролл не работает», замечание 09.09).
+  const touchStartRef = useRef<{ x: number; y: number; at: number } | null>(null);
+  const suppressClickRef = useRef(false);
+  const TAP_MAX_MOVE_PX = 12;
+  const TAP_MAX_DURATION_MS = 600;
+
+  const handleTouchStart = (event: TouchEvent<HTMLElement>) => {
+    const touch = event.touches[0];
+    touchStartRef.current = touch
+      ? { x: touch.clientX, y: touch.clientY, at: Date.now() }
+      : null;
+  };
+
   const handlePointer = (
     event: MouseEvent<HTMLElement> | TouchEvent<HTMLElement>,
   ) => {
@@ -142,9 +157,22 @@ export default function WarehouseDamageScheme({ value, vehicleType, onChange }: 
     const target = event.currentTarget;
     if ('touches' in event) {
       const touch = event.changedTouches[0];
-      if (touch) addMark(touch.clientX, touch.clientY, target);
+      const start = touchStartRef.current;
+      touchStartRef.current = null;
+      // после touchend браузер синтезирует click — гасим его, чтобы не было
+      // второй отметки (или отметки после отфильтрованного свайпа)
+      suppressClickRef.current = true;
+      window.setTimeout(() => { suppressClickRef.current = false; }, 400);
+      if (!touch) return;
+      if (start) {
+        const moved = Math.hypot(touch.clientX - start.x, touch.clientY - start.y);
+        const held = Date.now() - start.at;
+        if (moved > TAP_MAX_MOVE_PX || held > TAP_MAX_DURATION_MS) return; // это был скролл, не тап
+      }
+      addMark(touch.clientX, touch.clientY, target);
       return;
     }
+    if (suppressClickRef.current) return;
     addMark(event.clientX, event.clientY, target);
   };
 
@@ -229,6 +257,7 @@ export default function WarehouseDamageScheme({ value, vehicleType, onChange }: 
       <Box sx={{ overflowX: 'auto', pb: 0.5, WebkitOverflowScrolling: 'touch' }}>
         <Box
           onClick={handlePointer}
+          onTouchStart={handleTouchStart}
           onTouchEnd={handlePointer}
           sx={{
             position: 'relative',

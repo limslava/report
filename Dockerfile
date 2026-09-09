@@ -30,6 +30,12 @@ COPY --from=build /app/frontend/dist ./frontend/dist
 ENV NODE_ENV=production
 ENV LIBREOFFICE_BIN=libreoffice
 ENV UPLOAD_PATH=/data/uploads
+# Фото склада ТС ОБЯЗАНЫ жить на персистентном томе (/data): без этих
+# переменных они писались в каталог контейнера и умирали при каждом перекате
+# (баг стейджа 09.09 — «битые фотографии» после деплоя).
+ENV WAREHOUSE_UPLOAD_PATH=/data/uploads/warehouse
+ENV WAREHOUSE_TUS_TEMP_PATH=/data/uploads/warehouse-tus-temp
+ENV WAREHOUSE_PHOTO_BACKUP_PATH=/data/warehouse-photo-backups
 
 EXPOSE 3000
 

@@ -1,5 +1,6 @@
 import {
   AddPhotoAlternate,
+  BrokenImage,
   CameraAlt,
   Close,
   Delete,
@@ -50,6 +51,7 @@ interface WarehousePhotoDialogProps {
 
 interface PhotoPreview extends WarehousePhoto {
   url: string;
+  thumbFailed?: boolean;
 }
 
 const formatBytes = (bytes: number): string =>
@@ -135,8 +137,12 @@ export default function WarehousePhotoDialog({
               item.id === photo.id ? { ...item, url } : item
             )));
           } catch {
-            // миниатюра не доехала — карточка остаётся с именем файла,
-            // фото можно открыть на просмотр отдельно
+            // Миниатюра не доехала (сеть или файл утерян на сервере) —
+            // карточка честно помечается, а не крутит спиннер вечно.
+            logUploadEvent('dialog:thumb:failed', { photoId: photo.id });
+            setPhotos((current) => current.map((item) => (
+              item.id === photo.id ? { ...item, thumbFailed: true } : item
+            )));
           }
         }
       };
@@ -399,15 +405,26 @@ export default function WarehousePhotoDialog({
                       onClick={() => setSelectedPhoto(photo)}
                       sx={{
                         display: 'flex',
+                        flexDirection: 'column',
+                        gap: 0.5,
                         alignItems: 'center',
                         justifyContent: 'center',
                         width: '100%',
                         aspectRatio: '4 / 3',
                         color: 'text.disabled',
                         cursor: 'zoom-in',
+                        px: 1,
+                        textAlign: 'center',
                       }}
                     >
-                      <CircularProgress size={22} />
+                      {photo.thumbFailed ? (
+                        <>
+                          <BrokenImage fontSize="medium" />
+                          <Typography variant="caption">Файл не загрузился</Typography>
+                        </>
+                      ) : (
+                        <CircularProgress size={22} />
+                      )}
                     </Box>
                   )}
                   <Box sx={{ px: 1, py: 0.75 }}>

@@ -67,6 +67,7 @@ import {
 import { createWarehousePhotoThumbnail, prepareWarehousePhoto } from '../utils/warehouse-photo-processing';
 import { uploadWarehousePhotoViaTus } from '../utils/warehouse-tus-upload';
 import { logUploadEvent } from '../utils/warehouse-upload-log';
+import { isCoarsePointer } from '../utils/device';
 
 const STEPS = ['Выбор ТС', 'Проверка', 'Фото выдачи', 'Подтверждение'];
 const ISSUE_QUEUE_PREFIX = 'draft:warehouse-issue:';
@@ -806,7 +807,7 @@ export default function WarehouseIssuePage() {
             <Stack spacing={2}>
               <Typography variant="h5">Найдите ТС на стоянке</Typography>
               <TextField
-                autoFocus
+                autoFocus={!isCoarsePointer()}
                 placeholder="Складской номер, VIN, госномер, марка или контрагент"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
