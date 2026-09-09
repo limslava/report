@@ -131,15 +131,20 @@ export default function WarehousePhotoDialog({
           try {
             const imageResponse = await downloadWarehouseVehiclePhoto(vehicle.id, photo.id, 'thumb');
             if (loadGenerationRef.current !== generation) return;
-            const url = URL.createObjectURL(imageResponse.data);
+            const blob = imageResponse.data;
+            logUploadEvent('dialog:thumb:ok', { photoId: photo.id, size: blob.size, type: blob.type });
+            const url = URL.createObjectURL(blob);
             objectUrls.current.push(url);
             setPhotos((current) => current.map((item) => (
               item.id === photo.id ? { ...item, url } : item
             )));
-          } catch {
+          } catch (thumbError) {
             // Миниатюра не доехала (сеть или файл утерян на сервере) —
             // карточка честно помечается, а не крутит спиннер вечно.
-            logUploadEvent('dialog:thumb:failed', { photoId: photo.id });
+            logUploadEvent('dialog:thumb:failed', {
+              photoId: photo.id,
+              status: (thumbError as { response?: { status?: number } })?.response?.status,
+            });
             setPhotos((current) => current.map((item) => (
               item.id === photo.id ? { ...item, thumbFailed: true } : item
             )));
@@ -390,7 +395,15 @@ export default function WarehousePhotoDialog({
                       component="img"
                       src={photo.url}
                       alt={`Фото ${index + 1}`}
-                      loading="lazy"
+                      // без loading="lazy": iOS Safari не грузит lazy-картинки
+                      // в скролл-области диалога, миниатюры оставались пустыми;
+                      // ленивость и так обеспечивает наш загрузчик (по 2)
+                      onError={() => {
+                        logUploadEvent('dialog:thumb:img-decode-error', { photoId: photo.id });
+                        setPhotos((current) => current.map((item) => (
+                          item.id === photo.id ? { ...item, url: '', thumbFailed: true } : item
+                        )));
+                      }}
                       onClick={() => setSelectedPhoto(photo)}
                       sx={{
                         display: 'block',
