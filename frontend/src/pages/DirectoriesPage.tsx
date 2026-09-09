@@ -21,7 +21,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { ArrowBack, ContentCopy, DragIndicator, KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
+import { ArrowBack, ContentCopy, DragIndicator, KeyboardArrowDown, KeyboardArrowUp, Settings } from '@mui/icons-material';
 import { useAuthStore } from '../store/auth-store';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import {
@@ -686,9 +686,11 @@ export default function DirectoriesPage({
               {!isCounterpartyMode && <Tab value="models" label={`Модели и нормы (${models.length})`} />}
             </Tabs>
             <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
-              <button type="button" className="ops-btn ghost" onClick={(event) => setColumnsAnchor(event.currentTarget)}>
-                Колонки
-              </button>
+              <Tooltip title="Настроить колонки">
+                <IconButton size="small" onClick={(event) => setColumnsAnchor(event.currentTarget)}>
+                  <Settings sx={{ fontSize: 20, color: '#6b7280' }} />
+                </IconButton>
+              </Tooltip>
               {!exportMode && !isCounterpartyMode && (
                 <button
                   type="button"
