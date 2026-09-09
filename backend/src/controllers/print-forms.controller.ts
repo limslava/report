@@ -223,7 +223,7 @@ async function generateByTemplate(
         buffer,
         filename: `Согласование водителей ВМПП (${employees.length}).docx`,
         formNumber: null,
-        summary: employees.map((e) => e.fullName).join(', ').slice(0, 300),
+        summary: employees.map((e) => e.fullName).join(', ').slice(0, 5000),
       };
     }
     const pairsRaw = Array.isArray(params.pairs) ? params.pairs : [];
@@ -242,7 +242,7 @@ async function generateByTemplate(
       summary: pairs
         .map((pair) => `${pair.employee.fullName}${pair.vehicle ? ` — ${pair.vehicle.plate}` : ''}`)
         .join('; ')
-        .slice(0, 300),
+        .slice(0, 5000),
     };
   }
 
@@ -266,10 +266,16 @@ async function generateByTemplate(
   sheet.getRow(1).font = { bold: true };
   sheet.getRow(1).alignment = { horizontal: 'center' };
   sheet.getRow(2).font = { bold: true };
+  const sorWithDate = (vehicle: (typeof vehicles)[number]): string => {
+    if (!vehicle.sor) return '';
+    if (!vehicle.sorIssueDate) return vehicle.sor;
+    const [year, month, day] = vehicle.sorIssueDate.slice(0, 10).split('-');
+    return day && month && year ? `${vehicle.sor} от ${day}.${month}.${year}` : vehicle.sor;
+  };
   vehicles.forEach((vehicle) =>
     sheet.addRow({
       model: vehicle.model ? `${vehicle.model.brand} ${vehicle.model.name}`.trim() : '',
-      sor: vehicle.sor,
+      sor: sorWithDate(vehicle),
       plate: vehicle.plate,
       vin: vehicle.vin,
       year: vehicle.manufactureYear,
@@ -280,7 +286,7 @@ async function generateByTemplate(
     buffer,
     filename: `Форма перевозчику ТС (${vehicles.length}).xlsx`,
     formNumber: null,
-    summary: `ТС (${vehicles.length}): ${vehicles.map((v) => v.plate).join(', ')}`.slice(0, 300),
+    summary: `ТС (${vehicles.length}): ${vehicles.map((v) => v.plate).join(', ')}`.slice(0, 5000),
   };
 }
 

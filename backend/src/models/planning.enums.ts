@@ -37,7 +37,8 @@ export enum PlanningRole {
   MANAGER_AUTO = 'manager_auto',
   MANAGER_RAIL = 'manager_rail',
   MANAGER_EXTRA = 'manager_extra',
-  MANAGER_TO = 'manager_to',
+  /** сегмент «ТО авто» ведёт заведующий складом (консолидация ролей 2026-09-10) */
+  WAREHOUSE_MANAGER_VVO = 'warehouse_manager_vvo',
 }
 
 export const SEGMENT_MANAGER_ROLE: Record<PlanningSegmentCode, PlanningRole> = {
@@ -46,5 +47,5 @@ export const SEGMENT_MANAGER_ROLE: Record<PlanningSegmentCode, PlanningRole> = {
   [PlanningSegmentCode.AUTO]: PlanningRole.MANAGER_AUTO,
   [PlanningSegmentCode.RAIL]: PlanningRole.MANAGER_RAIL,
   [PlanningSegmentCode.EXTRA]: PlanningRole.MANAGER_EXTRA,
-  [PlanningSegmentCode.TO]: PlanningRole.MANAGER_TO,
+  [PlanningSegmentCode.TO]: PlanningRole.WAREHOUSE_MANAGER_VVO,
 };

@@ -49,7 +49,8 @@ export function createApp() {
     credentials: true,
   }));
   app.use(compression());
-  app.use(express.json({ limit: '10mb' }));
+  // 50mb — файлы загружаются как base64 в JSON (сканы документов, до 15 МБ файл)
+  app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true }));
   app.use('/api', apiRateLimiter);
 

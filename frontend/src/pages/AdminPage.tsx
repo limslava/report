@@ -40,6 +40,7 @@ import {
   reassignAndDeleteUserByAdmin,
 } from '../services/api';
 import useNotesUnreadStore from '../store/notes-unread-store';
+import { ROLE_REGION_LABELS, RoleRegion, roleCatalogEntry, roleDepts, roleRegions, rolesFor } from '../constants/roleCatalog';
 
 const AdminPage = () => {
   const wsConnected = useNotesUnreadStore((state) => state.wsConnected);
@@ -76,6 +77,9 @@ const AdminPage = () => {
     fullName: '',
     role: '',
   });
+  // каскад выбора роли: регион → отдел → роль (раскладка в constants/roleCatalog.ts)
+  const [roleRegion, setRoleRegion] = useState<RoleRegion | ''>('');
+  const [roleDept, setRoleDept] = useState('');
 
   useEffect(() => {
     const loadData = async () => {
@@ -176,11 +180,9 @@ const AdminPage = () => {
     head_hr: 'Руководитель отдела кадров',
     hr_specialist: 'Специалист отдела кадров',
     garage_head_vvo: 'Начальник гаража Владивосток',
-    garage_head: 'Начальник гаража Владивосток',
     manager_auto: 'Менеджер отправки авто',
     manager_rail: 'Менеджер ЖД',
     manager_extra: 'Менеджер доп.услуг',
-    manager_to: 'Менеджер ТО авто',
     warehouse_manager_vvo: 'Заведующий складом Владивосток',
     bdd_specialist_vvo: 'Специалист по БДД Владивосток',
     bdd_specialist_mow: 'Специалист по БДД Москва',
@@ -206,28 +208,6 @@ const AdminPage = () => {
     { value: 'USER_DELETED', label: 'USER_DELETED' },
   ];
 
-  const roles = [
-    { value: 'manager_ktk_vvo', label: 'Менеджер КТК Владивосток' },
-    { value: 'head_ktk_vvo', label: 'Руководитель КТК Владивосток' },
-    { value: 'manager_ktk_mow', label: 'Менеджер КТК Москва' },
-    { value: 'head_ktk_mow', label: 'Руководитель КТК Москва' },
-    { value: 'head_hr', label: 'Руководитель отдела кадров' },
-    { value: 'hr_specialist', label: 'Специалист отдела кадров' },
-    { value: 'garage_head_vvo', label: 'Начальник гаража Владивосток' },
-    { value: 'manager_auto', label: 'Менеджер отправки авто' },
-    { value: 'manager_rail', label: 'Менеджер ЖД' },
-    { value: 'manager_extra', label: 'Менеджер доп.услуг' },
-    { value: 'manager_to', label: 'Менеджер ТО авто' },
-    { value: 'warehouse_manager_vvo', label: 'Заведующий складом Владивосток' },
-    { value: 'bdd_specialist_vvo', label: 'Специалист по БДД Владивосток' },
-    { value: 'bdd_specialist_mow', label: 'Специалист по БДД Москва' },
-    { value: 'manager_sales', label: 'Менеджер по продажам' },
-    { value: 'head_sales', label: 'Руководитель отдела продаж' },
-    { value: 'security', label: 'Руководитель СБ' },
-    { value: 'director', label: 'Директор' },
-    { value: 'admin', label: 'Администратор' },
-    { value: 'financer', label: 'Финансист' },
-  ];
 
   const userNameById = users.reduce<Record<string, string>>((acc, user) => {
     acc[user.id] = user.fullName || user.email || user.id;
@@ -310,12 +290,17 @@ const AdminPage = () => {
         fullName: user.fullName,
         role: user.role,
       });
+      const entry = roleCatalogEntry(user.role);
+      setRoleRegion(entry?.region ?? '');
+      setRoleDept(entry?.dept ?? '');
     } else {
       setFormData({
         email: '',
         fullName: '',
         role: '',
       });
+      setRoleRegion('');
+      setRoleDept('');
     }
     setOpenDialog(true);
   };
@@ -702,17 +687,53 @@ const AdminPage = () => {
               fullWidth
             />
             <FormControl fullWidth>
+              <InputLabel>Регион</InputLabel>
+              <Select
+                label="Регион"
+                value={roleRegion}
+                onChange={(e) => {
+                  setRoleRegion(e.target.value as RoleRegion);
+                  setRoleDept('');
+                  setFormData((prev) => ({ ...prev, role: '' }));
+                }}
+              >
+                {roleRegions().map((region) => (
+                  <MenuItem key={region} value={region}>{ROLE_REGION_LABELS[region]}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth disabled={!roleRegion}>
+              <InputLabel>Отдел</InputLabel>
+              <Select
+                label="Отдел"
+                value={roleDept}
+                onChange={(e) => {
+                  setRoleDept(e.target.value);
+                  setFormData((prev) => ({ ...prev, role: '' }));
+                }}
+              >
+                {(roleRegion ? roleDepts(roleRegion) : []).map((dept) => (
+                  <MenuItem key={dept} value={dept}>{dept}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth disabled={!roleRegion || !roleDept}>
               <InputLabel>Роль</InputLabel>
               <Select
                 label="Роль"
                 value={formData.role}
                 onChange={(e) => setFormData({ ...formData, role: e.target.value })}
               >
-                {roles.map((role) => (
+                {(roleRegion && roleDept ? rolesFor(roleRegion, roleDept) : []).map((role) => (
                   <MenuItem key={role.value} value={role.value}>{role.label}</MenuItem>
                 ))}
               </Select>
             </FormControl>
+            {formData.role && roleCatalogEntry(formData.role) && (
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                {roleCatalogEntry(formData.role)!.desc}
+              </Typography>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>

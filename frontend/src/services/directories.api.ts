@@ -4,6 +4,7 @@ export type FleetLocation = 'vvo' | 'mow';
 
 export type VehicleModelItem = {
   id: string;
+  location?: FleetLocation;
   brand: string;
   name: string;
   fuelNormWinter: string | null;
@@ -23,11 +24,14 @@ export type FleetVehicleItem = {
   color: string;
   vin: string;
   sor: string;
+  sorIssueDate: string | null;
+  owner: string;
   manufactureYear: string;
   status: 'active' | 'repair' | 'archived';
   note: string;
   /** занятость в текущем графике (только чтение, считает бэкенд) */
   scheduleUsage?: ScheduleUsage | null;
+  attachments?: AttachmentSummary[];
 };
 
 /** При сохранении техники модель передаётся текстом — бэкенд найдёт существующую или создаст новую. */
@@ -44,7 +48,11 @@ export type TrailerItem = {
   status: 'active' | 'repair' | 'archived';
   note: string;
   scheduleUsage?: ScheduleUsage | null;
+  attachments?: AttachmentSummary[];
 };
+
+/** Сводка сканов записи для колонки «Документы» в таблицах. */
+export type AttachmentSummary = { id: string; kind: DirectoryAttachmentKind; originalName: string };
 
 export type EmployeeItem = {
   id: string;
@@ -64,6 +72,7 @@ export type EmployeeItem = {
   licenseNumber: string;
   licenseIssueDate: string | null;
   note: string;
+  attachments?: AttachmentSummary[];
 };
 
 export type EmployeePayload = Partial<Omit<EmployeeItem, 'id'>> & {
@@ -72,8 +81,9 @@ export type EmployeePayload = Partial<Omit<EmployeeItem, 'id'>> & {
   counterpartyId?: string;
 };
 
-// Модели и нормы
-export const getVehicleModels = () => api.get<VehicleModelItem[]>('/directories/models');
+// Модели и нормы (раздельны по городам)
+export const getVehicleModels = (location: FleetLocation) =>
+  api.get<VehicleModelItem[]>('/directories/models', { params: { location } });
 export const createVehicleModel = (data: Partial<VehicleModelItem>) => api.post<VehicleModelItem>('/directories/models', data);
 export const updateVehicleModel = (id: string, data: Partial<VehicleModelItem>) =>
   api.put<VehicleModelItem>(`/directories/models/${id}`, data);
@@ -188,3 +198,28 @@ export const downloadFuelExcel = (location: FleetLocation, month: string) =>
   api.get('/fuel/export', { params: { location, month }, responseType: 'blob' });
 export const downloadFuelYearExcel = (location: FleetLocation, year: number) =>
   api.get('/fuel/export-year', { params: { location, year }, responseType: 'blob' });
+
+// ─── Сканы документов (паспорт/ВУ сотрудника, СОР техники и прицепа) ───
+export type DirectoryAttachmentEntityType = 'employee' | 'vehicle' | 'trailer';
+export type DirectoryAttachmentKind = 'passport' | 'license' | 'sor';
+export type DirectoryAttachmentItem = {
+  id: string;
+  entityType: DirectoryAttachmentEntityType;
+  entityId: string;
+  kind: DirectoryAttachmentKind;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+};
+export const getDirectoryAttachments = (entityType: DirectoryAttachmentEntityType, entityId: string) =>
+  api.get<DirectoryAttachmentItem[]>('/directories/attachments', { params: { entityType, entityId } });
+export const uploadDirectoryAttachment = (data: {
+  entityType: DirectoryAttachmentEntityType;
+  entityId: string;
+  kind: DirectoryAttachmentKind;
+  file: { name: string; mimeType: string; contentBase64: string };
+}) => api.post<DirectoryAttachmentItem>('/directories/attachments', data);
+export const downloadDirectoryAttachment = (id: string) =>
+  api.get(`/directories/attachments/${id}/download`, { responseType: 'blob' });
+export const deleteDirectoryAttachment = (id: string) => api.delete(`/directories/attachments/${id}`);

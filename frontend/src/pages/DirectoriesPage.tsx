@@ -11,8 +11,10 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  Menu,
   MenuItem,
   Paper,
+  Popover,
   Snackbar,
   Tab,
   Tabs,
@@ -20,10 +22,14 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { ArrowBack, ContentCopy } from '@mui/icons-material';
+import { ArrowBack, ContentCopy, DragIndicator, KeyboardArrowDown, KeyboardArrowUp, Settings } from '@mui/icons-material';
 import { useAuthStore } from '../store/auth-store';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../store/unsavedChanges';
 import {
+  AttachmentSummary,
+  DirectoryAttachmentKind,
+  downloadDirectoryAttachment,
+  uploadDirectoryAttachment,
   EmployeeItem,
   bootstrapDirectories,
   EmployeePayload,
@@ -53,12 +59,14 @@ import {
   updateVehicleModel,
 } from '../services/directories.api';
 import { TableSortState, cycleSort, loadSortState, saveSortState, sortIndicator, sortRows } from '../utils/tableSort';
+import { ColumnPrefs, applyColumnPrefs, isHidden, moveColumnTo, orderedKeys, toggleHidden } from '../utils/tableColumns';
 import {
   canDeleteDirectoryEntryFrontend,
   canEditDirectoriesFrontend,
   canManageFuelNormsFrontend,
   directoryLocationsForRole,
 } from '../utils/rolePermissions';
+import AttachmentsSection, { PendingDoc, fileToBase64 } from '../components/directories/AttachmentsSection';
 import '../styles/operations-preview.css';
 import '../styles/fuel.css';
 
@@ -96,6 +104,171 @@ const errorText = (error: unknown): string => {
   return anyError?.response?.data?.message || anyError?.message || 'Не удалось выполнить операцию';
 };
 
+const saveBlobFile = (data: Blob, filename: string) => {
+  const url = URL.createObjectURL(data);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
+
+const DOC_KIND_LABELS: Record<string, string> = { passport: 'Паспорт', license: 'В/У', sor: 'СОР' };
+
+/**
+ * Ячейка «Документы»: чип на каждый вид скана — синий (клик = скачать,
+ * несколько файлов = меню), серый — не загружен.
+ */
+function DocsCell({ attachments, kinds }: { attachments?: AttachmentSummary[]; kinds: DirectoryAttachmentKind[] }) {
+  const [menu, setMenu] = useState<{ anchor: HTMLElement; files: AttachmentSummary[] } | null>(null);
+  const download = async (file: AttachmentSummary) => {
+    try {
+      const response = await downloadDirectoryAttachment(file.id);
+      saveBlobFile(response.data as Blob, file.originalName);
+    } catch {
+      window.alert('Не удалось скачать файл');
+    }
+  };
+  return (
+    <span onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
+      {kinds.map((kind) => {
+        const files = (attachments ?? []).filter((file) => file.kind === kind);
+        const label = DOC_KIND_LABELS[kind] ?? kind;
+        if (!files.length) {
+          return (
+            <span key={kind} className="dir-doc-chip dir-doc-chip--off" title="Скан не загружен — прикрепите в карточке">
+              {label}
+            </span>
+          );
+        }
+        return (
+          <span
+            key={kind}
+            className="dir-doc-chip"
+            title={`Скачать: ${files.map((file) => file.originalName).join(', ')}`}
+            onClick={(event) => {
+              if (files.length === 1) void download(files[0]);
+              else setMenu({ anchor: event.currentTarget as HTMLElement, files });
+            }}
+          >
+            {label}
+            {files.length > 1 ? ` (${files.length})` : ''}
+          </span>
+        );
+      })}
+      <Menu open={Boolean(menu)} anchorEl={menu?.anchor ?? null} onClose={() => setMenu(null)}>
+        {(menu?.files ?? []).map((file) => (
+          <MenuItem
+            key={file.id}
+            sx={{ fontSize: 13 }}
+            onClick={() => {
+              setMenu(null);
+              void download(file);
+            }}
+          >
+            {file.originalName}
+          </MenuItem>
+        ))}
+      </Menu>
+    </span>
+  );
+}
+
+const employeeStatusPill = (status: string) => (
+  <span className={`dir-status ${status === 'active' ? 'dir-status--ok' : 'dir-status--off'}`}>
+    {status === 'active' ? 'работает' : 'уволен'}
+  </span>
+);
+const techStatusPill = (status: string) => (
+  <span className={`dir-status ${status === 'active' ? 'dir-status--ok' : status === 'repair' ? 'dir-status--warn' : 'dir-status--off'}`}>
+    {status === 'active' ? 'в работе' : status === 'repair' ? 'ремонт' : 'архив'}
+  </span>
+);
+
+/**
+ * Настраиваемые колонки таблиц (пользователь выбирает видимость и порядок,
+ * кнопка «Колонки»). Первая колонка (ФИО/номер) и колонка действий — фиксированы.
+ * key совпадает с полем сортировки. defaultHidden — поля карточек, по умолчанию
+ * в таблице не показываются, но пользователь может их включить.
+ */
+type DirColumn<T> = {
+  key: string;
+  label: string;
+  minWidth: number;
+  thCenter?: boolean;
+  tdClass: string;
+  defaultHidden?: boolean;
+  /** колонка без сортировки (например «Документы») */
+  noSort?: boolean;
+  render: (row: T) => React.ReactNode;
+};
+/** Поля карточки сотрудника, доступные как скрытые колонки (общие для водителей и сотрудников). */
+const EMPLOYEE_CARD_COLUMNS: DirColumn<EmployeeItem>[] = [
+  { key: 'passportNumber', label: 'Паспорт (серия и номер)', minWidth: 150, tdClass: 'fuel-cell--center', defaultHidden: true, render: (e) => e.passportNumber || '—' },
+  { key: 'passportIssueDate', label: 'Дата выдачи паспорта', minWidth: 120, thCenter: true, tdClass: 'fuel-cell--center', defaultHidden: true, render: (e) => formatDateDisplay(e.passportIssueDate) },
+  { key: 'passportIssuedBy', label: 'Кем выдан паспорт', minWidth: 220, tdClass: 'fuel-cell--left', defaultHidden: true, render: (e) => e.passportIssuedBy || '—' },
+  { key: 'birthPlace', label: 'Место рождения', minWidth: 180, tdClass: 'fuel-cell--left', defaultHidden: true, render: (e) => e.birthPlace || '—' },
+  { key: 'registrationAddress', label: 'Адрес регистрации', minWidth: 240, tdClass: 'fuel-cell--left', defaultHidden: true, render: (e) => e.registrationAddress || '—' },
+];
+const DRIVER_COLUMNS: DirColumn<EmployeeItem>[] = [
+  { key: 'phone', label: 'Телефон', minWidth: 130, tdClass: 'fuel-cell--center', render: (e) => e.phone || '—' },
+  { key: 'licenseNumber', label: 'ВУ (номер)', minWidth: 120, tdClass: 'fuel-cell--center', render: (e) => e.licenseNumber || '—' },
+  { key: 'licenseIssueDate', label: 'Дата выдачи ВУ', minWidth: 110, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => formatDateDisplay(e.licenseIssueDate) },
+  { key: 'inn', label: 'ИНН', minWidth: 120, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => e.inn || '—' },
+  { key: 'birthDate', label: 'Дата рождения', minWidth: 110, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => formatDateDisplay(e.birthDate) },
+  ...EMPLOYEE_CARD_COLUMNS,
+  { key: 'status', label: 'Статус', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => employeeStatusPill(e.status) },
+  { key: 'docs', label: 'Документы', minWidth: 140, thCenter: true, tdClass: 'fuel-cell--center', noSort: true, render: (e) => <DocsCell attachments={e.attachments} kinds={['passport', 'license']} /> },
+];
+const STAFF_COLUMNS: DirColumn<EmployeeItem>[] = [
+  { key: 'position', label: 'Должность', minWidth: 180, tdClass: 'fuel-cell--left', render: (e) => e.position || '—' },
+  { key: 'phone', label: 'Телефон', minWidth: 130, tdClass: 'fuel-cell--center', render: (e) => e.phone || '—' },
+  { key: 'inn', label: 'ИНН', minWidth: 120, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => e.inn || '—' },
+  { key: 'birthDate', label: 'Дата рождения', minWidth: 110, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => formatDateDisplay(e.birthDate) },
+  { key: 'licenseNumber', label: 'ВУ (номер)', minWidth: 120, tdClass: 'fuel-cell--center', defaultHidden: true, render: (e) => e.licenseNumber || '—' },
+  { key: 'licenseIssueDate', label: 'Дата выдачи ВУ', minWidth: 110, thCenter: true, tdClass: 'fuel-cell--center', defaultHidden: true, render: (e) => formatDateDisplay(e.licenseIssueDate) },
+  ...EMPLOYEE_CARD_COLUMNS,
+  { key: 'status', label: 'Статус', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => employeeStatusPill(e.status) },
+  { key: 'docs', label: 'Документы', minWidth: 100, thCenter: true, tdClass: 'fuel-cell--center', noSort: true, render: (e) => <DocsCell attachments={e.attachments} kinds={['passport']} /> },
+];
+const VEHICLE_COLUMNS: DirColumn<FleetVehicleItem>[] = [
+  { key: 'vehicleKind', label: 'Тип ТС', minWidth: 170, tdClass: 'fuel-cell--left', render: (v) => v.vehicleKind || '—' },
+  { key: 'modelLabel', label: 'Модель', minWidth: 150, tdClass: 'fuel-cell--left', render: (v) => (v.model ? `${v.model.brand} ${v.model.name}`.trim() : '—') },
+  { key: 'color', label: 'Цвет', minWidth: 90, tdClass: 'fuel-cell--center', render: (v) => v.color || '—' },
+  { key: 'vin', label: 'VIN', minWidth: 140, tdClass: 'fuel-cell--left', render: (v) => v.vin || '—' },
+  { key: 'sor', label: 'СОР', minWidth: 120, thCenter: true, tdClass: 'fuel-cell--center', render: (v) => v.sor || '—' },
+  { key: 'sorIssueDate', label: 'Дата выдачи СОР', minWidth: 120, thCenter: true, tdClass: 'fuel-cell--center', defaultHidden: true, render: (v) => formatDateDisplay(v.sorIssueDate) },
+  { key: 'owner', label: 'Собственник', minWidth: 160, tdClass: 'fuel-cell--left', defaultHidden: true, render: (v) => v.owner || '—' },
+  { key: 'manufactureYear', label: 'Год выпуска', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (v) => v.manufactureYear || '—' },
+  { key: 'status', label: 'Статус', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (v) => techStatusPill(v.status) },
+  { key: 'scheduleUsage', label: 'В графике', minWidth: 100, thCenter: true, tdClass: 'fuel-cell--center', render: (v) => usagePill(v.scheduleUsage) },
+  { key: 'docs', label: 'Документы', minWidth: 80, thCenter: true, tdClass: 'fuel-cell--center', noSort: true, render: (v) => <DocsCell attachments={v.attachments} kinds={['sor']} /> },
+];
+const TRAILER_COLUMNS: DirColumn<TrailerItem>[] = [
+  { key: 'kind', label: 'Тип', minWidth: 130, tdClass: 'fuel-cell--left', render: (t) => trailerKindLabel(t.kind) || '—' },
+  { key: 'brand', label: 'Марка', minWidth: 130, tdClass: 'fuel-cell--left', render: (t) => t.brand || '—' },
+  { key: 'axles', label: 'Оси', minWidth: 70, thCenter: true, tdClass: 'fuel-cell--center', render: (t) => t.axles || '—' },
+  { key: 'footage', label: 'Футовость', minWidth: 100, thCenter: true, tdClass: 'fuel-cell--center', render: (t) => t.footage || '—' },
+  { key: 'note', label: 'Примечание', minWidth: 200, tdClass: 'fuel-cell--left', render: (t) => t.note || '—' },
+  { key: 'status', label: 'Статус', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (t) => techStatusPill(t.status) },
+  { key: 'scheduleUsage', label: 'В графике', minWidth: 100, thCenter: true, tdClass: 'fuel-cell--center', render: (t) => usagePill(t.scheduleUsage) },
+  { key: 'docs', label: 'Документы', minWidth: 80, thCenter: true, tdClass: 'fuel-cell--center', noSort: true, render: (t) => <DocsCell attachments={t.attachments} kinds={['sor']} /> },
+];
+const MODEL_COLUMNS: DirColumn<VehicleModelItem>[] = [
+  { key: 'fuelNormWinter', label: 'Норма зима, л/100км', minWidth: 140, thCenter: true, tdClass: 'fuel-cell--center', render: (m) => m.fuelNormWinter ?? '—' },
+  { key: 'fuelNormSummer', label: 'Норма лето, л/100км', minWidth: 140, thCenter: true, tdClass: 'fuel-cell--center', render: (m) => m.fuelNormSummer ?? '—' },
+  { key: 'vehicleCount', label: 'Машин', minWidth: 80, thCenter: true, tdClass: 'fuel-cell--center', render: (m) => m.vehicleCount ?? 0 },
+];
+const TAB_COLUMNS: Record<TabKey, DirColumn<any>[]> = {
+  drivers: DRIVER_COLUMNS,
+  staff: STAFF_COLUMNS,
+  vehicles: VEHICLE_COLUMNS,
+  trailers: TRAILER_COLUMNS,
+  models: MODEL_COLUMNS,
+};
+
 /**
  * counterpartyId/-Name: страница работает как карточка контрагента —
  * те же вкладки водители/техника/прицепы, но данные принадлежат контрагенту
@@ -124,6 +297,31 @@ export default function DirectoriesPage({
     loadSortState(sortStorageKey, { drivers: null, staff: null, vehicles: null, trailers: null, models: null })
   );
   useEffect(() => saveSortState(sortStorageKey, sortByTab), [sortStorageKey, sortByTab]);
+
+  // настройка колонок (видимость + порядок), на пользователя, по вкладкам
+  const columnsStorageKey = `dir-columns-v1:${user?.id ?? 'anonymous'}`;
+  const [columnPrefs, setColumnPrefs] = useState<Partial<Record<TabKey, ColumnPrefs>>>(() =>
+    loadSortState(columnsStorageKey, {})
+  );
+  useEffect(() => saveSortState(columnsStorageKey, columnPrefs), [columnsStorageKey, columnPrefs]);
+  const [columnsAnchor, setColumnsAnchor] = useState<HTMLElement | null>(null);
+  const dragColumnKey = useRef<string | null>(null);
+  const tabColumnKeys = (tabKey: TabKey) => TAB_COLUMNS[tabKey].map((column) => column.key);
+  const tabDefaultHidden = (tabKey: TabKey) =>
+    TAB_COLUMNS[tabKey].filter((column) => column.defaultHidden).map((column) => column.key);
+  const visibleColumns = (tabKey: TabKey): DirColumn<any>[] => {
+    const byKey = new Map(TAB_COLUMNS[tabKey].map((column) => [column.key, column]));
+    return applyColumnPrefs(tabColumnKeys(tabKey), tabDefaultHidden(tabKey), columnPrefs[tabKey]).map((key) => byKey.get(key)!);
+  };
+  const columnTh = (tabKey: TabKey, column: DirColumn<any>) => (
+    <th key={column.key} className={column.thCenter ? 'fuel-cell--center' : undefined} style={{ minWidth: column.minWidth }}>
+      {column.noSort ? <span>{column.label}</span> : sortHeader(tabKey, column.key, column.label)}
+    </th>
+  );
+  const columnTd = (column: DirColumn<any>, row: unknown) => (
+    <td key={column.key} className={column.tdClass}>{column.render(row)}</td>
+  );
+
   const toggleSort = (tabKey: TabKey, field: string) =>
     setSortByTab((prev) => ({ ...prev, [tabKey]: cycleSort(prev[tabKey], field) }));
   const sortHeader = (tabKey: TabKey, field: string, label: string) => (
@@ -146,6 +344,10 @@ export default function DirectoriesPage({
   const [vehicleEdit, setVehicleEdit] = useState<Partial<FleetVehicleItem> | null>(null);
   const [vehicleModelLabel, setVehicleModelLabel] = useState('');
   const [trailerEdit, setTrailerEdit] = useState<Partial<TrailerItem> | null>(null);
+  // сканы, выбранные в НОВЫХ карточках — загружаются после создания записи
+  const [employeePendingDocs, setEmployeePendingDocs] = useState<PendingDoc[]>([]);
+  const [vehiclePendingDocs, setVehiclePendingDocs] = useState<PendingDoc[]>([]);
+  const [trailerPendingDocs, setTrailerPendingDocs] = useState<PendingDoc[]>([]);
   const [modelEdit, setModelEdit] = useState<Partial<VehicleModelItem> | null>(null);
   // экспорт: режим галочек слева в таблице (решение пользователя 2026-08-19)
   const [exportMode, setExportMode] = useState(false);
@@ -164,7 +366,7 @@ export default function DirectoriesPage({
         getEmployees(location, counterpartyId).catch(() => ({ data: [] as EmployeeItem[] })),
         getFleetVehicles(location, counterpartyId),
         getTrailers(location, counterpartyId),
-        getVehicleModels(),
+        getVehicleModels(location),
         getFuelSeasons().catch(() => ({ data: { winterStartMonth: 11, winterEndMonth: 3 } })),
       ]);
       setEmployees(employeesRes.data);
@@ -195,12 +397,15 @@ export default function DirectoriesPage({
 
   useEffect(() => {
     employeeSnapshot.current = employeeEdit ? (employeeSnapshot.current ?? JSON.stringify(employeeEdit)) : null;
+    if (!employeeEdit) setEmployeePendingDocs([]);
   }, [employeeEdit === null]);
   useEffect(() => {
     vehicleSnapshot.current = vehicleEdit ? (vehicleSnapshot.current ?? JSON.stringify({ ...vehicleEdit, __label: vehicleModelLabel })) : null;
+    if (!vehicleEdit) setVehiclePendingDocs([]);
   }, [vehicleEdit === null]);
   useEffect(() => {
     trailerSnapshot.current = trailerEdit ? (trailerSnapshot.current ?? JSON.stringify(trailerEdit)) : null;
+    if (!trailerEdit) setTrailerPendingDocs([]);
   }, [trailerEdit === null]);
   useEffect(() => {
     modelSnapshot.current = modelEdit ? (modelSnapshot.current ?? JSON.stringify(modelEdit)) : null;
@@ -276,6 +481,14 @@ export default function DirectoriesPage({
         (row, field) => (row as unknown as Record<string, unknown>)[field]
       ),
     [employees, sortByTab.staff]
+  );
+  /** Подсказки собственника — из уже введённых значений (как направления в графике). */
+  const ownerSuggestions = useMemo(
+    () =>
+      [...new Set(vehicles.map((vehicle) => vehicle.owner?.trim()).filter(Boolean) as string[])].sort((a, b) =>
+        a.localeCompare(b, 'ru')
+      ),
+    [vehicles]
   );
   const sortedVehicles = useMemo(
     () =>
@@ -386,6 +599,26 @@ export default function DirectoriesPage({
     </td>
   );
 
+  /** Загрузка сканов, выбранных в новой карточке, после создания записи. */
+  const uploadPendingDocs = async (
+    entityType: 'employee' | 'vehicle' | 'trailer',
+    entityId: string,
+    pending: PendingDoc[],
+  ) => {
+    for (const item of pending) {
+      try {
+        await uploadDirectoryAttachment({
+          entityType,
+          entityId,
+          kind: item.kind,
+          file: { name: item.file.name, mimeType: item.file.type, contentBase64: await fileToBase64(item.file) },
+        });
+      } catch {
+        setFeedback({ severity: 'error', text: `Не удалось загрузить «${item.file.name}» — прикрепите в карточке` });
+      }
+    }
+  };
+
   const saveEmployeeEdit = async (): Promise<boolean> => {
     if (!employeeEdit) return true;
     if (!employeeEdit.fullName?.trim()) {
@@ -400,8 +633,12 @@ export default function DirectoriesPage({
     } as EmployeePayload;
     try {
       if (employeeEdit.id) await updateEmployee(employeeEdit.id, payload);
-      else await createEmployee(payload);
+      else {
+        const { data: created } = await createEmployee(payload);
+        if (employeePendingDocs.length) await uploadPendingDocs('employee', created.id, employeePendingDocs);
+      }
       setEmployeeEdit(null);
+      setEmployeePendingDocs([]);
       await reload();
       setFeedback({ severity: 'success', text: 'Сотрудник сохранён' });
       return true;
@@ -420,8 +657,12 @@ export default function DirectoriesPage({
     try {
       const payload = { ...vehicleEdit, location, modelLabel: vehicleModelLabel.trim(), modelId: vehicleModelLabel.trim() ? undefined : null, counterpartyId };
       if (vehicleEdit.id) await updateFleetVehicle(vehicleEdit.id, payload);
-      else await createFleetVehicle(payload);
+      else {
+        const { data: created } = await createFleetVehicle(payload);
+        if (vehiclePendingDocs.length) await uploadPendingDocs('vehicle', created.id, vehiclePendingDocs);
+      }
       setVehicleEdit(null);
+      setVehiclePendingDocs([]);
       await reload();
       setFeedback({ severity: 'success', text: 'Техника сохранена' });
       return true;
@@ -440,8 +681,12 @@ export default function DirectoriesPage({
     try {
       const payload = { ...trailerEdit, location, counterpartyId };
       if (trailerEdit.id) await updateTrailer(trailerEdit.id, payload);
-      else await createTrailer(payload);
+      else {
+        const { data: created } = await createTrailer(payload);
+        if (trailerPendingDocs.length) await uploadPendingDocs('trailer', created.id, trailerPendingDocs);
+      }
       setTrailerEdit(null);
+      setTrailerPendingDocs([]);
       await reload();
       setFeedback({ severity: 'success', text: 'Прицеп сохранён' });
       return true;
@@ -459,7 +704,7 @@ export default function DirectoriesPage({
     }
     try {
       if (modelEdit.id) await updateVehicleModel(modelEdit.id, modelEdit);
-      else await createVehicleModel(modelEdit);
+      else await createVehicleModel({ ...modelEdit, location });
       setModelEdit(null);
       await reload();
       setFeedback({ severity: 'success', text: 'Модель сохранена' });
@@ -563,6 +808,11 @@ export default function DirectoriesPage({
               {!isCounterpartyMode && <Tab value="models" label={`Модели и нормы (${models.length})`} />}
             </Tabs>
             <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
+              <Tooltip title="Настроить колонки">
+                <IconButton size="small" onClick={(event) => setColumnsAnchor(event.currentTarget)}>
+                  <Settings sx={{ fontSize: 20, color: '#6b7280' }} />
+                </IconButton>
+              </Tooltip>
               {!exportMode && !isCounterpartyMode && (
                 <button
                   type="button"
@@ -653,6 +903,87 @@ export default function DirectoriesPage({
         </Paper>
       </section>
 
+      {/* настройка колонок текущей вкладки: видимость чекбоксами, порядок перетаскиванием */}
+      <Popover
+        open={Boolean(columnsAnchor)}
+        anchorEl={columnsAnchor}
+        onClose={() => setColumnsAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Box sx={{ p: 1.5, width: 280 }}>
+          <Typography sx={{ fontWeight: 600, fontSize: 15 }}>Колонки</Typography>
+          <Typography sx={{ fontSize: 12, color: '#6b7280', mb: 1 }}>
+            Отметьте нужные и перетащите для порядка
+          </Typography>
+          {orderedKeys(tabColumnKeys(tab), columnPrefs[tab]).map((key, index) => {
+            const column = TAB_COLUMNS[tab].find((item) => item.key === key);
+            if (!column) return null;
+            return (
+              <Box
+                key={key}
+                draggable
+                onDragStart={() => { dragColumnKey.current = key; }}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const dragged = dragColumnKey.current;
+                  dragColumnKey.current = null;
+                  if (!dragged || dragged === key) return;
+                  setColumnPrefs((prev) => ({
+                    ...prev,
+                    [tab]: moveColumnTo(tabColumnKeys(tab), tabDefaultHidden(tab), prev[tab], dragged, index),
+                  }));
+                }}
+                sx={{
+                  display: 'flex', alignItems: 'center', gap: 0.5,
+                  border: '1px solid #e5e7eb', borderRadius: '8px',
+                  px: 0.75, py: 0.25, mb: 0.5, cursor: 'grab', bgcolor: '#fafafa',
+                }}
+              >
+                <DragIndicator sx={{ fontSize: 16, color: '#9ca3af' }} />
+                <Checkbox
+                  size="small"
+                  sx={{ p: 0.5 }}
+                  checked={!isHidden(tabColumnKeys(tab), tabDefaultHidden(tab), columnPrefs[tab], key)}
+                  onChange={() =>
+                    setColumnPrefs((prev) => ({
+                      ...prev,
+                      [tab]: toggleHidden(tabColumnKeys(tab), tabDefaultHidden(tab), prev[tab], key),
+                    }))
+                  }
+                />
+                <Typography sx={{ fontSize: 13, flex: 1 }}>{column.label}</Typography>
+                <IconButton
+                  size="small" sx={{ p: 0.25 }}
+                  disabled={index === 0}
+                  onClick={() =>
+                    setColumnPrefs((prev) => ({ ...prev, [tab]: moveColumnTo(tabColumnKeys(tab), tabDefaultHidden(tab), prev[tab], key, index - 1) }))
+                  }
+                >
+                  <KeyboardArrowUp sx={{ fontSize: 16 }} />
+                </IconButton>
+                <IconButton
+                  size="small" sx={{ p: 0.25 }}
+                  disabled={index === tabColumnKeys(tab).length - 1}
+                  onClick={() =>
+                    setColumnPrefs((prev) => ({ ...prev, [tab]: moveColumnTo(tabColumnKeys(tab), tabDefaultHidden(tab), prev[tab], key, index + 1) }))
+                  }
+                >
+                  <KeyboardArrowDown sx={{ fontSize: 16 }} />
+                </IconButton>
+              </Box>
+            );
+          })}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+            <Button size="small" onClick={() => setColumnPrefs((prev) => ({ ...prev, [tab]: undefined }))}>
+              Сбросить
+            </Button>
+            <Button size="small" onClick={() => setColumnsAnchor(null)}>Готово</Button>
+          </Box>
+        </Box>
+      </Popover>
+
       <section className="ops-preview__matrix">
         {tab === 'drivers' && (
           <div className="dir-table">
@@ -661,11 +992,7 @@ export default function DirectoriesPage({
                 <tr>
                   {exportMode && exportCheckboxHeader}
                   <th style={{ minWidth: 290, whiteSpace: "nowrap" }}>{sortHeader('drivers', 'fullName', 'ФИО')}</th>
-                  <th style={{ minWidth: 130 }}>{sortHeader('drivers', 'phone', 'Телефон')}</th>
-                  <th style={{ minWidth: 120 }}>{sortHeader('drivers', 'licenseNumber', 'ВУ (номер)')}</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 110 }}>{sortHeader('drivers', 'licenseIssueDate', 'Дата выдачи ВУ')}</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 110 }}>{sortHeader('drivers', 'birthDate', 'Дата рождения')}</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>{sortHeader('drivers', 'status', 'Статус')}</th>
+                  {visibleColumns('drivers').map((column) => columnTh('drivers', column))}
                   <th className="fuel-cell--center" style={{ minWidth: 80 }}>Карточка</th>
                 </tr>
               </thead>
@@ -677,15 +1004,7 @@ export default function DirectoriesPage({
                   >
                     {exportMode && exportCheckboxCell(employee.id)}
                     <td className="fuel-cell--sticky">{employee.fullName}</td>
-                    <td className="fuel-cell--center">{employee.phone || '—'}</td>
-                    <td className="fuel-cell--center">{employee.licenseNumber || '—'}</td>
-                    <td className="fuel-cell--center">{formatDateDisplay(employee.licenseIssueDate)}</td>
-                    <td className="fuel-cell--center">{formatDateDisplay(employee.birthDate)}</td>
-                    <td className="fuel-cell--center">
-                      <span className={`dir-status ${employee.status === 'active' ? 'dir-status--ok' : 'dir-status--off'}`}>
-                        {employee.status === 'active' ? 'работает' : 'уволен'}
-                      </span>
-                    </td>
+                    {visibleColumns('drivers').map((column) => columnTd(column, employee))}
                     <td className="fuel-cell--center dir-actions">
                       <Tooltip title="Скопировать данные водителя (без машины и прицепа)">
                         <IconButton size="small" onClick={() => void copyCard(employee)}>
@@ -697,7 +1016,7 @@ export default function DirectoriesPage({
                 ))}
                 {drivers.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="fuel-empty">Водителей пока нет — добавьте</td>
+                    <td colSpan={visibleColumns('drivers').length + 3} className="fuel-empty">Водителей пока нет — добавьте</td>
                   </tr>
                 )}
               </tbody>
@@ -712,10 +1031,7 @@ export default function DirectoriesPage({
                 <tr>
                   {exportMode && exportCheckboxHeader}
                   <th style={{ minWidth: 290, whiteSpace: "nowrap" }}>{sortHeader('staff', 'fullName', 'ФИО')}</th>
-                  <th style={{ minWidth: 180 }}>{sortHeader('staff', 'position', 'Должность')}</th>
-                  <th style={{ minWidth: 130 }}>{sortHeader('staff', 'phone', 'Телефон')}</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 110 }}>{sortHeader('staff', 'birthDate', 'Дата рождения')}</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>{sortHeader('staff', 'status', 'Статус')}</th>
+                  {visibleColumns('staff').map((column) => columnTh('staff', column))}
                   <th className="fuel-cell--center" style={{ minWidth: 80 }}>Карточка</th>
                 </tr>
               </thead>
@@ -724,14 +1040,7 @@ export default function DirectoriesPage({
                   <tr key={employee.id} onDoubleClick={() => setEmployeeEdit(employee)}>
                     {exportMode && exportCheckboxCell(employee.id)}
                     <td className="fuel-cell--sticky">{employee.fullName}</td>
-                    <td className="fuel-cell--left">{employee.position || '—'}</td>
-                    <td className="fuel-cell--center">{employee.phone || '—'}</td>
-                    <td className="fuel-cell--center">{formatDateDisplay(employee.birthDate)}</td>
-                    <td className="fuel-cell--center">
-                      <span className={`dir-status ${employee.status === 'active' ? 'dir-status--ok' : 'dir-status--off'}`}>
-                        {employee.status === 'active' ? 'работает' : 'уволен'}
-                      </span>
-                    </td>
+                    {visibleColumns('staff').map((column) => columnTd(column, employee))}
                     <td className="fuel-cell--center dir-actions">
                       <Tooltip title="Скопировать данные сотрудника">
                         <IconButton size="small" onClick={() => void copyCard(employee)}>
@@ -743,7 +1052,7 @@ export default function DirectoriesPage({
                 ))}
                 {staff.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="fuel-empty">Сотрудников пока нет — добавьте (для доверенностей не на водителей)</td>
+                    <td colSpan={visibleColumns('staff').length + 3} className="fuel-empty">Сотрудников пока нет — добавьте. Здесь ведутся все, кроме водителей: оперативники, диспетчеры, механики и т.д.</td>
                   </tr>
                 )}
               </tbody>
@@ -758,13 +1067,7 @@ export default function DirectoriesPage({
                 <tr>
                   {exportMode && exportCheckboxHeader}
                   <th style={{ minWidth: 110 }}>{sortHeader('vehicles', 'plate', 'Г/Н ТС')}</th>
-                  <th style={{ minWidth: 170 }}>{sortHeader('vehicles', 'vehicleKind', 'Тип ТС')}</th>
-                  <th style={{ minWidth: 150 }}>{sortHeader('vehicles', 'modelLabel', 'Модель')}</th>
-                  <th style={{ minWidth: 90 }}>{sortHeader('vehicles', 'color', 'Цвет')}</th>
-                  <th style={{ minWidth: 140 }}>{sortHeader('vehicles', 'vin', 'VIN')}</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>{sortHeader('vehicles', 'manufactureYear', 'Год выпуска')}</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>{sortHeader('vehicles', 'status', 'Статус')}</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 100 }}>{sortHeader('vehicles', 'scheduleUsage', 'В графике')}</th>
+                  {visibleColumns('vehicles').map((column) => columnTh('vehicles', column))}
                   <th className="fuel-cell--center" style={{ minWidth: 70 }}>Копия</th>
                 </tr>
               </thead>
@@ -779,17 +1082,7 @@ export default function DirectoriesPage({
                   >
                     {exportMode && exportCheckboxCell(vehicle.id)}
                     <td className="fuel-cell--sticky">{vehicle.plate}</td>
-                    <td className="fuel-cell--left">{vehicle.vehicleKind || '—'}</td>
-                    <td className="fuel-cell--left">{vehicle.model ? `${vehicle.model.brand} ${vehicle.model.name}`.trim() : '—'}</td>
-                    <td className="fuel-cell--center">{vehicle.color || '—'}</td>
-                    <td className="fuel-cell--left">{vehicle.vin || '—'}</td>
-                    <td className="fuel-cell--center">{vehicle.manufactureYear || '—'}</td>
-                    <td className="fuel-cell--center">
-                      <span className={`dir-status ${vehicle.status === 'active' ? 'dir-status--ok' : vehicle.status === 'repair' ? 'dir-status--warn' : 'dir-status--off'}`}>
-                        {vehicle.status === 'active' ? 'в работе' : vehicle.status === 'repair' ? 'ремонт' : 'архив'}
-                      </span>
-                    </td>
-                    <td className="fuel-cell--center">{usagePill(vehicle.scheduleUsage)}</td>
+                    {visibleColumns('vehicles').map((column) => columnTd(column, vehicle))}
                     <td className="fuel-cell--center dir-actions">
                       <Tooltip title="Скопировать данные техники">
                         <IconButton
@@ -814,7 +1107,7 @@ export default function DirectoriesPage({
                 ))}
                 {vehicles.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="fuel-empty">Справочник пуст — техника появится из графиков или добавьте вручную</td>
+                    <td colSpan={visibleColumns('vehicles').length + 3} className="fuel-empty">Справочник пуст — техника появится из графиков или добавьте вручную</td>
                   </tr>
                 )}
               </tbody>
@@ -829,13 +1122,7 @@ export default function DirectoriesPage({
                 <tr>
                   {exportMode && exportCheckboxHeader}
                   <th style={{ minWidth: 130 }}>{sortHeader('trailers', 'plate', 'Номер')}</th>
-                  <th style={{ minWidth: 130 }}>{sortHeader('trailers', 'kind', 'Тип')}</th>
-                  <th style={{ minWidth: 130 }}>{sortHeader('trailers', 'brand', 'Марка')}</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 70 }}>{sortHeader('trailers', 'axles', 'Оси')}</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 100 }}>{sortHeader('trailers', 'footage', 'Футовость')}</th>
-                  <th style={{ minWidth: 200 }}>{sortHeader('trailers', 'note', 'Примечание')}</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 90 }}>{sortHeader('trailers', 'status', 'Статус')}</th>
-                  <th className="fuel-cell--center" style={{ minWidth: 100 }}>{sortHeader('trailers', 'scheduleUsage', 'В графике')}</th>
+                  {visibleColumns('trailers').map((column) => columnTh('trailers', column))}
                   <th className="fuel-cell--center" style={{ minWidth: 70 }}>Копия</th>
                 </tr>
               </thead>
@@ -844,17 +1131,7 @@ export default function DirectoriesPage({
                   <tr key={trailer.id} onDoubleClick={() => setTrailerEdit(trailer)}>
                     {exportMode && exportCheckboxCell(trailer.id)}
                     <td className="fuel-cell--sticky">{trailer.plate}</td>
-                    <td className="fuel-cell--left">{trailerKindLabel(trailer.kind) || '—'}</td>
-                    <td className="fuel-cell--left">{trailer.brand || '—'}</td>
-                    <td className="fuel-cell--center">{trailer.axles || '—'}</td>
-                    <td className="fuel-cell--center">{trailer.footage || '—'}</td>
-                    <td className="fuel-cell--left">{trailer.note || '—'}</td>
-                    <td className="fuel-cell--center">
-                      <span className={`dir-status ${trailer.status === 'active' ? 'dir-status--ok' : trailer.status === 'repair' ? 'dir-status--warn' : 'dir-status--off'}`}>
-                        {trailer.status === 'active' ? 'в работе' : trailer.status === 'repair' ? 'ремонт' : 'архив'}
-                      </span>
-                    </td>
-                    <td className="fuel-cell--center">{usagePill(trailer.scheduleUsage)}</td>
+                    {visibleColumns('trailers').map((column) => columnTd(column, trailer))}
                     <td className="fuel-cell--center dir-actions">
                       <Tooltip title="Скопировать данные прицепа">
                         <IconButton
@@ -877,7 +1154,7 @@ export default function DirectoriesPage({
                 ))}
                 {trailers.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="fuel-empty">Справочник пуст — добавьте прицепы</td>
+                    <td colSpan={visibleColumns('trailers').length + 3} className="fuel-empty">Справочник пуст — добавьте прицепы</td>
                   </tr>
                 )}
               </tbody>
@@ -921,10 +1198,7 @@ export default function DirectoriesPage({
                   <tr>
                     {exportMode && exportCheckboxHeader}
                     <th style={{ minWidth: 220 }}>{sortHeader('models', 'label', 'Марка / модель')}</th>
-                    <th className="fuel-cell--center" style={{ minWidth: 140 }}>{sortHeader('models', 'fuelNormWinter', 'Норма зима, л/100км')}</th>
-                    <th className="fuel-cell--center" style={{ minWidth: 140 }}>{sortHeader('models', 'fuelNormSummer', 'Норма лето, л/100км')}</th>
-                    <th className="fuel-cell--center" style={{ minWidth: 80 }}>{sortHeader('models', 'vehicleCount', 'Машин')}</th>
-                    <th className="fuel-cell--center" style={{ minWidth: 70 }}>Копия</th>
+                    {visibleColumns('models').map((column) => columnTh('models', column))}
                   </tr>
                 </thead>
                 <tbody>
@@ -932,27 +1206,12 @@ export default function DirectoriesPage({
                     <tr key={model.id} onDoubleClick={canManageNorms ? () => setModelEdit(model) : undefined}>
                       {exportMode && exportCheckboxCell(model.id)}
                       <td className="fuel-cell--sticky">{`${model.brand} ${model.name}`.trim()}</td>
-                      <td className="fuel-cell--center">{model.fuelNormWinter ?? '—'}</td>
-                      <td className="fuel-cell--center">{model.fuelNormSummer ?? '—'}</td>
-                      <td className="fuel-cell--center">{model.vehicleCount ?? 0}</td>
-                      <td className="fuel-cell--center dir-actions">
-                        <Tooltip title="Скопировать марку и модель">
-                          <IconButton
-                            size="small"
-                            onClick={() => {
-                              const label = `${model.brand} ${model.name}`.trim();
-                              void copyPlain(label, `«${label}»`);
-                            }}
-                          >
-                            <ContentCopy sx={{ fontSize: 16 }} />
-                          </IconButton>
-                        </Tooltip>
-                      </td>
+                      {visibleColumns('models').map((column) => columnTd(column, model))}
                     </tr>
                   ))}
                   {models.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="fuel-empty">Моделей пока нет — они появятся при заполнении карточек техники</td>
+                      <td colSpan={visibleColumns('models').length + 2} className="fuel-empty">Моделей пока нет — они появятся при заполнении карточек техники</td>
                     </tr>
                   )}
                 </tbody>
@@ -1012,6 +1271,20 @@ export default function DirectoriesPage({
               </Typography>
           </>
           </fieldset>
+          <AttachmentsSection
+            entityType="employee"
+            entityId={employeeEdit?.id}
+            pendingFiles={employeePendingDocs}
+            onPendingChange={setEmployeePendingDocs}
+            kinds={
+              (employeeEdit?.position ?? '').trim().toLowerCase() === 'водитель'
+                ? [{ kind: 'passport', label: 'Паспорт' }, { kind: 'license', label: 'В/У' }]
+                : [{ kind: 'passport', label: 'Паспорт' }]
+            }
+            canEdit={canEdit}
+            onError={(text) => setFeedback({ severity: 'error', text })}
+            onSuccess={(text) => setFeedback({ severity: 'success', text })}
+          />
         </DialogContent>
         <DialogActions>
           {canDelete && employeeEdit?.id && (
@@ -1047,9 +1320,21 @@ export default function DirectoriesPage({
                 <TextField {...params} label="Модель" placeholder="Начните вводить — или выберите из списка" fullWidth />
               )}
             />
+            <Autocomplete
+              freeSolo
+              size="small"
+              options={ownerSuggestions}
+              value={vehicleEdit?.owner ?? ''}
+              onChange={(_event, value) => setVehicleEdit((prev) => (prev ? { ...prev, owner: value ?? '' } : prev))}
+              onInputChange={(_event, value) => setVehicleEdit((prev) => (prev ? { ...prev, owner: value } : prev))}
+              renderInput={(params) => (
+                <TextField {...params} label="Собственник" placeholder="Начните вводить — или выберите" fullWidth />
+              )}
+            />
             {textField('Цвет', vehicleEdit?.color, (value) => setVehicleEdit((prev) => ({ ...prev, color: value })))}
             {textField('VIN', vehicleEdit?.vin, (value) => setVehicleEdit((prev) => ({ ...prev, vin: value })))}
             {textField('СОР', vehicleEdit?.sor, (value) => setVehicleEdit((prev) => ({ ...prev, sor: value })))}
+            {textField('Дата выдачи СОР', formatDateInput(vehicleEdit?.sorIssueDate), (value) => setVehicleEdit((prev) => ({ ...prev, sorIssueDate: value || null })), { type: 'date' })}
             {textField('Год выпуска', vehicleEdit?.manufactureYear, (value) => setVehicleEdit((prev) => ({ ...prev, manufactureYear: value })))}
             <TextField
               select size="small" label="Статус" fullWidth
@@ -1062,6 +1347,16 @@ export default function DirectoriesPage({
             </TextField>
           </Box>
           </fieldset>
+          <AttachmentsSection
+            entityType="vehicle"
+            entityId={vehicleEdit?.id}
+            pendingFiles={vehiclePendingDocs}
+            onPendingChange={setVehiclePendingDocs}
+            kinds={[{ kind: 'sor', label: 'СОР' }]}
+            canEdit={canEdit}
+            onError={(text) => setFeedback({ severity: 'error', text })}
+            onSuccess={(text) => setFeedback({ severity: 'success', text })}
+          />
         </DialogContent>
         <DialogActions>
           {canDelete && vehicleEdit?.id && (
@@ -1109,6 +1404,16 @@ export default function DirectoriesPage({
             {textField('Примечание', trailerEdit?.note, (value) => setTrailerEdit((prev) => ({ ...prev, note: value })))}
           </Box>
           </fieldset>
+          <AttachmentsSection
+            entityType="trailer"
+            entityId={trailerEdit?.id}
+            pendingFiles={trailerPendingDocs}
+            onPendingChange={setTrailerPendingDocs}
+            kinds={[{ kind: 'sor', label: 'СОР' }]}
+            canEdit={canEdit}
+            onError={(text) => setFeedback({ severity: 'error', text })}
+            onSuccess={(text) => setFeedback({ severity: 'success', text })}
+          />
         </DialogContent>
         <DialogActions>
           {canDelete && trailerEdit?.id && (

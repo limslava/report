@@ -32,10 +32,22 @@ import {
   saveVehicle,
   saveVehicleModel,
 } from '../controllers/directories.controller';
+import {
+  deleteDirectoryAttachment,
+  downloadDirectoryAttachment,
+  listDirectoryAttachments,
+  uploadDirectoryAttachment,
+} from '../controllers/directory-attachments.controller';
 
 const router = Router();
 
 router.use(authenticate);
+
+// Сканы документов (паспорт/ВУ сотрудника, СОР техники и прицепа)
+router.get('/attachments', authorizeRole(...DIRECTORY_ROLES), asyncHandler(listDirectoryAttachments));
+router.post('/attachments', authorizeRole(...DIRECTORY_EDIT_ROLES), asyncHandler(uploadDirectoryAttachment));
+router.get('/attachments/:id/download', authorizeRole(...DIRECTORY_ROLES), asyncHandler(downloadDirectoryAttachment));
+router.delete('/attachments/:id', authorizeRole(...DIRECTORY_EDIT_ROLES), asyncHandler(deleteDirectoryAttachment));
 
 // Справочник контрагентов: свой список, добавление по ИНН (реквизиты из ФНС)
 router.get('/counterparties', authorizeRole(...DIRECTORY_ROLES), asyncHandler(listCounterpartiesDirectory));
@@ -81,9 +93,7 @@ router.get(
     'head_hr',
     'hr_specialist',
     'garage_head_vvo',
-    'garage_head',
     'warehouse_manager_vvo',
-    'manager_to',
     'security'
   ),
   asyncHandler(getDirectoryOptions)

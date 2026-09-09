@@ -16,7 +16,6 @@ export function canViewTotalsInPlans(role?: string | null): boolean {
   return Boolean(role)
     && role !== 'head_hr'
     && role !== 'hr_specialist'
-    && role !== 'garage_head'
     && role !== 'garage_head_vvo'
     && role !== 'warehouse_manager_vvo'
     && role !== 'bdd_specialist_vvo'
@@ -103,9 +102,7 @@ export function canAccessOperationsPreview(role?: string | null): boolean {
     role === 'head_hr' ||
     role === 'hr_specialist' ||
     role === 'garage_head_vvo' ||
-    role === 'garage_head' ||
     role === 'warehouse_manager_vvo' ||
-    role === 'manager_to' ||
     role === 'security'
   );
 }

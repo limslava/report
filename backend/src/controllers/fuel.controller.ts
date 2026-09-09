@@ -603,7 +603,7 @@ export const exportFuelYearExcel = async (req: Request, res: Response) => {
   });
 
   // ── Справочный блок норм справа
-  const models = await AppDataSource.getRepository(VehicleModel).find({ order: { brand: 'ASC', name: 'ASC' } });
+  const models = await AppDataSource.getRepository(VehicleModel).find({ where: { location }, order: { brand: 'ASC', name: 'ASC' } });
   const winterLabel = `зима: с 1 ${MONTH_GENITIVE[seasons.winterStartMonth - 1]} по конец ${MONTH_GENITIVE[seasons.winterEndMonth - 1]}`;
   sheet.getCell(2, normStartCol).value = 'НОРМЫ, л/100км';
   sheet.getCell(2, normStartCol).font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1F2937' } };

@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import ExcelJS from 'exceljs';
-import { ILike, IsNull } from 'typeorm';
+import { ILike, In, IsNull } from 'typeorm';
 import { AppDataSource } from '../config/data-source';
 import { Employee } from '../models/employee.model';
 import { FleetVehicle } from '../models/fleet-vehicle.model';
@@ -90,13 +90,15 @@ const optionalNumeric = (value: unknown): string | null => {
 
 // ─────────────────────────── Модели техники и нормы ───────────────────────────
 
-export const listVehicleModels = async (_req: Request, res: Response) => {
-  const models = await modelRepo.find({ order: { brand: 'ASC', name: 'ASC' } });
+export const listVehicleModels = async (req: Request, res: Response) => {
+  const location = parseLocation(req.query.location);
+  const models = await modelRepo.find({ where: { location }, order: { brand: 'ASC', name: 'ASC' } });
   const vehicleCounts = await vehicleRepo
     .createQueryBuilder('vehicle')
     .select('vehicle.model_id', 'modelId')
     .addSelect('COUNT(*)', 'count')
     .where('vehicle.model_id IS NOT NULL')
+    .andWhere('vehicle.location = :location', { location })
     .groupBy('vehicle.model_id')
     .getRawMany<{ modelId: string; count: string }>();
   const countByModel = new Map(vehicleCounts.map((row) => [row.modelId, Number(row.count)]));
@@ -111,7 +113,7 @@ export const saveVehicleModel = async (req: Request, res: Response) => {
 
   const model = id
     ? await modelRepo.findOne({ where: { id } })
-    : modelRepo.create();
+    : modelRepo.create({ location: parseLocation(req.body?.location) });
   if (!model) return httpError(404, 'Model not found') as never;
 
   model.brand = brand;
@@ -137,14 +139,17 @@ export const deleteVehicleModel = async (req: Request, res: Response) => {
  * регистра (чтобы 11 одинаковых машин не породили 11 моделей), иначе создаём.
  * Нормы расхода к новой модели добавляют БДД/руководители КТК в «Модели и нормы».
  */
-const resolveModelByLabel = async (label: string): Promise<VehicleModel> => {
+const resolveModelByLabel = async (label: string, location: FleetLocation): Promise<VehicleModel> => {
   const existing = await modelRepo
     .createQueryBuilder('model')
-    .where("LOWER(TRIM(model.brand || ' ' || model.name)) = LOWER(:label)", { label })
-    .orWhere('LOWER(model.brand) = LOWER(:label)', { label })
+    .where('model.location = :location', { location })
+    .andWhere(
+      "(LOWER(TRIM(model.brand || ' ' || model.name)) = LOWER(:label) OR LOWER(model.brand) = LOWER(:label))",
+      { label },
+    )
     .getOne();
   if (existing) return existing;
-  return modelRepo.save(modelRepo.create({ brand: label, name: '' }));
+  return modelRepo.save(modelRepo.create({ brand: label, name: '', location }));
 };
 
 // ─────────────────────────── Техника ───────────────────────────
@@ -159,10 +164,12 @@ export const listVehicles = async (req: Request, res: Response) => {
     }),
     loadScheduleUsage(location),
   ]);
+  const attachments = await loadAttachmentsSummary('vehicle', vehicles.map((v) => v.id));
   res.json(
     vehicles.map((vehicle) => ({
       ...vehicle,
       scheduleUsage: usage.vehicles.get(normalizePlateKey(vehicle.plate)) ?? null,
+      attachments: attachments.get(vehicle.id) ?? [],
     }))
   );
 };
@@ -189,7 +196,7 @@ export const saveVehicle = async (req: Request, res: Response) => {
   vehicle.vehicleKind = trimmed(req.body?.vehicleKind, 120);
   const modelLabel = trimmed(req.body?.modelLabel, 240);
   if (modelLabel) {
-    vehicle.modelId = (await resolveModelByLabel(modelLabel)).id;
+    vehicle.modelId = (await resolveModelByLabel(modelLabel, location)).id;
   } else {
     vehicle.modelId = typeof req.body?.modelId === 'string' && req.body.modelId ? req.body.modelId : null;
   }
@@ -197,6 +204,8 @@ export const saveVehicle = async (req: Request, res: Response) => {
   vehicle.vin = trimmed(req.body?.vin, 40);
   vehicle.manufactureYear = trimmed(req.body?.manufactureYear, 10);
   vehicle.sor = trimmed(req.body?.sor, 40);
+  vehicle.sorIssueDate = typeof req.body?.sorIssueDate === 'string' && req.body.sorIssueDate ? req.body.sorIssueDate.slice(0, 10) : null;
+  vehicle.owner = trimmed(req.body?.owner, 200);
   vehicle.note = trimmed(req.body?.note, 500);
   const status = req.body?.status;
   vehicle.status = status === 'repair' || status === 'archived' ? status : 'active';
@@ -224,10 +233,12 @@ export const listTrailers = async (req: Request, res: Response) => {
     }),
     loadScheduleUsage(location),
   ]);
+  const attachments = await loadAttachmentsSummary('trailer', trailers.map((t) => t.id));
   res.json(
     trailers.map((trailer) => ({
       ...trailer,
       scheduleUsage: usage.trailers.get(normalizePlateKey(trailer.plate)) ?? null,
+      attachments: attachments.get(trailer.id) ?? [],
     }))
   );
 };
@@ -268,13 +279,34 @@ export const deleteTrailer = async (req: Request, res: Response) => {
 
 // ─────────────────────────── Сотрудники (ПДн) ───────────────────────────
 
+/** Сводка сканов для колонки «Документы»: entityId → [{id, kind, originalName}]. */
+const loadAttachmentsSummary = async (
+  entityType: 'employee' | 'vehicle' | 'trailer',
+  ids: string[],
+): Promise<Map<string, { id: string; kind: string; originalName: string }[]>> => {
+  const summary = new Map<string, { id: string; kind: string; originalName: string }[]>();
+  if (!ids.length) return summary;
+  const { DirectoryAttachment } = await import('../models/directory-attachment.model');
+  const rows = await AppDataSource.getRepository(DirectoryAttachment).find({
+    where: { entityType, entityId: In(ids) },
+    order: { createdAt: 'ASC' },
+  });
+  for (const row of rows) {
+    const list = summary.get(row.entityId) ?? [];
+    list.push({ id: row.id, kind: row.kind, originalName: row.originalName });
+    summary.set(row.entityId, list);
+  }
+  return summary;
+};
+
 export const listEmployees = async (req: Request, res: Response) => {
   const location = requireDirectoryLocation(req, req.query.location);
   const employees = await employeeRepo.find({
     where: { location, counterpartyId: counterpartyFilter(req.query.counterpartyId) },
     order: { fullName: 'ASC' },
   });
-  res.json(employees);
+  const attachments = await loadAttachmentsSummary('employee', employees.map((e) => e.id));
+  res.json(employees.map((employee) => ({ ...employee, attachments: attachments.get(employee.id) ?? [] })));
 };
 
 export const saveEmployee = async (req: Request, res: Response) => {
@@ -593,6 +625,8 @@ export const exportDirectory = async (req: Request, res: Response) => {
       { header: 'Цвет', key: 'color', width: 12 },
       { header: 'VIN', key: 'vin', width: 22 },
       { header: 'СОР', key: 'sor', width: 16 },
+      { header: 'Дата выдачи СОР', key: 'sorIssueDate', width: 16 },
+      { header: 'Собственник', key: 'owner', width: 24 },
       { header: 'Год выпуска', key: 'manufactureYear', width: 12 },
       { header: 'Статус', key: 'status', width: 12 },
       { header: 'Примечание', key: 'note', width: 30 },
@@ -605,6 +639,8 @@ export const exportDirectory = async (req: Request, res: Response) => {
         color: vehicle.color,
         vin: vehicle.vin,
         sor: vehicle.sor,
+        sorIssueDate: formatDateRu(vehicle.sorIssueDate),
+        owner: vehicle.owner,
         manufactureYear: vehicle.manufactureYear,
         status: statusLabel(vehicle.status),
         note: vehicle.note,
@@ -638,7 +674,8 @@ export const exportDirectory = async (req: Request, res: Response) => {
       })
     );
   } else {
-    const rows = pick(await modelRepo.find({ order: { brand: 'ASC', name: 'ASC' } }));
+    const location = requireDirectoryLocation(req, req.body?.location);
+    const rows = pick(await modelRepo.find({ where: { location }, order: { brand: 'ASC', name: 'ASC' } }));
     sheetName = 'Модели и нормы';
     filename = 'Справочник_модели_и_нормы.xlsx';
     const sheet = workbook.addWorksheet(sheetName);
