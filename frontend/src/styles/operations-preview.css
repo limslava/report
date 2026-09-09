@@ -1493,3 +1493,12 @@
 .print-page .dir-table tr.print-journal-row--new td {
   background: #e8f5e9;
 }
+
+/* «Содержание» заявки: сводка не растягивает таблицу, полностью — по клику */
+.print-page .dir-table td.print-summary-cell {
+  max-width: 420px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
