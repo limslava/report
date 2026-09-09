@@ -192,3 +192,28 @@ export const downloadFuelExcel = (location: FleetLocation, month: string) =>
   api.get('/fuel/export', { params: { location, month }, responseType: 'blob' });
 export const downloadFuelYearExcel = (location: FleetLocation, year: number) =>
   api.get('/fuel/export-year', { params: { location, year }, responseType: 'blob' });
+
+// ─── Сканы документов (паспорт/ВУ сотрудника, СОР техники и прицепа) ───
+export type DirectoryAttachmentEntityType = 'employee' | 'vehicle' | 'trailer';
+export type DirectoryAttachmentKind = 'passport' | 'license' | 'sor';
+export type DirectoryAttachmentItem = {
+  id: string;
+  entityType: DirectoryAttachmentEntityType;
+  entityId: string;
+  kind: DirectoryAttachmentKind;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+};
+export const getDirectoryAttachments = (entityType: DirectoryAttachmentEntityType, entityId: string) =>
+  api.get<DirectoryAttachmentItem[]>('/directories/attachments', { params: { entityType, entityId } });
+export const uploadDirectoryAttachment = (data: {
+  entityType: DirectoryAttachmentEntityType;
+  entityId: string;
+  kind: DirectoryAttachmentKind;
+  file: { name: string; mimeType: string; contentBase64: string };
+}) => api.post<DirectoryAttachmentItem>('/directories/attachments', data);
+export const downloadDirectoryAttachment = (id: string) =>
+  api.get(`/directories/attachments/${id}/download`, { responseType: 'blob' });
+export const deleteDirectoryAttachment = (id: string) => api.delete(`/directories/attachments/${id}`);
