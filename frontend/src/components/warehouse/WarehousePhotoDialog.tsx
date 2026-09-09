@@ -56,6 +56,17 @@ interface PhotoPreview extends WarehousePhoto {
   triedFull?: boolean;
 }
 
+// Миниатюры показываем через data:-URL, а не blob: — по полевому отчёту
+// 10.09 iOS Safari отказывался декодировать валидные JPEG по blob-ссылкам
+// (гонка отзыва URL при обновлении списка + капризы Safari в долгоживущих
+// вкладках). data-URL ни от чего не зависит и живёт вместе с состоянием.
+const blobToDataUrl = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result));
+  reader.onerror = () => reject(reader.error ?? new Error('Не удалось прочитать файл'));
+  reader.readAsDataURL(blob);
+});
+
 const formatBytes = (bytes: number): string =>
   bytes < 1024 * 1024
     ? `${Math.max(1, Math.round(bytes / 1024))} КБ`
@@ -76,7 +87,6 @@ export default function WarehousePhotoDialog({
   const [error, setError] = useState<string | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoPreview | null>(null);
   const [fullPhotoUrl, setFullPhotoUrl] = useState<string | null>(null);
-  const objectUrls = useRef<string[]>([]);
   const processingRef = useRef(false);
 
   // Полноразмерное фото качаем только при открытии просмотра (в сетке — миниатюры).
@@ -86,25 +96,17 @@ export default function WarehousePhotoDialog({
       return undefined;
     }
     let cancelled = false;
-    let url: string | null = null;
     downloadWarehouseVehiclePhoto(vehicle.id, selectedPhoto.id)
-      .then((response) => {
-        if (cancelled) return;
-        url = URL.createObjectURL(response.data);
-        setFullPhotoUrl(url);
+      .then((response) => blobToDataUrl(response.data))
+      .then((url) => {
+        if (!cancelled) setFullPhotoUrl(url);
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
-      if (url) URL.revokeObjectURL(url);
       setFullPhotoUrl(null);
     };
   }, [selectedPhoto, vehicle]);
-
-  const clearObjectUrls = useCallback(() => {
-    objectUrls.current.forEach((url) => URL.revokeObjectURL(url));
-    objectUrls.current = [];
-  }, []);
 
   const loadGenerationRef = useRef(0);
 
@@ -121,7 +123,6 @@ export default function WarehousePhotoDialog({
     try {
       const listResponse = await getWarehouseVehiclePhotos(vehicle.id);
       if (loadGenerationRef.current !== generation) return;
-      clearObjectUrls();
       setPhotos(listResponse.data.map((photo) => ({ ...photo, url: '' })));
       setLoading(false);
 
@@ -139,8 +140,8 @@ export default function WarehousePhotoDialog({
             const head = new Uint8Array(await blob.slice(0, 8).arrayBuffer());
             const magic = [...head].map((b) => b.toString(16).padStart(2, '0')).join('');
             logUploadEvent('dialog:thumb:ok', { photoId: photo.id, size: blob.size, type: blob.type, magic });
-            const url = URL.createObjectURL(blob);
-            objectUrls.current.push(url);
+            const url = await blobToDataUrl(blob);
+            if (loadGenerationRef.current !== generation) return;
             setPhotos((current) => current.map((item) => (
               item.id === photo.id ? { ...item, url } : item
             )));
@@ -163,7 +164,7 @@ export default function WarehousePhotoDialog({
       setError(loadError instanceof Error ? loadError.message : 'Не удалось загрузить фотографии.');
       setLoading(false);
     }
-  }, [clearObjectUrls, vehicle]);
+  }, [vehicle]);
 
   const processQueue = useCallback(async () => {
     if (!vehicle || processingRef.current || !navigator.onLine) return;
@@ -236,8 +237,6 @@ export default function WarehousePhotoDialog({
     return () => window.removeEventListener('online', handleOnline);
   }, [processQueue]);
 
-  useEffect(() => () => clearObjectUrls(), [clearObjectUrls]);
-
   const handleFiles = async (event: ChangeEvent<HTMLInputElement>) => {
     if (!vehicle) return;
     const files = Array.from(event.target.files ?? []);
@@ -280,8 +279,6 @@ export default function WarehousePhotoDialog({
     setError(null);
     try {
       await deleteWarehouseVehiclePhoto(vehicle.id, photo.id);
-      URL.revokeObjectURL(photo.url);
-      objectUrls.current = objectUrls.current.filter((url) => url !== photo.url);
       setPhotos((current) => current.filter((item) => item.id !== photo.id));
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'Не удалось удалить фотографию.');
@@ -422,9 +419,8 @@ export default function WarehousePhotoDialog({
                         // миниатюра не декодится — фолбэк на полный размер:
                         // медленнее, но кладовщик видит фото
                         void downloadWarehouseVehiclePhoto(vehicle.id, photo.id)
-                          .then((response) => {
-                            const url = URL.createObjectURL(response.data);
-                            objectUrls.current.push(url);
+                          .then((response) => blobToDataUrl(response.data))
+                          .then((url) => {
                             setPhotos((current) => current.map((item) => (
                               item.id === photo.id ? { ...item, url, triedFull: true } : item
                             )));
