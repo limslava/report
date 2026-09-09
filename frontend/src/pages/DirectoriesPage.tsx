@@ -1077,7 +1077,6 @@ export default function DirectoriesPage({
                     {exportMode && exportCheckboxHeader}
                     <th style={{ minWidth: 220 }}>{sortHeader('models', 'label', 'Марка / модель')}</th>
                     {visibleColumns('models').map((column) => columnTh('models', column))}
-                    <th className="fuel-cell--center" style={{ minWidth: 70 }}>Копия</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1086,24 +1085,11 @@ export default function DirectoriesPage({
                       {exportMode && exportCheckboxCell(model.id)}
                       <td className="fuel-cell--sticky">{`${model.brand} ${model.name}`.trim()}</td>
                       {visibleColumns('models').map((column) => columnTd(column, model))}
-                      <td className="fuel-cell--center dir-actions">
-                        <Tooltip title="Скопировать марку и модель">
-                          <IconButton
-                            size="small"
-                            onClick={() => {
-                              const label = `${model.brand} ${model.name}`.trim();
-                              void copyPlain(label, `«${label}»`);
-                            }}
-                          >
-                            <ContentCopy sx={{ fontSize: 16 }} />
-                          </IconButton>
-                        </Tooltip>
-                      </td>
                     </tr>
                   ))}
                   {models.length === 0 && (
                     <tr>
-                      <td colSpan={visibleColumns('models').length + 3} className="fuel-empty">Моделей пока нет — они появятся при заполнении карточек техники</td>
+                      <td colSpan={visibleColumns('models').length + 2} className="fuel-empty">Моделей пока нет — они появятся при заполнении карточек техники</td>
                     </tr>
                   )}
                 </tbody>
