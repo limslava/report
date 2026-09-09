@@ -136,7 +136,11 @@ const DashboardLayout = () => {
   const canViewEfficiency = canViewOperationsEfficiency(user?.role);
   const isTechDashboardRoute = location.pathname.includes('/sw-tech-dashboard');
   const isOperationsPreviewRoute = location.pathname === '/operations-preview';
-  const isWarehouseReceptionRoute = location.pathname === '/warehouse/reception';
+  // Все складские экраны скроллятся самой страницей, а не внутренним <main>:
+  // вложенный скролл на телефоне ощущался «двойным» — часть экрана
+  // скроллится, часть нет (замечание тестирования 09.09). Для приёмки это
+  // уже было сделано — распространено на весь раздел склада.
+  const isWarehouseReceptionRoute = location.pathname.startsWith('/warehouse');
   const currentDate = new Date();
   const currentYear = currentDate.getFullYear();
   const swQuery = useMemo(() => new URLSearchParams(location.search), [location.search]);

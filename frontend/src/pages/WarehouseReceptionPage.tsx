@@ -56,6 +56,7 @@ import WarehouseInspectionForm, {
   emptyWarehouseInspection,
 } from '../components/warehouse/WarehouseInspectionForm';
 import WarehouseDamageScheme from '../components/warehouse/WarehouseDamageScheme';
+import WarehousePageTitle from '../components/warehouse/WarehousePageTitle';
 import WarehousePhotoChecklist, {
   buildPhotoChecklistState,
 } from '../components/warehouse/WarehousePhotoChecklist';
@@ -1066,14 +1067,10 @@ export default function WarehouseReceptionPage() {
             alignItems={{ xs: 'stretch', md: 'flex-start' }}
             gap={2}
           >
-            <Box>
-              <Typography variant="h4" component="h1" sx={{ fontSize: { xs: 30, md: 34 } }}>
-                Приёмка транспортного средства
-              </Typography>
-              <Typography color="text.secondary">
-                Черновик сохраняется автоматически на этом устройстве
-              </Typography>
-            </Box>
+            <WarehousePageTitle
+              title="Приёмка ТС"
+              subtitle="Черновик сохраняется автоматически"
+            />
             <Stack direction="row" spacing={1}>
               <Button fullWidth color="inherit" onClick={() => void clearDraft()}>
                 Очистить черновик

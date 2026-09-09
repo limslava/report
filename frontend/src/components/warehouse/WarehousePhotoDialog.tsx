@@ -21,6 +21,7 @@ import {
   Stack,
   Tooltip,
   Typography,
+  useMediaQuery,
 } from '@mui/material';
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -52,6 +53,7 @@ interface WarehousePhotoDialogProps {
 interface PhotoPreview extends WarehousePhoto {
   url: string;
   thumbFailed?: boolean;
+  triedFull?: boolean;
 }
 
 const formatBytes = (bytes: number): string =>
@@ -65,6 +67,7 @@ export default function WarehousePhotoDialog({
   readOnly = false,
   onClose,
 }: WarehousePhotoDialogProps) {
+  const fullScreenDialog = useMediaQuery('(max-width:600px)');
   const [photos, setPhotos] = useState<PhotoPreview[]>([]);
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -132,7 +135,10 @@ export default function WarehousePhotoDialog({
             const imageResponse = await downloadWarehouseVehiclePhoto(vehicle.id, photo.id, 'thumb');
             if (loadGenerationRef.current !== generation) return;
             const blob = imageResponse.data;
-            logUploadEvent('dialog:thumb:ok', { photoId: photo.id, size: blob.size, type: blob.type });
+            // первые байты — в журнал: по ним видно, JPEG это или чужое тело
+            const head = new Uint8Array(await blob.slice(0, 8).arrayBuffer());
+            const magic = [...head].map((b) => b.toString(16).padStart(2, '0')).join('');
+            logUploadEvent('dialog:thumb:ok', { photoId: photo.id, size: blob.size, type: blob.type, magic });
             const url = URL.createObjectURL(blob);
             objectUrls.current.push(url);
             setPhotos((current) => current.map((item) => (
@@ -286,7 +292,15 @@ export default function WarehousePhotoDialog({
   const busy = processing || uploading;
 
   return (
-    <Dialog open={open} onClose={busy ? undefined : onClose} fullWidth maxWidth="lg">
+    <Dialog
+      open={open}
+      onClose={busy ? undefined : onClose}
+      fullWidth
+      maxWidth="lg"
+      // на телефоне — во весь экран: обрезанный модал со своим внутренним
+      // скроллом был неудобен (замечание тестирования 09.09)
+      fullScreen={fullScreenDialog}
+    >
       <DialogTitle sx={{ pr: 7 }}>
         Фотофиксация {vehicle?.warehouseNumber}
         <IconButton
@@ -356,8 +370,7 @@ export default function WarehousePhotoDialog({
           )}
 
           <Typography variant="body2" color="text.secondary">
-            Фотографий: {photos.length}. Перед загрузкой изображения уменьшаются максимум до 3072 px
-            и сохраняются в JPEG высокого качества.
+            Фотографий: {photos.length} из 60. Фото сжимаются автоматически.
           </Typography>
 
           {loading ? (
@@ -399,10 +412,28 @@ export default function WarehousePhotoDialog({
                       // в скролл-области диалога, миниатюры оставались пустыми;
                       // ленивость и так обеспечивает наш загрузчик (по 2)
                       onError={() => {
-                        logUploadEvent('dialog:thumb:img-decode-error', { photoId: photo.id });
-                        setPhotos((current) => current.map((item) => (
-                          item.id === photo.id ? { ...item, url: '', thumbFailed: true } : item
-                        )));
+                        logUploadEvent('dialog:thumb:img-decode-error', { photoId: photo.id, triedFull: Boolean(photo.triedFull) });
+                        if (photo.triedFull || !vehicle) {
+                          setPhotos((current) => current.map((item) => (
+                            item.id === photo.id ? { ...item, url: '', thumbFailed: true } : item
+                          )));
+                          return;
+                        }
+                        // миниатюра не декодится — фолбэк на полный размер:
+                        // медленнее, но кладовщик видит фото
+                        void downloadWarehouseVehiclePhoto(vehicle.id, photo.id)
+                          .then((response) => {
+                            const url = URL.createObjectURL(response.data);
+                            objectUrls.current.push(url);
+                            setPhotos((current) => current.map((item) => (
+                              item.id === photo.id ? { ...item, url, triedFull: true } : item
+                            )));
+                          })
+                          .catch(() => {
+                            setPhotos((current) => current.map((item) => (
+                              item.id === photo.id ? { ...item, url: '', thumbFailed: true } : item
+                            )));
+                          });
                       }}
                       onClick={() => setSelectedPhoto(photo)}
                       sx={{

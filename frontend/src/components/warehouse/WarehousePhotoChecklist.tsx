@@ -62,7 +62,7 @@ export default function WarehousePhotoChecklist({
   return (
     <Stack spacing={1.5}>
       <Alert severity={done === WAREHOUSE_PHOTO_CHECKLIST_ITEMS.length ? 'success' : 'info'}>
-        Фото-чеклист: закрыто {done} из {WAREHOUSE_PHOTO_CHECKLIST_ITEMS.length}. Галочки ставятся автоматически после добавления фото в нужный ракурс.
+        Чек-лист ракурсов: {done} из {WAREHOUSE_PHOTO_CHECKLIST_ITEMS.length}
       </Alert>
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' }, gap: 1.25 }}>
         {WAREHOUSE_PHOTO_CHECKLIST_ITEMS.map(([key, label]) => {

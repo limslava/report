@@ -48,6 +48,7 @@ import {
   WarehouseVehicleInspectionPayload,
   WarehouseVehicle,
 } from '../services/warehouse.api';
+import WarehousePageTitle from '../components/warehouse/WarehousePageTitle';
 import WarehouseInspectionForm, {
   emptyWarehouseInspection,
 } from '../components/warehouse/WarehouseInspectionForm';
@@ -783,12 +784,10 @@ export default function WarehouseIssuePage() {
       <Stack spacing={2.5} sx={{ maxWidth: 980, mx: 'auto' }}>
         <Paper variant="outlined" sx={{ p: { xs: 2, md: 2.5 } }}>
           <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={2}>
-            <Box>
-              <Typography variant="h4" component="h1">Выдача транспортного средства</Typography>
-              <Typography color="text.secondary">
-                Проверка ТС, обязательная фотофиксация и автоматическое время выдачи
-              </Typography>
-            </Box>
+            <WarehousePageTitle
+              title="Выдача ТС"
+              subtitle="Проверка, фотофиксация и подтверждение выдачи"
+            />
             <Button startIcon={<ArrowBack />} onClick={() => navigate('/warehouse/operations')}>
               Выйти
             </Button>
@@ -797,7 +796,10 @@ export default function WarehouseIssuePage() {
 
         {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
 
-        <Paper variant="outlined" sx={{ px: { xs: 1, md: 2 }, py: 2, overflowX: 'auto' }}>
+        {/* Полный степпер — только на широких экранах: на телефоне он не
+            влезал и добавлял горизонтальный скролл. На телефоне — строка
+            «Шаг N из 4» с тонким прогрессом. */}
+        <Paper variant="outlined" sx={{ px: 2, py: 2, display: { xs: 'none', md: 'block' } }}>
           <Stepper activeStep={activeStep} alternativeLabel nonLinear>
             {STEPS.map((label, index) => (
               <Step key={label} completed={index < activeStep}>
@@ -812,6 +814,16 @@ export default function WarehouseIssuePage() {
             ))}
           </Stepper>
         </Paper>
+        <Box sx={{ display: { xs: 'block', md: 'none' } }}>
+          <Typography variant="overline" color="primary" sx={{ lineHeight: 1.2 }}>
+            Шаг {activeStep + 1} из {STEPS.length} · {STEPS[activeStep]}
+          </Typography>
+          <LinearProgress
+            variant="determinate"
+            value={((activeStep + 1) / STEPS.length) * 100}
+            sx={{ mt: 0.5, borderRadius: 1 }}
+          />
+        </Box>
 
         <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
           {activeStep === 0 && (

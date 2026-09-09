@@ -1,11 +1,17 @@
+import { ExpandMore } from '@mui/icons-material';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
   Checkbox,
+  Chip,
   FormControlLabel,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
+import { ReactNode } from 'react';
 import { WarehouseVehicleInspectionPayload } from '../../services/warehouse.api';
 
 interface Props {
@@ -121,38 +127,80 @@ export default function WarehouseInspectionForm({ value, onChange }: Props) {
     />
   );
 
+  // Секции свёрнуты в аккордеоны: на телефоне осмотр был бесконечной
+  // простынёй полей. Счётчик в заголовке показывает заполненность.
+  const countFilled = (
+    group: keyof WarehouseVehicleInspectionPayload,
+    keys: readonly (readonly [string, string])[],
+  ) => keys.filter(([key]) => {
+    const v = groupValue(value, group, key);
+    return typeof v === 'boolean' ? v : Boolean(String(v ?? '').trim());
+  }).length;
+
+  const section = (
+    title: string,
+    filled: number,
+    total: number,
+    children: ReactNode,
+  ) => (
+    <Accordion key={title} disableGutters variant="outlined" sx={{ '&:before': { display: 'none' } }}>
+      <AccordionSummary expandIcon={<ExpandMore />}>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%', pr: 1 }} justifyContent="space-between">
+          <Typography fontWeight={700}>{title}</Typography>
+          <Chip
+            size="small"
+            color={filled > 0 ? 'primary' : 'default'}
+            variant={filled > 0 ? 'filled' : 'outlined'}
+            label={`${filled} из ${total}`}
+          />
+        </Stack>
+      </AccordionSummary>
+      <AccordionDetails>{children}</AccordionDetails>
+    </Accordion>
+  );
+
   return (
-    <Stack spacing={2.5}>
-      <Box>
-        <Typography variant="subtitle1" fontWeight={700}>Реквизиты техники</Typography>
-        <Box sx={{ mt: 1, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 1.5 }}>
+    <Stack spacing={1.5}>
+      {section(
+        'Реквизиты техники',
+        countFilled('vehicleDetails', vehicleDetailFields),
+        vehicleDetailFields.length,
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 1.5 }}>
           {vehicleDetailFields.map(([key, label]) => textInput('vehicleDetails', key, label))}
-        </Box>
-      </Box>
+        </Box>,
+      )}
 
-      <Box>
-        <Typography variant="subtitle1" fontWeight={700}>Документы и ключи</Typography>
-        <Box sx={{ mt: 1, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 0.5 }}>
+      {section(
+        'Документы и ключи',
+        countFilled('documentsAndKeys', documentsAndKeys),
+        documentsAndKeys.length,
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 0.5 }}>
           {documentsAndKeys.map(([key, label]) => checkboxInput('documentsAndKeys', key, label))}
-        </Box>
-      </Box>
+        </Box>,
+      )}
 
-      <Box>
-        <Typography variant="subtitle1" fontWeight={700}>Комплектность</Typography>
-        <Box sx={{ mt: 1, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 0.5 }}>
+      {section(
+        'Комплектность',
+        countFilled('equipment', equipmentFields),
+        equipmentFields.length,
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 0.5 }}>
           {equipmentFields.map(([key, label]) => checkboxInput('equipment', key, label))}
-        </Box>
-      </Box>
+        </Box>,
+      )}
 
-      <Box>
-        <Typography variant="subtitle1" fontWeight={700}>Состояние узлов и агрегатов</Typography>
-        <Box sx={{ mt: 1, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 0.5 }}>
-          {technicalCondition.map(([key, label]) => checkboxInput('technicalCondition', key, label))}
-        </Box>
-        <Box sx={{ mt: 1.5 }}>
-          {technicalTextFields.map(([key, label]) => textInput('technicalCondition', key, label))}
-        </Box>
-      </Box>
+      {section(
+        'Состояние узлов и агрегатов',
+        countFilled('technicalCondition', technicalCondition),
+        technicalCondition.length,
+        <>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 0.5 }}>
+            {technicalCondition.map(([key, label]) => checkboxInput('technicalCondition', key, label))}
+          </Box>
+          <Box sx={{ mt: 1.5 }}>
+            {technicalTextFields.map(([key, label]) => textInput('technicalCondition', key, label))}
+          </Box>
+        </>,
+      )}
 
       <TextField
         label="Личные вещи и примечания"

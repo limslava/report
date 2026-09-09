@@ -14,6 +14,7 @@ import {
 } from '@mui/material';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import WarehousePageTitle from '../components/warehouse/WarehousePageTitle';
 import {
   getWarehouseVehicles,
   WarehouseVehicle,
@@ -65,12 +66,10 @@ export default function WarehouseOperationsPage() {
   return (
     <Box sx={{ p: { xs: 1.5, md: 3 }, maxWidth: 1280, mx: 'auto' }}>
       <Stack spacing={2.5}>
-        <Box>
-          <Typography variant="h4" component="h1">Рабочая станция кладовщика</Typography>
-          <Typography color="text.secondary">
-            Складская площадка · приём, фотофиксация, услуги и выдача ТС
-          </Typography>
-        </Box>
+        <WarehousePageTitle
+          title="Рабочая станция кладовщика"
+          subtitle="Складская площадка · приём, фотофиксация, услуги и выдача ТС"
+        />
 
         {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
 

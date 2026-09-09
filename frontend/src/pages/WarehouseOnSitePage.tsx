@@ -22,6 +22,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import UploadReportButton from '../components/warehouse/UploadReportButton';
+import WarehousePageTitle from '../components/warehouse/WarehousePageTitle';
 import WarehousePhotoDialog from '../components/warehouse/WarehousePhotoDialog';
 import WarehouseServicesDialog from '../components/warehouse/WarehouseServicesDialog';
 import {
@@ -196,10 +197,7 @@ export default function WarehouseOnSitePage() {
     <Box sx={{ p: { xs: 1.5, md: 3 }, maxWidth: 980, mx: 'auto' }}>
       <Stack spacing={2}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
-          <Box>
-            <Typography variant="h4" component="h1">Техника на стоянке</Typography>
-            <Typography color="text.secondary">Поиск, услуги, фото и выдача ТС</Typography>
-          </Box>
+          <WarehousePageTitle title="Техника на стоянке" subtitle="Поиск, услуги, фото и выдача ТС" />
           <Button startIcon={<ArrowBack />} onClick={() => navigate('/warehouse/operations')}>
             Назад
           </Button>
