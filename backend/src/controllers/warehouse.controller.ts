@@ -548,6 +548,31 @@ export const updateWarehouseVehicle = async (
   }
 };
 
+/**
+ * Полное удаление складской карточки (акта). Только админ — для чистки
+ * ошибочных/тестовых записей. Осмотры, операции, услуги и строки фото
+ * уходят каскадом БД; файлы фото и резервные копии удаляются с диска.
+ */
+export const deleteWarehouseVehicle = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const repository = AppDataSource.getRepository(WarehouseVehicle);
+    const vehicle = await repository.findOne({ where: { id: req.params.id } });
+    if (!vehicle) {
+      res.status(404).json({ message: 'Карточка ТС не найдена' });
+      return;
+    }
+    await purgeWarehouseVehiclePhotos(vehicle.id);
+    await repository.delete(vehicle.id);
+    res.json({ deleted: true, warehouseNumber: vehicle.warehouseNumber });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const correctWarehouseVehicleDates = async (
   req: Request,
   res: Response,

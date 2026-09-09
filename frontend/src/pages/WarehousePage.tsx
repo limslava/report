@@ -1,5 +1,6 @@
 import {
   Add,
+  Delete,
   EventRepeat,
   Logout,
   MiscellaneousServices,
@@ -37,12 +38,14 @@ import {
   TextField,
   Tabs,
   Tooltip,
+  Typography,
 } from '@mui/material';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   createWarehouseVehicle,
   correctWarehouseVehicleDates,
+  deleteWarehouseVehicleAct,
   getWarehouseClients,
   getWarehouseVehicles,
   updateWarehouseVehicle,
@@ -163,6 +166,8 @@ export default function WarehousePage() {
   const [form, setForm] = useState<WarehouseVehiclePayload>(emptyForm);
   const [photoVehicle, setPhotoVehicle] = useState<WarehouseVehicle | null>(null);
   const [servicesVehicle, setServicesVehicle] = useState<WarehouseVehicle | null>(null);
+  const [deleteVehicleTarget, setDeleteVehicleTarget] = useState<WarehouseVehicle | null>(null);
+  const [deletingVehicle, setDeletingVehicle] = useState(false);
   const clientsPanelRef = useRef<WarehouseClientsPanelHandle>(null);
   const [dateCorrectionVehicle, setDateCorrectionVehicle] = useState<WarehouseVehicle | null>(null);
   const [dateCorrection, setDateCorrection] = useState({
@@ -608,6 +613,17 @@ export default function WarehousePage() {
                         </IconButton>
                       </Tooltip>
                     )}
+                    {user?.role === 'admin' && (
+                      <Tooltip title="Удалить акт (без возможности восстановления)">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => setDeleteVehicleTarget(vehicle)}
+                        >
+                          <Delete fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                   </TableCell>
                 </TableRow>
                 );
@@ -846,6 +862,42 @@ export default function WarehousePage() {
         readOnly={!canEditServices}
         onClose={() => setServicesVehicle(null)}
       />
+      <Dialog open={Boolean(deleteVehicleTarget)} onClose={deletingVehicle ? undefined : () => setDeleteVehicleTarget(null)}>
+        <DialogTitle>Удалить акт {deleteVehicleTarget?.warehouseNumber}?</DialogTitle>
+        <DialogContent>
+          <Typography>
+            {deleteVehicleTarget?.brand} {deleteVehicleTarget?.model}
+            {' · '}
+            {deleteVehicleTarget?.counterparty.nameShort || deleteVehicleTarget?.counterparty.nameFull}
+          </Typography>
+          <Typography color="error" sx={{ mt: 1 }}>
+            Карточка, осмотры, услуги и все фотографии будут удалены безвозвратно.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={deletingVehicle} onClick={() => setDeleteVehicleTarget(null)}>Отмена</Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={deletingVehicle}
+            onClick={() => {
+              if (!deleteVehicleTarget) return;
+              setDeletingVehicle(true);
+              void deleteWarehouseVehicleAct(deleteVehicleTarget.id)
+                .then(() => {
+                  setDeleteVehicleTarget(null);
+                  return loadVehicles(true);
+                })
+                .catch((deleteError) => {
+                  setError(errorMessage(deleteError, 'Не удалось удалить акт.'));
+                })
+                .finally(() => setDeletingVehicle(false));
+            }}
+          >
+            {deletingVehicle ? 'Удаление…' : 'Удалить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

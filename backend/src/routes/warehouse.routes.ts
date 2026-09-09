@@ -21,6 +21,7 @@ import {
   attachWarehousePendingPhotos,
   createWarehouseVehicle,
   correctWarehouseVehicleDates,
+  deleteWarehouseVehicle,
   deleteWarehouseVehiclePhoto,
   exportWarehouseVehicleInspectionAct,
   getWarehouseVehicleInspection,
@@ -409,6 +410,15 @@ router.get(
   [param('id').isUUID()],
   handleValidationErrors,
   getWarehouseVehicle,
+);
+
+// Полное удаление карточки (акта) — только админ, для чистки ошибочных записей
+router.delete(
+  '/vehicles/:id',
+  authorizeRole('admin'),
+  [param('id').isUUID()],
+  handleValidationErrors,
+  deleteWarehouseVehicle,
 );
 
 router.post(

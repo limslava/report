@@ -330,6 +330,10 @@ export const downloadWarehouseVehiclePhoto = (vehicleId: string, photoId: string
     ...(size ? { params: { size } } : {}),
   });
 
+// Полное удаление акта (карточки ТС) — только для админа
+export const deleteWarehouseVehicleAct = (vehicleId: string) =>
+  api.delete(`/warehouse/vehicles/${vehicleId}`);
+
 export const deleteWarehouseVehiclePhoto = (vehicleId: string, photoId: string) =>
   api.delete(`/warehouse/vehicles/${vehicleId}/photos/${photoId}`);
 
