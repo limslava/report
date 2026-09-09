@@ -113,7 +113,8 @@ const techStatusPill = (status: string) => (
 /**
  * Настраиваемые колонки таблиц (пользователь выбирает видимость и порядок,
  * кнопка «Колонки»). Первая колонка (ФИО/номер) и колонка действий — фиксированы.
- * key совпадает с полем сортировки.
+ * key совпадает с полем сортировки. defaultHidden — поля карточек, по умолчанию
+ * в таблице не показываются, но пользователь может их включить.
  */
 type DirColumn<T> = {
   key: string;
@@ -121,14 +122,24 @@ type DirColumn<T> = {
   minWidth: number;
   thCenter?: boolean;
   tdClass: string;
+  defaultHidden?: boolean;
   render: (row: T) => React.ReactNode;
 };
+/** Поля карточки сотрудника, доступные как скрытые колонки (общие для водителей и сотрудников). */
+const EMPLOYEE_CARD_COLUMNS: DirColumn<EmployeeItem>[] = [
+  { key: 'passportNumber', label: 'Паспорт (серия и номер)', minWidth: 150, tdClass: 'fuel-cell--center', defaultHidden: true, render: (e) => e.passportNumber || '—' },
+  { key: 'passportIssueDate', label: 'Дата выдачи паспорта', minWidth: 120, thCenter: true, tdClass: 'fuel-cell--center', defaultHidden: true, render: (e) => formatDateDisplay(e.passportIssueDate) },
+  { key: 'passportIssuedBy', label: 'Кем выдан паспорт', minWidth: 220, tdClass: 'fuel-cell--left', defaultHidden: true, render: (e) => e.passportIssuedBy || '—' },
+  { key: 'birthPlace', label: 'Место рождения', minWidth: 180, tdClass: 'fuel-cell--left', defaultHidden: true, render: (e) => e.birthPlace || '—' },
+  { key: 'registrationAddress', label: 'Адрес регистрации', minWidth: 240, tdClass: 'fuel-cell--left', defaultHidden: true, render: (e) => e.registrationAddress || '—' },
+];
 const DRIVER_COLUMNS: DirColumn<EmployeeItem>[] = [
   { key: 'phone', label: 'Телефон', minWidth: 130, tdClass: 'fuel-cell--center', render: (e) => e.phone || '—' },
   { key: 'licenseNumber', label: 'ВУ (номер)', minWidth: 120, tdClass: 'fuel-cell--center', render: (e) => e.licenseNumber || '—' },
   { key: 'licenseIssueDate', label: 'Дата выдачи ВУ', minWidth: 110, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => formatDateDisplay(e.licenseIssueDate) },
   { key: 'inn', label: 'ИНН', minWidth: 120, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => e.inn || '—' },
   { key: 'birthDate', label: 'Дата рождения', minWidth: 110, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => formatDateDisplay(e.birthDate) },
+  ...EMPLOYEE_CARD_COLUMNS,
   { key: 'status', label: 'Статус', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => employeeStatusPill(e.status) },
 ];
 const STAFF_COLUMNS: DirColumn<EmployeeItem>[] = [
@@ -136,6 +147,9 @@ const STAFF_COLUMNS: DirColumn<EmployeeItem>[] = [
   { key: 'phone', label: 'Телефон', minWidth: 130, tdClass: 'fuel-cell--center', render: (e) => e.phone || '—' },
   { key: 'inn', label: 'ИНН', minWidth: 120, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => e.inn || '—' },
   { key: 'birthDate', label: 'Дата рождения', minWidth: 110, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => formatDateDisplay(e.birthDate) },
+  { key: 'licenseNumber', label: 'ВУ (номер)', minWidth: 120, tdClass: 'fuel-cell--center', defaultHidden: true, render: (e) => e.licenseNumber || '—' },
+  { key: 'licenseIssueDate', label: 'Дата выдачи ВУ', minWidth: 110, thCenter: true, tdClass: 'fuel-cell--center', defaultHidden: true, render: (e) => formatDateDisplay(e.licenseIssueDate) },
+  ...EMPLOYEE_CARD_COLUMNS,
   { key: 'status', label: 'Статус', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (e) => employeeStatusPill(e.status) },
 ];
 const VEHICLE_COLUMNS: DirColumn<FleetVehicleItem>[] = [
@@ -144,6 +158,8 @@ const VEHICLE_COLUMNS: DirColumn<FleetVehicleItem>[] = [
   { key: 'color', label: 'Цвет', minWidth: 90, tdClass: 'fuel-cell--center', render: (v) => v.color || '—' },
   { key: 'vin', label: 'VIN', minWidth: 140, tdClass: 'fuel-cell--left', render: (v) => v.vin || '—' },
   { key: 'sor', label: 'СОР', minWidth: 120, thCenter: true, tdClass: 'fuel-cell--center', render: (v) => v.sor || '—' },
+  { key: 'sorIssueDate', label: 'Дата выдачи СОР', minWidth: 120, thCenter: true, tdClass: 'fuel-cell--center', defaultHidden: true, render: (v) => formatDateDisplay(v.sorIssueDate) },
+  { key: 'owner', label: 'Собственник', minWidth: 160, tdClass: 'fuel-cell--left', defaultHidden: true, render: (v) => v.owner || '—' },
   { key: 'manufactureYear', label: 'Год выпуска', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (v) => v.manufactureYear || '—' },
   { key: 'status', label: 'Статус', minWidth: 90, thCenter: true, tdClass: 'fuel-cell--center', render: (v) => techStatusPill(v.status) },
   { key: 'scheduleUsage', label: 'В графике', minWidth: 100, thCenter: true, tdClass: 'fuel-cell--center', render: (v) => usagePill(v.scheduleUsage) },
@@ -208,9 +224,11 @@ export default function DirectoriesPage({
   const [columnsAnchor, setColumnsAnchor] = useState<HTMLElement | null>(null);
   const dragColumnKey = useRef<string | null>(null);
   const tabColumnKeys = (tabKey: TabKey) => TAB_COLUMNS[tabKey].map((column) => column.key);
+  const tabDefaultHidden = (tabKey: TabKey) =>
+    TAB_COLUMNS[tabKey].filter((column) => column.defaultHidden).map((column) => column.key);
   const visibleColumns = (tabKey: TabKey): DirColumn<any>[] => {
     const byKey = new Map(TAB_COLUMNS[tabKey].map((column) => [column.key, column]));
-    return applyColumnPrefs(tabColumnKeys(tabKey), columnPrefs[tabKey]).map((key) => byKey.get(key)!);
+    return applyColumnPrefs(tabColumnKeys(tabKey), tabDefaultHidden(tabKey), columnPrefs[tabKey]).map((key) => byKey.get(key)!);
   };
   const columnTh = (tabKey: TabKey, column: DirColumn<any>) => (
     <th key={column.key} className={column.thCenter ? 'fuel-cell--center' : undefined} style={{ minWidth: column.minWidth }}>
@@ -790,7 +808,7 @@ export default function DirectoriesPage({
                   if (!dragged || dragged === key) return;
                   setColumnPrefs((prev) => ({
                     ...prev,
-                    [tab]: moveColumnTo(tabColumnKeys(tab), prev[tab], dragged, index),
+                    [tab]: moveColumnTo(tabColumnKeys(tab), tabDefaultHidden(tab), prev[tab], dragged, index),
                   }));
                 }}
                 sx={{
@@ -803,9 +821,12 @@ export default function DirectoriesPage({
                 <Checkbox
                   size="small"
                   sx={{ p: 0.5 }}
-                  checked={!isHidden(key, columnPrefs[tab])}
+                  checked={!isHidden(tabColumnKeys(tab), tabDefaultHidden(tab), columnPrefs[tab], key)}
                   onChange={() =>
-                    setColumnPrefs((prev) => ({ ...prev, [tab]: toggleHidden(tabColumnKeys(tab), prev[tab], key) }))
+                    setColumnPrefs((prev) => ({
+                      ...prev,
+                      [tab]: toggleHidden(tabColumnKeys(tab), tabDefaultHidden(tab), prev[tab], key),
+                    }))
                   }
                 />
                 <Typography sx={{ fontSize: 13, flex: 1 }}>{column.label}</Typography>
@@ -813,7 +834,7 @@ export default function DirectoriesPage({
                   size="small" sx={{ p: 0.25 }}
                   disabled={index === 0}
                   onClick={() =>
-                    setColumnPrefs((prev) => ({ ...prev, [tab]: moveColumnTo(tabColumnKeys(tab), prev[tab], key, index - 1) }))
+                    setColumnPrefs((prev) => ({ ...prev, [tab]: moveColumnTo(tabColumnKeys(tab), tabDefaultHidden(tab), prev[tab], key, index - 1) }))
                   }
                 >
                   <KeyboardArrowUp sx={{ fontSize: 16 }} />
@@ -822,7 +843,7 @@ export default function DirectoriesPage({
                   size="small" sx={{ p: 0.25 }}
                   disabled={index === tabColumnKeys(tab).length - 1}
                   onClick={() =>
-                    setColumnPrefs((prev) => ({ ...prev, [tab]: moveColumnTo(tabColumnKeys(tab), prev[tab], key, index + 1) }))
+                    setColumnPrefs((prev) => ({ ...prev, [tab]: moveColumnTo(tabColumnKeys(tab), tabDefaultHidden(tab), prev[tab], key, index + 1) }))
                   }
                 >
                   <KeyboardArrowDown sx={{ fontSize: 16 }} />
