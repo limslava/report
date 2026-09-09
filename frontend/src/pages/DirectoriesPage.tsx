@@ -1079,8 +1079,8 @@ export default function DirectoriesPage({
               size="small"
               options={ownerSuggestions}
               value={vehicleEdit?.owner ?? ''}
-              onChange={(_event, value) => setVehicleEdit((prev) => ({ ...prev, owner: value ?? '' }))}
-              onInputChange={(_event, value) => setVehicleEdit((prev) => ({ ...prev, owner: value }))}
+              onChange={(_event, value) => setVehicleEdit((prev) => (prev ? { ...prev, owner: value ?? '' } : prev))}
+              onInputChange={(_event, value) => setVehicleEdit((prev) => (prev ? { ...prev, owner: value } : prev))}
               renderInput={(params) => (
                 <TextField {...params} label="Собственник" placeholder="Начните вводить — или выберите" fullWidth />
               )}
