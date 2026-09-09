@@ -1074,10 +1074,6 @@ export default function DirectoriesPage({
                 <TextField {...params} label="Модель" placeholder="Начните вводить — или выберите из списка" fullWidth />
               )}
             />
-            {textField('Цвет', vehicleEdit?.color, (value) => setVehicleEdit((prev) => ({ ...prev, color: value })))}
-            {textField('VIN', vehicleEdit?.vin, (value) => setVehicleEdit((prev) => ({ ...prev, vin: value })))}
-            {textField('СОР', vehicleEdit?.sor, (value) => setVehicleEdit((prev) => ({ ...prev, sor: value })))}
-            {textField('Дата выдачи СОР', formatDateInput(vehicleEdit?.sorIssueDate), (value) => setVehicleEdit((prev) => ({ ...prev, sorIssueDate: value || null })), { type: 'date' })}
             <Autocomplete
               freeSolo
               size="small"
@@ -1089,6 +1085,10 @@ export default function DirectoriesPage({
                 <TextField {...params} label="Собственник" placeholder="Начните вводить — или выберите" fullWidth />
               )}
             />
+            {textField('Цвет', vehicleEdit?.color, (value) => setVehicleEdit((prev) => ({ ...prev, color: value })))}
+            {textField('VIN', vehicleEdit?.vin, (value) => setVehicleEdit((prev) => ({ ...prev, vin: value })))}
+            {textField('СОР', vehicleEdit?.sor, (value) => setVehicleEdit((prev) => ({ ...prev, sor: value })))}
+            {textField('Дата выдачи СОР', formatDateInput(vehicleEdit?.sorIssueDate), (value) => setVehicleEdit((prev) => ({ ...prev, sorIssueDate: value || null })), { type: 'date' })}
             {textField('Год выпуска', vehicleEdit?.manufactureYear, (value) => setVehicleEdit((prev) => ({ ...prev, manufactureYear: value })))}
             <TextField
               select size="small" label="Статус" fullWidth
