@@ -157,6 +157,8 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
   const [pickerIds, setPickerIds] = useState<string[]>([]);
   const [pickerQuery, setPickerQuery] = useState('');
   const [pairs, setPairs] = useState<VmppPairDraft[]>([{ employee: null, vehicle: null }]);
+  // просмотр полного «Содержания» заявки (в таблице — сводка)
+  const [summaryView, setSummaryView] = useState<PrintJournalRow | null>(null);
 
   const drivers = useMemo(() => employees.filter((item) => item.position === 'водитель'), [employees]);
   // доверенности выдаются и на не-водителей — выбор из всех сотрудников, в списке только ФИО
@@ -170,6 +172,23 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
   /** У доверенностей summary = «ФИО · контрагент» — в журнале показываем только ФИО. */
   const journalPersonText = (row: PrintJournalRow): string =>
     mode === 'poa' ? (row.summary.split(' · ')[0] || '—') : (row.summary || '—');
+
+  /** «Содержание» заявки: «ТС (32): А465ХК 124, …» или перечень через «;» / «,». */
+  const summaryParts = (summary: string): { prefix: string; items: string[] } => {
+    const match = /^(.{0,40}?\(\d+\):\s*)([\s\S]*)$/.exec(summary);
+    const prefix = match ? match[1] : '';
+    const body = match ? match[2] : summary;
+    const items = (body.includes('; ') ? body.split('; ') : body.split(', '))
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return { prefix, items };
+  };
+  /** Сводка для ячейки журнала: первые позиции + «и ещё N», полностью — по клику. */
+  const compactSummary = (summary: string): string => {
+    const { prefix, items } = summaryParts(summary);
+    if (items.length <= 3) return summary || '—';
+    return `${prefix}${items.slice(0, 2).join(', ')} и ещё ${items.length - 2}`;
+  };
 
 
   const dotsDateKey = (value: string | undefined): string =>
@@ -504,7 +523,17 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
                   <td className="fuel-cell--center">{row.formNumber ?? 'б/н'}</td>
                   <td className="fuel-cell--left">{new Date(row.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                   <td className="fuel-cell--left" title={templateLabel(row.templateKey)}>{journalFormLabel(row.templateKey)}</td>
-                  <td className="fuel-cell--left" title={row.summary}>{journalPersonText(row)}</td>
+                  {mode === 'poa' ? (
+                    <td className="fuel-cell--left" title={row.summary}>{journalPersonText(row)}</td>
+                  ) : (
+                    <td
+                      className="fuel-cell--left print-summary-cell"
+                      title="Показать полностью"
+                      onClick={() => setSummaryView(row)}
+                    >
+                      {compactSummary(row.summary)}
+                    </td>
+                  )}
                   <td className="fuel-cell--center">{row.issueDate}</td>
                   {mode === 'poa' && <td className="fuel-cell--center">{row.validUntil || '—'}</td>}
                   <td className="fuel-cell--left">{row.createdBy}</td>
@@ -535,6 +564,39 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
           </table>
         </div>
       </section>
+
+      {/* полный состав заявки — по клику на «Содержание» */}
+      <Dialog open={summaryView !== null} onClose={() => setSummaryView(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>
+          {summaryView ? `${journalFormLabel(summaryView.templateKey)}${summaryView.formNumber ? ` №${summaryView.formNumber}` : ''} — содержание` : ''}
+        </DialogTitle>
+        <DialogContent sx={{ pt: 0 }}>
+          {summaryView && (() => {
+            const { prefix, items } = summaryParts(summaryView.summary);
+            return (
+              <Box sx={{ fontSize: 13 }}>
+                {prefix && <Box sx={{ color: '#6b7280', mb: 0.5 }}>{prefix.replace(/:\s*$/, '')}</Box>}
+                <Box component="ol" sx={{ m: 0, pl: 2.5, maxHeight: 380, overflowY: 'auto', display: 'grid', gap: 0.25 }}>
+                  {items.map((item, index) => (
+                    <li key={index}>{item}</li>
+                  ))}
+                </Box>
+              </Box>
+            );
+          })()}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              if (summaryView) void navigator.clipboard.writeText(summaryView.summary);
+              setFeedback({ severity: 'success', text: 'Содержание скопировано в буфер обмена' });
+            }}
+          >
+            Скопировать
+          </Button>
+          <Button onClick={() => setSummaryView(null)}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={pickerKind !== null} onClose={() => setPickerKind(null)} maxWidth="xs" fullWidth>
         <DialogTitle>{pickerKind === 'drivers' ? 'Выбор водителей' : 'Выбор ТС'}</DialogTitle>
