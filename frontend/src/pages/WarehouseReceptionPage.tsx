@@ -1468,16 +1468,16 @@ export default function WarehouseReceptionPage() {
             boxShadow: { xs: 3, md: 0 },
           }}
         >
-          <Stack direction="row" justifyContent="space-between" spacing={1}>
+          <Stack direction="row" justifyContent="space-between" alignItems="stretch" spacing={1}>
             <Button
-              size="small"
               startIcon={<ArrowBack />}
               disabled={activeStep === 0 || saving}
               onClick={() => setActiveStep((current) => Math.max(0, current - 1))}
+              sx={{ minHeight: 48, minWidth: { xs: 96, sm: 'auto' } }}
             >
               Назад
             </Button>
-            <Stack direction="row" spacing={1}>
+            <Stack direction="row" spacing={1} sx={{ flexGrow: { xs: 1, sm: 0 }, maxWidth: { xs: '70%', sm: 'none' } }}>
               <Button
                 startIcon={<Save />}
                 disabled={saving}
@@ -1492,23 +1492,27 @@ export default function WarehouseReceptionPage() {
               >
                 Сохранить черновик
               </Button>
+              {/* Главная кнопка шага — крупная, на телефоне тянется на всю
+                  доступную ширину: в неё попадают большим пальцем не глядя */}
               {activeStep < STEPS.length - 1 ? (
                 <Button
-                  size="small"
+                  fullWidth
                   variant="contained"
                   endIcon={<ArrowForward />}
                   onClick={goNext}
                   disabled={saving}
+                  sx={{ minHeight: 48, fontWeight: 800, fontSize: { xs: 16, sm: 14 } }}
                 >
                   Далее
                 </Button>
               ) : (
                 <Button
-                  size="small"
+                  fullWidth
                   variant="contained"
                   startIcon={<DirectionsCar />}
                   disabled={saving}
                   onClick={() => void submit()}
+                  sx={{ minHeight: 48, fontWeight: 800, fontSize: { xs: 16, sm: 14 } }}
                 >
                   Принять ТС
                 </Button>

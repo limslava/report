@@ -1044,17 +1044,35 @@ export default function WarehouseIssuePage() {
           </Paper>
         )}
 
-        <Paper variant="outlined" sx={{ p: 1.5, position: 'sticky', bottom: 0, zIndex: 2 }}>
-          <Stack direction="row" justifyContent="space-between" spacing={1}>
+        <Paper
+          variant="outlined"
+          sx={{
+            p: { xs: 1, sm: 1.5 },
+            pb: { xs: 'calc(8px + env(safe-area-inset-bottom))', sm: 1.5 },
+            position: 'sticky',
+            bottom: 0,
+            zIndex: 2,
+            boxShadow: { xs: 3, md: 0 },
+          }}
+        >
+          <Stack direction="row" justifyContent="space-between" alignItems="stretch" spacing={1}>
             <Button
               startIcon={<ArrowBack />}
               disabled={activeStep === 0 || saving}
               onClick={() => setActiveStep((current) => Math.max(0, current - 1))}
+              sx={{ minHeight: 48, minWidth: { xs: 96, sm: 'auto' } }}
             >
               Назад
             </Button>
+            {/* Главная кнопка шага — крупная, на телефоне во всю ширину */}
             {activeStep < STEPS.length - 1 ? (
-              <Button variant="contained" endIcon={<ArrowForward />} onClick={goNext} disabled={saving}>
+              <Button
+                variant="contained"
+                endIcon={<ArrowForward />}
+                onClick={goNext}
+                disabled={saving}
+                sx={{ minHeight: 48, fontWeight: 800, fontSize: { xs: 16, sm: 14 }, flexGrow: { xs: 1, sm: 0 }, maxWidth: { xs: '70%', sm: 'none' } }}
+              >
                 Далее
               </Button>
             ) : (
@@ -1064,6 +1082,7 @@ export default function WarehouseIssuePage() {
                 startIcon={<Logout />}
                 onClick={() => void submit()}
                 disabled={saving || issuePhotoCount === 0}
+                sx={{ minHeight: 48, fontWeight: 800, fontSize: { xs: 16, sm: 14 }, flexGrow: { xs: 1, sm: 0 }, maxWidth: { xs: '70%', sm: 'none' } }}
               >
                 Подтвердить выдачу
               </Button>

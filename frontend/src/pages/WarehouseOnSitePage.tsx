@@ -247,28 +247,31 @@ export default function WarehouseOnSitePage() {
         ) : (
           <Stack spacing={1.5}>
             {filteredVehicles.map((vehicle) => (
-              <Card key={vehicle.id} variant="outlined">
-                <CardContent>
+              <Card key={vehicle.id} variant="outlined" sx={{ borderRadius: 3 }}>
+                <CardContent sx={{ p: { xs: 1.75, sm: 2 } }}>
                   <Stack spacing={1.5}>
                     <Box>
-                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                        <Typography variant="h6">{vehicle.warehouseNumber}</Typography>
-                        <Chip
-                          size="small"
-                          variant="outlined"
-                          label={warehouseVehicleTypeLabel(vehicle.vehicleType)}
-                        />
-                        <Chip size="small" color="success" label={`${vehicle.storageDays} сут.`} />
+                      {/* Крупный складской номер — главный идентификатор для
+                          кладовщика у машины; вторичные реквизиты — мельче */}
+                      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                        <Typography sx={{ fontSize: { xs: 22, sm: 20 }, fontWeight: 800, letterSpacing: 0.3 }}>
+                          {vehicle.warehouseNumber}
+                        </Typography>
+                        <Chip size="small" color="success" sx={{ fontWeight: 700 }} label={`${vehicle.storageDays} сут.`} />
                       </Stack>
-                      <Typography>{vehicle.brand} {vehicle.model}</Typography>
+                      <Typography sx={{ fontSize: { xs: 17, sm: 16 }, fontWeight: 600 }}>
+                        {vehicle.brand} {vehicle.model}
+                        <Typography component="span" color="text.secondary" sx={{ ml: 1, fontSize: 13 }}>
+                          {warehouseVehicleTypeLabel(vehicle.vehicleType)}
+                        </Typography>
+                      </Typography>
                       <Typography variant="body2" color="text.secondary">
                         {vehicle.vin || 'VIN не указан'} · {vehicle.registrationNumber || 'без госномера'}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
                         {vehicle.counterparty.nameShort || vehicle.counterparty.nameFull}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Принято: {formatOperationDateTime(vehicle.receivedAt)}
+                        {' · '}
+                        {formatOperationDateTime(vehicle.receivedAt)}
                       </Typography>
                     </Box>
                     {pendingUploads[vehicle.id] > 0 && (
@@ -287,37 +290,49 @@ export default function WarehouseOnSitePage() {
                         )}
                       </Alert>
                     )}
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    {/* Одна главная кнопка «Выдать» во всю ширину, вторичные —
+                        парой рядом; тач-высота 48px */}
+                    <Stack spacing={1}>
                       {pendingUploads[vehicle.id] > 0 && (
                         <Button
+                          fullWidth
                           variant="contained"
                           color="warning"
                           disabled={Boolean(uploadingVehicleId)}
                           onClick={() => void uploadPendingPhotos(vehicle)}
+                          sx={{ minHeight: 48, fontWeight: 700 }}
                         >
                           Догрузить фото
                         </Button>
                       )}
+                      <Stack direction="row" spacing={1}>
+                        <Button
+                          fullWidth
+                          variant="outlined"
+                          startIcon={<MiscellaneousServices />}
+                          onClick={() => setServicesVehicle(vehicle)}
+                          sx={{ minHeight: 48 }}
+                        >
+                          Услуги
+                        </Button>
+                        <Button
+                          fullWidth
+                          variant="outlined"
+                          startIcon={<PhotoCamera />}
+                          onClick={() => setPhotoVehicle(vehicle)}
+                          sx={{ minHeight: 48 }}
+                        >
+                          Фото
+                        </Button>
+                      </Stack>
                       <Button
-                        variant="outlined"
-                        startIcon={<MiscellaneousServices />}
-                        onClick={() => setServicesVehicle(vehicle)}
-                      >
-                        Услуги
-                      </Button>
-                      <Button
-                        variant="outlined"
-                        startIcon={<PhotoCamera />}
-                        onClick={() => setPhotoVehicle(vehicle)}
-                      >
-                        Фото
-                      </Button>
-                      <Button
+                        fullWidth
                         variant="contained"
                         startIcon={<Logout />}
                         onClick={() => navigate(`/warehouse/issue?vehicleId=${vehicle.id}`)}
+                        sx={{ minHeight: 52, fontWeight: 800, fontSize: 16 }}
                       >
-                        Выдать
+                        Выдать ТС
                       </Button>
                     </Stack>
                   </Stack>

@@ -73,52 +73,86 @@ export default function WarehouseOperationsPage() {
 
         {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
 
+        {/* Мобильный сценарий: два главных действия — большими кнопками
+            в столбик, счётчик стоянки — карточкой-ссылкой. На десктопе —
+            прежняя сетка в три колонки. */}
         <Box
           sx={{
             display: 'grid',
             gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' },
-            gap: 2,
+            gap: { xs: 1.5, sm: 2 },
           }}
         >
-          <Card variant="outlined">
+          <Card
+            sx={{
+              bgcolor: 'primary.main',
+              color: 'primary.contrastText',
+              borderRadius: 3,
+            }}
+          >
             <CardActionArea
               onClick={() => navigate('/warehouse/reception')}
-              sx={{ height: '100%', minHeight: 150 }}
+              sx={{ height: '100%', minHeight: { xs: 108, sm: 150 } }}
             >
-              <CardContent>
-                <AddCircleOutline color="primary" sx={{ fontSize: 42, mb: 1 }} />
-                <Typography variant="h6">Принять ТС</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Создать карточку, зафиксировать топливо и выполнить фотоосмотр
-                </Typography>
+              <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2, height: '100%' }}>
+                <AddCircleOutline sx={{ fontSize: { xs: 44, sm: 42 } }} />
+                <Box>
+                  <Typography sx={{ fontSize: { xs: 22, sm: 20 }, fontWeight: 800, lineHeight: 1.2 }}>
+                    Принять ТС
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.85, display: { xs: 'none', sm: 'block' } }}>
+                    Карточка, фотоосмотр, повреждения
+                  </Typography>
+                </Box>
               </CardContent>
             </CardActionArea>
           </Card>
 
-          <Card variant="outlined">
+          <Card
+            variant="outlined"
+            sx={{ borderRadius: 3, borderWidth: 2, borderColor: 'primary.main' }}
+          >
             <CardActionArea
               onClick={() => navigate('/warehouse/issue')}
-              sx={{ height: '100%', minHeight: 150 }}
+              sx={{ height: '100%', minHeight: { xs: 108, sm: 150 } }}
             >
-              <CardContent>
-                <Logout color="primary" sx={{ fontSize: 42, mb: 1 }} />
-                <Typography variant="h6">Выдать ТС</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Найти технику на стоянке и подтвердить выдачу
-                </Typography>
+              <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2, height: '100%' }}>
+                <Logout color="primary" sx={{ fontSize: { xs: 44, sm: 42 } }} />
+                <Box>
+                  <Typography color="primary" sx={{ fontSize: { xs: 22, sm: 20 }, fontWeight: 800, lineHeight: 1.2 }}>
+                    Выдать ТС
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                    Найти на стоянке и подтвердить выдачу
+                  </Typography>
+                </Box>
               </CardContent>
             </CardActionArea>
           </Card>
 
-          <Card variant="outlined">
+          <Card variant="outlined" sx={{ borderRadius: 3 }}>
             <CardActionArea
               onClick={() => navigate('/warehouse/on-site')}
-              sx={{ height: '100%', minHeight: 150 }}
+              sx={{ height: '100%', minHeight: { xs: 88, sm: 150 } }}
             >
-              <CardContent>
-                <DirectionsCar color="primary" sx={{ fontSize: 42, mb: 1 }} />
-                <Typography variant="h6">На стоянке</Typography>
-                <Typography variant="h3" sx={{ mt: 0.5 }}>{vehicles.length}</Typography>
+              <CardContent
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 2,
+                  height: '100%',
+                  justifyContent: { xs: 'space-between', sm: 'flex-start' },
+                }}
+              >
+                <Stack direction="row" alignItems="center" gap={2}>
+                  <DirectionsCar color="primary" sx={{ fontSize: { xs: 40, sm: 42 } }} />
+                  <Typography sx={{ fontSize: { xs: 18, sm: 20 }, fontWeight: 700 }}>
+                    На стоянке
+                  </Typography>
+                </Stack>
+                <Typography sx={{ fontSize: { xs: 34, sm: 44 }, fontWeight: 800, color: 'primary.main' }}>
+                  {vehicles.length}
+                </Typography>
               </CardContent>
             </CardActionArea>
           </Card>

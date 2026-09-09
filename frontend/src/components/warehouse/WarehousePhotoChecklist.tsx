@@ -90,11 +90,12 @@ export default function WarehousePhotoChecklist({
                   <Chip size="small" label={completed ? `Фото: ${slotPhotos.length}` : 'Нужно фото'} />
                 </Stack>
                 <Stack direction="row" spacing={1}>
-                  <Button component="label" size="small" variant="contained" startIcon={<CameraAlt />} disabled={disabled}>
+                  {/* тач-цели 48px: кладовщик жмёт в перчатках на улице */}
+                  <Button component="label" fullWidth variant="contained" startIcon={<CameraAlt />} disabled={disabled} sx={{ minHeight: 48, fontWeight: 700 }}>
                     Камера
                     <input hidden type="file" accept="image/*" capture="environment" onChange={(event) => handleChange(event, key)} />
                   </Button>
-                  <Button component="label" size="small" variant="outlined" startIcon={<AddPhotoAlternate />} disabled={disabled}>
+                  <Button component="label" fullWidth variant="outlined" startIcon={<AddPhotoAlternate />} disabled={disabled} sx={{ minHeight: 48 }}>
                     Галерея
                     <input hidden type="file" accept="image/*" multiple onChange={(event) => handleChange(event, key)} />
                   </Button>
