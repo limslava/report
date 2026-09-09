@@ -65,6 +65,7 @@ import {
 } from '../constants/warehouse';
 import {
   clearWarehousePhotoQueue,
+  reassignWarehousePhotoQueue,
   enqueueWarehousePhoto,
   listWarehousePhotoQueue,
   recoverWarehousePhotoQueue,
@@ -697,17 +698,48 @@ export default function WarehouseReceptionPage() {
     navigate('/warehouse/operations', { replace: true });
   };
 
+  // Уход с экрана «ТС принято» с непривязанными фото: остатки очереди
+  // передаём созданной карточке, чтобы они НЕ всплыли в следующем акте
+  // (баг 09.09: «начал новый акт — фото остались старые»). Со страницы
+  // «Техника на стоянке» их можно догрузить кнопкой «Догрузить фото».
+  const handOverLeftoverPhotos = async () => {
+    if (!completedVehicle) return;
+    try {
+      const leftovers = await listWarehousePhotoQueue(DRAFT_PHOTO_KEY);
+      if (leftovers.length === 0) return;
+      logUploadEvent('reception:leftover-handover', { vehicleId: completedVehicle.id, count: leftovers.length });
+      await reassignWarehousePhotoQueue(DRAFT_PHOTO_KEY, completedVehicle.id);
+    } catch {
+      // не смогли переназначить — очередь останется в черновике, это не блокер
+    }
+  };
+
   const uploadQueuedPhotos = async (vehicleId: string, total: number) => {
     const draftQueue = await listWarehousePhotoQueue(DRAFT_PHOTO_KEY);
-    const readyHashes = draftQueue
-      .filter((item) => item.uploadStatus === 'uploaded' && item.clientHash)
-      .map((item) => item.clientHash!);
-    if (readyHashes.length !== draftQueue.length) {
+    const ready = draftQueue.filter((item) => item.uploadStatus === 'uploaded' && item.clientHash);
+    if (ready.length !== draftQueue.length) {
       throw new Error('Не все фотографии догружены на сервер. Дождитесь завершения загрузки и повторите приёмку.');
     }
     setProgress({ done: 0, total, label: 'Привязка фотографий' });
-    const response = await attachWarehousePendingPhotos(vehicleId, uploadSessionId, readyHashes);
-    const attachedCount = (response.data.attached || 0) + (response.data.alreadyAttached || 0);
+    // Привязываем по той сессии, под которой фото РЕАЛЬНО загружалось:
+    // после перезагрузки страницы или «Принять ещё одно ТС» сессия страницы
+    // новая, а старые фото в очереди помнят свою — сервер ищет по паре
+    // «сессия + хеш», и привязка одной общей сессией падала (баг 09.09).
+    const hashesBySession = new Map<string, string[]>();
+    ready.forEach((item) => {
+      const session = item.uploadSessionId || uploadSessionId;
+      const list = hashesBySession.get(session) ?? [];
+      list.push(item.clientHash!);
+      hashesBySession.set(session, list);
+    });
+    let attachedCount = 0;
+    logUploadEvent('reception:attach:start', { vehicleId, total, sessions: hashesBySession.size });
+    for (const [session, hashes] of hashesBySession) {
+      const response = await attachWarehousePendingPhotos(vehicleId, session, hashes);
+      attachedCount += (response.data.attached || 0) + (response.data.alreadyAttached || 0);
+      setProgress({ done: attachedCount, total, label: 'Привязка фотографий' });
+    }
+    logUploadEvent('reception:attach:done', { vehicleId, attachedCount, total });
     setPhotoUploadStatus({
       uploaded: attachedCount,
       total,
@@ -725,7 +757,8 @@ export default function WarehouseReceptionPage() {
     setUploadWarning(null);
     try {
       await uploadQueuedPhotos(completedVehicle.id, photoUploadStatus.total);
-    } catch {
+    } catch (attachError) {
+      logUploadEvent('reception:attach:error', { vehicleId: completedVehicle.id, error: messageFromError(attachError) });
       const draftQueue = await listWarehousePhotoQueue(DRAFT_PHOTO_KEY).catch(() => []);
       const pending = draftQueue.filter((item) => item.uploadStatus !== 'uploaded').length;
       setPhotoUploadStatus((current) => ({
@@ -778,7 +811,8 @@ export default function WarehouseReceptionPage() {
 
       try {
         await uploadQueuedPhotos(vehicle.id, totalPhotos);
-      } catch {
+      } catch (attachError) {
+        logUploadEvent('reception:attach:error', { vehicleId: vehicle.id, error: messageFromError(attachError) });
         const draftQueue = await listWarehousePhotoQueue(DRAFT_PHOTO_KEY).catch(() => []);
         const uploadedCount = draftQueue.filter((item) => item.uploadStatus === 'uploaded').length;
         const pending = Math.max(0, totalPhotos - uploadedCount);
@@ -876,16 +910,19 @@ export default function WarehouseReceptionPage() {
                 </Alert>
               )}
               {(photoUploadStatus.pending > 0 || uploadWarning) && (
-                <Button
-                  fullWidth
-                  variant="contained"
-                  color="warning"
-                  startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <Refresh />}
-                  disabled={saving}
-                  onClick={() => void retryPhotoUpload()}
-                >
-                  {saving ? 'Загрузка фотографий…' : 'Повторить загрузку фото'}
-                </Button>
+                <Stack spacing={1} sx={{ width: '100%' }} alignItems="center">
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    color="warning"
+                    startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <Refresh />}
+                    disabled={saving}
+                    onClick={() => void retryPhotoUpload()}
+                  >
+                    {saving ? 'Загрузка фотографий…' : 'Повторить загрузку фото'}
+                  </Button>
+                  <UploadReportButton />
+                </Stack>
               )}
               <Alert severity="success">
                 Приёмка зафиксирована автоматически: {formatOperationDateTime(completedVehicle.receivedAt)}.
@@ -900,21 +937,30 @@ export default function WarehouseReceptionPage() {
                 <Button
                   variant="outlined"
                   onClick={() => {
-                    setCompletedVehicle(null);
-                    setForm(emptyForm());
-                    setInspection(emptyWarehouseInspection());
-                    setUploadSessionId(createUploadSessionId());
-                    setActiveStep(0);
-                    livePhotoBlobsRef.current.clear();
-                    setPhotos([]);
-                    setPhotoUploadStatus({ uploaded: 0, total: 0, pending: 0 });
-                    setUploadWarning(null);
-                    setInspectionWarning(null);
+                    void handOverLeftoverPhotos().then(() => {
+                      setCompletedVehicle(null);
+                      setForm(emptyForm());
+                      setInspection(emptyWarehouseInspection());
+                      setUploadSessionId(createUploadSessionId());
+                      setActiveStep(0);
+                      livePhotoBlobsRef.current.clear();
+                      setPhotos([]);
+                      setPhotoUploadStatus({ uploaded: 0, total: 0, pending: 0 });
+                      setUploadWarning(null);
+                      setInspectionWarning(null);
+                    });
                   }}
                 >
                   Принять ещё одно ТС
                 </Button>
-                <Button variant="contained" onClick={() => navigate('/warehouse/operations', { replace: true })}>
+                <Button
+                  variant="contained"
+                  onClick={() => {
+                    void handOverLeftoverPhotos().then(() => {
+                      navigate('/warehouse/operations', { replace: true });
+                    });
+                  }}
+                >
                   Вернуться на рабочую станцию
                 </Button>
               </Stack>
