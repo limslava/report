@@ -4,8 +4,8 @@ import { FleetVehicle } from '../models/fleet-vehicle.model';
 /**
  * Фиксированный шаблон карточки водителя для копирования во внешние программы.
  * Формат согласован и меняется только решением пользователя (2026-08-14
- * добавлена строка «Год выпуска» после VIN); незаполненные поля выводятся
- * пустыми (в т.ч. VIN и год), строки из шаблона не выбрасываются.
+ * добавлена строка «Год выпуска» после VIN; 2026-09-09 — строка «ИНН» после ВУ);
+ * незаполненные поля выводятся пустыми, строки из шаблона не выбрасываются.
  * Машина и прицеп передаются снаружи — их источник строка графика.
  */
 
@@ -37,6 +37,7 @@ export function buildEmployeeCardText(employee: Employee, rig: EmployeeRig | nul
     `Место рождения: ${employee.birthPlace}`,
     `Зарегистрирован: ${employee.registrationAddress}`,
     `ВУ: ${employee.licenseNumber} Выдано: ${formatDate(employee.licenseIssueDate)}`,
+    `ИНН: ${employee.inn}`,
   ];
   const phoneLine = `Номер телефона: ${employee.phone}`;
   if (!rig) return [...personLines, phoneLine].join('\n');
