@@ -664,6 +664,7 @@ export default function DirectoriesPage({
                   <th style={{ minWidth: 130 }}>{sortHeader('drivers', 'phone', 'Телефон')}</th>
                   <th style={{ minWidth: 120 }}>{sortHeader('drivers', 'licenseNumber', 'ВУ (номер)')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 110 }}>{sortHeader('drivers', 'licenseIssueDate', 'Дата выдачи ВУ')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 120 }}>{sortHeader('drivers', 'inn', 'ИНН')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 110 }}>{sortHeader('drivers', 'birthDate', 'Дата рождения')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 90 }}>{sortHeader('drivers', 'status', 'Статус')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 80 }}>Карточка</th>
@@ -680,6 +681,7 @@ export default function DirectoriesPage({
                     <td className="fuel-cell--center">{employee.phone || '—'}</td>
                     <td className="fuel-cell--center">{employee.licenseNumber || '—'}</td>
                     <td className="fuel-cell--center">{formatDateDisplay(employee.licenseIssueDate)}</td>
+                    <td className="fuel-cell--center">{employee.inn || '—'}</td>
                     <td className="fuel-cell--center">{formatDateDisplay(employee.birthDate)}</td>
                     <td className="fuel-cell--center">
                       <span className={`dir-status ${employee.status === 'active' ? 'dir-status--ok' : 'dir-status--off'}`}>
@@ -697,7 +699,7 @@ export default function DirectoriesPage({
                 ))}
                 {drivers.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="fuel-empty">Водителей пока нет — добавьте</td>
+                    <td colSpan={8} className="fuel-empty">Водителей пока нет — добавьте</td>
                   </tr>
                 )}
               </tbody>
@@ -714,6 +716,7 @@ export default function DirectoriesPage({
                   <th style={{ minWidth: 290, whiteSpace: "nowrap" }}>{sortHeader('staff', 'fullName', 'ФИО')}</th>
                   <th style={{ minWidth: 180 }}>{sortHeader('staff', 'position', 'Должность')}</th>
                   <th style={{ minWidth: 130 }}>{sortHeader('staff', 'phone', 'Телефон')}</th>
+                  <th className="fuel-cell--center" style={{ minWidth: 120 }}>{sortHeader('staff', 'inn', 'ИНН')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 110 }}>{sortHeader('staff', 'birthDate', 'Дата рождения')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 90 }}>{sortHeader('staff', 'status', 'Статус')}</th>
                   <th className="fuel-cell--center" style={{ minWidth: 80 }}>Карточка</th>
@@ -726,6 +729,7 @@ export default function DirectoriesPage({
                     <td className="fuel-cell--sticky">{employee.fullName}</td>
                     <td className="fuel-cell--left">{employee.position || '—'}</td>
                     <td className="fuel-cell--center">{employee.phone || '—'}</td>
+                    <td className="fuel-cell--center">{employee.inn || '—'}</td>
                     <td className="fuel-cell--center">{formatDateDisplay(employee.birthDate)}</td>
                     <td className="fuel-cell--center">
                       <span className={`dir-status ${employee.status === 'active' ? 'dir-status--ok' : 'dir-status--off'}`}>
@@ -743,7 +747,7 @@ export default function DirectoriesPage({
                 ))}
                 {staff.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="fuel-empty">Сотрудников пока нет — добавьте (для доверенностей не на водителей)</td>
+                    <td colSpan={7} className="fuel-empty">Сотрудников пока нет — добавьте (для доверенностей не на водителей)</td>
                   </tr>
                 )}
               </tbody>
