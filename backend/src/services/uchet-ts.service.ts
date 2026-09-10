@@ -60,56 +60,49 @@ interface MappedDay {
 }
 
 /**
- * Терпимый разбор одного дня из их ответа. Поддерживает две вероятные формы:
- *  1) вложенные объекты по видам транспорта:
- *     { date, autocarrier: {received, sent, sentOwn...}, container: {...}, grid: {...}, curtainTruck: {...} }
- *  2) плоские ключи: { date, autocarrierReceived, containerSent, ... }
- * КТК = контейнер + сетка (решение от 2026-09). Всё нераспознанное остаётся null.
+ * Разбор одного дня. Реальная схема SimpleWozi (снята с боевого API 11.09.2026):
+ * {
+ *   date: '2026-09-08',
+ *   received: { autocarrier: 2, container: 0, grid: 0, curtain_truck: 0, undefined: 0 },
+ *   sent: {
+ *     autocarrier: { total: 0, own: 0, hired: 0 },
+ *     container: 0, grid: 0, curtain_truck: 0, undefined: 0
+ *   }
+ * }
+ * КТК = контейнер + сетка (решение от 2026-09). «В ожидании» их API не отдаёт —
+ * остаётся null (в сверке «—»). Вид «undefined» (без типа) не учитывается.
  */
-const mapDay = (item: Record<string, unknown>): MappedDay | null => {
+export const mapDay = (item: Record<string, unknown>): MappedDay | null => {
   const rawDate = pick(item, 'date', 'day', 'statDate', 'stat_date');
   const statDate = typeof rawDate === 'string' ? rawDate.slice(0, 10) : null;
   if (!statDate || !/^\d{4}-\d{2}-\d{2}$/.test(statDate)) return null;
 
-  const auto = asRecord(pick(item, 'autocarrier', 'autoCarrier', 'auto_carrier', 'AUTOCARRIER'));
-  const container = asRecord(pick(item, 'container', 'CONTAINER'));
-  const grid = asRecord(pick(item, 'grid', 'GRID'));
-  const curtain = asRecord(pick(item, 'curtainTruck', 'curtain_truck', 'curtain', 'CURTAIN_TRUCK'));
+  const received = asRecord(pick(item, 'received'));
+  const sent = asRecord(pick(item, 'sent'));
 
-  const kindValue = (kind: Record<string, unknown>, flatPrefix: string, ...names: string[]): number | null => {
-    for (const name of names) {
-      const nested = toInt(pick(kind, name));
-      if (nested !== null) return nested;
+  // Значение вида: либо число, либо объект { total, own, hired }
+  const kindTotal = (value: unknown): number | null => {
+    if (typeof value === 'object' && value !== null) {
+      return toInt(pick(asRecord(value), 'total'));
     }
-    for (const name of names) {
-      const flat = toInt(pick(item, `${flatPrefix}${name.charAt(0).toUpperCase()}${name.slice(1)}`, `${flatPrefix}_${name}`));
-      if (flat !== null) return flat;
-    }
-    return null;
+    return toInt(value);
   };
+  const sentAuto = pick(sent, 'autocarrier');
+  const sentAutoRecord = asRecord(sentAuto);
 
   return {
     statDate,
-    ktkReceived: sumNullable(
-      kindValue(container, 'container', 'received', 'accepted', 'in'),
-      kindValue(grid, 'grid', 'received', 'accepted', 'in'),
-    ),
-    ktkSent: sumNullable(
-      kindValue(container, 'container', 'sent', 'shipped', 'dispatched', 'out'),
-      kindValue(grid, 'grid', 'sent', 'shipped', 'dispatched', 'out'),
-    ),
-    ktkWaiting: sumNullable(
-      kindValue(container, 'container', 'waiting', 'onSite', 'remaining'),
-      kindValue(grid, 'grid', 'waiting', 'onSite', 'remaining'),
-    ),
-    autocarrierReceived: kindValue(auto, 'autocarrier', 'received', 'accepted', 'in'),
-    autocarrierSent: kindValue(auto, 'autocarrier', 'sent', 'shipped', 'dispatched', 'out'),
-    autocarrierSentOwn: kindValue(auto, 'autocarrier', 'sentOwn', 'own', 'ownSent'),
-    autocarrierSentHired: kindValue(auto, 'autocarrier', 'sentHired', 'hired', 'hiredSent'),
-    autocarrierWaiting: kindValue(auto, 'autocarrier', 'waiting', 'onSite', 'remaining'),
-    curtainReceived: kindValue(curtain, 'curtain', 'received', 'accepted', 'in'),
-    curtainSent: kindValue(curtain, 'curtain', 'sent', 'shipped', 'dispatched', 'out'),
-    curtainWaiting: kindValue(curtain, 'curtain', 'waiting', 'onSite', 'remaining'),
+    ktkReceived: sumNullable(kindTotal(received.container), kindTotal(received.grid)),
+    ktkSent: sumNullable(kindTotal(sent.container), kindTotal(sent.grid)),
+    ktkWaiting: null,
+    autocarrierReceived: kindTotal(received.autocarrier),
+    autocarrierSent: kindTotal(sentAuto),
+    autocarrierSentOwn: toInt(pick(sentAutoRecord, 'own')),
+    autocarrierSentHired: toInt(pick(sentAutoRecord, 'hired')),
+    autocarrierWaiting: null,
+    curtainReceived: kindTotal(received.curtain_truck),
+    curtainSent: kindTotal(sent.curtain_truck),
+    curtainWaiting: null,
     rawPayload: item,
   };
 };
