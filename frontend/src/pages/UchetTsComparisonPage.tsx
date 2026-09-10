@@ -238,7 +238,22 @@ export default function UchetTsComparisonPage() {
           <Box sx={{ py: 8, textAlign: 'center' }}><CircularProgress /></Box>
         ) : data && (
           <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto' }}>
-            <Table size="small" stickyHeader sx={{ minWidth: 1100 }}>
+            <Table
+              size="small"
+              stickyHeader
+              sx={{
+                minWidth: 980,
+                // компактный шрифт и едва заметная сетка (просьба 11.09)
+                '& td, & th': {
+                  fontSize: 12,
+                  lineHeight: 1.3,
+                  py: 0.4,
+                  px: 0.75,
+                  border: '1px solid',
+                  borderColor: 'rgba(0, 0, 0, 0.06)',
+                },
+              }}
+            >
               <TableHead>
                 <TableRow>
                   <TableCell rowSpan={2} sx={{ fontWeight: 700 }}>Дата</TableCell>
@@ -271,23 +286,23 @@ export default function UchetTsComparisonPage() {
                   const dayLabel = day.date.slice(8, 10) + '.' + day.date.slice(5, 7);
                   return [
                     <TableRow key={`${day.date}-manual`} sx={isWeekend ? { bgcolor: 'grey.50' } : undefined}>
-                      <TableCell rowSpan={2} sx={{ fontWeight: 700, borderBottom: '2px solid', borderBottomColor: 'grey.400' }}>
+                      <TableCell rowSpan={2} sx={{ fontWeight: 700, borderBottom: '1px solid', borderBottomColor: 'grey.300' }}>
                         {dayLabel}
                       </TableCell>
-                      <TableCell rowSpan={2} sx={{ color: isWeekend ? 'error.main' : 'text.secondary', borderBottom: '2px solid', borderBottomColor: 'grey.400' }}>
+                      <TableCell rowSpan={2} sx={{ color: isWeekend ? 'error.main' : 'text.secondary', borderBottom: '1px solid', borderBottomColor: 'grey.300' }}>
                         {weekday}
                       </TableCell>
-                      <TableCell sx={{ color: 'text.secondary', fontSize: 12 }}>вручную</TableCell>
+                      <TableCell sx={{ color: 'text.secondary', fontSize: 11 }}>вручную</TableCell>
                       {ALL_METRICS.map((metric) => renderCell(day.manual[metric.code], null, false))}
                     </TableRow>,
                     <TableRow
                       key={`${day.date}-uchet`}
                       sx={{
                         bgcolor: '#EEF4FB',
-                        '& td': { borderBottom: '2px solid', borderBottomColor: 'grey.400' },
+                        '& td': { borderBottom: '1px solid', borderBottomColor: 'grey.300' },
                       }}
                     >
-                      <TableCell sx={{ color: 'text.secondary', fontSize: 12 }}>
+                      <TableCell sx={{ color: 'text.secondary', fontSize: 11 }}>
                         из учёта ТС{day.uchetSource === 'mock' ? ' (тест)' : ''}
                       </TableCell>
                       {ALL_METRICS.map((metric) => renderCell(day.uchet[metric.code], day.manual[metric.code], true))}
