@@ -41,6 +41,7 @@ const OperationsScheduleReportsPage = lazy(() => import('../pages/OperationsSche
 const PlansPage = lazy(() => import('../pages/PlansPage'));
 const SettingsPage = lazy(() => import('../pages/SettingsPage'));
 const SinokorTestPage = lazy(() => import('../pages/SinokorTestPage'));
+const UchetTsComparisonPage = lazy(() => import('../pages/UchetTsComparisonPage'));
 const SummaryReportPage = lazy(() => import('../pages/SummaryReportPage'));
 const SWTechDashboardPage = lazy(() => import('../pages/SWTechDashboardPage'));
 const WarehousePage = lazy(() => import('../pages/WarehousePage'));
@@ -257,6 +258,11 @@ export const authenticatedRoutes: AppRoute[] = [
     path: 'sinokor-test',
     allow: canAccessBillOfLading,
     element: () => withSuspense(<SinokorTestPage />),
+  },
+  {
+    path: 'uchet-ts-comparison',
+    allow: canAccessAdmin,
+    element: () => withSuspense(<UchetTsComparisonPage />),
   },
 ];
 

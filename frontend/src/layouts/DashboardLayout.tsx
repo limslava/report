@@ -456,6 +456,9 @@ const DashboardLayout = () => {
         }
       : null,
     canAccessAdmin(user?.role)
+      ? { key: 'uchet-ts', label: 'Сверка с учётом ТС', icon: <FactCheck />, onClick: () => handleNavigate('/uchet-ts-comparison'), active: location.pathname.includes('/uchet-ts-comparison') }
+      : null,
+    canAccessAdmin(user?.role)
       ? { key: 'admin', label: 'Администрирование', icon: <People />, onClick: () => handleNavigate('/admin'), active: location.pathname.includes('/admin') }
       : null,
     { key: 'settings', label: 'Настройки', icon: <Settings />, onClick: () => handleNavigate('/settings'), active: location.pathname.includes('/settings') },

@@ -7,6 +7,11 @@ import { assertProductionEnv, getAppPort } from './config/env';
 import { ensureDefaultAdmin } from './services/bootstrap.service';
 import { ensureDatabaseSchema } from './services/db-bootstrap.service';
 import { startHhBackgroundJobs } from './services/hh-background.service';
+import {
+  getUchetTsSyncIntervalMinutes,
+  importUchetTsRecent,
+  isUchetTsConfigured,
+} from './services/uchet-ts.service';
 import { planningV2Service } from './services/planning-v2.service';
 import { withRetry } from './utils/db-retry';
 import { createApp } from './app';
@@ -52,6 +57,20 @@ async function startServer() {
         logger.error('Failed to start scheduler: startScheduler is not a function');
       })
       .catch((err) => logger.error('Failed to start scheduler:', err));
+
+    // Периодический импорт из учёта ТС (SimpleWozi): включается только когда
+    // заданы UCHET_TS_API_URL и UCHET_TS_API_KEY. Их рекомендация — раз в 30–60 мин.
+    if (isUchetTsConfigured()) {
+      const intervalMinutes = getUchetTsSyncIntervalMinutes();
+      const runImport = () => {
+        importUchetTsRecent().catch((err) => logger.error('Учёт ТС: импорт не удался:', err));
+      };
+      setTimeout(runImport, 60_000);
+      setInterval(runImport, intervalMinutes * 60_000);
+      logger.info(`Учёт ТС: импорт включён, каждые ${intervalMinutes} мин.`);
+    } else {
+      logger.info('Учёт ТС: интеграция не настроена (UCHET_TS_API_URL/KEY) — импорт выключен.');
+    }
 
     const server = app.listen(PORT, '0.0.0.0', () => {
       logger.info(`Server running on port ${PORT}`);
