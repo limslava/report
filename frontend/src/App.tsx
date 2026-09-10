@@ -33,6 +33,7 @@ const DirectoriesPage = lazy(() => import('./pages/DirectoriesPage'));
 const PrintFormsPage = lazy(() => import('./pages/PrintFormsPage'));
 const CounterpartiesPage = lazy(() => import('./pages/CounterpartiesPage'));
 const CounterpartyCardPage = lazy(() => import('./pages/CounterpartyCardPage'));
+const UchetTsComparisonPage = lazy(() => import('./pages/UchetTsComparisonPage'));
 
 function App() {
   const { token, user } = useAuthStore();
@@ -82,6 +83,16 @@ function App() {
             element={(
               <RouteAccessGuard allow={canAccessAdmin(user?.role)}>
                 <AdminPage />
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="uchet-ts-comparison"
+            element={(
+              <RouteAccessGuard allow={canAccessAdmin(user?.role)}>
+                <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
+                  <UchetTsComparisonPage />
+                </Suspense>
               </RouteAccessGuard>
             )}
           />
