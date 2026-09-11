@@ -16,6 +16,7 @@ import { planningV2Service } from './services/planning-v2.service';
 import { withRetry } from './utils/db-retry';
 import { createApp } from './app';
 import { ensureWarehouseServiceCatalog } from './services/warehouse-service-catalog.service';
+import { ensureDispatcherStatusCatalog } from './services/dispatcher-status-seed.service';
 import { ensureWarehousePhotoStorageReady, purgeExpiredIssuedWarehousePhotos } from './services/warehouse-photo-storage.service';
 
 config();
@@ -36,6 +37,7 @@ async function startServer() {
       logger.error('Failed to bootstrap planning catalog:', err);
     }
     await ensureWarehouseServiceCatalog();
+    await ensureDispatcherStatusCatalog();
     await ensureWarehousePhotoStorageReady();
     logger.info('Warehouse service catalog bootstrapped');
     startHhBackgroundJobs();
