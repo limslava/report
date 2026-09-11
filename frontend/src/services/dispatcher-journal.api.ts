@@ -43,17 +43,17 @@ export type DispatcherOrderRow = {
 };
 
 export type DispatcherOrderPatch = Partial<
-  Omit<DispatcherOrderRow, 'id' | 'orderDate' | 'updatedAt'>
+  Omit<DispatcherOrderRow, 'id' | 'updatedAt'>
 >;
 
 export const getDispatcherStatuses = () =>
   api.get<DispatcherStatusOption[]>('/dispatcher-journal/statuses');
 
-export const getDispatcherOrders = (date: string) =>
-  api.get<DispatcherOrderRow[]>('/dispatcher-journal/orders', { params: { date } });
+export const getDispatcherOrders = (month: string) =>
+  api.get<DispatcherOrderRow[]>('/dispatcher-journal/orders', { params: { month } });
 
-export const createDispatcherOrder = (orderDate: string) =>
-  api.post<DispatcherOrderRow>('/dispatcher-journal/orders', { orderDate });
+export const createDispatcherOrder = (orderDate: string, initial?: DispatcherOrderPatch) =>
+  api.post<DispatcherOrderRow>('/dispatcher-journal/orders', { orderDate, ...(initial ?? {}) });
 
 export const updateDispatcherOrder = (id: string, patch: DispatcherOrderPatch) =>
   api.patch<DispatcherOrderRow>(`/dispatcher-journal/orders/${id}`, patch);

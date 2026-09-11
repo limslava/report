@@ -21,7 +21,7 @@ router.use(authenticate, authorizeRole('admin', ...DISPATCHER_JOURNAL_ROLES));
 router.get('/statuses', listDispatcherStatuses);
 router.get(
   '/orders',
-  [query('date').matches(/^\d{4}-\d{2}-\d{2}$/)],
+  [query('month').matches(/^\d{4}-\d{2}$/)],
   handleValidationErrors,
   listDispatcherOrders,
 );

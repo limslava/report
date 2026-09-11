@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { Between } from 'typeorm';
 import { AppDataSource } from '../config/data-source';
 import { DispatcherOrder } from '../models/dispatcher-order.model';
 import { DispatcherStatus } from '../models/dispatcher-status.model';
@@ -104,12 +105,22 @@ export const listDispatcherStatuses = async (_req: Request, res: Response, next:
   }
 };
 
+const MONTH_PATTERN = /^\d{4}-\d{2}$/;
+
+/** Заявки за месяц — сплошная таблица, как её ведут диспетчера в google. */
 export const listDispatcherOrders = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const date = requireDate(req.query.date);
+    const month = req.query.month;
+    if (typeof month !== 'string' || !MONTH_PATTERN.test(month)) {
+      const error: any = new Error('Некорректный месяц (ожидается YYYY-MM)');
+      error.statusCode = 400;
+      throw error;
+    }
+    const [year, monthNo] = month.split('-').map(Number);
+    const lastDay = new Date(year, monthNo, 0).getDate();
     const orders = await orderRepository.find({
-      where: { orderDate: date },
-      order: { createdAt: 'ASC' },
+      where: { orderDate: Between(`${month}-01`, `${month}-${String(lastDay).padStart(2, '0')}`) },
+      order: { orderDate: 'ASC', createdAt: 'ASC' },
     });
     res.json(orders.map(serializeOrder));
   } catch (error) {
@@ -125,6 +136,15 @@ export const createDispatcherOrder = async (req: Request, res: Response, next: N
       status: 'новая',
       createdBy: req.user?.id ?? null,
       updatedBy: req.user?.id ?? null,
+    });
+    // Начальные значения (вставка строк из Excel): та же белая схема полей, что и в PATCH.
+    const initial = (req.body ?? {}) as Record<string, unknown>;
+    Object.entries(initial).forEach(([field, value]) => {
+      if (TEXT_FIELD_SET.has(field) && value != null && value !== '') {
+        (order as any)[field] = String(value).slice(0, 4000);
+      } else if (BOOLEAN_FIELD_SET.has(field)) {
+        (order as any)[field] = Boolean(value);
+      }
     });
     const saved = await orderRepository.save(order);
     planWebSocketService.notifyDispatcherJournalUpdated({ date, userId: req.user?.id });
@@ -146,6 +166,11 @@ export const updateDispatcherOrder = async (req: Request, res: Response, next: N
 
     const patch = (req.body ?? {}) as Record<string, unknown>;
     let changed = false;
+    const previousDate = order.orderDate;
+    if (typeof patch.orderDate === 'string' && DATE_PATTERN.test(patch.orderDate) && patch.orderDate !== order.orderDate) {
+      order.orderDate = patch.orderDate;
+      changed = true;
+    }
     Object.entries(patch).forEach(([field, value]) => {
       if (TEXT_FIELD_SET.has(field)) {
         const nextValue = value == null ? null : String(value).slice(0, 4000);
@@ -166,6 +191,9 @@ export const updateDispatcherOrder = async (req: Request, res: Response, next: N
       order.updatedBy = req.user?.id ?? null;
       await orderRepository.save(order);
       planWebSocketService.notifyDispatcherJournalUpdated({ date: order.orderDate, userId: req.user?.id });
+      if (previousDate !== order.orderDate) {
+        planWebSocketService.notifyDispatcherJournalUpdated({ date: previousDate, userId: req.user?.id });
+      }
     }
     res.json(serializeOrder(order));
   } catch (error) {
