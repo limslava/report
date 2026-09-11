@@ -85,6 +85,7 @@ const DRAFT_PHOTO_KEY = 'draft:warehouse-reception';
 const STEPS = ['Основа', 'ТС', 'Осмотр', 'Повреждения', 'Фото', 'Проверка'];
 const MAX_PARALLEL_PENDING_UPLOADS = 2;
 const STALE_PHOTO_UPLOAD_MS = 90_000;
+const PHOTO_SLOT_GRACE_MS = 15_000;
 
 const createUploadSessionId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -213,7 +214,7 @@ const mergeDraftPhotosWithPreviews = (
 
     return {
       ...photo,
-      // Полноразмерный base64 не тащим в состояние: у 40–60 фото это сотни МБ
+      // Полноразмерный base64 не тащим в состояние: у 60–100 фото это сотни МБ
       // и мобильный браузер убивает вкладку. Для показа — маленький thumb.
       previewDataUrl: null,
       blob: liveBlob,
@@ -559,7 +560,12 @@ export default function WarehouseReceptionPage() {
     activeUploadsRef.current.forEach((photoId) => {
       const startedAt = activeUploadStartedAtRef.current.get(photoId) ?? 0;
       const isStaleActiveSlot = startedAt > 0 && now - startedAt > STALE_PHOTO_UPLOAD_MS;
-      if (!uploadingPhotoIds.has(photoId) || isStaleActiveSlot) {
+      // Слот освобождаем только по таймауту или когда статус в базе уже не
+      // «uploading» И прошло достаточно времени: сразу после старта состояние
+      // ещё «pending» (IndexedDB не успела), и сброс слота здесь запускал
+      // второй параллельный аплоад того же фото (дубли + ошибка приёмки).
+      const isRecentlyStarted = startedAt > 0 && now - startedAt < PHOTO_SLOT_GRACE_MS;
+      if ((!uploadingPhotoIds.has(photoId) && !isRecentlyStarted) || isStaleActiveSlot) {
         activeUploadsRef.current.delete(photoId);
         activeUploadStartedAtRef.current.delete(photoId);
         if (isStaleActiveSlot && uploadingPhotoIds.has(photoId)) {
@@ -624,9 +630,9 @@ export default function WarehouseReceptionPage() {
     checklistItem?: WarehousePhotoChecklistItem | null,
   ) => {
     if (files.length === 0) return;
-    const availableSlots = Math.max(0, 60 - photos.length);
+    const availableSlots = Math.max(0, 100 - photos.length);
     if (availableSlots === 0) {
-      setPhotoLimitWarning('Достигнут лимит: для одного ТС можно добавить не более 60 фотографий.');
+      setPhotoLimitWarning('Достигнут лимит: для одного ТС можно добавить не более 100 фотографий.');
       return;
     }
     if (files.length > availableSlots) {
@@ -1336,7 +1342,7 @@ export default function WarehouseReceptionPage() {
             {activeStep === 4 && (
               <>
                 <Chip
-                  label={`Количество фотографий — ${photos.length} из 60`}
+                  label={`Количество фотографий — ${photos.length} из 100`}
                   color={photos.length > 0 ? 'success' : 'default'}
                   variant="outlined"
                   sx={{
@@ -1394,7 +1400,7 @@ export default function WarehouseReceptionPage() {
                 )}
                 <WarehousePhotoChecklist
                   photos={photos}
-                  disabled={saving || processingPhotos || photos.length >= 60}
+                  disabled={saving || processingPhotos || photos.length >= 100}
                   onFiles={(files, checklistItem) => void handleChecklistFiles(files, checklistItem)}
                   onRemove={(photo) => {
                     const target = photos.find((item) => item.id === photo.id);

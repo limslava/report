@@ -318,7 +318,7 @@ export default function WarehousePhotoDialog({
           )}
           {vehicle?.status !== 'on_site' && (
             <Alert severity="info">
-              ТС выдано. Фотографии удалены согласно сроку хранения.
+              ТС выдано. Фотографии удалены по истечении срока хранения (3 месяца после выдачи).
             </Alert>
           )}
           {canUpload && (

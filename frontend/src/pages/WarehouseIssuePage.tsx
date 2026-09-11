@@ -76,6 +76,7 @@ const money = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB
 
 const MAX_PARALLEL_PENDING_UPLOADS = 2;
 const STALE_PHOTO_UPLOAD_MS = 90_000;
+const PHOTO_SLOT_GRACE_MS = 15_000;
 
 const createUploadSessionId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -537,7 +538,12 @@ export default function WarehouseIssuePage() {
     activeUploadsRef.current.forEach((photoId) => {
       const startedAt = activeUploadStartedAtRef.current.get(photoId) ?? 0;
       const isStaleActiveSlot = startedAt > 0 && now - startedAt > STALE_PHOTO_UPLOAD_MS;
-      if (!uploadingPhotoIds.has(photoId) || isStaleActiveSlot) {
+      // Слот освобождаем только по таймауту или когда статус в базе уже не
+      // «uploading» И прошло достаточно времени: сразу после старта состояние
+      // ещё «pending» (IndexedDB не успела), и сброс слота здесь запускал
+      // второй параллельный аплоад того же фото (дубли + ошибка приёмки).
+      const isRecentlyStarted = startedAt > 0 && now - startedAt < PHOTO_SLOT_GRACE_MS;
+      if ((!uploadingPhotoIds.has(photoId) && !isRecentlyStarted) || isStaleActiveSlot) {
         activeUploadsRef.current.delete(photoId);
         activeUploadStartedAtRef.current.delete(photoId);
         if (isStaleActiveSlot && uploadingPhotoIds.has(photoId)) {
@@ -605,8 +611,8 @@ export default function WarehouseIssuePage() {
   ) => {
     if (!queueKey) return;
     if (files.length === 0) return;
-    if (issuePhotoCount + files.length > 60) {
-      setError('Для одного ТС разрешено не более 60 фотографий.');
+    if (issuePhotoCount + files.length > 100) {
+      setError('Для одного ТС разрешено не более 100 фотографий.');
       return;
     }
     setProcessing(true);
@@ -762,7 +768,7 @@ export default function WarehouseIssuePage() {
                 Выдача зафиксирована автоматически: {formatDateTime(completedVehicle.issuedAt!)}.
               </Alert>
               <Alert severity="info">
-                Фотографии удалены после выдачи согласно регламенту. Сведения о фото выдачи сохранены в аудите.
+                Фотографии хранятся 3 месяца после выдачи, затем удаляются автоматически. Сведения о фото выдачи сохранены в аудите.
               </Alert>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
                 <Button variant="outlined" onClick={() => void downloadIssueAct()}>
@@ -987,7 +993,7 @@ export default function WarehouseIssuePage() {
                   ...existingIssuePhotos,
                   ...draftPhotos,
                 ]}
-                disabled={processing || issuePhotoCount >= 60}
+                disabled={processing || issuePhotoCount >= 100}
                 onFiles={(files, checklistItem) => void handleChecklistFiles(files, checklistItem)}
                 onRemove={(photo) => {
                   const target = draftPhotos.find((item) => item.id === photo.id);

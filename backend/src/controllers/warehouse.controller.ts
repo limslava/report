@@ -739,18 +739,10 @@ export const issueWarehouseVehicle = async (
       });
       return { vehicle, newlyIssued: true };
     });
-    const purgedPhotoCount = await purgeWarehouseVehiclePhotos(result.vehicle.id);
-    if (purgedPhotoCount > 0) {
-      await AppDataSource.transaction(async (manager) => {
-        await addOperation(manager, result.vehicle, req, 'photos_purged', {
-          count: purgedPhotoCount,
-          reason: 'vehicle_issued',
-        });
-      });
-    }
+    // Фото после выдачи не удаляем сразу: срок хранения 3 месяца,
+    // истёкшие чистит фоновая задача purgeExpiredIssuedWarehousePhotos.
     res.json({
       ...serializeVehicle(result.vehicle),
-      purgedPhotoCount,
       newlyIssued: result.newlyIssued,
     });
   } catch (error) {
@@ -845,19 +837,37 @@ export const uploadWarehousePendingPhoto = async (
     const phase = req.headers['x-photo-phase'] === 'issue' ? 'issue' : 'reception';
     const checklistItem = normalizeNullable(req.headers['x-photo-checklist-item']);
     storedName = await storeWarehousePendingPhoto(uploadSessionId, mimeType, req.body);
-    const saved = await repository.save(repository.create({
-      uploadSessionId,
-      storedName,
-      originalName,
-      mimeType,
-      sizeBytes: req.body.length,
-      clientHash,
-      phase,
-      checklistItem,
-      uploadedById: req.user!.id,
-      uploadedByName: req.user!.fullName,
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-    }));
+    let saved: WarehousePendingPhotoUpload;
+    try {
+      saved = await repository.save(repository.create({
+        uploadSessionId,
+        storedName,
+        originalName,
+        mimeType,
+        sizeBytes: req.body.length,
+        clientHash,
+        phase,
+        checklistItem,
+        uploadedById: req.user!.id,
+        uploadedByName: req.user!.fullName,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      }));
+    } catch (saveError) {
+      // Параллельный дубль того же фото (два аплоада одновременно): отдаём
+      // уже сохранённую запись вместо 500 по unique-конфликту.
+      if ((saveError as { code?: string }).code === '23505') {
+        await deleteWarehousePendingPhotoFile(uploadSessionId, storedName).catch(() => undefined);
+        storedName = null;
+        const winner = await repository.findOne({
+          where: { uploadSessionId, clientHash, uploadedById: req.user!.id },
+        });
+        if (winner) {
+          res.status(200).json(serializePendingPhoto(winner));
+          return;
+        }
+      }
+      throw saveError;
+    }
     res.status(201).json(serializePendingPhoto(saved));
   } catch (error) {
     if (storedName && uploadSessionId) {

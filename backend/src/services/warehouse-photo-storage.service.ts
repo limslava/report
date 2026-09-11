@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { AppDataSource } from '../config/data-source';
 import { WarehousePhoto } from '../models/warehouse-photo.model';
+import { WarehouseVehicle } from '../models/warehouse-vehicle.model';
 
 const MIME_EXTENSIONS: Record<string, string> = {
   'image/jpeg': '.jpg',
@@ -11,7 +12,7 @@ const MIME_EXTENSIONS: Record<string, string> = {
 };
 
 export const MAX_WAREHOUSE_PHOTO_BYTES = 12 * 1024 * 1024;
-export const MAX_WAREHOUSE_PHOTOS_PER_VEHICLE = 60;
+export const MAX_WAREHOUSE_PHOTOS_PER_VEHICLE = 100;
 
 const storageRoot = path.resolve(
   process.env.WAREHOUSE_UPLOAD_PATH || path.join(process.cwd(), 'uploads', 'warehouse'),
@@ -230,6 +231,30 @@ export const deleteWarehousePhotoFile = async (
       if (error.code !== 'ENOENT') throw error;
     });
   }
+};
+
+/** Срок хранения фото после выдачи ТС (решение 2026-09-11): 3 месяца. */
+export const WAREHOUSE_ISSUED_PHOTO_RETENTION_DAYS = 90;
+
+/**
+ * Фоновая чистка: удаляет фото машин, выданных более 3 месяцев назад.
+ * Возвращает число удалённых фотографий.
+ */
+export const purgeExpiredIssuedWarehousePhotos = async (): Promise<number> => {
+  const cutoff = new Date(Date.now() - WAREHOUSE_ISSUED_PHOTO_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const rows = await AppDataSource.getRepository(WarehousePhoto)
+    .createQueryBuilder('photo')
+    .innerJoin(WarehouseVehicle, 'vehicle', 'vehicle.id = photo.vehicleId')
+    .where(`vehicle.status = 'issued'`)
+    .andWhere('vehicle.issuedAt IS NOT NULL')
+    .andWhere('vehicle.issuedAt < :cutoff', { cutoff })
+    .select('DISTINCT photo.vehicleId', 'vehicleId')
+    .getRawMany<{ vehicleId: string }>();
+  let total = 0;
+  for (const row of rows) {
+    total += await purgeWarehouseVehiclePhotos(row.vehicleId);
+  }
+  return total;
 };
 
 export const purgeWarehouseVehiclePhotos = async (

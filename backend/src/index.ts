@@ -16,7 +16,7 @@ import { planningV2Service } from './services/planning-v2.service';
 import { withRetry } from './utils/db-retry';
 import { createApp } from './app';
 import { ensureWarehouseServiceCatalog } from './services/warehouse-service-catalog.service';
-import { ensureWarehousePhotoStorageReady } from './services/warehouse-photo-storage.service';
+import { ensureWarehousePhotoStorageReady, purgeExpiredIssuedWarehousePhotos } from './services/warehouse-photo-storage.service';
 
 config();
 
@@ -71,6 +71,17 @@ async function startServer() {
     } else {
       logger.info('Учёт ТС: интеграция не настроена (UCHET_TS_API_URL/KEY) — импорт выключен.');
     }
+
+    // Склад ТС: фото выданных машин хранятся 3 месяца, истёкшие чистим раз в 12 часов.
+    const runIssuedPhotoRetention = () => {
+      purgeExpiredIssuedWarehousePhotos()
+        .then((count) => {
+          if (count > 0) logger.info(`Склад ТС: удалено фото по сроку хранения (3 мес.): ${count}`);
+        })
+        .catch((err) => logger.error('Склад ТС: чистка фото по сроку хранения не удалась:', err));
+    };
+    setTimeout(runIssuedPhotoRetention, 2 * 60_000);
+    setInterval(runIssuedPhotoRetention, 12 * 60 * 60_000);
 
     const server = app.listen(PORT, '0.0.0.0', () => {
       logger.info(`Server running on port ${PORT}`);
