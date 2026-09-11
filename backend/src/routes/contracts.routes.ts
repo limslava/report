@@ -42,14 +42,14 @@ import {
   updateDraftContract,
   upsertWorkCalendarDay,
 } from '../controllers/contracts.controller';
-import { CONTRACT_APPROVAL_WORK_ROLES, CONTRACT_INITIATOR_ROLES } from '../constants/contract-approval';
+import { CONTRACT_APPROVAL_ACCESS_ROLES, CONTRACT_INITIATOR_ROLES } from '../constants/contract-approval';
 
 const router = Router();
 
-const writeContractAccess = roleOrAdmin(...CONTRACT_APPROVAL_WORK_ROLES, ...CONTRACT_INITIATOR_ROLES);
+const writeContractAccess = roleOrAdmin(...CONTRACT_APPROVAL_ACCESS_ROLES, ...CONTRACT_INITIATOR_ROLES);
 
 router.use(authenticate);
-router.use(roleOrAdmin(...CONTRACT_APPROVAL_WORK_ROLES, ...CONTRACT_INITIATOR_ROLES, 'general_director'));
+router.use(roleOrAdmin(...CONTRACT_APPROVAL_ACCESS_ROLES, ...CONTRACT_INITIATOR_ROLES, 'general_director'));
 
 router.get('/', listContracts);
 router.get('/masters', listMasterContracts);

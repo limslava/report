@@ -60,6 +60,7 @@ import { useSecurityInbox } from '../hooks/useSecurityInbox';
 import { useAuthStore } from '../store/auth-store';
 import { requestContractUnreadRefresh } from '../store/contract-unread-store';
 import { downloadBlob } from '../utils/download';
+import { approvalRoleForUser, userMatchesApprovalStep } from '../utils/contractApprovalRoles';
 import { ContractApprovalSheet } from '../components/contracts/ContractApprovalSheet';
 import { ContractDiscussionPanel } from '../components/contracts/ContractDiscussionPanel';
 import {
@@ -1145,8 +1146,8 @@ export default function ContractApprovalPage() {
     step.roleCode !== 'security'
     && Boolean(step.assignedAt)
     && (
-      step.approverUserId === currentUser?.id
-      && currentUser?.role === step.roleCode
+      userMatchesApprovalStep(step, currentUser?.id, currentUser?.role)
+      && approvalRoleForUser(currentUser?.role) === step.roleCode
       || (
         step.roleCode === 'secretary'
         && (sheet.contract.initiator?.id === currentUser?.id || currentUser?.role === 'admin')
@@ -1378,7 +1379,8 @@ export default function ContractApprovalPage() {
   const canAttachToStep = (step: SheetStep) => Boolean(
     currentUser
     && (
-      (currentUser.id === step.approverUserId && currentUser.role === step.roleCode)
+      (userMatchesApprovalStep(step, currentUser.id, currentUser.role)
+        && approvalRoleForUser(currentUser.role) === step.roleCode)
       || canFinalizeSignature(step)
     )
     && Boolean(step.assignedAt)

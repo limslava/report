@@ -43,6 +43,8 @@ import {
   CONTRACT_PARALLEL_APPROVAL_ROLES,
   approvalRoleForUser,
   contractApprovalRoleLabel,
+  contractApprovalStepRoleLabel,
+  userMatchesApprovalStep,
 } from '../constants/contract-approval';
 import {
   buildContractFlowMeta,
@@ -970,7 +972,7 @@ async function appendApprovalSheetPdf(
   ]);
   for (const step of steps.filter((item) => item.roleCode !== 'secretary')) {
     rows.push([
-      contractApprovalRoleLabel(step.roleCode),
+      contractApprovalStepRoleLabel(step.roleCode, step.approverUser?.role),
       step.approverUser?.fullName ?? step.approverUser?.email ?? '—',
       formatPdfStepDecision(step),
       formatPdfDateTime(step.acceptedAt),
@@ -1491,8 +1493,12 @@ export const listMyApprovalInbox = async (req: Request, res: Response, next: Nex
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
+    // Шаг «Главный бухгалтер» — общая очередь главбуха и зама, поэтому для
+    // этой пары не фильтруем по назначенному пользователю.
     const steps = await stepRepository.find({
-      where: { roleCode: stepRoleCode as any, approverUserId: currentUserId },
+      where: stepRoleCode === 'chief_accountant'
+        ? { roleCode: stepRoleCode as any }
+        : { roleCode: stepRoleCode as any, approverUserId: currentUserId },
       relations: ['contract', 'contract.initiator'],
       order: { createdAt: 'DESC' },
     });
@@ -1570,7 +1576,9 @@ export const getMyApprovalDashboard = async (req: Request, res: Response, next: 
       error.statusCode = 401;
       throw error;
     }
-    if (!currentUserRole || !CONTRACT_APPROVAL_DASHBOARD_ROLES.has(currentUserRole)) {
+    // зам главбуха видит дашборд очереди «Главный бухгалтер»
+    const dashboardRole = approvalRoleForUser(currentUserRole);
+    if (!dashboardRole || !CONTRACT_APPROVAL_DASHBOARD_ROLES.has(dashboardRole)) {
       const error: any = new Error('Дашборд согласования доступен только участникам маршрута согласования');
       error.statusCode = 403;
       throw error;
@@ -1584,7 +1592,7 @@ export const getMyApprovalDashboard = async (req: Request, res: Response, next: 
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
 
     const roleSteps = await stepRepository.find({
-      where: currentUserRole ? { roleCode: currentUserRole } : { approverUserId: currentUserId },
+      where: { roleCode: dashboardRole },
       relations: ['contract', 'contract.initiator', 'approverUser'],
       order: { assignedAt: 'DESC', createdAt: 'DESC' },
       take: 5000,
@@ -2533,8 +2541,8 @@ export const uploadContractStepAttachments = async (req: Request, res: Response,
     const isSigningStep = step.roleCode === 'secretary';
     const isAssignedRoleParticipant = Boolean(
       currentUserId
-      && step.approverUserId === currentUserId
-      && req.user?.role === step.roleCode,
+      && approvalRoleForUser(req.user?.role) === step.roleCode
+      && userMatchesApprovalStep(step, currentUserId, req.user?.role),
     );
     const canCompleteSigning = Boolean(
       isSigningStep
@@ -3048,7 +3056,7 @@ export const getContractApprovalSheet = async (req: Request, res: Response, next
     const serializeStep = (step: ContractApprovalStep) => ({
       id: step.id,
       roleCode: step.roleCode,
-      roleLabel: contractApprovalRoleLabel(step.roleCode),
+      roleLabel: contractApprovalStepRoleLabel(step.roleCode, step.approverUser?.role),
       approverUserId: step.approverUserId,
       approverName: step.approverUser?.fullName ?? '—',
       orderNo: step.orderNo,
@@ -3141,7 +3149,7 @@ export const getContractDecisionHistory = async (req: Request, res: Response, ne
     res.json(events.map((event) => ({
       id: event.id,
       roleCode: event.roleCode,
-      roleLabel: contractApprovalRoleLabel(event.roleCode),
+      roleLabel: contractApprovalStepRoleLabel(event.roleCode, event.actorUser?.role),
       revisionNo: event.revisionNo,
       actorName: event.actorUser?.fullName ?? '—',
       previousDecision: event.previousDecision,
@@ -3390,10 +3398,16 @@ export const decideContractApprovalStep = async (req: Request, res: Response, ne
       throw error;
     }
     const initiatorMayConfirmSignature = step.roleCode === 'secretary' && contract.initiatorId === req.user.id;
-    if (req.user.role !== 'admin' && step.approverUserId !== req.user.id && !initiatorMayConfirmSignature) {
+    const mayActOnStep = userMatchesApprovalStep(step, req.user.id, req.user.role);
+    if (req.user.role !== 'admin' && !mayActOnStep && !initiatorMayConfirmSignature) {
       const error: any = new Error('Действие доступно только текущему согласующему');
       error.statusCode = 403;
       throw error;
+    }
+    // Шаг главбуха может завизировать зам (и наоборот): фиксируем в шаге
+    // фактического визирующего — лист согласования покажет, кто принял решение.
+    if (mayActOnStep && step.approverUserId !== req.user.id) {
+      step.approverUserId = req.user.id;
     }
 
     const normalizedComment = comment?.trim() ?? '';

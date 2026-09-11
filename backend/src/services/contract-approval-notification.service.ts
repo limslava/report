@@ -79,6 +79,21 @@ async function sendEmailToUsers(userIds: string[], subject: string, html: string
   }
 }
 
+/**
+ * Получатели уведомления по шагу: для шага «Главный бухгалтер» — оба из пары
+ * главбух/зам (общая очередь), для остальных — назначенный пользователь.
+ */
+async function stepNotificationUserIds(step: ContractApprovalStep): Promise<string[]> {
+  if (step.roleCode !== 'chief_accountant') return [step.approverUserId];
+  const pair = await userRepo.find({
+    where: [
+      { role: 'chief_accountant' as any, isActive: true },
+      { role: 'deputy_chief_accountant' as any, isActive: true },
+    ],
+  });
+  return [step.approverUserId, ...pair.map((user) => user.id)];
+}
+
 function contractSummary(contract: Contract): string {
   return `
     <table style="border-collapse:collapse;margin:14px 0;color:#25324a">
@@ -116,7 +131,7 @@ export async function notifyStepAssigned(contract: Contract, step: ContractAppro
       ${instruction}
     </div>
   `;
-  await sendEmailToUsers([step.approverUserId], subject, html);
+  await sendEmailToUsers(await stepNotificationUserIds(step), subject, html);
 }
 
 export async function notifyDecisionChanged(
