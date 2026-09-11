@@ -1,7 +1,7 @@
 /* Дашборд «Парк автовозов» под графиком работы — Автовозы */
 
 .afd {
-  margin: 12px 0 4px;
+  margin: 10px 0 4px;
   max-width: 1440px;
 }
 
@@ -9,8 +9,8 @@
 .afd-stats {
   display: grid;
   grid-template-columns: 1.15fr 1fr 1fr 1.15fr;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 @media (max-width: 980px) {
@@ -21,16 +21,16 @@
   background: #ffffff;
   border: 1px solid #e7eaf0;
   border-radius: 14px;
-  padding: 10px 16px;
+  padding: 7px 13px;
   box-shadow: 0 1px 3px rgba(22, 24, 29, 0.05), 0 4px 14px rgba(22, 24, 29, 0.04);
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 58px;
+  gap: 10px;
+  min-height: 46px;
 }
 
 .afd-tile__num {
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.02em;
@@ -45,20 +45,20 @@
 }
 
 .afd-tile__lbl {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: #16181d;
 }
 
 .afd-tile__sub {
-  font-size: 11px;
+  font-size: 10px;
   color: #8b93a1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.afd-tile__sub b { color: #16181d; font-size: 13px; }
+.afd-tile__sub b { color: #16181d; font-size: 11.5px; }
 
 .afd-tile__pills { display: flex; gap: 5px; flex-wrap: wrap; }
 
@@ -72,21 +72,22 @@
 .afd-tile--hero .afd-tile__lbl { color: #ffffff; }
 .afd-tile--hero .afd-tile__sub { color: rgba(255, 255, 255, 0.75); }
 
-.afd-ring { position: relative; width: 44px; height: 44px; flex: none; }
+.afd-ring { position: relative; width: 38px; height: 38px; flex: none; }
+.afd-ring svg { width: 38px; height: 38px; }
 .afd-ring__pct {
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   color: #16181d;
 }
 
 /* ── бейджи ── */
 .afd-pill {
-  font-size: 10.5px;
+  font-size: 9.5px;
   font-weight: 600;
   border-radius: 999px;
   padding: 2px 8px;
@@ -101,7 +102,7 @@
 .afd-cols {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 10px;
 }
 
 @media (max-width: 980px) {
@@ -112,7 +113,7 @@
   background: #ffffff;
   border: 1px solid #e7eaf0;
   border-radius: 14px;
-  padding: 10px 16px 6px;
+  padding: 8px 13px 4px;
   box-shadow: 0 1px 3px rgba(22, 24, 29, 0.05), 0 4px 14px rgba(22, 24, 29, 0.04);
 }
 
@@ -120,13 +121,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 700;
   color: #16181d;
   margin: 0 0 4px;
 }
 
-.afd-card__cnt { color: #8b93a1; font-size: 14px; }
+.afd-card__cnt { color: #8b93a1; font-size: 12.5px; }
 .afd-card__cnt--transit { color: #2a78d6; }
 
 .afd-card__empty {
@@ -137,17 +138,17 @@
 
 .afd-row {
   display: grid;
-  grid-template-columns: 14px 76px 1fr auto auto;
+  grid-template-columns: 12px 70px 1fr auto auto;
   align-items: center;
-  gap: 8px;
-  padding: 5px 0;
+  gap: 7px;
+  padding: 3px 0;
   border-bottom: 1px solid #edf0f4;
-  font-size: 12.5px;
+  font-size: 11.5px;
 }
 
 .afd-row:last-child { border-bottom: 0; }
 
-.afd-row__dot { width: 8px; height: 8px; border-radius: 50%; background: #2a78d6; }
+.afd-row__dot { width: 7px; height: 7px; border-radius: 50%; background: #2a78d6; }
 .afd-row__dot--base { background: #c3c9d2; }
 .afd-row__dot--crit { background: #d03b3b; }
 .afd-row__dot--warn { background: #ec835a; }
@@ -166,7 +167,7 @@
 .afd-row__pills { display: flex; gap: 5px; }
 
 .afd-row__meta {
-  font-size: 11px;
+  font-size: 10px;
   color: #8b93a1;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
