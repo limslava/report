@@ -152,7 +152,6 @@ export function canViewCalendar(role?: string | null): boolean {
 
 export function canAccessDispatcherJournal(role?: string | null): boolean {
   return role === 'admin'
-    || role === 'dispatcher_vvo'
     || role === 'manager_ktk_vvo'
     || role === 'head_ktk_vvo';
 }

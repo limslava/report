@@ -230,9 +230,9 @@ const AdminPage = () => {
   }, []);
 
   const roleLabels: Record<string, string> = {
-    manager_ktk_vvo: 'Менеджер КТК Владивосток',
+    manager_ktk_vvo: 'Диспетчер КТК Владивосток',
     head_ktk_vvo: 'Руководитель КТК Владивосток',
-    manager_ktk_mow: 'Менеджер КТК Москва',
+    manager_ktk_mow: 'Диспетчер КТК Москва',
     head_ktk_mow: 'Руководитель КТК Москва',
     head_hr: 'Руководитель отдела кадров',
     hr_specialist: 'Специалист отдела кадров',
@@ -246,7 +246,6 @@ const AdminPage = () => {
     counterparty_user: 'Представитель контрагента',
     bdd_specialist_vvo: 'Специалист по БДД Владивосток',
     bdd_specialist_mow: 'Специалист по БДД Москва',
-    dispatcher_vvo: 'Диспетчер КТК Влк',
     manager_sales: 'Менеджер по продажам',
     head_sales: 'Руководитель отдела продаж',
     director: 'Директор',

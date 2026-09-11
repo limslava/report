@@ -232,7 +232,6 @@ export class PlanWebSocketService {
 
   private canReceiveDispatcherJournalEvents(role: string): boolean {
     return role === 'admin'
-      || role === 'dispatcher_vvo'
       || role === 'manager_ktk_vvo'
       || role === 'head_ktk_vvo';
   }

@@ -8,7 +8,6 @@ describe('getDefaultAuthenticatedRoute', () => {
     ['head_sales', '/sw-tech-dashboard'],
     ['manager_sales', '/plans'],
     ['security', '/operations-preview?location=security_vvo&section=guards'],
-    ['dispatcher_vvo', '/dispatcher-journal'],
     ['garage_head_vvo', '/operations-preview?location=garage_vvo&section=mechanics'],
     ['warehouse_manager_vvo', '/operations-preview?location=garage_vvo&section=warehouse_staff'],
     ['head_hr', '/operations-preview?location=ktk_vvo&section=containers'],

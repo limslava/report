@@ -16,9 +16,6 @@ export function getDefaultAuthenticatedRoute(role?: string | null): string {
   if (role === 'warehouse_manager_vvo') {
     return '/operations-preview?location=garage_vvo&section=warehouse_staff';
   }
-  if (role === 'dispatcher_vvo') {
-    return '/dispatcher-journal';
-  }
   if (role === 'security') {
     return '/operations-preview?location=security_vvo&section=guards';
   }

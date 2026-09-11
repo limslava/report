@@ -14,7 +14,7 @@ import {
 const router = Router();
 
 /** Журнал диспетчерского отдела КТК Владивосток. */
-export const DISPATCHER_JOURNAL_ROLES = ['dispatcher_vvo', 'manager_ktk_vvo', 'head_ktk_vvo'] as const;
+export const DISPATCHER_JOURNAL_ROLES = ['manager_ktk_vvo', 'head_ktk_vvo'] as const;
 
 router.use(authenticate, authorizeRole('admin', ...DISPATCHER_JOURNAL_ROLES));
 
