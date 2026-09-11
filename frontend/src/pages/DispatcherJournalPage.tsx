@@ -262,8 +262,7 @@ type Message = { severity: 'error' | 'success'; text: string } | null;
 
 export default function DispatcherJournalPage() {
   const { user } = useAuthStore();
-  /** null — режим «Актуальное»: неделя назад + два месяца вперёд (виден стык месяцев). */
-  const [viewMonth, setViewMonth] = useState<string | null>(null);
+  const [viewMonth, setViewMonth] = useState<string>(currentMonth());
   const [rows, setRows] = useState<DispatcherOrderRow[]>([]);
   const [statuses, setStatuses] = useState<DispatcherStatusOption[]>([]);
   const [driverOptions, setDriverOptions] = useState<string[]>([]);
@@ -273,15 +272,17 @@ export default function DispatcherJournalPage() {
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [ghostKey, setGhostKey] = useState(0);
   const reloadTimerRef = useRef<number | null>(null);
+  // Текущий месяц показывается вместе с ближайшим будущим (до 60 дней):
+  // заявка от 29.09 на вывоз 01.10 видна, не дожидаясь октября. Прошлые
+  // и будущие месяцы — строго архив месяца.
   const range = useMemo(() => {
-    if (!viewMonth) {
-      const now = new Date();
-      const fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-      const toDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 60);
-      const ymd = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-      return { from: ymd(fromDate), to: ymd(toDate) };
-    }
     const [year, monthNo] = viewMonth.split('-').map(Number);
+    if (viewMonth === currentMonth()) {
+      const now = new Date();
+      const toDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 60);
+      const to = `${toDate.getFullYear()}-${pad2(toDate.getMonth() + 1)}-${pad2(toDate.getDate())}`;
+      return { from: `${viewMonth}-01`, to };
+    }
     return { from: `${viewMonth}-01`, to: `${viewMonth}-${pad2(new Date(year, monthNo, 0).getDate())}` };
   }, [viewMonth]);
   const rangeRef = useRef(range);
@@ -291,8 +292,8 @@ export default function DispatcherJournalPage() {
   const selectedRowIdRef = useRef(selectedRowId);
   selectedRowIdRef.current = selectedRowId;
 
-  // дата новых строк: сегодня в режиме «Актуальное», иначе 1-е число месяца
-  const defaultNewDate = !viewMonth || viewMonth === currentMonth() ? todayYmd() : `${viewMonth}-01`;
+  // дата новых строк: сегодня в текущем месяце, иначе 1-е число месяца
+  const defaultNewDate = viewMonth === currentMonth() ? todayYmd() : `${viewMonth}-01`;
 
   // настройка колонок (видимость + порядок), на пользователя — как в справочниках
   const columnsStorageKey = `dj-columns-v1:${user?.id ?? 'anonymous'}`;
@@ -655,22 +656,15 @@ export default function DispatcherJournalPage() {
     <Box className="dj-page">
       <Paper sx={{ p: 1.5 }}>
         <Box className="dj-toolbar">
-          <Button
-            variant={viewMonth ? 'outlined' : 'contained'}
-            onClick={() => setViewMonth(null)}
-            title="Последняя неделя и всё ближайшее будущее — стык месяцев виден"
-          >
-            Актуальное
-          </Button>
           <TextField
             label="Год"
             type="number"
             size="small"
-            value={Number((viewMonth ?? currentMonth()).slice(0, 4))}
+            value={Number(viewMonth.slice(0, 4))}
             onChange={(event) => {
               const year = Number(event.target.value);
               if (!Number.isInteger(year) || year < 2020 || year > 2100) return;
-              setViewMonth(`${year}-${(viewMonth ?? currentMonth()).slice(5, 7)}`);
+              setViewMonth(`${year}-${viewMonth.slice(5, 7)}`);
             }}
             sx={{ width: 100 }}
           />
@@ -678,10 +672,10 @@ export default function DispatcherJournalPage() {
             label="Месяц"
             select
             size="small"
-            value={Number((viewMonth ?? currentMonth()).slice(5, 7))}
+            value={Number(viewMonth.slice(5, 7))}
             onChange={(event) => {
               const monthNo = Number(event.target.value);
-              setViewMonth(`${(viewMonth ?? currentMonth()).slice(0, 4)}-${pad2(monthNo)}`);
+              setViewMonth(`${viewMonth.slice(0, 4)}-${pad2(monthNo)}`);
             }}
             sx={{ width: 140 }}
           >
