@@ -245,7 +245,8 @@ type Message = { severity: 'error' | 'success'; text: string } | null;
 
 export default function DispatcherJournalPage() {
   const { user } = useAuthStore();
-  const [month, setMonth] = useState<string>(currentMonth());
+  /** null — режим «Актуальное»: неделя назад + два месяца вперёд (виден стык месяцев). */
+  const [viewMonth, setViewMonth] = useState<string | null>(null);
   const [rows, setRows] = useState<DispatcherOrderRow[]>([]);
   const [statuses, setStatuses] = useState<DispatcherStatusOption[]>([]);
   const [driverOptions, setDriverOptions] = useState<string[]>([]);
@@ -255,15 +256,26 @@ export default function DispatcherJournalPage() {
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [ghostKey, setGhostKey] = useState(0);
   const reloadTimerRef = useRef<number | null>(null);
-  const monthRef = useRef(month);
-  monthRef.current = month;
+  const range = useMemo(() => {
+    if (!viewMonth) {
+      const now = new Date();
+      const fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+      const toDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 60);
+      const ymd = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+      return { from: ymd(fromDate), to: ymd(toDate) };
+    }
+    const [year, monthNo] = viewMonth.split('-').map(Number);
+    return { from: `${viewMonth}-01`, to: `${viewMonth}-${pad2(new Date(year, monthNo, 0).getDate())}` };
+  }, [viewMonth]);
+  const rangeRef = useRef(range);
+  rangeRef.current = range;
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
   const selectedRowIdRef = useRef(selectedRowId);
   selectedRowIdRef.current = selectedRowId;
 
-  // дата новых строк: сегодня, если открыт текущий месяц, иначе 1-е число
-  const defaultNewDate = month === currentMonth() ? todayYmd() : `${month}-01`;
+  // дата новых строк: сегодня в режиме «Актуальное», иначе 1-е число месяца
+  const defaultNewDate = !viewMonth || viewMonth === currentMonth() ? todayYmd() : `${viewMonth}-01`;
 
   // настройка колонок (видимость + порядок), на пользователя — как в справочниках
   const columnsStorageKey = `dj-columns-v1:${user?.id ?? 'anonymous'}`;
@@ -309,11 +321,12 @@ export default function DispatcherJournalPage() {
   const statusesRef = useRef(statuses);
   statusesRef.current = statuses;
 
-  const loadRows = useCallback(async (targetMonth: string, withSpinner = false) => {
+  const loadRows = useCallback(async (withSpinner = false) => {
+    const target = rangeRef.current;
     if (withSpinner) setLoading(true);
     try {
-      const { data } = await getDispatcherOrders(targetMonth);
-      if (monthRef.current === targetMonth) setRows(data);
+      const { data } = await getDispatcherOrders(target.from, target.to);
+      if (rangeRef.current.from === target.from && rangeRef.current.to === target.to) setRows(data);
     } catch {
       setMessage({ severity: 'error', text: 'Не удалось загрузить журнал' });
     } finally {
@@ -322,8 +335,8 @@ export default function DispatcherJournalPage() {
   }, []);
 
   useEffect(() => {
-    void loadRows(month, true);
-  }, [month, loadRows]);
+    void loadRows(true);
+  }, [range, loadRows]);
 
   useEffect(() => {
     getDispatcherStatuses()
@@ -342,10 +355,10 @@ export default function DispatcherJournalPage() {
     const unsubscribe = subscribePlansRealtime((payload) => {
       const event = payload as { type?: string; date?: string };
       if (event?.type !== 'dispatcher-journal:updated') return;
-      if (!event.date?.startsWith(monthRef.current)) return;
+      if (!event.date || event.date < rangeRef.current.from || event.date > rangeRef.current.to) return;
       if (reloadTimerRef.current) window.clearTimeout(reloadTimerRef.current);
       reloadTimerRef.current = window.setTimeout(() => {
-        void loadRows(monthRef.current);
+        void loadRows();
       }, 250);
     });
     return () => {
@@ -359,17 +372,17 @@ export default function DispatcherJournalPage() {
 
   const patchRow = useCallback((id: string, patch: DispatcherOrderPatch) => {
     setRows((prev) => sortByDate(prev.map((row) => (row.id === id ? { ...row, ...patch } : row))
-      .filter((row) => row.orderDate.startsWith(monthRef.current))));
+      .filter((row) => row.orderDate >= rangeRef.current.from && row.orderDate <= rangeRef.current.to)));
     updateDispatcherOrder(id, patch).catch(() => {
       setMessage({ severity: 'error', text: 'Не удалось сохранить изменение' });
-      void loadRows(monthRef.current);
+      void loadRows();
     });
   }, [loadRows]);
 
   const createRow = useCallback(async (orderDate: string, initial?: DispatcherOrderPatch) => {
     try {
       const { data } = await createDispatcherOrder(orderDate, initial);
-      if (orderDate.startsWith(monthRef.current)) {
+      if (orderDate >= rangeRef.current.from && orderDate <= rangeRef.current.to) {
         setRows((prev) => sortByDate([...prev, data]));
       }
       setGhostKey((prev) => prev + 1);
@@ -408,7 +421,7 @@ export default function DispatcherJournalPage() {
 
   const applyTsvLine = useCallback((line: string): { date: string; patch: DispatcherOrderPatch } => {
     const cells = line.split('\t');
-    const parsedDate = parseClipboardDate(cells[0] ?? '', monthRef.current);
+    const parsedDate = parseClipboardDate(cells[0] ?? '', rangeRef.current.from.slice(0, 7));
     const patch: DispatcherOrderPatch = {};
     visibleColumnsRef.current.forEach((column, index) => {
       const raw = cells[index + 1];
@@ -423,8 +436,7 @@ export default function DispatcherJournalPage() {
         patch[column.field] = raw.trim() || null;
       }
     });
-    const fallbackDate = monthRef.current === currentMonth() ? todayYmd() : `${monthRef.current}-01`;
-    return { date: parsedDate ?? fallbackDate, patch };
+    return { date: parsedDate ?? todayYmd(), patch };
   }, []);
 
   useEffect(() => {
@@ -565,16 +577,23 @@ export default function DispatcherJournalPage() {
         <Typography variant="h6" sx={{ fontSize: 16, fontWeight: 650 }}>
           Диспетчерская — КТК Владивосток
         </Typography>
+        <Button
+          size="small"
+          variant={viewMonth ? 'outlined' : 'contained'}
+          color={viewMonth ? 'inherit' : 'primary'}
+          onClick={() => setViewMonth(null)}
+          title="Последняя неделя и всё ближайшее будущее — стык месяцев виден"
+        >
+          Актуальное
+        </Button>
         <TextField
           type="month"
           size="small"
-          value={month}
-          onChange={(event) => setMonth(event.target.value || currentMonth())}
+          value={viewMonth ?? ''}
+          placeholder="архив"
+          onChange={(event) => setViewMonth(event.target.value || null)}
           sx={{ width: 150 }}
         />
-        <Button size="small" onClick={() => setMonth(currentMonth())} disabled={month === currentMonth()}>
-          Текущий месяц
-        </Button>
         <Button size="small" variant="contained" onClick={() => void createRow(defaultNewDate)}>
           Добавить заявку
         </Button>
@@ -641,7 +660,7 @@ export default function DispatcherJournalPage() {
                         const next = event.target.value;
                         if (!next) return;
                         patchRow(row.id, { orderDate: next });
-                        if (!next.startsWith(month)) {
+                        if (next < rangeRef.current.from || next > rangeRef.current.to) {
                           setMessage({ severity: 'success', text: `Заявка перенесена на ${formatDateShort(next)}` });
                         }
                       }}

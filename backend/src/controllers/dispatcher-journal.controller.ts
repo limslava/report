@@ -105,21 +105,28 @@ export const listDispatcherStatuses = async (_req: Request, res: Response, next:
   }
 };
 
-const MONTH_PATTERN = /^\d{4}-\d{2}$/;
-
-/** Заявки за месяц — сплошная таблица, как её ведут диспетчера в google. */
+/**
+ * Заявки за период — сплошная таблица, как её ведут диспетчера в google.
+ * Режим «Актуальное» на фронте запрашивает хвост прошлого + всё ближайшее
+ * будущее, поэтому заявка от 29.09 на вывоз 01.10 видна уже 30.09.
+ */
 export const listDispatcherOrders = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const month = req.query.month;
-    if (typeof month !== 'string' || !MONTH_PATTERN.test(month)) {
-      const error: any = new Error('Некорректный месяц (ожидается YYYY-MM)');
+    const from = requireDate(req.query.from);
+    const to = requireDate(req.query.to);
+    if (from > to) {
+      const error: any = new Error('Начало периода позже конца');
       error.statusCode = 400;
       throw error;
     }
-    const [year, monthNo] = month.split('-').map(Number);
-    const lastDay = new Date(year, monthNo, 0).getDate();
+    const spanDays = (new Date(to).getTime() - new Date(from).getTime()) / 86_400_000;
+    if (spanDays > 400) {
+      const error: any = new Error('Слишком большой период (максимум 400 дней)');
+      error.statusCode = 400;
+      throw error;
+    }
     const orders = await orderRepository.find({
-      where: { orderDate: Between(`${month}-01`, `${month}-${String(lastDay).padStart(2, '0')}`) },
+      where: { orderDate: Between(from, to) },
       order: { orderDate: 'ASC', createdAt: 'ASC' },
     });
     res.json(orders.map(serializeOrder));

@@ -49,8 +49,8 @@ export type DispatcherOrderPatch = Partial<
 export const getDispatcherStatuses = () =>
   api.get<DispatcherStatusOption[]>('/dispatcher-journal/statuses');
 
-export const getDispatcherOrders = (month: string) =>
-  api.get<DispatcherOrderRow[]>('/dispatcher-journal/orders', { params: { month } });
+export const getDispatcherOrders = (from: string, to: string) =>
+  api.get<DispatcherOrderRow[]>('/dispatcher-journal/orders', { params: { from, to } });
 
 export const createDispatcherOrder = (orderDate: string, initial?: DispatcherOrderPatch) =>
   api.post<DispatcherOrderRow>('/dispatcher-journal/orders', { orderDate, ...(initial ?? {}) });
