@@ -370,7 +370,28 @@ export default function DispatcherJournalPage() {
   const sortByDate = (list: DispatcherOrderRow[]): DispatcherOrderRow[] =>
     [...list].sort((a, b) => a.orderDate.localeCompare(b.orderDate));
 
-  const patchRow = useCallback((id: string, patch: DispatcherOrderPatch) => {
+  // ── Ctrl+Z: стек отмены последних действий (правка ячейки, создание, удаление) ──
+  type UndoEntry =
+    | { kind: 'patch'; id: string; before: DispatcherOrderPatch }
+    | { kind: 'create'; id: string }
+    | { kind: 'delete'; row: DispatcherOrderRow };
+  const undoStackRef = useRef<UndoEntry[]>([]);
+  const pushUndo = (entry: UndoEntry) => {
+    undoStackRef.current.push(entry);
+    if (undoStackRef.current.length > 50) undoStackRef.current.shift();
+  };
+
+  const patchRow = useCallback((id: string, patch: DispatcherOrderPatch, options?: { skipUndo?: boolean }) => {
+    if (!options?.skipUndo) {
+      const current = rowsRef.current.find((row) => row.id === id);
+      if (current) {
+        const before: DispatcherOrderPatch = {};
+        (Object.keys(patch) as Array<keyof DispatcherOrderPatch>).forEach((key) => {
+          (before as Record<string, unknown>)[key] = current[key] ?? null;
+        });
+        pushUndo({ kind: 'patch', id, before });
+      }
+    }
     setRows((prev) => sortByDate(prev.map((row) => (row.id === id ? { ...row, ...patch } : row))
       .filter((row) => row.orderDate >= rangeRef.current.from && row.orderDate <= rangeRef.current.to)));
     updateDispatcherOrder(id, patch).catch(() => {
@@ -379,12 +400,13 @@ export default function DispatcherJournalPage() {
     });
   }, [loadRows]);
 
-  const createRow = useCallback(async (orderDate: string, initial?: DispatcherOrderPatch) => {
+  const createRow = useCallback(async (orderDate: string, initial?: DispatcherOrderPatch, options?: { skipUndo?: boolean }) => {
     try {
       const { data } = await createDispatcherOrder(orderDate, initial);
       if (orderDate >= rangeRef.current.from && orderDate <= rangeRef.current.to) {
         setRows((prev) => sortByDate([...prev, data]));
       }
+      if (!options?.skipUndo) pushUndo({ kind: 'create', id: data.id });
       setGhostKey((prev) => prev + 1);
       return data;
     } catch {
@@ -393,7 +415,7 @@ export default function DispatcherJournalPage() {
     }
   }, []);
 
-  const deleteRow = useCallback(async (row: DispatcherOrderRow, options?: { silent?: boolean }) => {
+  const deleteRow = useCallback(async (row: DispatcherOrderRow, options?: { silent?: boolean; skipUndo?: boolean }) => {
     if (!options?.silent) {
       const label = [row.ktkNumber, row.client].filter(Boolean).join(', ');
       if (!window.confirm(`Удалить строку${label ? ` (${label})` : ''}?`)) return;
@@ -402,10 +424,31 @@ export default function DispatcherJournalPage() {
       await deleteDispatcherOrder(row.id);
       setRows((prev) => prev.filter((item) => item.id !== row.id));
       if (selectedRowIdRef.current === row.id) setSelectedRowId(null);
+      if (!options?.skipUndo) pushUndo({ kind: 'delete', row });
     } catch {
       setMessage({ severity: 'error', text: 'Не удалось удалить строку' });
     }
   }, []);
+
+  const undoLast = useCallback(() => {
+    const entry = undoStackRef.current.pop();
+    if (!entry) {
+      setMessage({ severity: 'success', text: 'Отменять нечего' });
+      return;
+    }
+    if (entry.kind === 'patch') {
+      patchRow(entry.id, entry.before, { skipUndo: true });
+      setMessage({ severity: 'success', text: 'Правка отменена' });
+    } else if (entry.kind === 'create') {
+      const row = rowsRef.current.find((item) => item.id === entry.id);
+      if (row) void deleteRow(row, { silent: true, skipUndo: true });
+      setMessage({ severity: 'success', text: 'Создание строки отменено' });
+    } else {
+      const { id: _id, orderDate, updatedAt: _updatedAt, ...fields } = entry.row;
+      void createRow(orderDate, fields, { skipUndo: true });
+      setMessage({ severity: 'success', text: 'Строка восстановлена' });
+    }
+  }, [createRow, deleteRow, patchRow]);
 
   // ── Excel-обмен: выделение строки, Ctrl+C / Ctrl+X / Ctrl+V ──
   const rowToTsv = useCallback((row: DispatcherOrderRow): string => {
@@ -439,60 +482,80 @@ export default function DispatcherJournalPage() {
     return { date: parsedDate ?? todayYmd(), patch };
   }, []);
 
+  // Копирование/вставка через нативные события copy/cut/paste — работают
+  // без запроса разрешения на буфер (readText в ряде браузеров блокируется).
   useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
+    const escHandler = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setSelectedRowId(null);
         return;
       }
-      if (!(event.ctrlKey || event.metaKey)) return;
-      const key = event.key.toLowerCase();
-      const isCopy = key === 'c' || key === 'с';
-      const isCut = key === 'x' || key === 'ч';
-      const isPaste = key === 'v' || key === 'м';
-      if (!isCopy && !isCut && !isPaste) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
-
-      const selected = rowsRef.current.find((row) => row.id === selectedRowIdRef.current) ?? null;
-
-      if ((isCopy || isCut) && selected) {
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey) {
+        const key = event.key.toLowerCase();
+        if (key !== 'z' && key !== 'я') return;
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
         event.preventDefault();
-        navigator.clipboard.writeText(rowToTsv(selected)).then(() => {
-          if (isCut) {
-            void deleteRow(selected, { silent: true });
-            setMessage({ severity: 'success', text: 'Строка вырезана в буфер' });
-          } else {
-            setMessage({ severity: 'success', text: 'Строка скопирована в буфер' });
-          }
-        }).catch(() => setMessage({ severity: 'error', text: 'Нет доступа к буферу обмена' }));
-        return;
-      }
-
-      if (isPaste) {
-        event.preventDefault();
-        navigator.clipboard.readText().then(async (text) => {
-          const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
-          if (!lines.length) return;
-          let rest = lines;
-          if (selected) {
-            const { date, patch } = applyTsvLine(lines[0]);
-            patchRow(selected.id, { ...patch, orderDate: date });
-            rest = lines.slice(1);
-          }
-          for (const line of rest) {
-            const { date, patch } = applyTsvLine(line);
-            // последовательное создание сохраняет порядок строк из буфера
-            // eslint-disable-next-line no-await-in-loop
-            await createRow(date, patch);
-          }
-          setMessage({ severity: 'success', text: `Вставлено строк: ${lines.length}` });
-        }).catch(() => setMessage({ severity: 'error', text: 'Нет доступа к буферу обмена — разрешите чтение буфера' }));
+        undoLast();
       }
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [applyTsvLine, createRow, deleteRow, patchRow, rowToTsv]);
+    const inField = (target: EventTarget | null): boolean =>
+      Boolean((target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]'));
+
+    const copyHandler = (event: ClipboardEvent) => {
+      if (inField(event.target)) return;
+      const selected = rowsRef.current.find((row) => row.id === selectedRowIdRef.current);
+      if (!selected || !event.clipboardData) return;
+      event.preventDefault();
+      event.clipboardData.setData('text/plain', rowToTsv(selected));
+      setMessage({ severity: 'success', text: 'Строка скопирована в буфер' });
+    };
+
+    const cutHandler = (event: ClipboardEvent) => {
+      if (inField(event.target)) return;
+      const selected = rowsRef.current.find((row) => row.id === selectedRowIdRef.current);
+      if (!selected || !event.clipboardData) return;
+      event.preventDefault();
+      event.clipboardData.setData('text/plain', rowToTsv(selected));
+      void deleteRow(selected, { silent: true });
+      setMessage({ severity: 'success', text: 'Строка вырезана в буфер' });
+    };
+
+    const pasteHandler = (event: ClipboardEvent) => {
+      if (inField(event.target)) return;
+      const text = event.clipboardData?.getData('text/plain') ?? '';
+      const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
+      if (!lines.length) return;
+      event.preventDefault();
+      void (async () => {
+        const selected = rowsRef.current.find((row) => row.id === selectedRowIdRef.current);
+        let rest = lines;
+        if (selected) {
+          const { date, patch } = applyTsvLine(lines[0]);
+          patchRow(selected.id, { ...patch, orderDate: date });
+          rest = lines.slice(1);
+        }
+        for (const line of rest) {
+          const { date, patch } = applyTsvLine(line);
+          // последовательное создание сохраняет порядок строк из буфера
+          // eslint-disable-next-line no-await-in-loop
+          await createRow(date, patch);
+        }
+        setMessage({ severity: 'success', text: `Вставлено строк: ${lines.length}` });
+      })();
+    };
+
+    window.addEventListener('keydown', escHandler);
+    document.addEventListener('copy', copyHandler);
+    document.addEventListener('cut', cutHandler);
+    document.addEventListener('paste', pasteHandler);
+    return () => {
+      window.removeEventListener('keydown', escHandler);
+      document.removeEventListener('copy', copyHandler);
+      document.removeEventListener('cut', cutHandler);
+      document.removeEventListener('paste', pasteHandler);
+    };
+  }, [applyTsvLine, createRow, deleteRow, patchRow, rowToTsv, undoLast]);
 
   const renderColumnCell = (row: DispatcherOrderRow, column: ColumnDef) => {
     if (column.kind === 'status') {
@@ -601,7 +664,7 @@ export default function DispatcherJournalPage() {
         <span className="dj-toolbar__hint">
           {loading
             ? 'Загрузка…'
-            : `Заявок: ${rows.length} · автосохранение · № строки → Ctrl+C/X/V для работы с Excel`}
+            : `Заявок: ${rows.length} · автосохранение · № строки → Ctrl+C/X/V, Ctrl+Z — отмена`}
         </span>
         <Tooltip title="Настроить колонки">
           <IconButton size="small" onClick={(event) => setColumnsAnchor(event.currentTarget)}>
