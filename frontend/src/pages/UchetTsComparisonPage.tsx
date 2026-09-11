@@ -254,11 +254,14 @@ export default function UchetTsComparisonPage() {
                 },
               }}
             >
+              {/* Двухуровневая липкая шапка: высота первой строки фиксирована,
+                  смещение второй задано от неё — иначе при компактном шрифте
+                  строки шапки съезжают и наезжают на данные (замечание 11.09) */}
               <TableHead>
-                <TableRow>
-                  <TableCell rowSpan={2} sx={{ fontWeight: 700 }}>Дата</TableCell>
-                  <TableCell rowSpan={2} sx={{ fontWeight: 700 }}>День</TableCell>
-                  <TableCell rowSpan={2} sx={{ fontWeight: 700 }}>Источник</TableCell>
+                <TableRow sx={{ '& th': { height: 30, boxSizing: 'border-box' } }}>
+                  <TableCell rowSpan={2} sx={{ fontWeight: 700, bgcolor: 'background.paper', zIndex: 3 }}>Дата</TableCell>
+                  <TableCell rowSpan={2} sx={{ fontWeight: 700, bgcolor: 'background.paper', zIndex: 3 }}>День</TableCell>
+                  <TableCell rowSpan={2} sx={{ fontWeight: 700, bgcolor: 'background.paper', zIndex: 3 }}>Источник</TableCell>
                   {METRIC_GROUPS.map((group) => (
                     <TableCell
                       key={group.label}
@@ -272,7 +275,7 @@ export default function UchetTsComparisonPage() {
                 </TableRow>
                 <TableRow>
                   {ALL_METRICS.map((metric) => (
-                    <TableCell key={metric.code} align="center" sx={{ fontWeight: 600, top: 37 }}>
+                    <TableCell key={metric.code} align="center" sx={{ fontWeight: 600, top: 30, bgcolor: 'grey.100' }}>
                       {metric.label}
                     </TableCell>
                   ))}

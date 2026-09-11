@@ -140,6 +140,9 @@ export const importUchetTsRange = async (from: string, to: string): Promise<Uche
   const payload = await fetchUchetTsRange(from, to);
   const items = extractDays(payload);
   const repository = AppDataSource.getRepository(UchetTsDailyStat);
+  // Пошли настоящие данные — тестовые строки (кнопка «Тестовые данные»)
+  // больше не нужны и только путают сверку: вычищаем их целиком.
+  await repository.delete({ source: 'mock' });
   let saved = 0;
   for (const item of items) {
     const mapped = mapDay(item);
