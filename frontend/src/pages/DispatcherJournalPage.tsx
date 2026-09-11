@@ -26,7 +26,14 @@ import {
 import { getDirectoryOptions } from '../services/directories.api';
 import { subscribePlansRealtime } from '../services/plans-realtime';
 import { useAuthStore } from '../store/auth-store';
-import { loadSortState, saveSortState } from '../utils/tableSort';
+import {
+  cycleSort,
+  loadSortState,
+  saveSortState,
+  sortIndicator,
+  sortRows as applySort,
+  type TableSortState,
+} from '../utils/tableSort';
 import {
   applyColumnPrefs,
   isHidden,
@@ -201,6 +208,7 @@ function StatusCell({ value, statuses, statusByName, onSave }: StatusCellProps) 
       autoHighlight
       clearOnEscape
       noOptionsText="нет похожих статусов"
+      slotProps={{ popper: { sx: { width: 'auto !important', minWidth: 200 }, placement: 'bottom-start' } }}
       renderOption={(props, option) => {
         const optionStatus = statusByName.get(option);
         return (
@@ -274,6 +282,25 @@ export default function DispatcherJournalPage() {
   const visibleColumnsRef = useRef(visibleColumns);
   visibleColumnsRef.current = visibleColumns;
 
+  // сортировка по заголовкам: asc -> desc -> исходный порядок (по датам)
+  const sortStorageKey = `dj-sort-v1:${user?.id ?? 'anonymous'}`;
+  const [sort, setSort] = useState<TableSortState>(() => loadSortState<TableSortState>(sortStorageKey, null));
+  useEffect(() => saveSortState(sortStorageKey, sort), [sortStorageKey, sort]);
+  const sortValue = useCallback((row: DispatcherOrderRow, field: string): unknown => {
+    if (field === 'orderDate') return row.orderDate;
+    const column = COLUMN_BY_KEY.get(field);
+    if (!column) return '';
+    if (column.kind === 'checkbox') return row[column.field] ? 1 : '';
+    return row[column.field] ?? '';
+  }, []);
+  const displayRows = useMemo(() => applySort(rows, sort, sortValue), [rows, sort, sortValue]);
+  const sortHeader = (field: string, label: string) => (
+    <button type="button" className="dj-sort-btn" onClick={() => setSort((prev) => cycleSort(prev, field))}>
+      <span>{label}</span>
+      <span className={`dj-sort-ind is-${sortIndicator(sort, field)}`} aria-hidden="true" />
+    </button>
+  );
+
   const statusByName = useMemo(() => {
     const map = new Map<string, DispatcherStatusOption>();
     statuses.forEach((status) => map.set(status.name, status));
@@ -327,11 +354,11 @@ export default function DispatcherJournalPage() {
     };
   }, [loadRows]);
 
-  const sortRows = (list: DispatcherOrderRow[]): DispatcherOrderRow[] =>
+  const sortByDate = (list: DispatcherOrderRow[]): DispatcherOrderRow[] =>
     [...list].sort((a, b) => a.orderDate.localeCompare(b.orderDate));
 
   const patchRow = useCallback((id: string, patch: DispatcherOrderPatch) => {
-    setRows((prev) => sortRows(prev.map((row) => (row.id === id ? { ...row, ...patch } : row))
+    setRows((prev) => sortByDate(prev.map((row) => (row.id === id ? { ...row, ...patch } : row))
       .filter((row) => row.orderDate.startsWith(monthRef.current))));
     updateDispatcherOrder(id, patch).catch(() => {
       setMessage({ severity: 'error', text: 'Не удалось сохранить изменение' });
@@ -343,7 +370,7 @@ export default function DispatcherJournalPage() {
     try {
       const { data } = await createDispatcherOrder(orderDate, initial);
       if (orderDate.startsWith(monthRef.current)) {
-        setRows((prev) => sortRows([...prev, data]));
+        setRows((prev) => sortByDate([...prev, data]));
       }
       setGhostKey((prev) => prev + 1);
       return data;
@@ -582,16 +609,16 @@ export default function DispatcherJournalPage() {
           <thead>
             <tr>
               <th className="dj-rownum-head" aria-label="Номер строки">№</th>
-              <th style={{ minWidth: 84 }}>Дата</th>
+              <th style={{ minWidth: 84 }}>{sortHeader('orderDate', 'Дата')}</th>
               {visibleColumns.map((column) => (
-                <th key={column.field} style={{ minWidth: column.width }}>{column.title}</th>
+                <th key={column.field} style={{ minWidth: column.width }}>{sortHeader(column.field, column.title)}</th>
               ))}
               <th aria-label="Удаление" />
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, index) => {
-              const dayStart = row.orderDate !== previousDate;
+            {displayRows.map((row, index) => {
+              const dayStart = !sort && row.orderDate !== previousDate;
               previousDate = row.orderDate;
               return (
                 <tr
@@ -637,7 +664,15 @@ export default function DispatcherJournalPage() {
             <tr key={`ghost-${ghostKey}`} className="dj-row--ghost dj-row--day-start">
               <td className="dj-rownum">＋</td>
               <td className="dj-date-cell">
-                <span className="dj-ghost-date">{formatDateShort(defaultNewDate)}</span>
+                <input
+                  type="date"
+                  className="dj-date-input"
+                  value={defaultNewDate}
+                  title="Выберите дату — заявка создастся сразу"
+                  onChange={(event) => {
+                    if (event.target.value) void createRow(event.target.value);
+                  }}
+                />
               </td>
               {visibleColumns.map((column) => renderGhostCell(column))}
               <td />
