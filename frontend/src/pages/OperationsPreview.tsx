@@ -3372,9 +3372,6 @@ export default function OperationsPreview() {
           </div>
       </section>
       )}
-      {!isEfficiencySection && allowedDepartmentSet.has('Авто') && (filter === 'Все' || filter === 'Авто') && (
-        <AutoFleetDashboard peopleByMonth={peopleByMonth} allOverrides={allOverrides} />
-      )}
       {isEfficiencySection && (
         <section className="ops-preview__efficiency">
           <Paper className="ops-efficiency-card">
@@ -3546,6 +3543,9 @@ export default function OperationsPreview() {
           ))}
         </div>
       </section>
+      )}
+      {!isEfficiencySection && allowedDepartmentSet.has('Авто') && (filter === 'Все' || filter === 'Авто') && (
+        <AutoFleetDashboard peopleByMonth={peopleByMonth} allOverrides={allOverrides} />
       )}
       {addOpen && (
         <div className="ops-modal">
