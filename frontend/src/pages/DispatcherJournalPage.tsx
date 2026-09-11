@@ -4,12 +4,16 @@ import {
   Box,
   Button,
   Checkbox,
+  IconButton,
   MenuItem,
+  Popover,
   Select,
   Snackbar,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
+import { DragIndicator, KeyboardArrowDown, KeyboardArrowUp, Settings } from '@mui/icons-material';
 import {
   createDispatcherOrder,
   deleteDispatcherOrder,
@@ -22,6 +26,16 @@ import {
 } from '../services/dispatcher-journal.api';
 import { getDirectoryOptions } from '../services/directories.api';
 import { subscribePlansRealtime } from '../services/plans-realtime';
+import { useAuthStore } from '../store/auth-store';
+import { loadSortState, saveSortState } from '../utils/tableSort';
+import {
+  applyColumnPrefs,
+  isHidden,
+  moveColumnTo,
+  orderedKeys,
+  toggleHidden,
+  type ColumnPrefs,
+} from '../utils/tableColumns';
 import '../styles/dispatcher-journal.css';
 
 const todayYmd = (): string => {
@@ -48,46 +62,52 @@ type TextFieldName =
   | 'driverRate' | 'vat' | 'clientRate' | 'passes' | 'extraAddress' | 'demurrage'
   | 'extraTon' | 'seal' | 'driverRemarks';
 
-type ColumnDef = {
-  field: TextFieldName;
-  title: string;
-  width: number;
-  multiline?: boolean;
-  listId?: string;
-};
+type BooleanFieldName = 'orderOnVehicle' | 'invoiceSent' | 'recoupling';
 
-const TEXT_COLUMNS: ColumnDef[] = [
-  { field: 'info', title: 'Инфо', width: 90 },
-  { field: 'client', title: 'Клиент', width: 150 },
-  { field: 'driverName', title: 'ФИО водителя', width: 150, listId: 'dj-drivers' },
-  { field: 'vehiclePlate', title: 'Гос номер', width: 110, listId: 'dj-vehicles' },
-  { field: 'ktkNumber', title: '№ КТК', width: 120 },
-  { field: 'ktkType', title: 'Тип', width: 55 },
-  { field: 'grossWeight', title: 'Вес (брутто)', width: 100 },
-  { field: 'comments', title: 'Комментарии', width: 180, multiline: true },
-  { field: 'operation', title: 'Операция', width: 110, listId: 'dj-operations' },
-  { field: 'terminalFrom', title: 'Терминал постановки', width: 200, multiline: true },
-  { field: 'slotFrom', title: 'Слот', width: 80 },
-  { field: 'pinFrom', title: 'Пин', width: 70 },
-  { field: 'submitTime', title: 'Время подачи', width: 90 },
-  { field: 'deliveryAddress', title: 'Адрес доставки', width: 220, multiline: true },
-  { field: 'terminalTo', title: 'Терминал снятия', width: 200, multiline: true },
-  { field: 'slotTo', title: 'Слот', width: 80 },
-  { field: 'pinTo', title: 'Пин', width: 70 },
-  { field: 'driverRate', title: 'Ставка водителя', width: 90 },
-  { field: 'vat', title: 'НДС', width: 90, listId: 'dj-vat' },
-  { field: 'clientRate', title: 'Ставка', width: 90 },
-  { field: 'passes', title: 'Пропуска', width: 90 },
-  { field: 'extraAddress', title: 'Доп адрес', width: 160, multiline: true },
-  { field: 'demurrage', title: 'Простой/руб', width: 90 },
+type ColumnDef =
+  | { kind: 'text'; field: TextFieldName; title: string; width: number; multiline?: boolean; listId?: string }
+  | { kind: 'checkbox'; field: BooleanFieldName; title: string; width: number };
+
+/**
+ * Все колонки журнала (порядок — как в google-таблице отдела). Пользователь
+ * может скрывать и переставлять их (кнопка настройки, как в справочниках);
+ * колонка «Статус» и кнопка удаления — фиксированные.
+ */
+const ALL_COLUMNS: ColumnDef[] = [
+  { kind: 'text', field: 'info', title: 'Инфо', width: 90 },
+  { kind: 'text', field: 'client', title: 'Клиент', width: 150 },
+  { kind: 'text', field: 'driverName', title: 'ФИО водителя', width: 150, listId: 'dj-drivers' },
+  { kind: 'text', field: 'vehiclePlate', title: 'Гос номер', width: 110, listId: 'dj-vehicles' },
+  { kind: 'text', field: 'ktkNumber', title: '№ КТК', width: 120 },
+  { kind: 'text', field: 'ktkType', title: 'Тип', width: 55 },
+  { kind: 'text', field: 'grossWeight', title: 'Вес (брутто)', width: 100 },
+  { kind: 'text', field: 'comments', title: 'Комментарии', width: 180, multiline: true },
+  { kind: 'text', field: 'operation', title: 'Операция', width: 110, listId: 'dj-operations' },
+  { kind: 'text', field: 'terminalFrom', title: 'Терминал постановки', width: 200, multiline: true },
+  { kind: 'text', field: 'slotFrom', title: 'Слот', width: 80 },
+  { kind: 'text', field: 'pinFrom', title: 'Пин', width: 70 },
+  { kind: 'text', field: 'submitTime', title: 'Время подачи', width: 90 },
+  { kind: 'text', field: 'deliveryAddress', title: 'Адрес доставки', width: 220, multiline: true },
+  { kind: 'text', field: 'terminalTo', title: 'Терминал снятия', width: 200, multiline: true },
+  { kind: 'text', field: 'slotTo', title: 'Слот снятия', width: 80 },
+  { kind: 'text', field: 'pinTo', title: 'Пин снятия', width: 70 },
+  { kind: 'text', field: 'driverRate', title: 'Ставка водителя', width: 90 },
+  { kind: 'text', field: 'vat', title: 'НДС', width: 90, listId: 'dj-vat' },
+  { kind: 'text', field: 'clientRate', title: 'Ставка', width: 90 },
+  { kind: 'text', field: 'passes', title: 'Пропуска', width: 90 },
+  { kind: 'text', field: 'extraAddress', title: 'Доп адрес', width: 160, multiline: true },
+  { kind: 'text', field: 'demurrage', title: 'Простой/руб', width: 90 },
+  { kind: 'checkbox', field: 'orderOnVehicle', title: 'Заказ на ТС', width: 70 },
+  { kind: 'checkbox', field: 'invoiceSent', title: 'Отправка счета', width: 70 },
+  { kind: 'text', field: 'extraTon', title: 'Доп тонна', width: 90 },
+  { kind: 'text', field: 'seal', title: 'Пломба', width: 90 },
+  { kind: 'checkbox', field: 'recoupling', title: 'Перецеп', width: 60 },
+  { kind: 'text', field: 'driverRemarks', title: 'Замечания к водителю', width: 180, multiline: true },
 ];
 
-const TAIL_TEXT_COLUMNS: ColumnDef[] = [
-  { field: 'extraTon', title: 'Доп тонна', width: 90 },
-  { field: 'seal', title: 'Пломба', width: 90 },
-];
-
-const REMARKS_COLUMN: ColumnDef = { field: 'driverRemarks', title: 'Замечания к водителю', width: 180, multiline: true };
+const ALL_COLUMN_KEYS = ALL_COLUMNS.map((column) => column.field);
+const COLUMN_BY_KEY = new Map(ALL_COLUMNS.map((column) => [column.field, column]));
+const NO_DEFAULT_HIDDEN: string[] = [];
 
 const OPERATION_SUGGESTIONS = ['выгрузка', 'погрузка', 'перемещение', 'вывоз'];
 const VAT_SUGGESTIONS = ['НДС22%', 'без НДС'];
@@ -140,6 +160,7 @@ function EditableCell({ value, multiline, listId, onSave }: EditableCellProps) {
 }
 
 export default function DispatcherJournalPage() {
+  const { user } = useAuthStore();
   const [date, setDate] = useState<string>(todayYmd());
   const [rows, setRows] = useState<DispatcherOrderRow[]>([]);
   const [statuses, setStatuses] = useState<DispatcherStatusOption[]>([]);
@@ -150,6 +171,21 @@ export default function DispatcherJournalPage() {
   const reloadTimerRef = useRef<number | null>(null);
   const dateRef = useRef(date);
   dateRef.current = date;
+
+  // настройка колонок (видимость + порядок), на пользователя — как в справочниках
+  const columnsStorageKey = `dj-columns-v1:${user?.id ?? 'anonymous'}`;
+  const [columnPrefs, setColumnPrefs] = useState<ColumnPrefs | undefined>(() =>
+    loadSortState<ColumnPrefs | undefined>(columnsStorageKey, undefined)
+  );
+  useEffect(() => saveSortState(columnsStorageKey, columnPrefs), [columnsStorageKey, columnPrefs]);
+  const [columnsAnchor, setColumnsAnchor] = useState<HTMLElement | null>(null);
+  const dragColumnKey = useRef<string | null>(null);
+  const visibleColumns = useMemo(
+    () => applyColumnPrefs(ALL_COLUMN_KEYS, NO_DEFAULT_HIDDEN, columnPrefs)
+      .map((key) => COLUMN_BY_KEY.get(key as TextFieldName | BooleanFieldName)!)
+      .filter(Boolean),
+    [columnPrefs],
+  );
 
   const statusByName = useMemo(() => {
     const map = new Map<string, DispatcherStatusOption>();
@@ -240,6 +276,30 @@ export default function DispatcherJournalPage() {
     );
   };
 
+  const renderColumnCell = (row: DispatcherOrderRow, column: ColumnDef) => {
+    if (column.kind === 'checkbox') {
+      return (
+        <td key={column.field} className="dj-checkbox-cell">
+          <Checkbox
+            size="small"
+            checked={row[column.field]}
+            onChange={(event) => patchRow(row.id, { [column.field]: event.target.checked })}
+          />
+        </td>
+      );
+    }
+    return (
+      <td key={column.field}>
+        <EditableCell
+          value={row[column.field]}
+          multiline={column.multiline}
+          listId={column.listId}
+          onSave={(value) => patchRow(row.id, { [column.field]: value || null })}
+        />
+      </td>
+    );
+  };
+
   return (
     <Box className="dj-page">
       <Box className="dj-toolbar">
@@ -263,6 +323,11 @@ export default function DispatcherJournalPage() {
         <span className="dj-toolbar__hint">
           {loading ? 'Загрузка…' : `Заявок: ${rows.length} · изменения сохраняются сразу и видны всем`}
         </span>
+        <Tooltip title="Настроить колонки">
+          <IconButton size="small" onClick={(event) => setColumnsAnchor(event.currentTarget)}>
+            <Settings sx={{ fontSize: 20, color: '#6b7280' }} />
+          </IconButton>
+        </Tooltip>
       </Box>
 
       <datalist id="dj-drivers">
@@ -283,16 +348,9 @@ export default function DispatcherJournalPage() {
           <thead>
             <tr>
               <th style={{ minWidth: 160 }}>Статус</th>
-              {TEXT_COLUMNS.map((column) => (
+              {visibleColumns.map((column) => (
                 <th key={column.field} style={{ minWidth: column.width }}>{column.title}</th>
               ))}
-              <th>Заказ на ТС</th>
-              <th>Отправка счета</th>
-              {TAIL_TEXT_COLUMNS.map((column) => (
-                <th key={column.field} style={{ minWidth: column.width }}>{column.title}</th>
-              ))}
-              <th>Перецеп</th>
-              <th style={{ minWidth: REMARKS_COLUMN.width }}>{REMARKS_COLUMN.title}</th>
               <th aria-label="Удаление" />
             </tr>
           </thead>
@@ -327,53 +385,7 @@ export default function DispatcherJournalPage() {
                     ))}
                   </Select>
                 </td>
-                {TEXT_COLUMNS.map((column) => (
-                  <td key={column.field}>
-                    <EditableCell
-                      value={row[column.field]}
-                      multiline={column.multiline}
-                      listId={column.listId}
-                      onSave={(value) => patchRow(row.id, { [column.field]: value || null })}
-                    />
-                  </td>
-                ))}
-                <td className="dj-checkbox-cell">
-                  <Checkbox
-                    size="small"
-                    checked={row.orderOnVehicle}
-                    onChange={(event) => patchRow(row.id, { orderOnVehicle: event.target.checked })}
-                  />
-                </td>
-                <td className="dj-checkbox-cell">
-                  <Checkbox
-                    size="small"
-                    checked={row.invoiceSent}
-                    onChange={(event) => patchRow(row.id, { invoiceSent: event.target.checked })}
-                  />
-                </td>
-                {TAIL_TEXT_COLUMNS.map((column) => (
-                  <td key={column.field}>
-                    <EditableCell
-                      value={row[column.field]}
-                      listId={column.listId}
-                      onSave={(value) => patchRow(row.id, { [column.field]: value || null })}
-                    />
-                  </td>
-                ))}
-                <td className="dj-checkbox-cell">
-                  <Checkbox
-                    size="small"
-                    checked={row.recoupling}
-                    onChange={(event) => patchRow(row.id, { recoupling: event.target.checked })}
-                  />
-                </td>
-                <td>
-                  <EditableCell
-                    value={row.driverRemarks}
-                    multiline
-                    onSave={(value) => patchRow(row.id, { driverRemarks: value || null })}
-                  />
-                </td>
+                {visibleColumns.map((column) => renderColumnCell(row, column))}
                 <td className="dj-checkbox-cell">
                   <button
                     type="button"
@@ -392,6 +404,75 @@ export default function DispatcherJournalPage() {
           <div className="dj-empty">На эту дату заявок нет — нажмите «Добавить заявку»</div>
         )}
       </div>
+
+      {/* настройка колонок: видимость чекбоксами, порядок перетаскиванием (как в справочниках) */}
+      <Popover
+        open={Boolean(columnsAnchor)}
+        anchorEl={columnsAnchor}
+        onClose={() => setColumnsAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Box sx={{ p: 1.5, width: 300, maxHeight: 480, overflowY: 'auto' }}>
+          <Typography sx={{ fontWeight: 600, fontSize: 15 }}>Колонки</Typography>
+          <Typography sx={{ fontSize: 12, color: '#6b7280', mb: 1 }}>
+            Отметьте нужные и перетащите для порядка
+          </Typography>
+          {orderedKeys(ALL_COLUMN_KEYS, columnPrefs).map((key, index) => {
+            const column = COLUMN_BY_KEY.get(key as TextFieldName | BooleanFieldName);
+            if (!column) return null;
+            return (
+              <Box
+                key={key}
+                draggable
+                onDragStart={() => { dragColumnKey.current = key; }}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const dragged = dragColumnKey.current;
+                  dragColumnKey.current = null;
+                  if (!dragged || dragged === key) return;
+                  setColumnPrefs((prev) => moveColumnTo(ALL_COLUMN_KEYS, NO_DEFAULT_HIDDEN, prev, dragged, index));
+                }}
+                sx={{
+                  display: 'flex', alignItems: 'center', gap: 0.5,
+                  border: '1px solid #e5e7eb', borderRadius: '8px',
+                  px: 0.75, py: 0.25, mb: 0.5, cursor: 'grab', bgcolor: '#fafafa',
+                }}
+              >
+                <DragIndicator sx={{ fontSize: 16, color: '#9ca3af' }} />
+                <Checkbox
+                  size="small"
+                  sx={{ p: 0.5 }}
+                  checked={!isHidden(ALL_COLUMN_KEYS, NO_DEFAULT_HIDDEN, columnPrefs, key)}
+                  onChange={() => setColumnPrefs((prev) => toggleHidden(ALL_COLUMN_KEYS, NO_DEFAULT_HIDDEN, prev, key))}
+                />
+                <Typography sx={{ fontSize: 13, flex: 1 }}>{column.title}</Typography>
+                <IconButton
+                  size="small" sx={{ p: 0.25 }}
+                  disabled={index === 0}
+                  onClick={() => setColumnPrefs((prev) => moveColumnTo(ALL_COLUMN_KEYS, NO_DEFAULT_HIDDEN, prev, key, index - 1))}
+                >
+                  <KeyboardArrowUp sx={{ fontSize: 16 }} />
+                </IconButton>
+                <IconButton
+                  size="small" sx={{ p: 0.25 }}
+                  disabled={index === ALL_COLUMN_KEYS.length - 1}
+                  onClick={() => setColumnPrefs((prev) => moveColumnTo(ALL_COLUMN_KEYS, NO_DEFAULT_HIDDEN, prev, key, index + 1))}
+                >
+                  <KeyboardArrowDown sx={{ fontSize: 16 }} />
+                </IconButton>
+              </Box>
+            );
+          })}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+            <Button size="small" onClick={() => setColumnPrefs(undefined)}>
+              Сбросить
+            </Button>
+            <Button size="small" onClick={() => setColumnsAnchor(null)}>Готово</Button>
+          </Box>
+        </Box>
+      </Popover>
 
       <Snackbar
         open={Boolean(error)}
