@@ -1470,6 +1470,8 @@ const DashboardLayout = () => {
               {location.pathname.includes('/fuel') && 'Учёт топлива'}
               {location.pathname.includes('/directories/counterparties') ? 'Справочники — Контрагенты' : location.pathname.includes('/directories') ? 'Справочники' : ''}
               {location.pathname.includes('/print-forms/requests') ? 'Печатные формы — Заявки' : location.pathname.includes('/print-forms') ? 'Печатные формы — Доверенности' : ''}
+              {location.pathname.includes('/dispatcher-journal') && 'Диспетчерская — КТК Владивосток'}
+              {location.pathname.includes('/uchet-ts-comparison') && 'Сверка с учётом ТС'}
             </Typography>
           )}
           {isTechDashboardRoute && (

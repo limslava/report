@@ -6,6 +6,8 @@ import {
   Button,
   Checkbox,
   IconButton,
+  MenuItem,
+  Paper,
   Popover,
   Snackbar,
   TextField,
@@ -138,6 +140,21 @@ const ALL_COLUMNS: ColumnDef[] = [
 const ALL_COLUMN_KEYS = ALL_COLUMNS.map((column) => column.field);
 const COLUMN_BY_KEY = new Map<string, ColumnDef>(ALL_COLUMNS.map((column) => [column.field, column]));
 const NO_DEFAULT_HIDDEN: string[] = [];
+
+const MONTH_OPTIONS = [
+  { value: 1, label: 'Январь' },
+  { value: 2, label: 'Февраль' },
+  { value: 3, label: 'Март' },
+  { value: 4, label: 'Апрель' },
+  { value: 5, label: 'Май' },
+  { value: 6, label: 'Июнь' },
+  { value: 7, label: 'Июль' },
+  { value: 8, label: 'Август' },
+  { value: 9, label: 'Сентябрь' },
+  { value: 10, label: 'Октябрь' },
+  { value: 11, label: 'Ноябрь' },
+  { value: 12, label: 'Декабрь' },
+];
 
 const OPERATION_SUGGESTIONS = ['выгрузка', 'погрузка', 'перемещение', 'вывоз'];
 const VAT_SUGGESTIONS = ['НДС22%', 'без НДС'];
@@ -636,42 +653,55 @@ export default function DispatcherJournalPage() {
 
   return (
     <Box className="dj-page">
-      <Box className="dj-toolbar">
-        <Typography variant="h6" sx={{ fontSize: 16, fontWeight: 650 }}>
-          Диспетчерская — КТК Владивосток
-        </Typography>
-        <Button
-          size="small"
-          variant={viewMonth ? 'outlined' : 'contained'}
-          color={viewMonth ? 'inherit' : 'primary'}
-          onClick={() => setViewMonth(null)}
-          title="Последняя неделя и всё ближайшее будущее — стык месяцев виден"
-        >
-          Актуальное
-        </Button>
-        <TextField
-          type="month"
-          size="small"
-          value={viewMonth ?? ''}
-          placeholder="архив"
-          onChange={(event) => setViewMonth(event.target.value || null)}
-          sx={{ width: 150 }}
-        />
-        <Button size="small" variant="contained" onClick={() => void createRow(defaultNewDate)}>
-          Добавить заявку
-        </Button>
-        <span className="dj-toolbar__spacer" />
-        <span className="dj-toolbar__hint">
-          {loading
-            ? 'Загрузка…'
-            : `Заявок: ${rows.length} · автосохранение · № строки → Ctrl+C/X/V, Ctrl+Z — отмена`}
-        </span>
-        <Tooltip title="Настроить колонки">
-          <IconButton size="small" onClick={(event) => setColumnsAnchor(event.currentTarget)}>
-            <Settings sx={{ fontSize: 20, color: '#6b7280' }} />
-          </IconButton>
-        </Tooltip>
-      </Box>
+      <Paper sx={{ p: 1.5 }}>
+        <Box className="dj-toolbar">
+          <Button
+            variant={viewMonth ? 'outlined' : 'contained'}
+            onClick={() => setViewMonth(null)}
+            title="Последняя неделя и всё ближайшее будущее — стык месяцев виден"
+          >
+            Актуальное
+          </Button>
+          <TextField
+            label="Год"
+            type="number"
+            size="small"
+            value={Number((viewMonth ?? currentMonth()).slice(0, 4))}
+            onChange={(event) => {
+              const year = Number(event.target.value);
+              if (!Number.isInteger(year) || year < 2020 || year > 2100) return;
+              setViewMonth(`${year}-${(viewMonth ?? currentMonth()).slice(5, 7)}`);
+            }}
+            sx={{ width: 100 }}
+          />
+          <TextField
+            label="Месяц"
+            select
+            size="small"
+            value={Number((viewMonth ?? currentMonth()).slice(5, 7))}
+            onChange={(event) => {
+              const monthNo = Number(event.target.value);
+              setViewMonth(`${(viewMonth ?? currentMonth()).slice(0, 4)}-${pad2(monthNo)}`);
+            }}
+            sx={{ width: 140 }}
+          >
+            {MONTH_OPTIONS.map((option) => (
+              <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+            ))}
+          </TextField>
+          <span className="dj-toolbar__spacer" />
+          <span className="dj-toolbar__hint">
+            {loading
+              ? 'Загрузка…'
+              : `Заявок: ${rows.length} · автосохранение · № строки → Ctrl+C/X/V, Ctrl+Z — отмена`}
+          </span>
+          <Tooltip title="Настроить колонки">
+            <IconButton size="small" onClick={(event) => setColumnsAnchor(event.currentTarget)}>
+              <Settings sx={{ fontSize: 20, color: '#6b7280' }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Paper>
 
       <datalist id="dj-drivers">
         {driverOptions.map((name) => <option key={name} value={name} />)}
