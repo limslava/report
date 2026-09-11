@@ -150,6 +150,13 @@ export function canViewCalendar(role?: string | null): boolean {
     || role === 'manager_auto';
 }
 
+export function canAccessDispatcherJournal(role?: string | null): boolean {
+  return role === 'admin'
+    || role === 'dispatcher_vvo'
+    || role === 'manager_ktk_vvo'
+    || role === 'head_ktk_vvo';
+}
+
 export function canAccessContractApproval(role?: string | null): boolean {
   return Boolean(role && CONTRACT_APPROVAL_ACCESS_ROLES.has(role));
 }

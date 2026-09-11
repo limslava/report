@@ -94,7 +94,8 @@ router.get(
     'hr_specialist',
     'garage_head_vvo',
     'warehouse_manager_vvo',
-    'security'
+    'security',
+    'dispatcher_vvo'
   ),
   asyncHandler(getDirectoryOptions)
 );

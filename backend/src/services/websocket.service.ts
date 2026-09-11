@@ -45,12 +45,20 @@ export interface ContractApprovalUpdatedEvent {
   userId?: string;
 }
 
+export interface DispatcherJournalUpdatedEvent {
+  type: 'dispatcher-journal:updated';
+  date: string;
+  timestamp: string;
+  userId?: string;
+}
+
 type OutgoingWebSocketEvent =
   | PlanUpdateEvent
   | PlanningV2SegmentUpdateEvent
   | FinancialPlanUpdateEvent
   | NotesUnreadRefreshEvent
-  | ContractApprovalUpdatedEvent;
+  | ContractApprovalUpdatedEvent
+  | DispatcherJournalUpdatedEvent;
 
 type SocketClient = {
   userId: string;
@@ -83,6 +91,10 @@ function isNotesUnreadRefreshEvent(event: OutgoingWebSocketEvent): event is Note
 
 function isContractApprovalUpdatedEvent(event: OutgoingWebSocketEvent): event is ContractApprovalUpdatedEvent {
   return event.type === 'contract-approval:updated';
+}
+
+function isDispatcherJournalUpdatedEvent(event: OutgoingWebSocketEvent): event is DispatcherJournalUpdatedEvent {
+  return event.type === 'dispatcher-journal:updated';
 }
 
 export class PlanWebSocketService {
@@ -218,6 +230,13 @@ export class PlanWebSocketService {
     return role === 'admin' || role === 'director' || role === 'general_director' || role === 'manager_auto';
   }
 
+  private canReceiveDispatcherJournalEvents(role: string): boolean {
+    return role === 'admin'
+      || role === 'dispatcher_vvo'
+      || role === 'manager_ktk_vvo'
+      || role === 'head_ktk_vvo';
+  }
+
   private canReceiveContractEvents(role: string): boolean {
     return role === 'admin'
       || role === 'security'
@@ -283,6 +302,10 @@ export class PlanWebSocketService {
         return;
       }
 
+      if (isDispatcherJournalUpdatedEvent(event) && !this.canReceiveDispatcherJournalEvents(meta.role)) {
+        return;
+      }
+
       socket.send(message);
     });
 
@@ -344,6 +367,15 @@ export class PlanWebSocketService {
   notifyNotesUnreadRefresh() {
     this.broadcastPlanUpdate({
       type: 'notes:unread-refresh',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  notifyDispatcherJournalUpdated(params: { date: string; userId?: string }) {
+    this.broadcastPlanUpdate({
+      type: 'dispatcher-journal:updated',
+      date: params.date,
+      userId: params.userId,
       timestamp: new Date().toISOString(),
     });
   }

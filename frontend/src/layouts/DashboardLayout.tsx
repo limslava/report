@@ -57,6 +57,7 @@ import {
   canAccessBillOfLading,
   canAccessCandidateChecks,
   canAccessContractApproval,
+  canAccessDispatcherJournal,
   canAccessAdmin,
   canAccessOperationsPreview,
   canViewCalendar,
@@ -434,6 +435,9 @@ const DashboardLayout = () => {
       : null,
     canAccessFuel(user?.role)
       ? { key: 'fuel', label: 'Топливо', icon: <LocalGasStation />, onClick: () => handleNavigate('/fuel'), active: location.pathname.includes('/fuel') }
+      : null,
+    canAccessDispatcherJournal(user?.role)
+      ? { key: 'dispatcher-journal', label: 'Диспетчерская', icon: <LocalShipping />, onClick: () => handleNavigate('/dispatcher-journal'), active: location.pathname.includes('/dispatcher-journal') }
       : null,
     canAccessDirectories(user?.role)
       ? {

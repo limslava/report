@@ -46,6 +46,7 @@ export class User {
     | 'counterparty_user'
     | 'bdd_specialist_vvo'
     | 'bdd_specialist_mow'
+    | 'dispatcher_vvo'
     | 'financer'
     | 'chief_accountant'
     | 'deputy_chief_accountant'

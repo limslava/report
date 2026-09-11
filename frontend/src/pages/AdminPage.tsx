@@ -246,6 +246,7 @@ const AdminPage = () => {
     counterparty_user: 'Представитель контрагента',
     bdd_specialist_vvo: 'Специалист по БДД Владивосток',
     bdd_specialist_mow: 'Специалист по БДД Москва',
+    dispatcher_vvo: 'Диспетчер КТК Влк',
     manager_sales: 'Менеджер по продажам',
     head_sales: 'Руководитель отдела продаж',
     director: 'Директор',

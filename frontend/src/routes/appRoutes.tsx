@@ -10,6 +10,7 @@ import {
   canAccessBillOfLading,
   canAccessCandidateChecks,
   canAccessContractApproval,
+  canAccessDispatcherJournal,
   canAccessOperationsPreview,
   canAccessWarehouse,
   canAccessHrCabinet,
@@ -42,6 +43,7 @@ const PlansPage = lazy(() => import('../pages/PlansPage'));
 const SettingsPage = lazy(() => import('../pages/SettingsPage'));
 const SinokorTestPage = lazy(() => import('../pages/SinokorTestPage'));
 const UchetTsComparisonPage = lazy(() => import('../pages/UchetTsComparisonPage'));
+const DispatcherJournalPage = lazy(() => import('../pages/DispatcherJournalPage'));
 const SummaryReportPage = lazy(() => import('../pages/SummaryReportPage'));
 const SWTechDashboardPage = lazy(() => import('../pages/SWTechDashboardPage'));
 const WarehousePage = lazy(() => import('../pages/WarehousePage'));
@@ -258,6 +260,11 @@ export const authenticatedRoutes: AppRoute[] = [
     path: 'sinokor-test',
     allow: canAccessBillOfLading,
     element: () => withSuspense(<SinokorTestPage />),
+  },
+  {
+    path: 'dispatcher-journal',
+    allow: canAccessDispatcherJournal,
+    element: () => withSuspense(<DispatcherJournalPage />),
   },
   {
     path: 'uchet-ts-comparison',
