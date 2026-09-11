@@ -1,0 +1,177 @@
+/* Дашборд «Парк автовозов» под графиком работы — Автовозы */
+
+.afd {
+  margin: 12px 0 4px;
+  max-width: 1440px;
+}
+
+/* ── верхняя полоса из четырёх узких плиток ── */
+.afd-stats {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr 1fr 1.15fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 980px) {
+  .afd-stats { grid-template-columns: 1fr 1fr; }
+}
+
+.afd-tile {
+  background: #ffffff;
+  border: 1px solid #e7eaf0;
+  border-radius: 14px;
+  padding: 10px 16px;
+  box-shadow: 0 1px 3px rgba(22, 24, 29, 0.05), 0 4px 14px rgba(22, 24, 29, 0.04);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+}
+
+.afd-tile__num {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: #16181d;
+}
+
+.afd-tile__txt {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.afd-tile__lbl {
+  font-size: 12px;
+  font-weight: 600;
+  color: #16181d;
+}
+
+.afd-tile__sub {
+  font-size: 11px;
+  color: #8b93a1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.afd-tile__sub b { color: #16181d; font-size: 13px; }
+
+.afd-tile__pills { display: flex; gap: 5px; flex-wrap: wrap; }
+
+.afd-tile--hero {
+  background: linear-gradient(135deg, #2f80dd 0%, #1d5cab 100%);
+  border-color: transparent;
+  box-shadow: 0 4px 16px rgba(42, 120, 214, 0.35);
+}
+
+.afd-tile--hero .afd-tile__num,
+.afd-tile--hero .afd-tile__lbl { color: #ffffff; }
+.afd-tile--hero .afd-tile__sub { color: rgba(255, 255, 255, 0.75); }
+
+.afd-ring { position: relative; width: 44px; height: 44px; flex: none; }
+.afd-ring__pct {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #16181d;
+}
+
+/* ── бейджи ── */
+.afd-pill {
+  font-size: 10.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.afd-pill--warn { background: #fdf1dc; color: #9a6a00; }
+.afd-pill--gray { background: #eef0f3; color: #4b5563; }
+.afd-pill--crit { background: #fbe4e4; color: #a52a2a; }
+
+/* ── списки машин ── */
+.afd-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 980px) {
+  .afd-cols { grid-template-columns: 1fr; }
+}
+
+.afd-card {
+  background: #ffffff;
+  border: 1px solid #e7eaf0;
+  border-radius: 14px;
+  padding: 10px 16px 6px;
+  box-shadow: 0 1px 3px rgba(22, 24, 29, 0.05), 0 4px 14px rgba(22, 24, 29, 0.04);
+}
+
+.afd-card__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #16181d;
+  margin: 0 0 4px;
+}
+
+.afd-card__cnt { color: #8b93a1; font-size: 14px; }
+.afd-card__cnt--transit { color: #2a78d6; }
+
+.afd-card__empty {
+  font-size: 12px;
+  color: #8b93a1;
+  padding: 8px 0 10px;
+}
+
+.afd-row {
+  display: grid;
+  grid-template-columns: 14px 76px 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid #edf0f4;
+  font-size: 12.5px;
+}
+
+.afd-row:last-child { border-bottom: 0; }
+
+.afd-row__dot { width: 8px; height: 8px; border-radius: 50%; background: #2a78d6; }
+.afd-row__dot--base { background: #c3c9d2; }
+.afd-row__dot--crit { background: #d03b3b; }
+.afd-row__dot--warn { background: #ec835a; }
+
+.afd-row__plate { font-weight: 700; letter-spacing: 0.02em; color: #16181d; }
+
+.afd-row__driver {
+  color: #4b5563;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.afd-row__driver--none { color: #8b93a1; }
+
+.afd-row__pills { display: flex; gap: 5px; }
+
+.afd-row__meta {
+  font-size: 11px;
+  color: #8b93a1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.afd-row--stale .afd-row__plate,
+.afd-row--stale .afd-row__driver { color: #8b93a1; }
+.afd-row--stale .afd-row__dot { background: #d6dae0; }

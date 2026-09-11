@@ -35,11 +35,11 @@ type PreviewLocation = keyof typeof OPERATIONS_PREVIEW_SCOPE_BY_LOCATION;
 type PreviewSection = 'containers' | 'auto' | 'dispatchers' | 'couriers' | 'mechanics' | 'warehouse_staff' | 'guards' | 'efficiency';
 type PreviewMode = 'plan' | 'fact';
 type Department = 'Контейнеры' | 'Авто' | 'Диспетчера' | 'Курьеры' | 'Автослесари' | 'Сотрудники склада' | 'Сторожа';
-type CellCode = 'W' | 'O' | 'B' | 'H' | 'S' | 'R' | 'N' | 'V' | 'E';
+type CellCode = 'W' | 'O' | 'B' | 'H' | 'S' | 'R' | 'N' | 'V' | 'K' | 'E';
 type OverrideScopeKey = `${PreviewMode}|${string}`;
 type SortField = 'manual' | 'name' | 'plate';
 type SortDirection = 'asc' | 'desc';
-const VALID_CELL_CODES = new Set<CellCode>(['W', 'O', 'B', 'H', 'S', 'R', 'N', 'V', 'E']);
+const VALID_CELL_CODES = new Set<CellCode>(['W', 'O', 'B', 'H', 'S', 'R', 'N', 'V', 'K', 'E']);
 
 type PersonRow = {
   id: string;
@@ -296,6 +296,7 @@ const toCellLabel = (code: CellCode): string => {
     S: 'С',
     R: 'Р',
     N: 'Н',
+    K: 'К',
   };
   return map[normalizeCellCode(code)];
 };
@@ -941,6 +942,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
     cellNoDriver: 'FF95A5B6',
     cellWeekend: 'FFEBC1C1',
     cellVacation: 'FFB394E0',
+    cellKnevichi: 'FFBFC8E6',
     cellEmpty: 'FFFFFFFF',
     textDark: 'FF1F2937',
     textRed: 'FFD32F2F',
@@ -1056,6 +1058,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
       N: { bg: COLORS.cellNoDriver, color: 'FF1F2937' },
       O: { bg: COLORS.cellWeekend, color: 'FF7B2323' },
       V: { bg: COLORS.cellVacation, color: 'FF4A2C8A' },
+      K: { bg: COLORS.cellKnevichi, color: 'FF1E293B' },
       E: { bg: isWeekend ? COLORS.weekend : COLORS.cellEmpty, color: 'FF374151' },
     };
     const normalizedCode = normalizeCellCode(code);
@@ -1198,7 +1201,10 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
         { code: 'Б', text: 'больничный', bg: COLORS.cellSick, color: 'FF0F385E' },
         { code: 'П', text: 'погрузка', bg: COLORS.cellHalfDay, color: 'FF0F172A' },
         ...(section === 'auto'
-          ? [{ code: 'С', text: 'снятие груза', bg: COLORS.cellCargoRemoval, color: 'FF7C2D12' }]
+          ? [
+              { code: 'С', text: 'снятие груза', bg: COLORS.cellCargoRemoval, color: 'FF7C2D12' },
+              { code: 'К', text: 'Кневичи (база)', bg: COLORS.cellKnevichi, color: 'FF1E293B' },
+            ]
           : []),
         { code: 'Р', text: 'ремонт', bg: COLORS.cellRepair, color: 'FF0A4A52' },
         { code: 'Н', text: 'нет водителя', bg: COLORS.cellNoDriver, color: 'FF1F2937' },
@@ -1288,6 +1294,7 @@ const renderOperationsScheduleWorksheet = ({
     cellNoDriver: 'FF95A5B6',
     cellWeekend: 'FFEBC1C1',
     cellVacation: 'FFB394E0',
+    cellKnevichi: 'FFBFC8E6',
     cellEmpty: 'FFFFFFFF',
     textDark: 'FF1F2937',
     textRed: 'FFD32F2F',
@@ -1406,6 +1413,7 @@ const renderOperationsScheduleWorksheet = ({
       N: { bg: COLORS.cellNoDriver, color: 'FF1F2937' },
       O: { bg: COLORS.cellWeekend, color: 'FF7B2323' },
       V: { bg: COLORS.cellVacation, color: 'FF4A2C8A' },
+      K: { bg: COLORS.cellKnevichi, color: 'FF1E293B' },
       E: { bg: isWeekend ? COLORS.weekend : COLORS.cellEmpty, color: 'FF374151' },
     };
     const normalizedCode = normalizeCellCode(code);
@@ -1548,7 +1556,10 @@ const renderOperationsScheduleWorksheet = ({
         { code: 'Б', text: 'больничный', bg: COLORS.cellSick, color: 'FF0F385E' },
         { code: 'П', text: 'погрузка', bg: COLORS.cellHalfDay, color: 'FF0F172A' },
         ...(section === 'auto'
-          ? [{ code: 'С', text: 'снятие груза', bg: COLORS.cellCargoRemoval, color: 'FF7C2D12' }]
+          ? [
+              { code: 'С', text: 'снятие груза', bg: COLORS.cellCargoRemoval, color: 'FF7C2D12' },
+              { code: 'К', text: 'Кневичи (база)', bg: COLORS.cellKnevichi, color: 'FF1E293B' },
+            ]
           : []),
         { code: 'Р', text: 'ремонт', bg: COLORS.cellRepair, color: 'FF0A4A52' },
         { code: 'Н', text: 'нет водителя', bg: COLORS.cellNoDriver, color: 'FF1F2937' },

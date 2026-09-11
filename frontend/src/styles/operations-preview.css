@@ -907,6 +907,12 @@
   font-weight: 600;
 }
 
+.ops-matrix__cell--knevichi {
+  background: #bfc8e6;
+  color: #1e293b;
+  font-weight: 600;
+}
+
 .ops-matrix__cell--count {
   background: #f3f4f6;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
@@ -1025,6 +1031,7 @@
 .legend-item.sick { background: #9ad6f5; color: #0f172a; }
 .legend-item.wash { background: #c7a2f3; color: #2e1065; }
 .legend-item.idle { background: #9aa6b2; color: #111827; }
+.legend-item.knevichi { background: #bfc8e6; color: #1e293b; }
 .legend-item.nodriver { background: #9ad6f5; color: #0f172a; }
 
 .ops-calendar__weekdays {

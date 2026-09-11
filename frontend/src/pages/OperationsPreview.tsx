@@ -13,6 +13,7 @@ import { downloadBlob } from '../utils/download';
 import { DirectoryOptions, findEmployeeCardByName, getDirectoryOptions } from '../services/directories.api';
 import { getRuntimeAppSettings } from '../services/api';
 import { directoryLocationsForRole } from '../utils/rolePermissions';
+import AutoFleetDashboard from '../components/operations/AutoFleetDashboard';
 import '../styles/operations-preview.css';
 
 type PreviewLocation = OperationsPreviewLocation;
@@ -134,7 +135,7 @@ type PersonRow = {
 
 const PREVIEW_PEOPLE: PersonRow[] = [];
 
-type CellCode = 'W' | 'O' | 'B' | 'H' | 'S' | 'R' | 'N' | 'V' | 'E';
+type CellCode = 'W' | 'O' | 'B' | 'H' | 'S' | 'R' | 'N' | 'V' | 'K' | 'E';
 type OverrideScopeKey = `${PreviewMode}|${string}`;
 type ScopedOverrides = Record<OverrideScopeKey, Record<string, CellCode>>;
 type PeopleByMonth = Record<string, PersonRow[]>;
@@ -164,9 +165,10 @@ const CELL_META: Record<CellCode, { code: string; label: string; css: string }> 
   S: { code: 'С', label: 'снятие груза', css: 'cargo-removal' },
   R: { code: 'Р', label: 'ремонт', css: 'repair' },
   N: { code: 'Н', label: 'нет водителя', css: 'idle' },
+  K: { code: 'К', label: 'Кневичи (база)', css: 'knevichi' },
 };
 
-const VALID_CELL_CODES = new Set<CellCode>(['W', 'O', 'B', 'H', 'S', 'R', 'N', 'V', 'E']);
+const VALID_CELL_CODES = new Set<CellCode>(['W', 'O', 'B', 'H', 'S', 'R', 'N', 'V', 'K', 'E']);
 const normalizeCellCode = (value: unknown): CellCode => {
   return typeof value === 'string' && VALID_CELL_CODES.has(value as CellCode) ? (value as CellCode) : 'E';
 };
@@ -727,7 +729,7 @@ export default function OperationsPreview() {
   const visibleCellCodes: CellCode[] = isPersonnelSection
     ? ['W', 'V', 'O', 'B', 'N']
     : filter === 'Авто'
-      ? ['W', 'O', 'V', 'B', 'H', 'S', 'R', 'N']
+      ? ['W', 'O', 'V', 'B', 'H', 'S', 'K', 'R', 'N']
       : ['W', 'O', 'V', 'B', 'H', 'R', 'N'];
   const visibleRows = useMemo<VisibleRow[]>(() => {
     const rows: VisibleRow[] = [];
@@ -1858,6 +1860,8 @@ export default function OperationsPreview() {
         'п': 'H',
         'р': 'R',
         'м': 'V',
+        'к': 'K',
+        'k': 'K',
       };
       const code = keyMap[key];
       if (!code) return;
@@ -3367,6 +3371,9 @@ export default function OperationsPreview() {
             })}
           </div>
       </section>
+      )}
+      {!isEfficiencySection && allowedDepartmentSet.has('Авто') && (filter === 'Все' || filter === 'Авто') && (
+        <AutoFleetDashboard peopleByMonth={peopleByMonth} allOverrides={allOverrides} />
       )}
       {isEfficiencySection && (
         <section className="ops-preview__efficiency">
