@@ -127,12 +127,20 @@ export type OrderTextSource = {
   vehiclePlate: string | null;
 };
 
-/** Текст «Заказ» для отправки водителю/перевозчику в мессенджер (*…* — жирный). */
+/** Перемещение КТК между терминалами: доставки на адрес нет. */
+export const isRelocationOperation = (operation: string | null | undefined): boolean =>
+  /^перемещени/i.test((operation ?? '').trim());
+
+/**
+ * Текст «Заказ» для отправки водителю/перевозчику в мессенджер (*…* — жирный).
+ * Для перемещения строки «Адрес доставки» и «Время доставки» не выводятся.
+ */
 export function buildOrderText(row: OrderTextSource): string {
   const [year, month, day] = row.orderDate.split('-');
   const value = (raw: string | null) => (raw ?? '').trim();
   const note = [value(row.vehiclePlate), ORDER_AXLE_WARNING].filter(Boolean).join('\n');
-  const lines: Array<[string, string]> = [
+  const relocation = isRelocationOperation(row.operation);
+  const lines: Array<[string, string] | null> = [
     ['Номер контейнера', value(row.ktkNumber)],
     ['Тип контейнера', value(row.ktkType)],
     ['Вес', value(row.grossWeight)],
@@ -140,11 +148,16 @@ export function buildOrderText(row: OrderTextSource): string {
     ['Терминал постановки', value(row.terminalFrom)],
     ['Слот', value(row.slotFrom)],
     ['Пин', value(row.pinFrom)],
-    ['Адрес доставки', value(row.deliveryAddress)],
-    ['Время доставки', value(row.submitTime)],
+    relocation ? null : ['Адрес доставки', value(row.deliveryAddress)],
+    relocation ? null : ['Время доставки', value(row.submitTime)],
     ['Контактная информация', ''],
     ['Сдача контейнера', value(row.terminalTo)],
     ['Примечание', note],
   ];
-  return [`ДАТА ${day}.${month}.${year.slice(2)}`, ...lines.map(([label, text]) => `*${label}* ${text}`.trimEnd())].join('\n');
+  return [
+    `ДАТА ${day}.${month}.${year.slice(2)}`,
+    ...lines
+      .filter((line): line is [string, string] => line !== null)
+      .map(([label, text]) => `*${label}* ${text}`.trimEnd()),
+  ].join('\n');
 }

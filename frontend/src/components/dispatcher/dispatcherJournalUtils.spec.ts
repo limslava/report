@@ -72,4 +72,17 @@ describe('dispatcherJournalUtils', () => {
     expect(text).toContain('*Пин*\n');
     expect(text).toContain('*Примечание* Н099СВ 125\n❗️');
   });
+
+  it('для перемещения не выводит адрес и время доставки', () => {
+    const base = {
+      orderDate: '2026-09-01', ktkNumber: 'TRZU1103134', ktkType: '40HC', grossWeight: null,
+      terminalFrom: 'Сухой порт', slotFrom: null, pinFrom: null, deliveryAddress: 'г.Артем',
+      submitTime: '10:00', terminalTo: 'Первомайский', vehiclePlate: null,
+    };
+    const relocation = buildOrderText({ ...base, operation: 'Перемещение' });
+    expect(relocation).not.toContain('Адрес доставки');
+    expect(relocation).not.toContain('Время доставки');
+    expect(relocation).toContain('*Сдача контейнера* Первомайский');
+    expect(buildOrderText({ ...base, operation: 'выгрузка' })).toContain('*Адрес доставки* г.Артем');
+  });
 });
