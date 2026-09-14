@@ -57,6 +57,8 @@ export default function DispatcherHistoryDialog({ open, onClose, orderId, orderL
   const [nextBefore, setNextBefore] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // история всего реестра грузится только по кнопке «Обновить» — запрос тяжёлый
+  const [loaded, setLoaded] = useState(false);
   // сотрудники для фильтра — копятся из загруженных записей
   const [knownUsers, setKnownUsers] = useState<Map<string, string>>(new Map());
 
@@ -73,6 +75,7 @@ export default function DispatcherHistoryDialog({ open, onClose, orderId, orderL
       const { data } = await getDispatcherHistory(buildQuery(before));
       setItems((prev) => (append ? [...prev, ...data.items] : data.items));
       setNextBefore(data.nextBefore);
+      setLoaded(true);
       setKnownUsers((prev) => {
         const next = new Map(prev);
         data.items.forEach((item) => {
@@ -87,12 +90,15 @@ export default function DispatcherHistoryDialog({ open, onClose, orderId, orderL
     }
   }, [buildQuery]);
 
+  // история строки — сразу при открытии; история реестра — только по «Обновить»
   useEffect(() => {
-    if (!open) return undefined;
-    // поиск по КТК печатается — запрос с небольшой паузой
-    const timer = window.setTimeout(() => void load(), query ? 350 : 0);
-    return () => window.clearTimeout(timer);
-  }, [open, load, query]);
+    if (!open) return;
+    setItems([]);
+    setNextBefore(null);
+    setError(null);
+    setLoaded(false);
+    if (orderId) void load();
+  }, [open, orderId]);
 
   const describe = (item: DispatcherHistoryItem): { what: string; before: string; after: string } => {
     switch (item.action) {
@@ -156,7 +162,13 @@ export default function DispatcherHistoryDialog({ open, onClose, orderId, orderL
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               sx={{ width: 220 }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void load();
+              }}
             />
+            <Button variant="contained" size="small" disabled={loading} onClick={() => void load()} sx={{ height: 40 }}>
+              Обновить
+            </Button>
             {loading && <Typography sx={{ fontSize: 12, color: '#8b93a1' }}>Загрузка…</Typography>}
           </Box>
         )}
@@ -190,7 +202,11 @@ export default function DispatcherHistoryDialog({ open, onClose, orderId, orderL
                 );
               })}
               {!items.length && !loading && (
-                <tr><td colSpan={orderId ? 5 : 6} className="dj-history__empty">Изменений не найдено</td></tr>
+                <tr>
+                  <td colSpan={orderId ? 5 : 6} className="dj-history__empty">
+                    {loaded || orderId ? 'Изменений не найдено' : 'Выберите период и нажмите «Обновить»'}
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
