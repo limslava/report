@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  Autocomplete,
   Box,
   Button,
   Checkbox,
@@ -178,6 +177,9 @@ const ROWNUM_WIDTH = 32;
 const DATE_WIDTH = 96;
 const DELETE_WIDTH = 28;
 const MIN_COLUMN_WIDTH = 40;
+/** Виртуализация строк: стартовая высота строки (уточняется замером) и запас строк за краем окна. */
+const DEFAULT_ROW_HEIGHT = 37;
+const ROW_OVERSCAN = 20;
 /** Псевдо-ключ колонки даты (фильтр, сортировка, закрепление). */
 const DATE_KEY = 'orderDate';
 
@@ -259,80 +261,6 @@ function EditableCell({ value, multiline, onSave }: EditableCellProps) {
       onKeyDown={(event) => {
         if (event.key === 'Enter') (event.target as HTMLInputElement).blur();
       }}
-    />
-  );
-}
-
-type StatusCellProps = {
-  value: string | null;
-  statuses: DispatcherStatusOption[];
-  statusByName: Map<string, DispatcherStatusOption>;
-  onSave: (value: string | null) => void;
-};
-
-/** Статус: выпадающий список с подбором по вводу (печатаешь — фильтруются ближайшие). */
-/** Пункт списка «без статуса» — вместо крестика очистки, который налезал на текст статуса. */
-const CLEAR_STATUS_OPTION = '\u0000clear';
-
-function StatusCell({ value, statuses, statusByName, onSave }: StatusCellProps) {
-  const status = value ? statusByName.get(value) : undefined;
-  const options = useMemo(
-    () => (value ? [CLEAR_STATUS_OPTION, ...statuses.map((item) => item.name)] : statuses.map((item) => item.name)),
-    [statuses, value],
-  );
-  return (
-    <Autocomplete
-      size="small"
-      options={options}
-      value={value ?? null}
-      onChange={(_event, next) => onSave(next === CLEAR_STATUS_OPTION ? null : next)}
-      getOptionLabel={(option) => (option === CLEAR_STATUS_OPTION ? '' : option)}
-      filterOptions={(list, state) => {
-        const query = state.inputValue.trim().toLowerCase();
-        // пока ввод совпадает с текущим статусом — показываем весь список
-        if (!query || query === (value ?? '').toLowerCase()) return list;
-        return list.filter((option) => option !== CLEAR_STATUS_OPTION && option.toLowerCase().includes(query));
-      }}
-      autoHighlight
-      noOptionsText="нет похожих статусов"
-      slotProps={{ popper: { sx: { width: 'auto !important', minWidth: 200 }, placement: 'bottom-start' } }}
-      renderOption={(props, option) => {
-        if (option === CLEAR_STATUS_OPTION) {
-          return (
-            <li {...props} key={option} style={{ ...(props as { style?: React.CSSProperties }).style, paddingTop: 3, paddingBottom: 3 }}>
-              <span className="dj-status-clear">без статуса</span>
-            </li>
-          );
-        }
-        const optionStatus = statusByName.get(option);
-        return (
-          <li {...props} key={option} style={{ ...(props as { style?: React.CSSProperties }).style, paddingTop: 3, paddingBottom: 3 }}>
-            <span
-              className="dj-status-chip"
-              style={optionStatus
-                ? { background: optionStatus.color, color: optionStatus.textColor ?? textColorFor(optionStatus.color) }
-                : undefined}
-            >
-              {option}
-            </span>
-          </li>
-        );
-      }}
-      renderInput={(params) => (
-        <TextField
-          {...params}
-          variant="standard"
-          placeholder="статус…"
-          InputProps={{
-            ...params.InputProps,
-            disableUnderline: true,
-            className: 'dj-status-input',
-            style: status
-              ? { background: status.color, color: status.textColor ?? textColorFor(status.color) }
-              : undefined,
-          }}
-        />
-      )}
     />
   );
 }
@@ -446,7 +374,12 @@ export default function DispatcherJournalPage() {
 
   // ширина области таблицы: колонки без ручной ширины растягиваются на большом экране
   const wrapRef = useRef<HTMLDivElement>(null);
+  const tbodyRef = useRef<HTMLTableSectionElement>(null);
   const [wrapWidth, setWrapWidth] = useState(0);
+  // окно прокрутки для виртуализации строк (месяц — это 1–1,5 тыс. заявок)
+  const [scrollWindow, setScrollWindow] = useState({ top: 0, height: 900 });
+  const [rowHeight, setRowHeight] = useState(DEFAULT_ROW_HEIGHT);
+  const [headerHeight, setHeaderHeight] = useState(40);
   useEffect(() => {
     const element = wrapRef.current;
     if (!element) return undefined;
@@ -454,6 +387,50 @@ export default function DispatcherJournalPage() {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
+
+  const handleWrapScroll = useCallback(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    // окно пересчитывается шагами по 5 строк: при прокрутке страница перерисовывается
+    // не на каждый пиксель, а запаса в 20 строк хватает, чтобы края не мелькали
+    // (requestAnimationFrame не используем — во фоновых вкладках он засыпает)
+    const step = rowHeight * 5;
+    const next = { top: Math.floor(wrap.scrollTop / step) * step, height: wrap.clientHeight };
+    // строка с незаконченной правкой уходит из окна — сначала сохраняем её (blur),
+    // иначе при размонтировании черновик потерялся бы
+    const active = document.activeElement as HTMLElement | null;
+    const activeRow = active?.closest?.('tr[data-row-index]') as HTMLElement | null;
+    if (activeRow && wrap.contains(activeRow)) {
+      const index = Number(activeRow.dataset.rowIndex);
+      const from = Math.floor((next.top - headerHeight) / rowHeight) - ROW_OVERSCAN;
+      const to = Math.ceil((next.top - headerHeight + next.height) / rowHeight) + ROW_OVERSCAN;
+      if (index < from || index >= to) active?.blur();
+    }
+    setScrollWindow((prev) => (prev.top === next.top && prev.height === next.height ? prev : next));
+  }, [headerHeight, rowHeight]);
+
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return undefined;
+    const update = () => setScrollWindow({ top: wrap.scrollTop, height: wrap.clientHeight });
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  // фактическая высота строки и шапки (зависят от набора колонок) — для расчёта окна
+  useLayoutEffect(() => {
+    const firstRow = tbodyRef.current?.querySelector('tr[data-row-index]') as HTMLElement | null;
+    if (firstRow) {
+      const height = firstRow.getBoundingClientRect().height;
+      if (height > 10 && Math.abs(height - rowHeight) > 0.5) setRowHeight(height);
+    }
+    const head = wrapRef.current?.querySelector('thead') as HTMLElement | null;
+    if (head) {
+      const height = head.getBoundingClientRect().height;
+      if (Math.abs(height - headerHeight) > 0.5) setHeaderHeight(height);
+    }
+  });
 
   const columnWidths = useMemo(() => {
     const customSum = visibleColumns.reduce((sum, column) => sum + (customWidths[column.field] ?? 0), 0);
@@ -975,6 +952,12 @@ export default function DispatcherJournalPage() {
     };
   };
 
+  const statusNames = useMemo(() => statuses.map((status) => status.name), [statuses]);
+  const statusColorOf = useCallback((name: string) => {
+    const status = statusByName.get(name);
+    return status ? { background: status.color, color: status.textColor ?? textColorFor(status.color) } : undefined;
+  }, [statusByName]);
+
   const renderColumnCell = (row: DispatcherOrderRow, column: ColumnDef) => {
     const key = column.field;
     const pin = pinStyle(key);
@@ -982,11 +965,13 @@ export default function DispatcherJournalPage() {
     if (column.kind === 'status') {
       return (
         <td key={key} className={`dj-status-cell${pinCls}`} style={pin}>
-          <StatusCell
+          <ListCell
             value={row.status}
-            statuses={statuses}
-            statusByName={statusByName}
-            onSave={(value) => patchRow(row.id, { status: value })}
+            options={statusNames}
+            colorOf={statusColorOf}
+            placeholder="статус…"
+            strict
+            onSave={(value) => patchRow(row.id, { status: value || null })}
           />
         </td>
       );
@@ -994,9 +979,9 @@ export default function DispatcherJournalPage() {
     if (column.kind === 'checkbox') {
       return (
         <td key={key} className={`dj-checkbox-cell${pinCls}`} style={pin}>
-          <Checkbox
-            size="small"
-            sx={{ p: 0.25 }}
+          <input
+            type="checkbox"
+            className="dj-check"
             checked={row[column.field]}
             onChange={(event) => patchRow(row.id, { [column.field]: event.target.checked })}
           />
@@ -1054,10 +1039,12 @@ export default function DispatcherJournalPage() {
     if (column.kind === 'status') {
       return (
         <td key={key} className={`dj-status-cell${pinCls}`} style={pin}>
-          <StatusCell
-            value={null}
-            statuses={statuses}
-            statusByName={statusByName}
+          <ListCell
+            value=""
+            options={statusNames}
+            colorOf={statusColorOf}
+            placeholder="статус…"
+            strict
             onSave={(value) => { if (value) void createRow(defaultNewDate, { status: value }); }}
           />
         </td>
@@ -1066,9 +1053,9 @@ export default function DispatcherJournalPage() {
     if (column.kind === 'checkbox') {
       return (
         <td key={key} className={`dj-checkbox-cell${pinCls}`} style={pin}>
-          <Checkbox
-            size="small"
-            sx={{ p: 0.25 }}
+          <input
+            type="checkbox"
+            className="dj-check"
             checked={false}
             onChange={(event) => { if (event.target.checked) void createRow(defaultNewDate, { [column.field]: true }); }}
           />
@@ -1160,7 +1147,14 @@ export default function DispatcherJournalPage() {
     ? (filterMenu.field === DATE_KEY ? 'Дата' : COLUMN_BY_KEY.get(filterMenu.field)?.title ?? '')
     : '';
 
-  let previousDate: string | null = null;
+  // ── виртуализация: рисуются только строки в окне прокрутки (+ запас) ──
+  const firstVisibleIndex = Math.max(0, Math.floor((scrollWindow.top - headerHeight) / rowHeight) - ROW_OVERSCAN);
+  const lastVisibleIndex = Math.min(
+    displayRows.length,
+    Math.ceil((scrollWindow.top - headerHeight + scrollWindow.height) / rowHeight) + ROW_OVERSCAN,
+  );
+  const windowStart = Math.min(firstVisibleIndex, Math.max(0, displayRows.length - 1));
+  const windowRows = displayRows.slice(windowStart, Math.max(windowStart, lastVisibleIndex));
 
   return (
     <Box className="dj-page">
@@ -1221,7 +1215,7 @@ export default function DispatcherJournalPage() {
         </Box>
       </Paper>
 
-      <div className="dj-table-wrap" ref={wrapRef}>
+      <div className="dj-table-wrap" ref={wrapRef} onScroll={handleWrapScroll}>
         <table className="dj-table" style={{ width: tableWidth }}>
           <colgroup>
             <col style={{ width: ROWNUM_WIDTH }} />
@@ -1237,10 +1231,13 @@ export default function DispatcherJournalPage() {
               <th aria-label="Удаление" />
             </tr>
           </thead>
-          <tbody>
-            {displayRows.map((row, index) => {
-              const dayStart = !sort && row.orderDate !== previousDate;
-              previousDate = row.orderDate;
+          <tbody ref={tbodyRef}>
+            {windowStart > 0 && (
+              <tr className="dj-spacer" aria-hidden="true"><td colSpan={visibleColumns.length + 3} style={{ height: windowStart * rowHeight }} /></tr>
+            )}
+            {windowRows.map((row, windowIndex) => {
+              const index = windowStart + windowIndex;
+              const dayStart = !sort && (index === 0 || row.orderDate !== displayRows[index - 1].orderDate);
               const classes = [
                 dayStart ? 'dj-row--day-start' : '',
                 dropTarget?.id === row.id ? (dropTarget.after ? 'dj-row--drop-after' : 'dj-row--drop-before') : '',
@@ -1250,6 +1247,7 @@ export default function DispatcherJournalPage() {
               return (
                 <tr
                   key={row.id}
+                  data-row-index={index}
                   className={classes || undefined}
                   onFocus={() => {
                     // перешли работать в другую строку — выделение прежней снимается
@@ -1333,6 +1331,11 @@ export default function DispatcherJournalPage() {
                 </tr>
               );
             })}
+            {lastVisibleIndex < displayRows.length && (
+              <tr className="dj-spacer" aria-hidden="true">
+                <td colSpan={visibleColumns.length + 3} style={{ height: (displayRows.length - lastVisibleIndex) * rowHeight }} />
+              </tr>
+            )}
             <tr key={`ghost-${ghostKey}`} className="dj-row--ghost dj-row--day-start">
               <td
                 className={`dj-rownum dj-rownum--add${pinClass('__rownum')}`}
