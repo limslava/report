@@ -157,12 +157,12 @@ const ALL_COLUMNS: ColumnDef[] = [
   { kind: 'text', field: 'grossWeight', title: 'Вес (брутто)', width: 80 },
   { kind: 'text', field: 'comments', title: 'Комментарии', width: 140, multiline: true },
   { kind: 'text', field: 'operation', title: 'Операция', width: 90, list: 'operation' },
-  { kind: 'text', field: 'terminalFrom', title: 'Терминал постановки', width: 150, multiline: true },
+  { kind: 'text', field: 'terminalFrom', title: 'Терминал постановки', width: 150, list: 'terminal_from' },
   { kind: 'text', field: 'slotFrom', title: 'Слот', width: 60 },
   { kind: 'text', field: 'pinFrom', title: 'Пин', width: 58 },
   { kind: 'time', field: 'submitTime', title: 'Время подачи', width: 74 },
   { kind: 'text', field: 'deliveryAddress', title: 'Адрес доставки', width: 170, multiline: true },
-  { kind: 'text', field: 'terminalTo', title: 'Терминал снятия', width: 150, multiline: true },
+  { kind: 'text', field: 'terminalTo', title: 'Терминал снятия', width: 150, list: 'terminal_to' },
   { kind: 'text', field: 'slotTo', title: 'Слот снятия', width: 60 },
   { kind: 'text', field: 'pinTo', title: 'Пин снятия', width: 58 },
   { kind: 'text', field: 'driverRate', title: 'Ставка водителя', width: 70 },
@@ -219,7 +219,9 @@ const MONTH_OPTIONS = [
   { value: 12, label: 'Декабрь' },
 ];
 
-const EMPTY_DICTIONARY_OPTIONS: DispatcherDictionaryOptions = { ktk_type: [], vat: [], operation: [] };
+const EMPTY_DICTIONARY_OPTIONS: DispatcherDictionaryOptions = {
+  ktk_type: [], vat: [], operation: [], terminal_from: [], terminal_to: [],
+};
 
 /** Кто ведёт справочники реестра (проверка дублируется на сервере). */
 const DICTIONARY_EDIT_ROLES = new Set(['admin', 'head_ktk_vvo']);

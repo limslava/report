@@ -69,7 +69,7 @@ export const deleteDispatcherOrder = (id: string) =>
 
 // ── Справочники реестра ──
 
-export type DispatcherDictionaryKind = 'ktk_type' | 'vat' | 'operation';
+export type DispatcherDictionaryKind = 'ktk_type' | 'vat' | 'operation' | 'terminal_from' | 'terminal_to';
 
 export type DispatcherDictionaryOptions = Record<DispatcherDictionaryKind, string[]>;
 

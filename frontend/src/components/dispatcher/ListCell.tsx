@@ -70,6 +70,7 @@ export default function ListCell({ value, options, normalize, placeholder, onSav
         ref={inputRef}
         className="dj-cell-input"
         value={draft}
+        title={draft.length > 14 ? draft : undefined}
         placeholder={placeholder}
         onChange={(event) => {
           setDraft(event.target.value);

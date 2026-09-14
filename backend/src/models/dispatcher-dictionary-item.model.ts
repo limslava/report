@@ -5,7 +5,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Unique } from
  * Одна таблица на все виды (kind) — новый справочник добавляется без миграции.
  * Статусы живут отдельно (dispatcher_statuses): у них есть цвет чипа.
  */
-export const DISPATCHER_DICTIONARY_KINDS = ['ktk_type', 'vat', 'operation'] as const;
+export const DISPATCHER_DICTIONARY_KINDS = ['ktk_type', 'vat', 'operation', 'terminal_from', 'terminal_to'] as const;
 export type DispatcherDictionaryKind = typeof DISPATCHER_DICTIONARY_KINDS[number];
 
 /**
@@ -19,6 +19,16 @@ export const DISPATCHER_DICTIONARY_SEED: Record<DispatcherDictionaryKind, string
   ],
   vat: ['НДС22%', 'без НДС', 'нал'],
   operation: ['выгрузка', 'погрузка', 'перемещение', 'вывоз'],
+  // терминалы досеиваются при старте из уже заполненных заявок (см. ensureDispatcherDictionaryCatalog)
+  terminal_from: [],
+  terminal_to: [],
+};
+
+/** Максимальная длина значения справочника (терминалы — длинные названия с адресом). */
+export const dispatcherDictionaryNameLimit = (kind: DispatcherDictionaryKind): number => {
+  if (kind === 'vat' || kind === 'ktk_type') return 16;
+  if (kind === 'terminal_from' || kind === 'terminal_to') return 128;
+  return 64;
 };
 
 @Entity('dispatcher_dictionary_items')

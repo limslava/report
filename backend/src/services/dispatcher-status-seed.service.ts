@@ -1,5 +1,6 @@
 import { AppDataSource } from '../config/data-source';
 import { DispatcherStatus } from '../models/dispatcher-status.model';
+import { DispatcherOrder } from '../models/dispatcher-order.model';
 import {
   DISPATCHER_DICTIONARY_SEED,
   DispatcherDictionaryItem,
@@ -74,12 +75,38 @@ export async function ensureDispatcherStatusCatalog(): Promise<void> {
   logger.info(`Диспетчерский журнал: справочник статусов засеян (${STATUS_SEED.length})`);
 }
 
-/** Досев справочников реестра при старте: вид засевается, только если в нём нет ни одной записи. */
+/** Колонка заявок, из которой берутся стартовые значения справочника терминалов. */
+const ORDER_COLUMN_BY_KIND: Partial<Record<DispatcherDictionaryKind, string>> = {
+  terminal_from: 'terminal_from',
+  terminal_to: 'terminal_to',
+};
+
+/** Самые частые значения колонки в уже заполненных заявках (до 100). */
+async function distinctOrderValues(column: string): Promise<string[]> {
+  const rows: Array<{ value: string }> = await AppDataSource.getRepository(DispatcherOrder)
+    .createQueryBuilder('o')
+    .select(`btrim(o.${column})`, 'value')
+    .where(`coalesce(btrim(o.${column}), '') <> ''`)
+    .andWhere(`char_length(btrim(o.${column})) <= 128`)
+    .groupBy(`btrim(o.${column})`)
+    .orderBy('count(*)', 'DESC')
+    .limit(100)
+    .getRawMany();
+  return rows.map((row) => row.value);
+}
+
+/**
+ * Досев справочников реестра при старте: вид засевается, только если в нём нет
+ * ни одной записи. Терминалы берутся из уже заполненных заявок (частые — выше).
+ */
 export async function ensureDispatcherDictionaryCatalog(): Promise<void> {
   const repository = AppDataSource.getRepository(DispatcherDictionaryItem);
-  for (const [kind, names] of Object.entries(DISPATCHER_DICTIONARY_SEED) as Array<[DispatcherDictionaryKind, string[]]>) {
+  for (const [kind, seedNames] of Object.entries(DISPATCHER_DICTIONARY_SEED) as Array<[DispatcherDictionaryKind, string[]]>) {
     const existing = await repository.count({ where: { kind } });
     if (existing > 0) continue;
+    const column = ORDER_COLUMN_BY_KIND[kind];
+    const names = column ? await distinctOrderValues(column) : seedNames;
+    if (!names.length) continue;
     await repository.save(
       names.map((name, index) => repository.create({ kind, name, sortOrder: (index + 1) * 10 })),
     );

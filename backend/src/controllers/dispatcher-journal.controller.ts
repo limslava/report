@@ -6,6 +6,7 @@ import { DispatcherStatus } from '../models/dispatcher-status.model';
 import {
   DISPATCHER_DICTIONARY_KINDS,
   DispatcherDictionaryItem,
+  dispatcherDictionaryNameLimit,
   type DispatcherDictionaryKind,
 } from '../models/dispatcher-dictionary-item.model';
 import { OperationsPreviewState } from '../models/operations-preview-state.model';
@@ -397,7 +398,7 @@ export const deleteDispatcherStatus = async (req: Request, res: Response, next: 
 export const createDispatcherDictionaryItem = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const kind = requireKind(req.body?.kind);
-    const name = requireName(req.body?.name, kind === 'vat' ? 16 : kind === 'ktk_type' ? 16 : 64);
+    const name = requireName(req.body?.name, dispatcherDictionaryNameLimit(kind));
     const last = await dictionaryRepository.find({ where: { kind }, order: { sortOrder: 'DESC' }, take: 1 });
     const saved = await dictionaryRepository.save(
       dictionaryRepository.create({ kind, name, sortOrder: (last[0]?.sortOrder ?? 0) + 10 }),
@@ -418,7 +419,7 @@ export const updateDispatcherDictionaryItem = async (req: Request, res: Response
     const item = await dictionaryRepository.findOne({ where: { id: req.params.id } });
     if (!item) return httpError(404, 'Запись не найдена');
     if (req.body?.name !== undefined) {
-      item.name = requireName(req.body.name, item.kind === 'operation' ? 64 : 16);
+      item.name = requireName(req.body.name, dispatcherDictionaryNameLimit(item.kind));
     }
     if (req.body?.isActive !== undefined) item.isActive = Boolean(req.body.isActive);
     await dictionaryRepository.save(item);
