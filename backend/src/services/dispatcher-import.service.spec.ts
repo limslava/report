@@ -20,7 +20,9 @@ async function buildWorkbook(): Promise<Buffer> {
   ]);
   // разделитель дня — только дата
   sheet.addRow([new Date(Date.UTC(2026, 8, 1))]);
-  sheet.addRow([null, 'новая', null, 'Хасан']);
+  // заявка ниже таблицы без даты («ожидает прибытия») и подпись раздела
+  sheet.addRow([null, null, null, null, null, null, 'ОЖИДАЕТ ПРИБЫТИЯ ЖД']);
+  sheet.addRow([null, 'Бронь', null, 'Хасан', null, null, 'TGBU5678866']);
   workbook.addWorksheet('терминалы').addRow(['Название', 'Адрес']);
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
@@ -32,6 +34,7 @@ describe('parseDispatcherWorkbook', () => {
     const [sheet] = sheets;
     expect(sheet.orders).toHaveLength(1);
     expect(sheet.skippedRows).toBe(2);
+    expect(sheet.undatedOrders).toEqual([{ row: 5, status: 'Бронь', client: 'Хасан', ktkNumber: 'TGBU5678866', arrival: 'ЖД' }]);
     const [order] = sheet.orders;
     expect(order).toMatchObject({
       orderDate: '2026-09-01',

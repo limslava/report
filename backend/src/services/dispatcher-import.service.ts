@@ -43,7 +43,25 @@ export type ImportedOrder = {
   driverRemarks: string | null;
 };
 
-export type ImportedSheet = { name: string; orders: ImportedOrder[]; skippedRows: number; unmappedColumns: string[] };
+/** Заявка ниже таблицы без даты (контейнер ещё в пути) — пока не переносится. */
+export type UndatedOrderSample = {
+  row: number;
+  status: string | null;
+  client: string | null;
+  ktkNumber: string | null;
+  /** под какой подписью стоит: «ОЖИДАЕТ ПРИБЫТИЯ ЖД» / «… море» */
+  arrival: 'ЖД' | 'море' | null;
+};
+
+export type ImportedSheet = {
+  name: string;
+  orders: ImportedOrder[];
+  /** пустые и служебные строки: заготовки шаблона, разделители дней, подписи разделов */
+  skippedRows: number;
+  /** строки с заявкой, но без даты */
+  undatedOrders: UndatedOrderSample[];
+  unmappedColumns: string[];
+};
 
 type TextField = Exclude<keyof ImportedOrder, 'orderDate' | 'orderOnVehicle' | 'invoiceSent' | 'recoupling'>;
 type BoolField = 'orderOnVehicle' | 'invoiceSent' | 'recoupling';
@@ -228,15 +246,13 @@ export async function parseDispatcherWorkbook(buffer: Buffer): Promise<ImportedS
     if (!plan) return;
 
     const orders: ImportedOrder[] = [];
+    const undatedOrders: UndatedOrderSample[] = [];
     let skippedRows = 0;
+    let arrivalSection: UndatedOrderSample['arrival'] = null;
     for (let rowNumber = headerRow + 1; rowNumber <= worksheet.rowCount; rowNumber += 1) {
       const row = worksheet.getRow(rowNumber);
       const orderDate = cellDate(unwrap(row.getCell(plan.date).value));
-      if (!orderDate) {
-        if (row.hasValues) skippedRows += 1;
-        continue;
-      }
-      const order = emptyOrder(orderDate);
+      const order = emptyOrder(orderDate ?? '');
       let filled = false;
       plan.text.forEach((field, column) => {
         const value = cellText(unwrap(row.getCell(column).value), field);
@@ -254,14 +270,36 @@ export async function parseDispatcherWorkbook(buffer: Buffer): Promise<ImportedS
         order[field] = value;
         if (value) filled = true;
       });
-      // строка-разделитель дня (только дата) — не заявка
+      // строка-разделитель дня (только дата) или пустая заготовка — не заявка
       if (!filled) {
-        skippedRows += 1;
+        if (row.hasValues) skippedRows += 1;
+        continue;
+      }
+      if (!orderDate) {
+        // подпись раздела («ОЖИДАЕТ ПРИБЫТИЯ ЖД») — не заявка: единственный текст «ожида…»
+        // (объединённые ячейки exceljs повторяет в каждой колонке — берём уникальные значения)
+        const values = [...new Set(Object.entries(order)
+          .filter(([key, value]) => key !== 'orderDate' && typeof value === 'string' && value)
+          .map(([, value]) => String(value).trim()))];
+        const heading = values.length === 1 && /^ожида/i.test(values[0]);
+        if (heading) {
+          const text = values[0].toLowerCase();
+          arrivalSection = /жд|ж\/д|желез/.test(text) ? 'ЖД' : /мор/.test(text) ? 'море' : null;
+          skippedRows += 1;
+        } else {
+          undatedOrders.push({
+            row: rowNumber,
+            status: order.status,
+            client: order.client,
+            ktkNumber: order.ktkNumber,
+            arrival: arrivalSection,
+          });
+        }
         continue;
       }
       orders.push(order);
     }
-    sheets.push({ name: worksheet.name, orders, skippedRows, unmappedColumns: plan.unmapped });
+    sheets.push({ name: worksheet.name, orders, skippedRows, undatedOrders, unmappedColumns: plan.unmapped });
   });
 
   return sheets;

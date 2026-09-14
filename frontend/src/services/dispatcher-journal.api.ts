@@ -141,13 +141,22 @@ export const getDispatcherCrew = (date: string) =>
 // ── Разовый импорт google-таблицы (.xlsx) ──
 
 export type DispatcherImportSummary = {
-  sheets: Array<{ name: string; orders: number; skippedRows: number; from: string | null; to: string | null }>;
+  sheets: Array<{
+    name: string;
+    orders: number;
+    skippedRows: number;
+    undatedOrders: Array<{ row: number; status: string | null; client: string | null; ktkNumber: string | null }>;
+    from: string | null;
+    to: string | null;
+  }>;
   total: number;
   from: string;
   to: string;
-  existingInRange: number;
+  /** сколько заявок сейчас в реестре — все они будут удалены при импорте */
+  existingTotal: number;
   unknownStatuses: string[];
   imported: number;
+  deleted?: number;
 };
 
 export const importDispatcherOrders = (fileBase64: string, dryRun: boolean) =>

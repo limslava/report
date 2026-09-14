@@ -522,9 +522,10 @@ export const listDispatcherCrew = async (req: Request, res: Response, next: Next
 };
 
 /**
- * Разовый импорт google-таблицы (.xlsx, base64): dryRun — только разбор и сводка,
- * без dryRun — запись заявок. Порядок строк как в таблице; импортированные
- * строки встают перед уже существующими. Только администратор.
+ * Импорт google-таблицы (.xlsx, base64): dryRun — только разбор и сводка, без
+ * dryRun — ЗАМЕНА реестра: все текущие заявки удаляются, загружается всё из
+ * файла в порядке таблицы. Повторный импорт = «перенести таблицу заново».
+ * Только администратор.
  */
 export const importDispatcherOrders = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -571,20 +572,22 @@ export const importDispatcherOrders = async (req: Request, res: Response, next: 
         if (known) order[field] = known;
       });
     });
-    const existingInRange = await orderRepository.count({ where: { orderDate: Between(from, to) } });
+    // импорт ЗАМЕНЯЕТ реестр целиком (решение 2026-09-14): текущие заявки удаляются
+    const existingTotal = await orderRepository.count();
 
     const summary = {
       sheets: sheets.map((sheet) => ({
         name: sheet.name,
         orders: sheet.orders.length,
         skippedRows: sheet.skippedRows,
+        undatedOrders: sheet.undatedOrders,
         from: sheet.orders.length ? sheet.orders.map((order) => order.orderDate).sort()[0] : null,
         to: sheet.orders.length ? sheet.orders.map((order) => order.orderDate).sort().slice(-1)[0] : null,
       })),
       total: orders.length,
       from,
       to,
-      existingInRange,
+      existingTotal,
       unknownStatuses: [...unknownStatuses].slice(0, 50),
     };
 
@@ -593,14 +596,16 @@ export const importDispatcherOrders = async (req: Request, res: Response, next: 
       return;
     }
 
-    // импортированные строки — перед текущими, в порядке таблицы
-    const minRow = await orderRepository
+    // месяцы, где были заявки до замены, — чтобы открытые реестры перечитались
+    const previousMonths: Array<{ month: string }> = await orderRepository
       .createQueryBuilder('o')
-      .select('MIN(o.position)', 'min')
-      .getRawOne<{ min: number | null }>();
-    const start = (minRow?.min ?? 0) - (orders.length + 1) * 10;
+      .select("to_char(o.order_date, 'YYYY-MM')", 'month')
+      .groupBy('month')
+      .getRawMany();
     const userId = req.user?.id ?? null;
+    const start = 10;
     await AppDataSource.transaction(async (manager) => {
+      await manager.createQueryBuilder().delete().from(DispatcherOrder).execute();
       const chunkSize = 500;
       for (let index = 0; index < orders.length; index += chunkSize) {
         const chunk = orders.slice(index, index + chunkSize).map((order, offset) => manager.create(DispatcherOrder, {
@@ -614,9 +619,12 @@ export const importDispatcherOrders = async (req: Request, res: Response, next: 
     });
     // терминалы для выпадающих списков — из импортированных заявок (если справочник ещё пуст)
     await ensureDispatcherDictionaryCatalog().catch(() => undefined);
-    const months = new Set(dates.map((date) => `${date.slice(0, 7)}-01`));
+    const months = new Set([
+      ...dates.map((date) => `${date.slice(0, 7)}-01`),
+      ...previousMonths.map((item) => `${item.month}-01`),
+    ]);
     months.forEach((date) => planWebSocketService.notifyDispatcherJournalUpdated({ date, userId: req.user?.id }));
-    res.json({ ...summary, imported: orders.length });
+    res.json({ ...summary, imported: orders.length, deleted: existingTotal });
   } catch (error) {
     next(error);
   }
