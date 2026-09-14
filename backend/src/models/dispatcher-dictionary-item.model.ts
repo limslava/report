@@ -5,7 +5,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Unique } from
  * Одна таблица на все виды (kind) — новый справочник добавляется без миграции.
  * Статусы живут отдельно (dispatcher_statuses): у них есть цвет чипа.
  */
-export const DISPATCHER_DICTIONARY_KINDS = ['ktk_type', 'vat', 'operation', 'terminal_from', 'terminal_to'] as const;
+export const DISPATCHER_DICTIONARY_KINDS = ['client', 'ktk_type', 'vat', 'operation', 'terminal_from', 'terminal_to'] as const;
 export type DispatcherDictionaryKind = typeof DISPATCHER_DICTIONARY_KINDS[number];
 
 /** Стартовые цвета (как в google-таблице отдела). */
@@ -18,6 +18,8 @@ export const DISPATCHER_DICTIONARY_SEED_COLORS: Partial<Record<DispatcherDiction
  * по размеру, внутри размера от ходовых к специальным.
  */
 export const DISPATCHER_DICTIONARY_SEED: Record<DispatcherDictionaryKind, string[]> = {
+  // клиенты досеиваются при старте из уже заполненных заявок
+  client: [],
   ktk_type: [
     '20DC', '20HC', '20REF', '20SHC', '20OT', '20FR',
     '40DC', '40HC', '40REF', '40SHC', '40OT', '40FR',
@@ -32,7 +34,7 @@ export const DISPATCHER_DICTIONARY_SEED: Record<DispatcherDictionaryKind, string
 /** Максимальная длина значения справочника (терминалы — длинные названия с адресом). */
 export const dispatcherDictionaryNameLimit = (kind: DispatcherDictionaryKind): number => {
   if (kind === 'vat' || kind === 'ktk_type') return 16;
-  if (kind === 'terminal_from' || kind === 'terminal_to') return 128;
+  if (kind === 'terminal_from' || kind === 'terminal_to' || kind === 'client') return 128;
   return 64;
 };
 

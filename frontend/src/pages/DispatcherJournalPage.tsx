@@ -145,7 +145,7 @@ type ColumnDef =
 const ALL_COLUMNS: ColumnDef[] = [
   { kind: 'status', field: 'status', title: 'Статус', width: 130 },
   { kind: 'text', field: 'info', title: 'Инфо', width: 70 },
-  { kind: 'text', field: 'client', title: 'Клиент', width: 120 },
+  { kind: 'text', field: 'client', title: 'Клиент', width: 120, list: 'client' },
   { kind: 'text', field: 'driverName', title: 'ФИО водителя', width: 115, list: 'drivers' },
   { kind: 'text', field: 'vehiclePlate', title: 'Гос номер', width: 90, list: 'vehicles' },
   { kind: 'text', field: 'ktkNumber', title: '№ КТК', width: 105 },
@@ -253,10 +253,10 @@ const MONTH_OPTIONS = [
 ];
 
 const EMPTY_DICTIONARY_OPTIONS: DispatcherDictionaryOptions = {
-  ktk_type: [], vat: [], operation: [], terminal_from: [], terminal_to: [],
+  client: [], ktk_type: [], vat: [], operation: [], terminal_from: [], terminal_to: [],
 };
 const EMPTY_DICTIONARY_COLORS: DispatcherDictionaryColors = {
-  ktk_type: {}, vat: {}, operation: {}, terminal_from: {}, terminal_to: {},
+  client: {}, ktk_type: {}, vat: {}, operation: {}, terminal_from: {}, terminal_to: {},
 };
 
 /** Кто ведёт справочники реестра (проверка дублируется на сервере). */

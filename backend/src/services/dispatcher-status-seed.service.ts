@@ -78,12 +78,13 @@ export async function ensureDispatcherStatusCatalog(): Promise<void> {
 
 /** Колонка заявок, из которой берутся стартовые значения справочника терминалов. */
 const ORDER_COLUMN_BY_KIND: Partial<Record<DispatcherDictionaryKind, string>> = {
+  client: 'client',
   terminal_from: 'terminal_from',
   terminal_to: 'terminal_to',
 };
 
-/** Самые частые значения колонки в уже заполненных заявках (до 100). */
-async function distinctOrderValues(column: string): Promise<string[]> {
+/** Самые частые значения колонки в уже заполненных заявках (терминалов до 100, клиентов до 1000). */
+async function distinctOrderValues(column: string, limit: number): Promise<string[]> {
   const rows: Array<{ value: string }> = await AppDataSource.getRepository(DispatcherOrder)
     .createQueryBuilder('o')
     .select(`btrim(o.${column})`, 'value')
@@ -91,7 +92,7 @@ async function distinctOrderValues(column: string): Promise<string[]> {
     .andWhere(`char_length(btrim(o.${column})) <= 128`)
     .groupBy(`btrim(o.${column})`)
     .orderBy('count(*)', 'DESC')
-    .limit(100)
+    .limit(limit)
     .getRawMany();
   return rows.map((row) => row.value);
 }
@@ -106,7 +107,7 @@ export async function ensureDispatcherDictionaryCatalog(): Promise<void> {
     const existing = await repository.count({ where: { kind } });
     if (existing > 0) continue;
     const column = ORDER_COLUMN_BY_KIND[kind];
-    const names = column ? await distinctOrderValues(column) : seedNames;
+    const names = column ? await distinctOrderValues(column, kind === 'client' ? 1000 : 100) : seedNames;
     if (!names.length) continue;
     await repository.save(
       names.map((name, index) => repository.create({

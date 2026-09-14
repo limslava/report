@@ -603,7 +603,8 @@ export const importDispatcherOrders = async (req: Request, res: Response, next: 
       map.set(item.name.toLowerCase(), item.name);
       dictionaryByKind.set(item.kind, map);
     });
-    const DICTIONARY_FIELDS: Array<['vat' | 'operation' | 'ktkType', DispatcherDictionaryKind]> = [
+    const DICTIONARY_FIELDS: Array<['vat' | 'operation' | 'ktkType' | 'client', DispatcherDictionaryKind]> = [
+      ['client', 'client'],
       ['vat', 'vat'],
       ['operation', 'operation'],
       ['ktkType', 'ktk_type'],
