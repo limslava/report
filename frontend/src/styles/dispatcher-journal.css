@@ -611,11 +611,16 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
   height: 40px;
   justify-content: space-between;
   text-transform: none;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 400;
   color: rgba(0, 0, 0, 0.87);
   border-color: rgba(0, 0, 0, 0.23);
   border-radius: 4px;
-  padding: 0 8px 0 12px;
+  padding: 0 4px 0 9px;
+  overflow: hidden;
 }
 .dj-settings-btn.MuiButton-root:hover { border-color: rgba(0, 0, 0, 0.87); background: transparent; }
+/* иконки плотнее: при ширине 140 стрелка не должна вылезать за рамку */
+.dj-settings-btn .MuiButton-startIcon { margin-left: 0; margin-right: 5px; }
+.dj-settings-btn .MuiButton-endIcon { margin-left: 0; margin-right: 0; }
+.dj-settings-btn__label { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

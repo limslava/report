@@ -1209,11 +1209,11 @@ export default function DispatcherJournalPage() {
             variant="outlined"
             color="inherit"
             className="dj-settings-btn"
-            startIcon={<Settings sx={{ fontSize: 20, color: '#6b7280' }} />}
+            startIcon={<Settings sx={{ fontSize: 18, color: '#6b7280' }} />}
             endIcon={<KeyboardArrowDown sx={{ fontSize: 22, color: 'rgba(0, 0, 0, 0.54)' }} />}
             onClick={(event) => setSettingsAnchor(event.currentTarget)}
           >
-            <span style={{ flex: 1, textAlign: 'left' }}>Настройки</span>
+            <span className="dj-settings-btn__label">Настройки</span>
           </Button>
         </Box>
       </Paper>
