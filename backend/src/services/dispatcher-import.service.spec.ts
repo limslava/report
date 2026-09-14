@@ -55,4 +55,42 @@ describe('parseDispatcherWorkbook', () => {
       recoupling: false,
     });
   });
+
+  it('переживает особенности реальной таблицы: затёртая шапка ФИО, «пин» без заголовка, даты вместо слотов, время числом', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Май2026');
+    const header = [...HEADER] as Array<string | null>;
+    header[0] = ' дата';
+    header[4] = 'Анциферов ';     // заголовок ФИО затёрт фамилией
+    header[15] = null;            // вторая «пин» без заголовка
+    header.splice(22, 0, 'Ставка ЧАСТНИКА');
+    sheet.addRow(header);
+    const row: unknown[] = new Array(header.length).fill(null);
+    row[0] = new Date(Date.UTC(2026, 4, 1));
+    row[1] = 'выполнена';
+    row[3] = 'Глоуб Экспресс';
+    row[4] = 'Руденко';
+    row[5] = ' М604ХР 125';
+    row[13] = new Date(Date.UTC(2026, 11, 10)); // «10-12», превращённое google в 10 декабря
+    row[14] = 'пин';
+    row[15] = 5825;
+    row[16] = 8;                                 // время подачи числом
+    row[22] = 22000;                             // ставка частника — не сопоставляется
+    row[34] = 1;                                 // перецеп = 1
+    sheet.addRow(row);
+    const second = [...row];
+    second[16] = '10-00';
+    sheet.addRow(second);
+    const [parsed] = await parseDispatcherWorkbook(Buffer.from(await workbook.xlsx.writeBuffer()));
+    expect(parsed.unmappedColumns).toEqual(['ставка частника']);
+    expect(parsed.orders[0]).toMatchObject({
+      driverName: 'Руденко',
+      vehiclePlate: 'М604ХР 125',
+      slotFrom: '10-12',
+      pinFrom: '5825',
+      submitTime: '08:00',
+      recoupling: true,
+    });
+    expect(parsed.orders[1].submitTime).toBe('10:00');
+  });
 });
