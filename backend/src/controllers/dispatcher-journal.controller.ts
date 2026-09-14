@@ -146,7 +146,8 @@ export const listDispatcherOrders = async (req: Request, res: Response, next: Ne
     }
     const orders = await orderRepository.find({
       where: { orderDate: Between(from, to) },
-      order: { orderDate: 'ASC', position: 'ASC', createdAt: 'ASC' },
+      // порядок строк — ручной (перетаскивание), как в google-таблице отдела
+      order: { position: 'ASC', createdAt: 'ASC' },
     });
     res.json(orders.map(serializeOrder));
   } catch (error) {

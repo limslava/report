@@ -533,6 +533,8 @@ export default function DispatcherJournalPage() {
     const saved = loadSortState<TableSortState>(sortStorageKey, null);
     return saved?.field && saved.direction ? saved : null;
   });
+  // ручной порядок меняется только на «чистой» таблице: при сортировке или фильтре позиция неоднозначна
+  const canDragRows = !sort && activeFilterCount === 0;
   useEffect(() => saveSortState(sortStorageKey, sort), [sortStorageKey, sort]);
   const sortValue = useCallback((row: DispatcherOrderRow, field: string): unknown => {
     if (field === DATE_KEY) return row.orderDate;
@@ -673,8 +675,9 @@ export default function DispatcherJournalPage() {
     return patch;
   }, [getCrew]);
 
+  /** Порядок строк — ручной (перетаскивание), дата на него не влияет. */
   const sortByDate = (list: DispatcherOrderRow[]): DispatcherOrderRow[] =>
-    [...list].sort((a, b) => a.orderDate.localeCompare(b.orderDate) || (a.position ?? 0) - (b.position ?? 0));
+    [...list].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
 
   // ── Ctrl+Z: стек отмены последних действий (правка ячейки, создание, удаление) ──
   type UndoEntry =
@@ -740,7 +743,7 @@ export default function DispatcherJournalPage() {
     }
   }, []);
 
-  // ── перетаскивание строки за номер: выше/ниже внутри своего дня (дата не меняется) ──
+  // ── перетаскивание строки за номер: куда угодно, дата не меняется (как в google-таблице) ──
   const dragRowRef = useRef<{ id: string; date: string } | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; after: boolean } | null>(null);
 
@@ -749,18 +752,15 @@ export default function DispatcherJournalPage() {
     const ordered = sortByDate(rowsRef.current);
     const dragged = ordered.find((row) => row.id === draggedId);
     const target = ordered.find((row) => row.id === targetId);
-    if (!dragged || !target || dragged.orderDate !== target.orderDate) return;
+    if (!dragged || !target) return;
     const rest = ordered.filter((row) => row.id !== draggedId);
     const insertAt = rest.findIndex((row) => row.id === targetId) + (after ? 1 : 0);
     const prev = rest[insertAt - 1];
     const next = rest[insertAt];
-    const date = target.orderDate;
-    const prevPos = prev && prev.orderDate === date ? prev.position : null;
-    const nextPos = next && next.orderDate === date ? next.position : null;
     let position: number;
-    if (prevPos !== null && nextPos !== null) position = (prevPos + nextPos) / 2;
-    else if (prevPos !== null) position = prevPos + 1000;
-    else if (nextPos !== null) position = nextPos - 1000;
+    if (prev && next) position = (prev.position + next.position) / 2;
+    else if (prev) position = prev.position + 1000;
+    else if (next) position = next.position - 1000;
     else position = Date.now();
     patchRow(draggedId, { position });
   }, [patchRow]);
@@ -1222,11 +1222,7 @@ export default function DispatcherJournalPage() {
                     setContextMenu({ x: event.clientX, y: event.clientY, row });
                   }}
                   onDragOver={(event) => {
-                    // бросить можно только в пределах того же дня
-                    if (!dragRowRef.current || dragRowRef.current.date !== row.orderDate) {
-                      if (dropTarget) setDropTarget(null);
-                      return;
-                    }
+                    if (!dragRowRef.current) return;
                     event.preventDefault();
                     const rect = event.currentTarget.getBoundingClientRect();
                     const after = event.clientY > rect.top + rect.height / 2;
@@ -1244,10 +1240,10 @@ export default function DispatcherJournalPage() {
                   <td
                     className={`dj-rownum${pinClass('__rownum')}`}
                     style={pinStyle('__rownum')}
-                    title={sort
-                      ? 'Клик — выделить строку. Чтобы перетаскивать строки, выключите сортировку по колонке'
-                      : 'Зажмите и тяните вверх/вниз — переместить строку в пределах дня. Клик — выделить строку'}
-                    draggable={!sort}
+                    title={canDragRows
+                      ? 'Зажмите и тяните вверх/вниз — переместить строку. Клик — выделить строку'
+                      : 'Клик — выделить строку. Чтобы перетаскивать строки, выключите сортировку и фильтры'}
+                    draggable={canDragRows}
                     onDragStart={(event) => {
                       dragRowRef.current = { id: row.id, date: row.orderDate };
                       event.dataTransfer.effectAllowed = 'move';
@@ -1262,7 +1258,7 @@ export default function DispatcherJournalPage() {
                     onClick={() => setSelectedRowId((prev) => (prev === row.id ? null : row.id))}
                   >
                     <span className="dj-rownum__num">{index + 1}</span>
-                    {!sort && <DragIndicator className="dj-rownum__grip" sx={{ fontSize: 16 }} />}
+                    {canDragRows && <DragIndicator className="dj-rownum__grip" sx={{ fontSize: 16 }} />}
                   </td>
                   <td className={`dj-date-cell${pinClass(DATE_KEY)}`} style={pinStyle(DATE_KEY)}>
                     <input

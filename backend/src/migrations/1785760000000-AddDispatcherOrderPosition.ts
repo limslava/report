@@ -1,6 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-/** Порядок строк реестра внутри дня — для перетаскивания строк. */
+/** Ручной порядок строк реестра — для перетаскивания строк (как в google-таблице). */
 export class AddDispatcherOrderPosition1785760000000 implements MigrationInterface {
   name = 'AddDispatcherOrderPosition1785760000000';
 
@@ -8,10 +8,15 @@ export class AddDispatcherOrderPosition1785760000000 implements MigrationInterfa
     await queryRunner.query(
       `ALTER TABLE dispatcher_orders ADD COLUMN IF NOT EXISTS position double precision NOT NULL DEFAULT 0`,
     );
-    // существующие строки сохраняют текущий порядок (по времени создания)
-    await queryRunner.query(
-      `UPDATE dispatcher_orders SET position = extract(epoch from created_at) * 1000 WHERE position = 0`,
-    );
+    // ручной порядок строк на всю таблицу; стартовый — как реестр выглядел
+    // до этого (по дате, внутри дня — по времени создания). Новые строки
+    // получают время создания в мс и встают в конец.
+    await queryRunner.query(`
+      UPDATE dispatcher_orders d
+      SET position = ranked.rn * 1000
+      FROM (SELECT id, row_number() OVER (ORDER BY order_date, created_at) AS rn FROM dispatcher_orders) ranked
+      WHERE d.id = ranked.id
+    `);
     await queryRunner.query(
       `CREATE INDEX IF NOT EXISTS idx_dispatcher_orders_date_position ON dispatcher_orders (order_date, position)`,
     );
