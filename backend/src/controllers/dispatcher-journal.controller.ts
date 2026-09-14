@@ -78,6 +78,7 @@ const requireDate = (value: unknown): string => {
 const serializeOrder = (order: DispatcherOrder) => ({
   id: order.id,
   orderDate: order.orderDate,
+  position: order.position,
   status: order.status,
   info: order.info,
   client: order.client,
@@ -145,7 +146,7 @@ export const listDispatcherOrders = async (req: Request, res: Response, next: Ne
     }
     const orders = await orderRepository.find({
       where: { orderDate: Between(from, to) },
-      order: { orderDate: 'ASC', createdAt: 'ASC' },
+      order: { orderDate: 'ASC', position: 'ASC', createdAt: 'ASC' },
     });
     res.json(orders.map(serializeOrder));
   } catch (error) {
@@ -153,17 +154,24 @@ export const listDispatcherOrders = async (req: Request, res: Response, next: Ne
   }
 };
 
+/** Позиция строки из запроса (перетаскивание, восстановление по Ctrl+Z). */
+const parsePosition = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+
 export const createDispatcherOrder = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const date = requireDate(req.body?.orderDate);
     const order = orderRepository.create({
       orderDate: date,
+      position: parsePosition(req.body?.position) ?? Date.now(),
       status: 'новая',
       createdBy: req.user?.id ?? null,
       updatedBy: req.user?.id ?? null,
     });
     // Начальные значения (вставка строк из Excel): та же белая схема полей, что и в PATCH.
     const initial = (req.body ?? {}) as Record<string, unknown>;
+    // явный null статуса (восстановление пустой строки по Ctrl+Z) — строка без статуса
+    if ('status' in initial && initial.status == null) order.status = null;
     Object.entries(initial).forEach(([field, value]) => {
       if (TEXT_FIELD_SET.has(field) && value != null && value !== '') {
         (order as any)[field] = String(value).slice(0, 4000);
@@ -174,6 +182,28 @@ export const createDispatcherOrder = async (req: Request, res: Response, next: N
     const saved = await orderRepository.save(order);
     planWebSocketService.notifyDispatcherJournalUpdated({ date, userId: req.user?.id });
     res.status(201).json(serializeOrder(saved));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Пачка пустых строк на дату (кнопка «+» в реестре): без статуса, в конец дня. */
+export const createDispatcherOrdersBatch = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const date = requireDate(req.body?.orderDate);
+    const count = Number(req.body?.count);
+    if (!Number.isInteger(count) || count < 1 || count > 100) httpError(400, 'Количество строк — от 1 до 100');
+    const base = Date.now();
+    const orders = Array.from({ length: count }, (_item, index) => orderRepository.create({
+      orderDate: date,
+      position: base + index,
+      status: null,
+      createdBy: req.user?.id ?? null,
+      updatedBy: req.user?.id ?? null,
+    }));
+    const saved = await orderRepository.save(orders);
+    planWebSocketService.notifyDispatcherJournalUpdated({ date, userId: req.user?.id });
+    res.status(201).json(saved.map(serializeOrder));
   } catch (error) {
     next(error);
   }
@@ -194,6 +224,11 @@ export const updateDispatcherOrder = async (req: Request, res: Response, next: N
     const previousDate = order.orderDate;
     if (typeof patch.orderDate === 'string' && DATE_PATTERN.test(patch.orderDate) && patch.orderDate !== order.orderDate) {
       order.orderDate = patch.orderDate;
+      changed = true;
+    }
+    const position = parsePosition(patch.position);
+    if (position !== null && position !== order.position) {
+      order.position = position;
       changed = true;
     }
     Object.entries(patch).forEach(([field, value]) => {

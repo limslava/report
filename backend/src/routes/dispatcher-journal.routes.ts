@@ -6,6 +6,7 @@ import { handleValidationErrors } from '../middleware/express-validator.middlewa
 import {
   createDispatcherDictionaryItem,
   createDispatcherOrder,
+  createDispatcherOrdersBatch,
   createDispatcherStatus,
   deleteDispatcherDictionaryItem,
   deleteDispatcherOrder,
@@ -77,6 +78,12 @@ router.post(
   [body('orderDate').matches(/^\d{4}-\d{2}-\d{2}$/)],
   handleValidationErrors,
   createDispatcherOrder,
+);
+router.post(
+  '/orders/batch',
+  [body('orderDate').matches(/^\d{4}-\d{2}-\d{2}$/), body('count').isInt({ min: 1, max: 100 })],
+  handleValidationErrors,
+  createDispatcherOrdersBatch,
 );
 router.patch('/orders/:id', [param('id').isUUID()], handleValidationErrors, updateDispatcherOrder);
 router.delete('/orders/:id', [param('id').isUUID()], handleValidationErrors, deleteDispatcherOrder);

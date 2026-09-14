@@ -15,12 +15,21 @@ import {
  */
 @Entity('dispatcher_orders')
 @Index('idx_dispatcher_orders_date', ['orderDate'])
+@Index('idx_dispatcher_orders_date_position', ['orderDate', 'position'])
 export class DispatcherOrder {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
   @Column({ name: 'order_date', type: 'date' })
   orderDate!: string;
+
+  /**
+   * Порядок строки внутри дня (перетаскивание строк). Дробное число: строка,
+   * брошенная между соседями, получает середину их значений — без пересчёта
+   * остальных строк. Новые строки — время создания в мс (встают в конец).
+   */
+  @Column({ type: 'double precision', default: 0 })
+  position!: number;
 
   @Column({ type: 'varchar', length: 64, nullable: true })
   status!: string | null;

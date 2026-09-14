@@ -9,6 +9,8 @@ export type DispatcherStatusOption = {
 export type DispatcherOrderRow = {
   id: string;
   orderDate: string;
+  /** порядок строки внутри дня (перетаскивание) */
+  position: number;
   status: string | null;
   info: string | null;
   client: string | null;
@@ -54,6 +56,10 @@ export const getDispatcherOrders = (from: string, to: string) =>
 
 export const createDispatcherOrder = (orderDate: string, initial?: DispatcherOrderPatch) =>
   api.post<DispatcherOrderRow>('/dispatcher-journal/orders', { orderDate, ...(initial ?? {}) });
+
+/** Пустые строки на дату (кнопка «+»). */
+export const createDispatcherOrdersBatch = (orderDate: string, count: number) =>
+  api.post<DispatcherOrderRow[]>('/dispatcher-journal/orders/batch', { orderDate, count });
 
 export const updateDispatcherOrder = (id: string, patch: DispatcherOrderPatch) =>
   api.patch<DispatcherOrderRow>(`/dispatcher-journal/orders/${id}`, patch);

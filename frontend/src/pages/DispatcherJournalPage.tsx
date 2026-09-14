@@ -32,6 +32,7 @@ import {
 } from '@mui/icons-material';
 import {
   createDispatcherOrder,
+  createDispatcherOrdersBatch,
   deleteDispatcherOrder,
   getDispatcherCrew,
   getDispatcherDictionaryOptions,
@@ -648,7 +649,7 @@ export default function DispatcherJournalPage() {
   }, [getCrew]);
 
   const sortByDate = (list: DispatcherOrderRow[]): DispatcherOrderRow[] =>
-    [...list].sort((a, b) => a.orderDate.localeCompare(b.orderDate));
+    [...list].sort((a, b) => a.orderDate.localeCompare(b.orderDate) || (a.position ?? 0) - (b.position ?? 0));
 
   // ── Ctrl+Z: стек отмены последних действий (правка ячейки, создание, удаление) ──
   type UndoEntry =
@@ -695,6 +696,54 @@ export default function DispatcherJournalPage() {
       return null;
     }
   }, []);
+
+  /** «+»: одна пустая строка (без статуса) на дату нижней строки. */
+  const addBlankRow = useCallback(async (orderDate: string) => {
+    try {
+      const { data } = await createDispatcherOrdersBatch(orderDate, 1);
+      data.forEach((row) => {
+        sessionCreatedIdsRef.current.add(row.id);
+        pushUndo({ kind: 'create', id: row.id });
+      });
+      if (orderDate >= rangeRef.current.from && orderDate <= rangeRef.current.to) {
+        setRows((prev) => sortByDate([...prev, ...data]));
+      } else {
+        setMessage({ severity: 'success', text: `Строка добавлена на ${formatDateShort(orderDate)} — она в другом месяце` });
+      }
+    } catch {
+      setMessage({ severity: 'error', text: 'Не удалось добавить строку' });
+    }
+  }, []);
+
+  // ── перетаскивание строки за номер: выше/ниже, в том числе на другой день ──
+  const dragRowIdRef = useRef<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; after: boolean } | null>(null);
+
+  const moveRow = useCallback((draggedId: string, targetId: string, after: boolean) => {
+    if (draggedId === targetId) return;
+    const ordered = sortByDate(rowsRef.current);
+    const dragged = ordered.find((row) => row.id === draggedId);
+    const target = ordered.find((row) => row.id === targetId);
+    if (!dragged || !target) return;
+    const rest = ordered.filter((row) => row.id !== draggedId);
+    const insertAt = rest.findIndex((row) => row.id === targetId) + (after ? 1 : 0);
+    const prev = rest[insertAt - 1];
+    const next = rest[insertAt];
+    const date = target.orderDate;
+    const prevPos = prev && prev.orderDate === date ? prev.position : null;
+    const nextPos = next && next.orderDate === date ? next.position : null;
+    let position: number;
+    if (prevPos !== null && nextPos !== null) position = (prevPos + nextPos) / 2;
+    else if (prevPos !== null) position = prevPos + 1000;
+    else if (nextPos !== null) position = nextPos - 1000;
+    else position = Date.now();
+    const patch: DispatcherOrderPatch = { position };
+    if (date !== dragged.orderDate) patch.orderDate = date;
+    patchRow(draggedId, patch);
+    if (patch.orderDate) {
+      setMessage({ severity: 'success', text: `Заявка перенесена на ${formatDateShort(date)}` });
+    }
+  }, [patchRow]);
 
   const deleteRow = useCallback(async (row: DispatcherOrderRow, options?: { silent?: boolean; skipUndo?: boolean }) => {
     if (!options?.silent) {
@@ -1130,6 +1179,7 @@ export default function DispatcherJournalPage() {
               previousDate = row.orderDate;
               const classes = [
                 dayStart ? 'dj-row--day-start' : '',
+                dropTarget?.id === row.id ? (dropTarget.after ? 'dj-row--drop-after' : 'dj-row--drop-before') : '',
                 isCompletedStatus(row.status) ? 'dj-row--done' : '',
                 selectedRowId === row.id ? 'dj-row--selected' : '',
               ].filter(Boolean).join(' ');
@@ -1142,11 +1192,40 @@ export default function DispatcherJournalPage() {
                     setSelectedRowId(row.id);
                     setContextMenu({ x: event.clientX, y: event.clientY, row });
                   }}
+                  onDragOver={(event) => {
+                    if (!dragRowIdRef.current) return;
+                    event.preventDefault();
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const after = event.clientY > rect.top + rect.height / 2;
+                    setDropTarget((prev) => (prev?.id === row.id && prev.after === after ? prev : { id: row.id, after }));
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const draggedId = dragRowIdRef.current;
+                    const target = dropTarget;
+                    dragRowIdRef.current = null;
+                    setDropTarget(null);
+                    if (draggedId && target) moveRow(draggedId, target.id, target.after);
+                  }}
                 >
                   <td
                     className={`dj-rownum${pinClass('__rownum')}`}
                     style={pinStyle('__rownum')}
-                    title="Клик — выделить строку (Ctrl+C — копировать, Ctrl+X — вырезать, Ctrl+V — вставить)"
+                    title={sort
+                      ? 'Клик — выделить строку. Перетаскивание строк — без сортировки по колонке'
+                      : 'Клик — выделить строку; потяните за номер, чтобы переместить строку'}
+                    draggable={!sort}
+                    onDragStart={(event) => {
+                      dragRowIdRef.current = row.id;
+                      event.dataTransfer.effectAllowed = 'move';
+                      event.dataTransfer.setData('text/plain', row.id);
+                      const tr = event.currentTarget.parentElement;
+                      if (tr) event.dataTransfer.setDragImage(tr, 16, 12);
+                    }}
+                    onDragEnd={() => {
+                      dragRowIdRef.current = null;
+                      setDropTarget(null);
+                    }}
                     onClick={() => setSelectedRowId((prev) => (prev === row.id ? null : row.id))}
                   >
                     {index + 1}
@@ -1181,7 +1260,14 @@ export default function DispatcherJournalPage() {
               );
             })}
             <tr key={`ghost-${ghostKey}`} className="dj-row--ghost dj-row--day-start">
-              <td className={`dj-rownum${pinClass('__rownum')}`} style={pinStyle('__rownum')}>＋</td>
+              <td
+                className={`dj-rownum dj-rownum--add${pinClass('__rownum')}`}
+                style={pinStyle('__rownum')}
+                title="Добавить пустую строку"
+                onClick={() => void addBlankRow(defaultNewDate)}
+              >
+                ＋
+              </td>
               <td className={`dj-date-cell${pinClass(DATE_KEY)}`} style={pinStyle(DATE_KEY)}>
                 <input
                   type="date"

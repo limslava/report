@@ -148,7 +148,8 @@
 .dj-delete-btn:hover { color: #d03b3b; }
 
 .dj-row--ghost td { background: #fcfdfe; }
-.dj-row--ghost .dj-rownum { color: #2a78d6; font-size: 13px; cursor: default; }
+.dj-row--ghost .dj-rownum { color: #2a78d6; font-size: 15px; font-weight: 600; cursor: pointer; }
+.dj-row--ghost .dj-rownum--add:hover { background: #dbe9fb !important; }
 
 .dj-empty {
   padding: 24px;
@@ -366,3 +367,9 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
 }
 .dj-dict-name:hover:not(:disabled) { border-color: #e1e4ea; }
 .dj-dict-name:focus { outline: none; border-color: #2a78d6; background: #fff; }
+
+/* ── перетаскивание строк за номер ── */
+.dj-rownum[draggable="true"] { cursor: grab; }
+.dj-rownum[draggable="true"]:active { cursor: grabbing; }
+.dj-table tr.dj-row--drop-before td { box-shadow: inset 0 2px 0 #2a78d6; }
+.dj-table tr.dj-row--drop-after td { box-shadow: inset 0 -2px 0 #2a78d6; }
