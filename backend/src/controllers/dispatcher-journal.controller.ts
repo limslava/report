@@ -686,6 +686,26 @@ export const importDispatcherOrders = async (req: Request, res: Response, next: 
  * период изменений (from/to), сотрудник (userId), заявка (orderId), поиск по
  * КТК/клиенту (q); постранично (before = createdAt последней записи).
  */
+/** Сотрудники, которые хоть раз меняли реестр, — для фильтра истории (без загрузки самой истории). */
+export const listDispatcherHistoryUsers = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const rows: Array<{ userId: string }> = await AppDataSource.getRepository(DispatcherOrderChange)
+      .createQueryBuilder('c')
+      .select('c.user_id', 'userId')
+      .where('c.user_id IS NOT NULL')
+      .groupBy('c.user_id')
+      .getRawMany();
+    const names = await userNamesById(rows.map((row) => row.userId));
+    res.json(
+      rows
+        .map((row) => ({ id: row.userId, name: names.get(row.userId) ?? '—' }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'ru')),
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const listDispatcherHistory = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));

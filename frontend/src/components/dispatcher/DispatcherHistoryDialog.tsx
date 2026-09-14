@@ -13,6 +13,7 @@ import {
 } from '@mui/material';
 import {
   getDispatcherHistory,
+  getDispatcherHistoryUsers,
   type DispatcherHistoryItem,
   type DispatcherHistoryQuery,
 } from '../../services/dispatcher-journal.api';
@@ -59,8 +60,18 @@ export default function DispatcherHistoryDialog({ open, onClose, orderId, orderL
   const [error, setError] = useState<string | null>(null);
   // история всего реестра грузится только по кнопке «Обновить» — запрос тяжёлый
   const [loaded, setLoaded] = useState(false);
-  // сотрудники для фильтра — копятся из загруженных записей
+  // сотрудники для фильтра: кто хоть раз менял реестр (грузится при открытии) + из загруженных записей
   const [knownUsers, setKnownUsers] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    if (!open || orderId) return;
+    getDispatcherHistoryUsers()
+      .then(({ data }) => setKnownUsers((prev) => {
+        const next = new Map(prev);
+        data.forEach((user) => next.set(user.id, user.name));
+        return next;
+      }))
+      .catch(() => undefined);
+  }, [open, orderId]);
 
   const buildQuery = useCallback((before?: string): DispatcherHistoryQuery => (
     orderId
@@ -151,6 +162,8 @@ export default function DispatcherHistoryDialog({ open, onClose, orderId, orderL
               label="Сотрудник"
               value={userId}
               onChange={(event) => setUserId(event.target.value)}
+              InputLabelProps={{ shrink: true }}
+              SelectProps={{ displayEmpty: true }}
               sx={{ width: 220 }}
             >
               <MenuItem value="">Все</MenuItem>
