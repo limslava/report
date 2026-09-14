@@ -93,17 +93,42 @@ const operationDateOnly = (value: Date): string => new Intl.DateTimeFormat('en-C
   day: '2-digit',
 }).format(value);
 
+type TariffLike = Pick<WarehouseTariff, 'vehicleType' | 'validFrom' | 'validTo' | 'price'>
+  & { counterpartyId?: string | null };
+
+/**
+ * Цена на дату с приоритетом клиента: сначала индивидуальный тариф
+ * контрагента, действующий на эту дату, иначе базовый (без контрагента).
+ */
+export const pickWarehouseTariff = <T extends TariffLike>(
+  tariffs: T[],
+  vehicleType: WarehouseVehicleType,
+  onDate: string,
+  counterpartyId?: string | null,
+): T | null => {
+  const actual = tariffs.filter((item) => item.vehicleType === vehicleType
+    && item.validFrom <= onDate
+    && (!item.validTo || item.validTo >= onDate));
+  const latest = (items: T[]) => items.sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0] ?? null;
+  if (counterpartyId) {
+    const individual = latest(actual.filter((item) => item.counterpartyId === counterpartyId));
+    if (individual) return individual;
+  }
+  return latest(actual.filter((item) => !item.counterpartyId));
+};
+
 export const findWarehouseTariffForDate = (
   tariffs: WarehouseTariff[],
   serviceId: string,
   vehicleType: WarehouseVehicleType,
   onDate: string,
-): WarehouseTariff | null => tariffs
-  .filter((item) => item.serviceId === serviceId
-    && item.vehicleType === vehicleType
-    && item.validFrom <= onDate
-    && (!item.validTo || item.validTo >= onDate))
-  .sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0] ?? null;
+  counterpartyId?: string | null,
+): WarehouseTariff | null => pickWarehouseTariff(
+  tariffs.filter((item) => item.serviceId === serviceId),
+  vehicleType,
+  onDate,
+  counterpartyId,
+);
 
 const addDays = (date: string, days: number): string => {
   const value = new Date(`${date}T00:00:00Z`);
@@ -143,7 +168,8 @@ export const calculateWarehouseStorage = (params: {
   periodFrom: string;
   periodTo: string;
   vehicleType: WarehouseVehicleType;
-  tariffs: Array<Pick<WarehouseTariff, 'vehicleType' | 'validFrom' | 'validTo' | 'price'>>;
+  tariffs: TariffLike[];
+  counterpartyId?: string | null;
 }): WarehouseStorageCalculation => {
   const storageFrom = maxDate(params.receivedDate, params.periodFrom);
   const storageTo = minDate(params.issuedDate ?? params.periodTo, params.periodTo);
@@ -153,11 +179,7 @@ export const calculateWarehouseStorage = (params: {
   let storageAmount = 0;
   for (let date = storageFrom; date <= storageTo; date = addDays(date, 1)) {
     storageDays += 1;
-    const tariff = params.tariffs
-      .filter((item) => item.vehicleType === params.vehicleType
-        && item.validFrom <= date
-        && (!item.validTo || item.validTo >= date))
-      .sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0];
+    const tariff = pickWarehouseTariff(params.tariffs, params.vehicleType, date, params.counterpartyId);
     if (!tariff) {
       missingTariffDates.push(date);
       continue;
@@ -358,6 +380,7 @@ export const calculateWarehouseBilling = async (params: {
       periodTo,
       vehicleType: vehicle.vehicleType,
       tariffs,
+      counterpartyId: vehicle.counterpartyId,
     });
     storage.missingTariffDates.forEach((date) => {
       warnings.push(`Нет тарифа хранения: ${vehicle.warehouseNumber}, ${date}.`);
@@ -381,6 +404,7 @@ export const calculateWarehouseBilling = async (params: {
         definition.id,
         vehicle.vehicleType,
         eventDate,
+        vehicle.counterpartyId,
       );
       const operation = (operationsByVehicle.get(vehicle.id) ?? [])
         .filter((item) => item.type === operationType)

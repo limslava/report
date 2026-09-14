@@ -3,6 +3,7 @@ import { ILike } from 'typeorm';
 import { AppDataSource } from '../config/data-source';
 import { Counterparty } from '../models/counterparty.model';
 import { WarehouseClient } from '../models/warehouse-client.model';
+import { WarehouseTariff } from '../models/warehouse-tariff.model';
 import { recordAuditLog } from '../services/audit-log.service';
 import {
   FnsServiceUnavailableError,
@@ -23,7 +24,7 @@ const validateContractPeriod = (contractDate: string | null, contractEndDate: st
   }
 };
 
-const serializeClient = (client: WarehouseClient) => {
+const serializeClient = (client: WarehouseClient, individualTariffsCount = 0) => {
   const contractState = getWarehouseContractState(client.contractEndDate);
   return {
     id: client.id,
@@ -38,6 +39,7 @@ const serializeClient = (client: WarehouseClient) => {
     serviceStartDate: client.serviceStartDate,
     isActive: client.isActive,
     notes: client.notes,
+    individualTariffsCount,
     createdAt: client.createdAt,
     updatedAt: client.updatedAt,
   };
@@ -79,7 +81,17 @@ export const listWarehouseClients = async (
       );
     }
     const clients = await query.getMany();
-    res.json(clients.map(serializeClient));
+    const tariffCounts = clients.length
+      ? await AppDataSource.getRepository(WarehouseTariff)
+        .createQueryBuilder('tariff')
+        .select('tariff.counterpartyId', 'counterpartyId')
+        .addSelect('COUNT(*)', 'count')
+        .where('tariff.counterpartyId IN (:...ids)', { ids: clients.map((client) => client.counterpartyId) })
+        .groupBy('tariff.counterpartyId')
+        .getRawMany<{ counterpartyId: string; count: string }>()
+      : [];
+    const countByCounterparty = new Map(tariffCounts.map((row) => [row.counterpartyId, Number(row.count)]));
+    res.json(clients.map((client) => serializeClient(client, countByCounterparty.get(client.counterpartyId) ?? 0)));
   } catch (error) {
     next(error);
   }

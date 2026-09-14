@@ -4,6 +4,8 @@ import {
   WAREHOUSE_ACCESS_ROLES,
   WAREHOUSE_BILLING_MANAGEMENT_ROLES,
   WAREHOUSE_BILLING_VIEW_ROLES,
+  WAREHOUSE_CLIENT_TARIFF_MANAGEMENT_ROLES,
+  WAREHOUSE_FINANCE_VIEW_ROLES,
   WAREHOUSE_CLIENT_MANAGEMENT_ROLES,
   WAREHOUSE_DATE_CORRECTION_ROLES,
   WAREHOUSE_SERVICE_EXECUTION_ROLES,
@@ -48,6 +50,8 @@ import {
 import {
   correctWarehousePerformedService,
   createWarehouseTariff,
+  endWarehouseClientTariff,
+  listWarehouseClientTariffs,
   listWarehousePerformedServices,
   listWarehouseServices,
   performWarehouseService,
@@ -232,9 +236,33 @@ router.get(
 
 router.get(
   '/services',
-  [query('onDate').optional().isISO8601({ strict: true })],
+  [
+    query('onDate').optional().isISO8601({ strict: true }),
+    query('counterpartyId').optional({ checkFalsy: true }).isUUID(),
+  ],
   handleValidationErrors,
   listWarehouseServices,
+);
+
+router.get(
+  '/client-tariffs',
+  authorizeRole(...WAREHOUSE_FINANCE_VIEW_ROLES),
+  [query('counterpartyId').optional({ checkFalsy: true }).isUUID()],
+  handleValidationErrors,
+  listWarehouseClientTariffs,
+);
+
+router.post(
+  '/services/:serviceId/client-tariffs/end',
+  authorizeRole(...WAREHOUSE_CLIENT_TARIFF_MANAGEMENT_ROLES),
+  [
+    param('serviceId').isUUID(),
+    body('counterpartyId').isUUID(),
+    body('vehicleType').isIn(WAREHOUSE_VEHICLE_TYPES),
+    body('fromDate').isISO8601({ strict: true }),
+  ],
+  handleValidationErrors,
+  endWarehouseClientTariff,
 );
 
 router.patch(
@@ -260,6 +288,7 @@ router.post(
     body('vehicleType').isIn(WAREHOUSE_VEHICLE_TYPES),
     body('price').isFloat({ min: 0, max: 1000000000 }),
     body('validFrom').isISO8601({ strict: true }),
+    body('counterpartyId').optional({ nullable: true, checkFalsy: true }).isUUID(),
   ],
   handleValidationErrors,
   createWarehouseTariff,

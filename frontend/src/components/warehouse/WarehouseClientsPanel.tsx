@@ -42,6 +42,8 @@ import {
 
 interface WarehouseClientsPanelProps {
   onClientsChanged?: () => void;
+  /** просмотр без правки (финансист, бухгалтерия, руководство) */
+  readOnly?: boolean;
 }
 
 export interface WarehouseClientsPanelHandle {
@@ -73,6 +75,7 @@ const messageFromError = (error: unknown): string => {
 
 const WarehouseClientsPanel = forwardRef<WarehouseClientsPanelHandle, WarehouseClientsPanelProps>(function WarehouseClientsPanel({
   onClientsChanged,
+  readOnly = false,
 }, ref) {
   const [clients, setClients] = useState<WarehouseClient[]>([]);
   const [available, setAvailable] = useState<WarehouseCounterparty[]>([]);
@@ -136,6 +139,7 @@ const WarehouseClientsPanel = forwardRef<WarehouseClientsPanelHandle, WarehouseC
   }));
 
   const openEdit = (client: WarehouseClient) => {
+    if (readOnly) return;
     setEditing(client);
     setSelectedCounterparty(null);
     setForm({
@@ -265,7 +269,7 @@ const WarehouseClientsPanel = forwardRef<WarehouseClientsPanelHandle, WarehouseC
         <Table
           size="small"
           sx={{
-            minWidth: 1120,
+            minWidth: 1220,
             tableLayout: 'fixed',
             '& th, & td': {
               borderLeft: '1px solid #d0d7de',
@@ -303,6 +307,7 @@ const WarehouseClientsPanel = forwardRef<WarehouseClientsPanelHandle, WarehouseC
               <TableCell sx={{ width: 130 }}>Дата окончания</TableCell>
               <TableCell sx={{ width: 150 }}>Срок договора</TableCell>
               <TableCell sx={{ width: 90 }}>Статус</TableCell>
+              <TableCell sx={{ width: 100 }}>Тарифы</TableCell>
               <TableCell>Комментарий</TableCell>
             </TableRow>
           </TableHead>
@@ -311,9 +316,9 @@ const WarehouseClientsPanel = forwardRef<WarehouseClientsPanelHandle, WarehouseC
               <TableRow
                 key={client.id}
                 hover
-                title="Двойной клик откроет карточку клиента"
+                title={readOnly ? undefined : 'Двойной клик откроет карточку клиента'}
                 onDoubleClick={() => openEdit(client)}
-                sx={{ cursor: 'pointer' }}
+                sx={{ cursor: readOnly ? 'default' : 'pointer' }}
               >
                 <TableCell sx={{ fontWeight: 600 }}>{client.nameShort || client.nameFull}</TableCell>
                 <TableCell>{client.inn}</TableCell>
@@ -322,12 +327,18 @@ const WarehouseClientsPanel = forwardRef<WarehouseClientsPanelHandle, WarehouseC
                 <TableCell>{client.contractEndDate || '—'}</TableCell>
                 <TableCell>{contractStatusText(client)}</TableCell>
                 <TableCell>{client.isActive ? 'Активен' : 'Отключён'}</TableCell>
+                <TableCell
+                  sx={client.individualTariffsCount ? { color: '#1d4ed8', fontWeight: 700 } : undefined}
+                  title={client.individualTariffsCount ? 'Есть индивидуальные цены — см. «Услуги и тарифы»' : undefined}
+                >
+                  {client.individualTariffsCount ? 'Индивидуальные' : 'Базовые'}
+                </TableCell>
                 <TableCell>{client.notes || '—'}</TableCell>
               </TableRow>
             ))}
             {filteredClients.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} align="center" sx={{ py: 5, color: 'text.secondary' }}>
+                <TableCell colSpan={9} align="center" sx={{ py: 5, color: 'text.secondary' }}>
                   Клиенты склада не найдены
                 </TableCell>
               </TableRow>

@@ -146,10 +146,16 @@ export default function WarehousePage() {
     .includes(user?.role ?? '');
   const canManageClients = user?.role === 'admin' || user?.role === 'warehouse_manager_vvo';
   const canManageTariffs = ['admin', 'warehouse_manager_vvo', 'financer'].includes(user?.role ?? '');
+  const canManageIndividualTariffs = ['admin', 'financer'].includes(user?.role ?? '');
+  // финансы и руководство смотрят клиентов и тарифы без права правки (решение 2026-09-14)
+  const isFinanceViewer = ['financer', 'chief_accountant', 'deputy_chief_accountant', 'director', 'general_director']
+    .includes(user?.role ?? '');
+  const canViewClients = canManageClients || isFinanceViewer;
+  const canViewTariffs = canManageTariffs || isFinanceViewer;
   const canViewBilling = user?.role !== 'warehouse_keeper';
   const canCloseBilling = ['admin', 'warehouse_manager_vvo', 'financer'].includes(user?.role ?? '');
   const canCorrectDates = user?.role === 'admin' || user?.role === 'warehouse_manager_vvo';
-  const showTabs = canManageClients || canManageTariffs || canViewBilling;
+  const showTabs = canViewClients || canViewTariffs || canViewBilling;
   const [tab, setTab] = useState<'registry' | 'clients' | 'tariffs' | 'billing'>('registry');
   const [vehicles, setVehicles] = useState<WarehouseVehicle[]>([]);
   const [warehouseClients, setWarehouseClients] = useState<WarehouseClient[]>([]);
@@ -377,8 +383,8 @@ export default function WarehousePage() {
                   sx={{ minHeight: 34 }}
                 >
                   <Tab value="registry" label="Реестр ТС" sx={{ minHeight: 34, py: 0.5 }} />
-                  {canManageClients && <Tab value="clients" label="Клиенты склада" sx={{ minHeight: 34, py: 0.5 }} />}
-                  {canManageTariffs && <Tab value="tariffs" label="Услуги и тарифы" sx={{ minHeight: 34, py: 0.5 }} />}
+                  {canViewClients && <Tab value="clients" label="Клиенты склада" sx={{ minHeight: 34, py: 0.5 }} />}
+                  {canViewTariffs && <Tab value="tariffs" label="Услуги и тарифы" sx={{ minHeight: 34, py: 0.5 }} />}
                   {canViewBilling && <Tab value="billing" label="Начисления и акты" sx={{ minHeight: 34, py: 0.5 }} />}
                 </Tabs>
               ) : (
@@ -402,10 +408,17 @@ export default function WarehousePage() {
           </CardContent>
         </Card>
 
-        {tab === 'clients' && canManageClients ? (
-          <WarehouseClientsPanel ref={clientsPanelRef} onClientsChanged={() => void loadCounterparties()} />
-        ) : tab === 'tariffs' && canManageTariffs ? (
-          <WarehouseTariffsPanel />
+        {tab === 'clients' && canViewClients ? (
+          <WarehouseClientsPanel
+            ref={clientsPanelRef}
+            readOnly={!canManageClients}
+            onClientsChanged={() => void loadCounterparties()}
+          />
+        ) : tab === 'tariffs' && canViewTariffs ? (
+          <WarehouseTariffsPanel
+            canManageBase={canManageTariffs}
+            canManageIndividual={canManageIndividualTariffs}
+          />
         ) : tab === 'billing' && canViewBilling ? (
           <WarehouseBillingPanel
             canClose={canCloseBilling}

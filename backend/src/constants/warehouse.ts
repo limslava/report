@@ -3,6 +3,8 @@ export const WAREHOUSE_ACCESS_ROLES = [
   'director',
   'general_director',
   'financer',
+  'chief_accountant',
+  'deputy_chief_accountant',
   'warehouse_manager_vvo',
   'warehouse_keeper',
   'counterparty_user',
@@ -30,6 +32,23 @@ export const WAREHOUSE_TARIFF_MANAGEMENT_ROLES = [
   'financer',
 ] as const;
 
+/** Индивидуальные тарифы клиентов склада заводят только админ и финансист (решение 2026-09-14). */
+export const WAREHOUSE_CLIENT_TARIFF_MANAGEMENT_ROLES = [
+  'admin',
+  'financer',
+] as const;
+
+/** Просмотр клиентов, тарифов (в т.ч. индивидуальных) и начислений без права правки. */
+export const WAREHOUSE_FINANCE_VIEW_ROLES = [
+  'admin',
+  'director',
+  'general_director',
+  'financer',
+  'chief_accountant',
+  'deputy_chief_accountant',
+  'warehouse_manager_vvo',
+] as const;
+
 export const WAREHOUSE_SERVICE_EXECUTION_ROLES = [
   'admin',
   'warehouse_manager_vvo',
@@ -48,6 +67,8 @@ export const WAREHOUSE_BILLING_VIEW_ROLES = [
   'director',
   'general_director',
   'financer',
+  'chief_accountant',
+  'deputy_chief_accountant',
   'warehouse_manager_vvo',
   'counterparty_user',
 ] as const;

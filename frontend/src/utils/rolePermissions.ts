@@ -38,6 +38,8 @@ export function canAccessWarehouse(role?: string | null): boolean {
     || role === 'director'
     || role === 'general_director'
     || role === 'financer'
+    || role === 'chief_accountant'
+    || role === 'deputy_chief_accountant'
     || role === 'warehouse_manager_vvo'
     || role === 'warehouse_keeper'
     || role === 'counterparty_user';
