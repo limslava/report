@@ -17,6 +17,7 @@ import { directoriesRouter } from './routes/directories.routes';
 import { fuelRouter } from './routes/fuel.routes';
 import { printFormsRouter } from './routes/print-forms.routes';
 import { uchetTsRouter } from './routes/uchet-ts.routes';
+import { dispatcherJournalRouter } from './routes/dispatcher-journal.routes';
 import { errorHandler } from './middleware/error-handler';
 import { logger } from './utils/logger';
 import { getAllowedCorsOrigins } from './config/env';
@@ -103,6 +104,7 @@ export function createApp() {
   app.use('/api/fuel', fuelRouter);
   app.use('/api/print-forms', printFormsRouter);
   app.use('/api/uchet-ts', uchetTsRouter);
+  app.use('/api/dispatcher-journal', dispatcherJournalRouter);
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });

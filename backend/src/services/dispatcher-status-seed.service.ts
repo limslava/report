@@ -1,0 +1,121 @@
+import { AppDataSource } from '../config/data-source';
+import { DispatcherStatus } from '../models/dispatcher-status.model';
+import { DispatcherOrder } from '../models/dispatcher-order.model';
+import {
+  DISPATCHER_DICTIONARY_SEED,
+  DISPATCHER_DICTIONARY_SEED_COLORS,
+  DispatcherDictionaryItem,
+  type DispatcherDictionaryKind,
+} from '../models/dispatcher-dictionary-item.model';
+import { logger } from '../utils/logger';
+
+/**
+ * Статусы заявок диспетчерского журнала (перенос выпадающего списка
+ * google-таблицы отдела). Сид продублирован из миграции
+ * 1785710000000-CreateDispatcherJournal: на средах с DB_SYNCHRONIZE
+ * таблицы создаёт TypeORM из моделей, и сид миграции может не выполниться —
+ * поэтому досеиваем при старте, если справочник пуст.
+ */
+const STATUS_SEED: Array<[string, string]> = [
+  ['выполнена', '#38761d'],
+  ['новая', '#f4cccc'],
+  ['стоп', '#990000'],
+  ['не везем', '#990000'],
+  ['выдано', '#674ea7'],
+  ['в обработке', '#d9d2e9'],
+  ['короткая', '#efefef'],
+  ['не откреплен', '#d9ead3'],
+  ['Бронь', '#fce5cd'],
+  ['слот готовности', '#d5348c'],
+  ['Готов', '#38761d'],
+  ['Закопан', '#00ff00'],
+  ['запросила доступ', '#efefef'],
+  ['отмена', '#ff00ff'],
+  ['продлить коммерческий', '#fff2cc'],
+  ['Штормовое', '#cfe2f3'],
+  ['На терминале', '#674ea7'],
+  ['Негабарит', '#990000'],
+  ['сортировка', '#1c4587'],
+  ['кран в ремонте', '#f4cccc'],
+  ['с контейнером', '#fff2cc'],
+  ['СРОЧНЫЙ', '#1c4587'],
+  ['не принимают', '#f4cccc'],
+  ['доверенность', '#efefef'],
+  ['Ожидает подтверждения', '#990000'],
+  ['Срочный до 00', '#00ffbf'],
+  ['прибыл ктк согласован', '#6cd9ea'],
+  ['опасник наклейки', '#990000'],
+  ['перецеп', '#674ea7'],
+  ['закрыть склад', '#990000'],
+  ['не в доступе', '#434343'],
+  ['не готов', '#ff0000'],
+  ['Спецприцеп', '#d9d2e9'],
+  ['нет мест', '#f4cccc'],
+  ['прибыл согласован', '#674ea7'],
+  ['передать экспедитору', '#ffe599'],
+  ['Уведомления о прибытии', '#cfe2f3'],
+  ['Прибыл', '#00ff00'],
+  ['отменен пин', '#d9d2e9'],
+  ['Отправили уведомление', '#990000'],
+  ['Прибыл нет заявки', '#990000'],
+  ['уточнить по готовности', '#990000'],
+  ['Шарк Интермодал', '#d9ead3'],
+  ['таможенные документы', '#990000'],
+  ['секция в то', '#990000'],
+];
+
+export async function ensureDispatcherStatusCatalog(): Promise<void> {
+  const repository = AppDataSource.getRepository(DispatcherStatus);
+  const existing = await repository.count();
+  if (existing > 0) return;
+  await repository.save(
+    STATUS_SEED.map(([name, color], index) =>
+      repository.create({ name, color, sortOrder: (index + 1) * 10 }),
+    ),
+  );
+  logger.info(`Диспетчерский журнал: справочник статусов засеян (${STATUS_SEED.length})`);
+}
+
+/** Колонка заявок, из которой берутся стартовые значения справочника терминалов. */
+const ORDER_COLUMN_BY_KIND: Partial<Record<DispatcherDictionaryKind, string>> = {
+  terminal_from: 'terminal_from',
+  terminal_to: 'terminal_to',
+};
+
+/** Самые частые значения колонки в уже заполненных заявках (до 100). */
+async function distinctOrderValues(column: string): Promise<string[]> {
+  const rows: Array<{ value: string }> = await AppDataSource.getRepository(DispatcherOrder)
+    .createQueryBuilder('o')
+    .select(`btrim(o.${column})`, 'value')
+    .where(`coalesce(btrim(o.${column}), '') <> ''`)
+    .andWhere(`char_length(btrim(o.${column})) <= 128`)
+    .groupBy(`btrim(o.${column})`)
+    .orderBy('count(*)', 'DESC')
+    .limit(100)
+    .getRawMany();
+  return rows.map((row) => row.value);
+}
+
+/**
+ * Досев справочников реестра при старте: вид засевается, только если в нём нет
+ * ни одной записи. Терминалы берутся из уже заполненных заявок (частые — выше).
+ */
+export async function ensureDispatcherDictionaryCatalog(): Promise<void> {
+  const repository = AppDataSource.getRepository(DispatcherDictionaryItem);
+  for (const [kind, seedNames] of Object.entries(DISPATCHER_DICTIONARY_SEED) as Array<[DispatcherDictionaryKind, string[]]>) {
+    const existing = await repository.count({ where: { kind } });
+    if (existing > 0) continue;
+    const column = ORDER_COLUMN_BY_KIND[kind];
+    const names = column ? await distinctOrderValues(column) : seedNames;
+    if (!names.length) continue;
+    await repository.save(
+      names.map((name, index) => repository.create({
+        kind,
+        name,
+        color: DISPATCHER_DICTIONARY_SEED_COLORS[kind]?.[name] ?? null,
+        sortOrder: (index + 1) * 10,
+      })),
+    );
+    logger.info(`Реестр диспетчеров: справочник ${kind} засеян (${names.length})`);
+  }
+}

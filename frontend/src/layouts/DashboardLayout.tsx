@@ -50,6 +50,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/auth-store';
 import {
+  canAccessDispatcherJournal,
   canAccessAdmin,
   canAccessOperationsPreview,
   canViewCalendar,
@@ -94,6 +95,9 @@ const DashboardLayout = () => {
   const stopUnreadSync = useNotesUnreadStore((state) => state.stop);
   const [isWorkSubmenuOpen, setIsWorkSubmenuOpen] = useState(false);
   const [isPlansSubmenuOpen, setIsPlansSubmenuOpen] = useState(true);
+  const [isDeptPrintOpen, setIsDeptPrintOpen] = useState(false);
+  const [isDeptMetricsOpen, setIsDeptMetricsOpen] = useState(false);
+  const [isDeptDirsOpen, setIsDeptDirsOpen] = useState(false);
   const [isAdminWorkSubmenuOpen, setIsAdminWorkSubmenuOpen] = useState(false);
   const [isAdminWorkDeptSubmenuOpen, setIsAdminWorkDeptSubmenuOpen] = useState(false);
   const [isVvoDispatchSubmenuOpen, setIsVvoDispatchSubmenuOpen] = useState(false);
@@ -148,6 +152,11 @@ const DashboardLayout = () => {
   const isKtkVvoManager = user?.role === 'manager_ktk_vvo' || user?.role === 'head_ktk_vvo';
   const isKtkMowManager = user?.role === 'manager_ktk_mow' || user?.role === 'head_ktk_mow';
   const isKtkDispatchRole = isKtkVvoManager || isKtkMowManager;
+  const isBddRole = user?.role === 'bdd_specialist_vvo' || user?.role === 'bdd_specialist_mow';
+  // Роли диспетчерского отдела: единый блок меню «Диспетчерский отдел»
+  // (Реестр / График работы / Печатные формы / Показатели / Справочник),
+  // пункты без доступа не показываются (структура согласована 2026-09-11).
+  const isDispatchDeptRole = isKtkDispatchRole || isBddRole;
   const isHrScheduleRole = user?.role === 'head_hr' || user?.role === 'hr_specialist';
   const isGarageHead = user?.role === 'garage_head_vvo';
   const isWarehouseStaffScheduleOperator = user?.role === 'warehouse_manager_vvo';
@@ -310,10 +319,13 @@ const DashboardLayout = () => {
     canViewCalendar(user?.role)
       ? { key: 'calendar', label: 'Календарь', icon: calendarIcon, onClick: () => handleNavigate('/calendar'), active: location.pathname.includes('/calendar') }
       : null,
-    canAccessFuel(user?.role)
+    canAccessFuel(user?.role) && !isDispatchDeptRole
       ? { key: 'fuel', label: 'Топливо', icon: <LocalGasStation />, onClick: () => handleNavigate('/fuel'), active: location.pathname.includes('/fuel') }
       : null,
-    canAccessDirectories(user?.role)
+    canAccessDispatcherJournal(user?.role) && !isDispatchDeptRole
+      ? { key: 'dispatcher-journal', label: 'Диспетчерская', icon: <LocalShipping />, onClick: () => handleNavigate('/dispatcher-journal'), active: location.pathname.includes('/dispatcher-journal') }
+      : null,
+    canAccessDirectories(user?.role) && !isDispatchDeptRole
       ? {
           key: 'directories', label: 'Справочники', icon: <FolderShared />,
           onClick: () => handleNavigate('/directories'), active: location.pathname.includes('/directories'),
@@ -323,7 +335,7 @@ const DashboardLayout = () => {
           ],
         }
       : null,
-    canAccessPrintForms(user?.role)
+    canAccessPrintForms(user?.role) && !isDispatchDeptRole
       ? {
           key: 'print-forms', label: 'Печатные формы', icon: <Print />,
           onClick: () => handleNavigate('/print-forms/poa'), active: location.pathname.includes('/print-forms'),
@@ -555,9 +567,9 @@ const DashboardLayout = () => {
       </Toolbar>
       <Divider />
       <List>
-        {canViewPlansMenu && (
+        {(canViewPlansMenu || isBddRole) && (
         <ListItem disablePadding key="plans">
-          <Tooltip title={!isPinnedOpen ? (isKtkDispatchRole ? 'Диспетчерский отдел' : 'Показатели') : ''} placement="right">
+          <Tooltip title={!isPinnedOpen ? (isDispatchDeptRole ? 'Диспетчерский отдел' : 'Показатели') : ''} placement="right">
             <ListItemButton
               selected={
                 location.pathname.includes('/plans') ||
@@ -567,103 +579,158 @@ const DashboardLayout = () => {
                   location.pathname === '/operations-preview' &&
                   location.search.includes('section=efficiency'))
               }
-              onClick={togglePlansSubmenu}
+              onClick={isDispatchDeptRole ? () => setIsPlansSubmenuOpen((prev) => !prev) : togglePlansSubmenu}
             >
               <ListItemIcon sx={{ minWidth: isPinnedOpen ? 40 : 0, justifyContent: 'center' }}>
                 {dispatchMenuIcon}
               </ListItemIcon>
-              {isPinnedOpen && <ListItemText primary={isKtkDispatchRole ? 'Диспетчерский отдел' : 'Показатели'} />}
+              {isPinnedOpen && <ListItemText primary={isDispatchDeptRole ? 'Диспетчерский отдел' : 'Показатели'} />}
               {isPinnedOpen ? (isPlansSubmenuOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />) : null}
             </ListItemButton>
           </Tooltip>
         </ListItem>
         )}
-        {canViewPlansMenu && isPinnedOpen && isPlansSubmenuOpen && (
+        {(canViewPlansMenu || isBddRole) && isPinnedOpen && isPlansSubmenuOpen && (
           <>
-            <ListItem disablePadding sx={{ pl: 4 }}>
-                <ListItemButton
-                  selected={location.pathname === '/plans'}
-                  onClick={() => handleNavigate('/plans')}
-                  sx={{ py: 0.5, minHeight: 34 }}
-                >
-                <ListItemText primary="Ежедневный отчет" primaryTypographyProps={{ fontSize: 14 }} />
-                </ListItemButton>
-              </ListItem>
-            {canViewTotals && (
-              <ListItem disablePadding sx={{ pl: 4 }}>
-                <ListItemButton
-                  selected={location.pathname === '/plans/totals'}
-                  onClick={() => handleNavigate('/plans/totals')}
-                  sx={{ py: 0.5, minHeight: 34 }}
-                >
-                  <ListItemText primary="Операционный отчет" primaryTypographyProps={{ fontSize: 14 }} />
-                </ListItemButton>
-              </ListItem>
-            )}
-            {isKtkDispatchRole && !isAdmin && (
+            {isDispatchDeptRole && !isAdmin ? (
               <>
-                <ListItem disablePadding sx={{ pl: 4 }}>
-                <ListItemButton
-                  selected={location.pathname.startsWith('/operations-preview')}
-                  onClick={toggleWorkSubmenuAtContainers}
-                  sx={{ py: 0.5, minHeight: 34 }}
-                >
-                  <ListItemText
-                    primary="График работы"
-                    primaryTypographyProps={{ fontSize: 14 }}
-                  />
-                  {isWorkSubmenuOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
-                </ListItemButton>
-              </ListItem>
-              {isWorkSubmenuOpen && (
-                <>
-                    <ListItem disablePadding sx={{ pl: 6 }}>
+                {canAccessDispatcherJournal(user?.role) && (
+                  <ListItem disablePadding sx={{ pl: 4 }}>
+                    <ListItemButton
+                      selected={location.pathname.includes('/dispatcher-journal')}
+                      onClick={() => handleNavigate('/dispatcher-journal')}
+                      sx={{ py: 0.5, minHeight: 34 }}
+                    >
+                      <ListItemText primary="Реестр" primaryTypographyProps={{ fontSize: 14 }} />
+                    </ListItemButton>
+                  </ListItem>
+                )}
+                {canUseWorkSchedule && (
+                  <>
+                    <ListItem disablePadding sx={{ pl: 4 }}>
                       <ListItemButton
-                        selected={location.pathname === '/operations-preview' && location.search.includes('section=containers') && (isKtkMowManager ? location.search.includes('location=ktk_mow') : !location.search.includes('location=ktk_mow') && !location.search.includes('location=garage'))}
-                        onClick={() => handleNavigate(`/operations-preview?location=${isKtkMowManager ? 'ktk_mow' : 'ktk_vvo'}&section=containers`)}
-                        sx={{ py: 0.5, minHeight: 32 }}
+                        selected={location.pathname.startsWith('/operations-preview') && !location.search.includes('section=efficiency')}
+                        onClick={toggleWorkSubmenuAtContainers}
+                        sx={{ py: 0.5, minHeight: 34 }}
                       >
-                        <ListItemText primary="Контейнеровозы" primaryTypographyProps={{ fontSize: 13 }} />
+                        <ListItemText primary="График работы" primaryTypographyProps={{ fontSize: 14 }} />
+                        {isWorkSubmenuOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
                       </ListItemButton>
                     </ListItem>
-                    {isKtkVvoManager && (
-                    <ListItem disablePadding sx={{ pl: 6 }}>
-                      <ListItemButton
-                        selected={location.pathname === '/operations-preview' && location.search.includes('section=auto') && !location.search.includes('location=ktk_mow') && !location.search.includes('location=garage')}
-                        onClick={() => handleNavigate('/operations-preview?location=ktk_vvo&section=auto')}
-                        sx={{ py: 0.5, minHeight: 32 }}
-                      >
-                        <ListItemText primary="Автовозы" primaryTypographyProps={{ fontSize: 13 }} />
-                      </ListItemButton>
-                    </ListItem>
+                    {isWorkSubmenuOpen && (
+                      <>
+                        <ListItem disablePadding sx={{ pl: 6 }}>
+                          <ListItemButton
+                            selected={location.pathname === '/operations-preview' && location.search.includes('section=containers')}
+                            onClick={() => handleNavigate(`/operations-preview?location=${isKtkMowManager ? 'ktk_mow' : 'ktk_vvo'}&section=containers`)}
+                            sx={{ py: 0.5, minHeight: 32 }}
+                          >
+                            <ListItemText primary="Контейнеровозы" primaryTypographyProps={{ fontSize: 13 }} />
+                          </ListItemButton>
+                        </ListItem>
+                        {isKtkVvoManager && (
+                          <ListItem disablePadding sx={{ pl: 6 }}>
+                            <ListItemButton
+                              selected={location.pathname === '/operations-preview' && location.search.includes('section=auto')}
+                              onClick={() => handleNavigate('/operations-preview?location=ktk_vvo&section=auto')}
+                              sx={{ py: 0.5, minHeight: 32 }}
+                            >
+                              <ListItemText primary="Автовозы" primaryTypographyProps={{ fontSize: 13 }} />
+                            </ListItemButton>
+                          </ListItem>
+                        )}
+                        <ListItem disablePadding sx={{ pl: 6 }}>
+                          <ListItemButton
+                            selected={location.pathname === '/operations-preview' && location.search.includes('section=dispatchers')}
+                            onClick={() => handleNavigate(`/operations-preview?location=${isKtkMowManager ? 'ktk_mow' : 'ktk_vvo'}&section=dispatchers`)}
+                            sx={{ py: 0.5, minHeight: 32 }}
+                          >
+                            <ListItemText primary="Диспетчера" primaryTypographyProps={{ fontSize: 13 }} />
+                          </ListItemButton>
+                        </ListItem>
+                        <ListItem disablePadding sx={{ pl: 6 }}>
+                          <ListItemButton
+                            selected={location.pathname === '/operations-preview' && location.search.includes('section=couriers')}
+                            onClick={() => handleNavigate(`/operations-preview?location=${isKtkMowManager ? 'ktk_mow' : 'ktk_vvo'}&section=couriers`)}
+                            sx={{ py: 0.5, minHeight: 32 }}
+                          >
+                            <ListItemText primary={isKtkMowManager ? 'Механики' : 'Оперативники'} primaryTypographyProps={{ fontSize: 13 }} />
+                          </ListItemButton>
+                        </ListItem>
+                      </>
                     )}
-                    <ListItem disablePadding sx={{ pl: 6 }}>
+                  </>
+                )}
+                {canAccessPrintForms(user?.role) && (
+                  <>
+                    <ListItem disablePadding sx={{ pl: 4 }}>
                       <ListItemButton
-                        selected={location.pathname === '/operations-preview' && location.search.includes('section=dispatchers') && (isKtkMowManager ? location.search.includes('location=ktk_mow') : !location.search.includes('location=ktk_mow') && !location.search.includes('location=garage'))}
-                        onClick={() => handleNavigate(`/operations-preview?location=${isKtkMowManager ? 'ktk_mow' : 'ktk_vvo'}&section=dispatchers`)}
-                        sx={{ py: 0.5, minHeight: 32 }}
+                        selected={location.pathname.includes('/print-forms')}
+                        onClick={() => setIsDeptPrintOpen((prev) => !prev)}
+                        sx={{ py: 0.5, minHeight: 34 }}
                       >
-                        <ListItemText primary="Диспетчера" primaryTypographyProps={{ fontSize: 13 }} />
+                        <ListItemText primary="Печатные формы" primaryTypographyProps={{ fontSize: 14 }} />
+                        {isDeptPrintOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
                       </ListItemButton>
                     </ListItem>
-                    <ListItem disablePadding sx={{ pl: 6 }}>
-                      <ListItemButton
-                        selected={location.pathname === '/operations-preview' && location.search.includes('section=couriers') && (isKtkMowManager ? location.search.includes('location=ktk_mow') : !location.search.includes('location=ktk_mow') && !location.search.includes('location=garage'))}
-                        onClick={() => handleNavigate(`/operations-preview?location=${isKtkMowManager ? 'ktk_mow' : 'ktk_vvo'}&section=couriers`)}
-                        sx={{ py: 0.5, minHeight: 32 }}
-                      >
-                        <ListItemText primary={isKtkMowManager ? 'Механики' : 'Оперативники'} primaryTypographyProps={{ fontSize: 13 }} />
-                      </ListItemButton>
-                    </ListItem>
-                    <ListItem disablePadding sx={{ pl: 6 }}>
-                      <ListItemButton
-                        selected={location.pathname === '/operations-preview' && location.search.includes('section=efficiency') && (isKtkMowManager ? location.search.includes('location=ktk_mow') : !location.search.includes('location=ktk_mow'))}
-                        onClick={() => handleNavigate(`/operations-preview?location=${isKtkMowManager ? 'ktk_mow' : 'ktk_vvo'}&section=efficiency`)}
-                        sx={{ py: 0.5, minHeight: 32 }}
-                      >
-                        <ListItemText primary="Эффективность" primaryTypographyProps={{ fontSize: 13 }} />
-                      </ListItemButton>
-                    </ListItem>
+                    {isDeptPrintOpen && (
+                      <>
+                        <ListItem disablePadding sx={{ pl: 6 }}>
+                          <ListItemButton
+                            selected={location.pathname.includes('/print-forms/poa')}
+                            onClick={() => handleNavigate('/print-forms/poa')}
+                            sx={{ py: 0.5, minHeight: 32 }}
+                          >
+                            <ListItemText primary="Доверенности" primaryTypographyProps={{ fontSize: 13 }} />
+                          </ListItemButton>
+                        </ListItem>
+                        <ListItem disablePadding sx={{ pl: 6 }}>
+                          <ListItemButton
+                            selected={location.pathname.includes('/print-forms/requests')}
+                            onClick={() => handleNavigate('/print-forms/requests')}
+                            sx={{ py: 0.5, minHeight: 32 }}
+                          >
+                            <ListItemText primary="Заявки" primaryTypographyProps={{ fontSize: 13 }} />
+                          </ListItemButton>
+                        </ListItem>
+                      </>
+                    )}
+                  </>
+                )}
+                <ListItem disablePadding sx={{ pl: 4 }}>
+                  <ListItemButton
+                    selected={location.pathname.includes('/plans') || location.pathname.includes('/fuel') || location.search.includes('section=efficiency') || location.pathname.includes('/operations-preview/auto-directions')}
+                    onClick={() => setIsDeptMetricsOpen((prev) => !prev)}
+                    sx={{ py: 0.5, minHeight: 34 }}
+                  >
+                    <ListItemText primary="Показатели" primaryTypographyProps={{ fontSize: 14 }} />
+                    {isDeptMetricsOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+                  </ListItemButton>
+                </ListItem>
+                {isDeptMetricsOpen && (
+                  <>
+                    {canViewPlansMenu && (
+                      <ListItem disablePadding sx={{ pl: 6 }}>
+                        <ListItemButton
+                          selected={location.pathname === '/plans'}
+                          onClick={() => handleNavigate('/plans')}
+                          sx={{ py: 0.5, minHeight: 32 }}
+                        >
+                          <ListItemText primary="Ежедневный отчет" primaryTypographyProps={{ fontSize: 13 }} />
+                        </ListItemButton>
+                      </ListItem>
+                    )}
+                    {canViewTotals && (
+                      <ListItem disablePadding sx={{ pl: 6 }}>
+                        <ListItemButton
+                          selected={location.pathname === '/plans/totals'}
+                          onClick={() => handleNavigate('/plans/totals')}
+                          sx={{ py: 0.5, minHeight: 32 }}
+                        >
+                          <ListItemText primary="Операционный отчет" primaryTypographyProps={{ fontSize: 13 }} />
+                        </ListItemButton>
+                      </ListItem>
+                    )}
                     {isKtkVvoManager && (
                       <ListItem disablePadding sx={{ pl: 6 }}>
                         <ListItemButton
@@ -675,31 +742,112 @@ const DashboardLayout = () => {
                         </ListItemButton>
                       </ListItem>
                     )}
+                    {canAccessFuel(user?.role) && (
+                      <ListItem disablePadding sx={{ pl: 6 }}>
+                        <ListItemButton
+                          selected={location.pathname.includes('/fuel')}
+                          onClick={() => handleNavigate('/fuel')}
+                          sx={{ py: 0.5, minHeight: 32 }}
+                        >
+                          <ListItemText primary="Топливо" primaryTypographyProps={{ fontSize: 13 }} />
+                        </ListItemButton>
+                      </ListItem>
+                    )}
+                    {canUseWorkSchedule && (
+                      <ListItem disablePadding sx={{ pl: 6 }}>
+                        <ListItemButton
+                          selected={location.pathname === '/operations-preview' && location.search.includes('section=efficiency')}
+                          onClick={() => handleNavigate(`/operations-preview?location=${isKtkMowManager ? 'ktk_mow' : 'ktk_vvo'}&section=efficiency`)}
+                          sx={{ py: 0.5, minHeight: 32 }}
+                        >
+                          <ListItemText primary="Эффективность" primaryTypographyProps={{ fontSize: 13 }} />
+                        </ListItemButton>
+                      </ListItem>
+                    )}
+                  </>
+                )}
+                {canAccessDirectories(user?.role) && (
+                  <>
+                    <ListItem disablePadding sx={{ pl: 4 }}>
+                      <ListItemButton
+                        selected={location.pathname.includes('/directories')}
+                        onClick={() => setIsDeptDirsOpen((prev) => !prev)}
+                        sx={{ py: 0.5, minHeight: 34 }}
+                      >
+                        <ListItemText primary="Справочник" primaryTypographyProps={{ fontSize: 14 }} />
+                        {isDeptDirsOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+                      </ListItemButton>
+                    </ListItem>
+                    {isDeptDirsOpen && (
+                      <>
+                        <ListItem disablePadding sx={{ pl: 6 }}>
+                          <ListItemButton
+                            selected={location.pathname.endsWith('/directories')}
+                            onClick={() => handleNavigate('/directories')}
+                            sx={{ py: 0.5, minHeight: 32 }}
+                          >
+                            <ListItemText primary="Наша организация" primaryTypographyProps={{ fontSize: 13 }} />
+                          </ListItemButton>
+                        </ListItem>
+                        <ListItem disablePadding sx={{ pl: 6 }}>
+                          <ListItemButton
+                            selected={location.pathname.includes('/directories/counterparties')}
+                            onClick={() => handleNavigate('/directories/counterparties')}
+                            sx={{ py: 0.5, minHeight: 32 }}
+                          >
+                            <ListItemText primary="Контрагенты" primaryTypographyProps={{ fontSize: 13 }} />
+                          </ListItemButton>
+                        </ListItem>
+                      </>
+                    )}
                   </>
                 )}
               </>
-            )}
-            {canViewFinancial && (
-              <ListItem disablePadding sx={{ pl: 4 }}>
-                <ListItemButton
-                  selected={location.pathname === '/plans/financial'}
-                  onClick={() => handleNavigate('/plans/financial')}
-                  sx={{ py: 0.5, minHeight: 34 }}
-                >
-                  <ListItemText primary="Валовая прибыль, план" primaryTypographyProps={{ fontSize: 14 }} />
-                </ListItemButton>
-              </ListItem>
-            )}
-            {canViewEfficiency && (
-              <ListItem disablePadding sx={{ pl: 4 }}>
-                <ListItemButton
-                  selected={location.pathname === '/operations-preview' && location.search.includes('section=efficiency')}
-                  onClick={() => handleNavigate('/operations-preview?location=ktk_vvo&section=efficiency')}
-                  sx={{ py: 0.5, minHeight: 34 }}
-                >
-                  <ListItemText primary="Эффективность" primaryTypographyProps={{ fontSize: 14 }} />
-                </ListItemButton>
-              </ListItem>
+            ) : (
+              <>
+                <ListItem disablePadding sx={{ pl: 4 }}>
+                  <ListItemButton
+                    selected={location.pathname === '/plans'}
+                    onClick={() => handleNavigate('/plans')}
+                    sx={{ py: 0.5, minHeight: 34 }}
+                  >
+                    <ListItemText primary="Ежедневный отчет" primaryTypographyProps={{ fontSize: 14 }} />
+                  </ListItemButton>
+                </ListItem>
+                {canViewTotals && (
+                  <ListItem disablePadding sx={{ pl: 4 }}>
+                    <ListItemButton
+                      selected={location.pathname === '/plans/totals'}
+                      onClick={() => handleNavigate('/plans/totals')}
+                      sx={{ py: 0.5, minHeight: 34 }}
+                    >
+                      <ListItemText primary="Операционный отчет" primaryTypographyProps={{ fontSize: 14 }} />
+                    </ListItemButton>
+                  </ListItem>
+                )}
+                {canViewFinancial && (
+                  <ListItem disablePadding sx={{ pl: 4 }}>
+                    <ListItemButton
+                      selected={location.pathname === '/plans/financial'}
+                      onClick={() => handleNavigate('/plans/financial')}
+                      sx={{ py: 0.5, minHeight: 34 }}
+                    >
+                      <ListItemText primary="Валовая прибыль, план" primaryTypographyProps={{ fontSize: 14 }} />
+                    </ListItemButton>
+                  </ListItem>
+                )}
+                {canViewEfficiency && (
+                  <ListItem disablePadding sx={{ pl: 4 }}>
+                    <ListItemButton
+                      selected={location.pathname === '/operations-preview' && location.search.includes('section=efficiency')}
+                      onClick={() => handleNavigate('/operations-preview?location=ktk_vvo&section=efficiency')}
+                      sx={{ py: 0.5, minHeight: 34 }}
+                    >
+                      <ListItemText primary="Эффективность" primaryTypographyProps={{ fontSize: 14 }} />
+                    </ListItemButton>
+                  </ListItem>
+                )}
+              </>
             )}
           </>
         )}
@@ -1111,6 +1259,8 @@ const DashboardLayout = () => {
               {location.pathname.includes('/fuel') && 'Учёт топлива'}
               {location.pathname.includes('/directories/counterparties') ? 'Справочники — Контрагенты' : location.pathname.includes('/directories') ? 'Справочники' : ''}
               {location.pathname.includes('/print-forms/requests') ? 'Печатные формы — Заявки' : location.pathname.includes('/print-forms') ? 'Печатные формы — Доверенности' : ''}
+              {location.pathname.includes('/dispatcher-journal') && 'Диспетчерская — КТК Владивосток'}
+              {location.pathname.includes('/uchet-ts-comparison') && 'Сверка с учётом ТС'}
             </Typography>
           )}
           {isTechDashboardRoute && (

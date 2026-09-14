@@ -173,9 +173,9 @@ const AdminPage = () => {
   }, []);
 
   const roleLabels: Record<string, string> = {
-    manager_ktk_vvo: 'Менеджер КТК Владивосток',
+    manager_ktk_vvo: 'Диспетчер КТК Владивосток',
     head_ktk_vvo: 'Руководитель КТК Владивосток',
-    manager_ktk_mow: 'Менеджер КТК Москва',
+    manager_ktk_mow: 'Диспетчер КТК Москва',
     head_ktk_mow: 'Руководитель КТК Москва',
     head_hr: 'Руководитель отдела кадров',
     hr_specialist: 'Специалист отдела кадров',

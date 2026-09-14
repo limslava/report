@@ -46,6 +46,13 @@ export function canAccessDirectories(role?: string | null): boolean {
 }
 
 /** Печатные формы: пока только Владивосток (шаблоны под контрагентов ВВО) + админ. */
+/** Реестр диспетчеров КТК Владивосток (диспетчер = менеджер КТК). */
+export function canAccessDispatcherJournal(role?: string | null): boolean {
+  return role === 'admin'
+    || role === 'manager_ktk_vvo'
+    || role === 'head_ktk_vvo';
+}
+
 export function canAccessPrintForms(role?: string | null): boolean {
   return role === 'admin'
     || role === 'head_ktk_vvo'

@@ -15,6 +15,7 @@ import {
   canAccessAdmin,
   canAccessDirectories,
   canAccessPrintForms,
+  canAccessDispatcherJournal,
   canAccessFuel,
   canAccessOperationsPreview,
   canViewOperationsEfficiency,
@@ -34,6 +35,7 @@ const PrintFormsPage = lazy(() => import('./pages/PrintFormsPage'));
 const CounterpartiesPage = lazy(() => import('./pages/CounterpartiesPage'));
 const CounterpartyCardPage = lazy(() => import('./pages/CounterpartyCardPage'));
 const UchetTsComparisonPage = lazy(() => import('./pages/UchetTsComparisonPage'));
+const DispatcherJournalPage = lazy(() => import('./pages/DispatcherJournalPage'));
 
 function App() {
   const { token, user } = useAuthStore();
@@ -92,6 +94,16 @@ function App() {
               <RouteAccessGuard allow={canAccessAdmin(user?.role)}>
                 <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
                   <UchetTsComparisonPage />
+                </Suspense>
+              </RouteAccessGuard>
+            )}
+          />
+          <Route
+            path="dispatcher-journal"
+            element={(
+              <RouteAccessGuard allow={canAccessDispatcherJournal(user?.role)}>
+                <Suspense fallback={<div className="calendar-loading">Загрузка...</div>}>
+                  <DispatcherJournalPage />
                 </Suspense>
               </RouteAccessGuard>
             )}

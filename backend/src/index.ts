@@ -5,6 +5,7 @@ import { logger } from './utils/logger';
 import { planWebSocketService } from './services/websocket.service';
 import { assertProductionEnv, getAppPort } from './config/env';
 import { ensureDefaultAdmin } from './services/bootstrap.service';
+import { ensureDispatcherDictionaryCatalog, ensureDispatcherStatusCatalog } from './services/dispatcher-status-seed.service';
 import {
   getUchetTsSyncIntervalMinutes,
   importUchetTsRecent,
@@ -29,6 +30,14 @@ async function startServer() {
       logger.info('Planning catalog bootstrapped');
     } catch (err) {
       logger.error('Failed to bootstrap planning catalog:', err);
+    }
+    try {
+      // реестр диспетчеров: статусы и справочники (типы КТК, НДС, операции, терминалы);
+      // на main схема строится synchronize, поэтому стартовые значения — здесь, а не в миграциях
+      await ensureDispatcherStatusCatalog();
+      await ensureDispatcherDictionaryCatalog();
+    } catch (err) {
+      logger.error('Failed to bootstrap dispatcher journal catalogs:', err);
     }
 
     const app = createApp();

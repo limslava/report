@@ -38,11 +38,26 @@ export interface NotesUnreadRefreshEvent {
   timestamp: string;
 }
 
+export interface DispatcherJournalUpdatedEvent {
+  type: 'dispatcher-journal:updated';
+  date: string;
+  timestamp: string;
+  userId?: string;
+}
+
+export interface DispatcherDictionariesUpdatedEvent {
+  type: 'dispatcher-journal:dictionaries-updated';
+  timestamp: string;
+  userId?: string;
+}
+
 type OutgoingWebSocketEvent =
   | PlanUpdateEvent
   | PlanningV2SegmentUpdateEvent
   | FinancialPlanUpdateEvent
-  | NotesUnreadRefreshEvent;
+  | NotesUnreadRefreshEvent
+  | DispatcherJournalUpdatedEvent
+  | DispatcherDictionariesUpdatedEvent;
 
 type SocketClient = {
   userId: string;
@@ -71,6 +86,13 @@ function isFinancialPlanEvent(event: OutgoingWebSocketEvent): event is Financial
 
 function isNotesUnreadRefreshEvent(event: OutgoingWebSocketEvent): event is NotesUnreadRefreshEvent {
   return event.type === 'notes:unread-refresh';
+}
+
+/** События реестра диспетчеров (заявки и справочники) — только ролям реестра. */
+function isDispatcherJournalEvent(
+  event: OutgoingWebSocketEvent,
+): event is DispatcherJournalUpdatedEvent | DispatcherDictionariesUpdatedEvent {
+  return event.type === 'dispatcher-journal:updated' || event.type === 'dispatcher-journal:dictionaries-updated';
 }
 
 export class PlanWebSocketService {
@@ -202,6 +224,12 @@ export class PlanWebSocketService {
     return role === 'admin' || role === 'director' || role === 'manager_auto';
   }
 
+  private canReceiveDispatcherJournalEvents(role: string): boolean {
+    return role === 'admin'
+      || role === 'manager_ktk_vvo'
+      || role === 'head_ktk_vvo';
+  }
+
   private handleClientMessage(ws: WebSocket, data: any) {
     switch (data.type) {
       case 'subscribe':
@@ -250,6 +278,10 @@ export class PlanWebSocketService {
       }
 
       if (isNotesUnreadRefreshEvent(event) && !this.canReceiveNotesEvents(meta.role)) {
+        return;
+      }
+
+      if (isDispatcherJournalEvent(event) && !this.canReceiveDispatcherJournalEvents(meta.role)) {
         return;
       }
 
@@ -309,6 +341,23 @@ export class PlanWebSocketService {
   notifyNotesUnreadRefresh() {
     this.broadcastPlanUpdate({
       type: 'notes:unread-refresh',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  notifyDispatcherJournalUpdated(params: { date: string; userId?: string }) {
+    this.broadcastPlanUpdate({
+      type: 'dispatcher-journal:updated',
+      date: params.date,
+      userId: params.userId,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  notifyDispatcherDictionariesUpdated(params: { userId?: string }) {
+    this.broadcastPlanUpdate({
+      type: 'dispatcher-journal:dictionaries-updated',
+      userId: params.userId,
       timestamp: new Date().toISOString(),
     });
   }

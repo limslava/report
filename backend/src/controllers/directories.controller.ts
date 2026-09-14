@@ -385,17 +385,47 @@ export const getEmployeeCardText = async (req: Request, res: Response) => {
   res.json({ text });
 };
 
-/** Поиск карточки по ФИО — для пункта «Скопировать данные водителя» в графиках. */
+const initialsKey = (value: string): string =>
+  value.toLowerCase().replace(/ё/g, 'е').replace(/[\s.]+/g, '');
+
+/**
+ * Реестр диспетчеров хранит ФИО как «Фамилия И.О.»: ищем по фамилии и
+ * совпадению инициалов. Несколько однофамильцев с теми же инициалами — 409,
+ * при прочих равных предпочтение действующему водителю.
+ */
+async function findEmployeeByShortName(location: FleetLocation, raw: string): Promise<Employee | null> {
+  const parts = raw.trim().split(/\s+/);
+  if (parts.length < 2) return null;
+  const [surname, ...rest] = parts;
+  const initials = rest.join('').split('.').filter(Boolean).map((part) => part[0]).join('');
+  if (!initials) return null;
+  const candidates = await employeeRepo
+    .createQueryBuilder('employee')
+    .where('employee.location = :location', { location })
+    .andWhere('LOWER(employee.full_name) LIKE LOWER(:prefix)', { prefix: `${surname} %` })
+    .getMany();
+  const matches = candidates.filter((candidate) => {
+    const [, ...names] = candidate.fullName.trim().split(/\s+/);
+    return initialsKey(names.map((name) => name[0]).join('')) === initialsKey(initials);
+  });
+  if (matches.length <= 1) return matches[0] ?? null;
+  const preferred = matches.filter((item) => item.status === 'active' && item.position === 'водитель');
+  if (preferred.length === 1) return preferred[0];
+  return httpError(409, `В справочнике несколько сотрудников «${raw.trim()}» — уточните ФИО полностью`) as never;
+}
+
+/** Поиск карточки по ФИО — для пункта «Скопировать данные водителя» в графиках и реестре. */
 export const findEmployeeCardByName = async (req: Request, res: Response) => {
   const location = requireDirectoryLocation(req, req.query.location);
   const fullName = trimmed(req.query.fullName, 255);
   if (!fullName) httpError(400, 'fullName is required');
 
-  const employee = await employeeRepo
+  let employee = await employeeRepo
     .createQueryBuilder('employee')
     .where('employee.location = :location', { location })
     .andWhere('LOWER(employee.full_name) = LOWER(:fullName)', { fullName })
     .getOne();
+  if (!employee) employee = await findEmployeeByShortName(location, fullName);
   if (!employee) return httpError(404, 'Employee not found in directory') as never;
 
   const rig = await resolveRigFromSchedule(location, employee.fullName);

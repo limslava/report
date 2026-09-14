@@ -1,0 +1,626 @@
+/* Журнал диспетчерского отдела КТК Владивосток */
+
+.dj-page { display: flex; flex-direction: column; gap: 10px; }
+
+.dj-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dj-toolbar__spacer { flex: 1; }
+.dj-toolbar__hint { font-size: 11.5px; color: #8b93a1; }
+
+.dj-table-wrap {
+  overflow: auto;
+  border: 1px solid #e1e4ea;
+  border-radius: 8px;
+  background: #fff;
+  max-height: calc(100vh - 180px);
+}
+
+/* ширины колонок считает страница: без ручной ширины колонки растягиваются на
+   большом экране, с ручной — держат заданную (table-layout: fixed) */
+.dj-table { border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+
+.dj-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f4f6f9;
+  font-size: 10.5px;
+  font-weight: 650;
+  color: #3d4757;
+  padding: 4px 6px;
+  border-bottom: 1px solid #d8dde5;
+  border-right: 1px solid #eceff3;
+  text-align: left;
+  line-height: 1.2;
+}
+
+.dj-table td {
+  padding: 0;
+  border-bottom: 1px solid #d5dbe3;
+  border-right: 1px solid #dfe3ea;
+  vertical-align: middle;
+  background: #fff;
+}
+
+.dj-table tr:hover td { background: #fbfcfe; }
+
+/* разделитель между датами — таблица сплошная, дни видны по жирной линии */
+.dj-row--day-start td { border-top: 2px solid #d3d9e2; }
+
+/* выделенная строка (Ctrl+C / Ctrl+X / Ctrl+V) */
+.dj-row--selected td { background: #e9f2ff !important; }
+
+.dj-rownum-head { text-align: center !important; }
+.dj-rownum {
+  text-align: center;
+  font-size: 10.5px;
+  color: #9aa3b0;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 2px !important;
+  background: #f8f9fb !important;
+}
+.dj-rownum:hover { color: #2a78d6; background: #eef5ff !important; }
+.dj-row--selected .dj-rownum { color: #2a78d6; font-weight: 700; }
+
+.dj-date-cell { white-space: nowrap; }
+.dj-date-input {
+  border: 0;
+  outline: none;
+  font: inherit;
+  font-size: 11px;
+  padding: 4px 4px;
+  background: transparent;
+  color: #1f2733;
+  width: 100%;
+  box-sizing: border-box;
+}
+.dj-date-input:focus { background: #eef5ff; box-shadow: inset 0 0 0 2px #2a78d6; border-radius: 4px; }
+.dj-ghost-date { font-size: 11px; color: #9aa3b0; padding: 5px 6px; display: inline-block; }
+
+.dj-cell-input,
+.dj-cell-textarea {
+  width: 100%;
+  border: 0;
+  outline: none;
+  font: inherit;
+  font-size: 11px;
+  padding: 4px 5px;
+  background: transparent;
+  color: #1f2733;
+  box-sizing: border-box;
+}
+
+.dj-cell-textarea { resize: none; display: block; line-height: 1.3; margin: auto 0; }
+
+.dj-cell-input:focus,
+.dj-cell-textarea:focus { background: #eef5ff; box-shadow: inset 0 0 0 2px #2a78d6; border-radius: 3px; }
+
+.dj-checkbox-cell { text-align: center; padding: 1px 2px !important; }
+
+.dj-status-cell .MuiAutocomplete-root { padding: 1px 2px; }
+.dj-status-input {
+  font-size: 11px !important;
+  border-radius: 6px;
+  padding: 1px 6px !important;
+}
+.dj-status-input input { font-size: 11px; padding: 3px 0 !important; }
+
+.dj-status-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 1.5px 8px;
+  white-space: nowrap;
+  background: #eef0f3;
+  color: #4b5563;
+}
+
+.dj-sort-btn {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 650;
+  color: #3d4757;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  text-align: left;
+  line-height: 1.2;
+}
+.dj-sort-btn:hover { color: #2a78d6; }
+.dj-sort-ind { width: 8px; flex: none; }
+.dj-sort-ind.is-asc::after { content: '▲'; font-size: 8px; color: #2a78d6; }
+.dj-sort-ind.is-desc::after { content: '▼'; font-size: 8px; color: #2a78d6; }
+
+.dj-delete-btn {
+  border: 0;
+  background: transparent;
+  color: #b6bcc7;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 6px;
+}
+.dj-delete-btn:hover { color: #d03b3b; }
+
+.dj-row--ghost td { background: #fcfdfe; }
+.dj-row--ghost .dj-rownum { color: #2a78d6; font-size: 15px; font-weight: 600; cursor: pointer; }
+.dj-row--ghost .dj-rownum--add:hover { background: #dbe9fb !important; }
+
+.dj-empty {
+  padding: 24px;
+  text-align: center;
+  color: #8b93a1;
+  font-size: 12.5px;
+}
+
+/* ── заголовок: сортировка + меню фильтра + ручка ширины ── */
+.dj-th { display: flex; align-items: flex-start; gap: 2px; min-width: 0; }
+.dj-th .dj-sort-btn { flex: 1; min-width: 0; overflow: hidden; }
+.dj-filter-btn {
+  flex: none;
+  border: 0;
+  background: transparent;
+  padding: 0 1px;
+  line-height: 0;
+  color: #b3bac5;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.dj-filter-btn:hover { color: #2a78d6; background: #e6effb; }
+.dj-filter-btn.is-active { color: #fff; background: #2a78d6; }
+.dj-th--filtered { background: #e8f1fd !important; }
+
+.dj-resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+}
+.dj-resize:hover,
+body.dj-resizing .dj-resize:active { background: rgba(42, 120, 214, 0.35); }
+body.dj-resizing { cursor: col-resize !important; user-select: none; }
+
+/* ── закреплённые слева колонки ── */
+.dj-table td.dj-pinned { z-index: 1; }
+.dj-table th.dj-pinned { z-index: 4; }
+.dj-pinned--last { box-shadow: 3px 0 4px -2px rgba(31, 39, 51, 0.18); }
+
+/* ── выполненные заявки: лёгкая зелёная заливка всей строки ── */
+.dj-row--done td { background: #eaf6e7; }
+.dj-table tr.dj-row--done:hover td { background: #e1f1dd; }
+
+/* расчётная колонка «Без НДС» */
+.dj-computed-cell {
+  font-size: 11px;
+  text-align: right;
+  padding: 4px 6px !important;
+  color: #1f2733;
+  font-variant-numeric: tabular-nums;
+  background: #f8fafc;
+}
+.dj-row--done .dj-computed-cell { background: #e3f1df; }
+
+/* ── ячейка со списком подсказок ── */
+.dj-list-popup {
+  position: fixed;
+  z-index: 1500;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #d8dde5;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(31, 39, 51, 0.14);
+  padding: 3px 0;
+}
+.dj-list-option {
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+  /* длинные значения (терминалы с адресом) переносятся, список не шире 460px */
+  max-width: 460px;
+  white-space: normal;
+  line-height: 1.3;
+  color: #1f2733;
+}
+.dj-list-option.is-active { background: #eef5ff; }
+.dj-list-option.is-selected { font-weight: 650; color: #2a78d6; }
+
+/* ── время подачи ── */
+.dj-time-cell { display: flex; align-items: center; }
+.dj-time-cell .dj-cell-input { flex: 1; min-width: 0; }
+.dj-cell-input--warn { color: #b45309; }
+.dj-time-btn {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: #b3bac5;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 0;
+}
+.dj-time-btn:hover { color: #2a78d6; }
+.dj-time-picker { padding: 8px 10px; width: 236px; }
+.dj-time-picker__title { font-size: 11px; font-weight: 650; color: #6b7280; margin: 2px 0 4px; }
+.dj-time-picker__grid { display: grid; gap: 3px; margin-bottom: 6px; }
+.dj-time-picker__grid--hours { grid-template-columns: repeat(6, 1fr); }
+.dj-time-picker__grid--minutes { grid-template-columns: repeat(4, 1fr); }
+.dj-time-picker__grid button {
+  border: 1px solid #e1e4ea;
+  background: #fff;
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 3px 0;
+  cursor: pointer;
+  color: #1f2733;
+}
+.dj-time-picker__grid button:hover:not(:disabled) { border-color: #2a78d6; color: #2a78d6; }
+.dj-time-picker__grid button.is-active { background: #2a78d6; border-color: #2a78d6; color: #fff; }
+.dj-time-picker__grid button:disabled { opacity: 0.4; cursor: default; }
+
+/* ── меню строки (правый клик) ── */
+.dj-context-overlay { position: fixed; inset: 0; z-index: 1400; }
+.dj-context-menu {
+  position: fixed;
+  min-width: 190px;
+  background: #fff;
+  border: 1px solid #d8dde5;
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(31, 39, 51, 0.18);
+  padding: 4px 0;
+}
+.dj-context-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 14px;
+  cursor: pointer;
+  color: #1f2733;
+}
+.dj-context-item:hover { background: #eef5ff; }
+.dj-context-item.danger { color: #c62828; }
+.dj-context-item.danger:hover { background: #fdecec; }
+
+/* ── меню заголовка: сортировка, фильтр, закрепление ── */
+.dj-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #1f2733;
+}
+.dj-menu-item:hover { background: #eef5ff; }
+.dj-link-btn {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: #2a78d6;
+  cursor: pointer;
+}
+.dj-filter-option {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.dj-filter-option:hover { background: #f6f8fb; }
+.dj-filter-option__text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dj-filter-option__count { color: #9aa3b0; font-size: 11px; }
+
+.dj-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #bcd4f3;
+  background: #eef5ff;
+  color: #1d5fb0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.dj-filter-chip:hover { background: #e0edff; }
+.dj-filter-chip--pin { border-color: #d8dde5; background: #f6f8fb; color: #3d4757; }
+
+/* ── окно справочников ── */
+.dj-color-input {
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #d8dde5;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  flex: none;
+}
+.dj-dict-name {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 6px;
+  background: transparent;
+  color: #1f2733;
+}
+.dj-dict-name:hover:not(:disabled) { border-color: #e1e4ea; }
+.dj-dict-name:focus { outline: none; border-color: #2a78d6; background: #fff; }
+
+/* ── перетаскивание строк за номер ── */
+.dj-rownum[draggable="true"] { cursor: grab; }
+.dj-rownum[draggable="true"]:active { cursor: grabbing; }
+.dj-table tr.dj-row--drop-before td { box-shadow: inset 0 2px 0 #2a78d6; }
+.dj-table tr.dj-row--drop-after td { box-shadow: inset 0 -2px 0 #2a78d6; }
+
+/* статус без крестика очистки: текст не перекрывается, место под стрелку фиксировано */
+.dj-status-cell .MuiAutocomplete-clearIndicator { display: none !important; }
+.dj-status-cell .MuiAutocomplete-inputRoot { padding-right: 22px !important; }
+.dj-status-clear { font-size: 11.5px; color: #8b93a1; font-style: italic; padding: 1.5px 2px; }
+
+/* номер строки: при наведении вместо номера — «ручка» для перетаскивания */
+.dj-rownum { position: relative; }
+.dj-rownum__grip {
+  display: none !important;
+  color: #2a78d6;
+  vertical-align: middle;
+}
+.dj-table tr:hover .dj-rownum[draggable="true"] .dj-rownum__num { display: none; }
+.dj-table tr:hover .dj-rownum[draggable="true"] .dj-rownum__grip { display: inline-block !important; }
+
+/* строка, в ячейке которой идёт работа (фокус), подсвечивается целиком */
+.dj-table tr:focus-within td,
+.dj-table tr.dj-row--done:focus-within td { background: #eef5ff; }
+.dj-table tr:focus-within .dj-rownum { background: #dfeafb !important; color: #2a78d6; }
+
+/* значение справочника с цветом — ячейка-«чип», как статус */
+.dj-cell-input--chip {
+  border-radius: 6px;
+  font-weight: 600;
+  margin: 1px 0;
+  padding: 3px 6px;
+}
+.dj-list-chip { white-space: normal; }
+
+/* квадратик цвета в окне справочников */
+.dj-color-swatch { position: relative; display: inline-flex; flex: none; }
+.dj-color-input--empty {
+  background: linear-gradient(135deg, #fff 45%, #d03b3b 45%, #d03b3b 55%, #fff 55%) !important;
+}
+.dj-color-input--empty::-webkit-color-swatch { opacity: 0; }
+.dj-color-clear {
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid #d8dde5;
+  background: #fff;
+  color: #6b7280;
+  font-size: 11px;
+  line-height: 11px;
+  padding: 0;
+  cursor: pointer;
+}
+.dj-color-clear:hover { color: #d03b3b; border-color: #d03b3b; }
+
+/* ── выбор цвета в стиле google-таблиц ── */
+.dj-color-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  flex: none;
+  border: 1px solid #d8dde5;
+  border-radius: 8px;
+  background: #fff;
+  padding: 3px 1px 3px 5px;
+  cursor: pointer;
+}
+.dj-color-trigger:hover:not(:disabled) { border-color: #9aa3b0; }
+.dj-color-trigger:disabled { cursor: default; opacity: 0.7; }
+.dj-color-trigger__dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(31, 39, 51, 0.15);
+  box-sizing: border-box;
+}
+.dj-color-trigger__dot.is-empty {
+  background: linear-gradient(135deg, #fff 44%, #d03b3b 44%, #d03b3b 56%, #fff 56%);
+}
+
+.dj-picker { width: 252px; padding: 12px 14px; box-sizing: border-box; font-size: 13px; color: #1f2733; }
+.dj-picker__title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: #5f6368; margin-bottom: 8px; }
+.dj-picker__grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; margin-bottom: 10px; }
+.dj-picker__dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(31, 39, 51, 0.12);
+  padding: 0;
+  cursor: pointer;
+}
+.dj-picker__dot:hover { transform: scale(1.12); }
+.dj-picker__dot.is-selected { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #1a73e8; }
+.dj-picker__link {
+  border: 0;
+  background: transparent;
+  color: #137333;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 2px 0;
+  cursor: pointer;
+}
+.dj-picker__link:hover { text-decoration: underline; }
+.dj-picker__reset {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin: 10px 0 12px;
+  border: 1px solid #dadce0;
+  border-radius: 999px;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 0;
+  cursor: pointer;
+  color: #3c4043;
+}
+.dj-picker__reset:hover { background: #f6f8fb; }
+.dj-picker__preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid #eceff3;
+  padding-top: 10px;
+  font-size: 12.5px;
+  color: #3c4043;
+}
+.dj-picker--custom .dj-picker__preview { border-top: 0; padding-top: 0; margin-bottom: 8px; }
+.dj-picker__tabs { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 10px; border-bottom: 1px solid #eceff3; }
+.dj-picker__tabs button {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 0;
+  cursor: pointer;
+  color: #3c4043;
+  border-bottom: 3px solid transparent;
+}
+.dj-picker__tabs button.is-active { color: #1a73e8; border-bottom-color: #1a73e8; font-weight: 600; }
+.dj-picker__area {
+  position: relative;
+  height: 140px;
+  border-radius: 6px;
+  cursor: crosshair;
+  touch-action: none;
+  /* фон — чистый оттенок (inline), поверх белый и чёрный градиенты */
+}
+.dj-picker__area::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  background: linear-gradient(to right, #fff, rgba(255, 255, 255, 0));
+}
+.dj-picker__area::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  background: linear-gradient(to top, #000, rgba(0, 0, 0, 0));
+}
+.dj-picker__area-thumb {
+  position: absolute;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.dj-picker__row { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+.dj-picker__swatch { width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, 0.15); flex: none; }
+.dj-picker__icon-btn {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  line-height: 0;
+  color: #3c4043;
+}
+.dj-picker__hue {
+  flex: 1;
+  min-width: 0;
+  height: 10px;
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: 999px;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  outline: none;
+}
+.dj-picker__hue::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+.dj-picker__hue::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+.dj-picker__fields { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 6px; }
+.dj-picker__fields label { display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; color: #5f6368; white-space: nowrap; }
+.dj-picker__fields input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12.5px;
+  color: #1f2733;
+  padding: 5px 6px;
+}
+.dj-picker__fields input:focus { outline: none; border-color: #1a73e8; }
+.dj-picker__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+/* кнопка «Настройки» — как поле «Месяц» (ширина 140, высота small-поля) */
+.dj-settings-btn.MuiButton-root {
+  width: 140px;
+  height: 40px;
+  justify-content: space-between;
+  text-transform: none;
+  font-size: 15px;
+  font-weight: 400;
+  color: rgba(0, 0, 0, 0.87);
+  border-color: rgba(0, 0, 0, 0.23);
+  border-radius: 4px;
+  padding: 0 4px 0 9px;
+  overflow: hidden;
+}
+.dj-settings-btn.MuiButton-root:hover { border-color: rgba(0, 0, 0, 0.87); background: transparent; }
+/* иконки плотнее: при ширине 140 стрелка не должна вылезать за рамку */
+.dj-settings-btn .MuiButton-startIcon { margin-left: 0; margin-right: 5px; }
+.dj-settings-btn .MuiButton-endIcon { margin-left: 0; margin-right: 0; }
+.dj-settings-btn__label { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

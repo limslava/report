@@ -1,8 +1,9 @@
 import { Request, Response } from 'express';
 import ExcelJS from 'exceljs';
-import { In } from 'typeorm';
+import { In, IsNull } from 'typeorm';
 import { AppDataSource } from '../config/data-source';
 import { AppSetting } from '../models/app-setting.model';
+import { DirectoryCounterparty } from '../models/directory-counterparty.model';
 import { Employee } from '../models/employee.model';
 import { FleetVehicle } from '../models/fleet-vehicle.model';
 import type { FleetLocation } from '../models/fleet-vehicle.model';
@@ -32,6 +33,7 @@ const employeeRepo = AppDataSource.getRepository(Employee);
 const vehicleRepo = AppDataSource.getRepository(FleetVehicle);
 const formRepo = AppDataSource.getRepository(PrintedForm);
 const userRepo = AppDataSource.getRepository(User);
+const directoryCounterpartyRepo = AppDataSource.getRepository(DirectoryCounterparty);
 
 const PRINT_SETTINGS_KEY = 'print_forms_settings';
 
@@ -105,19 +107,44 @@ const isoDate = (value: unknown, field: string): string => {
   return value as string;
 };
 
-const loadEmployee = async (id: unknown, location: FleetLocation): Promise<Employee> => {
+/**
+ * Организация, чьи сотрудники и ТС попадают в форму: null — наша (Симпл Вэй),
+ * иначе контрагент из «Справочники → Контрагенты». Бланк и подпись остаются
+ * нашими — меняется только источник водителей/ТС.
+ */
+type PrintOrganization = { counterpartyId: string | null; name: string | null };
+
+const resolvePrintOrganization = async (raw: unknown): Promise<PrintOrganization> => {
+  const id = typeof raw === 'string' ? raw.trim() : '';
+  if (!id) return { counterpartyId: null, name: null };
+  const counterparty = await directoryCounterpartyRepo.findOne({ where: { id } });
+  if (!counterparty) return httpError(404, 'Организация не найдена в справочнике контрагентов') as never;
+  return { counterpartyId: counterparty.id, name: counterparty.nameShort || counterparty.nameFull };
+};
+
+const loadEmployee = async (id: unknown, location: FleetLocation, organization?: PrintOrganization): Promise<Employee> => {
   if (typeof id !== 'string' || !id) httpError(400, 'Не выбран сотрудник');
   const employee = await employeeRepo.findOne({ where: { id: id as string } });
   if (!employee || employee.location !== location) return httpError(404, 'Сотрудник не найден в справочнике региона') as never;
+  if (organization && (employee.counterpartyId ?? null) !== organization.counterpartyId) {
+    return httpError(400, `${employee.fullName} не относится к выбранной организации`) as never;
+  }
   return employee;
 };
 
-const loadVehicle = async (id: unknown, location: FleetLocation): Promise<FleetVehicle> => {
+const loadVehicle = async (id: unknown, location: FleetLocation, organization?: PrintOrganization): Promise<FleetVehicle> => {
   if (typeof id !== 'string' || !id) httpError(400, 'Не выбрано ТС');
   const vehicle = await vehicleRepo.findOne({ where: { id: id as string }, relations: { model: true } });
   if (!vehicle || vehicle.location !== location) return httpError(404, 'ТС не найдено в справочнике региона') as never;
+  if (organization && (vehicle.counterpartyId ?? null) !== organization.counterpartyId) {
+    return httpError(400, `ТС ${vehicle.plate} не относится к выбранной организации`) as never;
+  }
   return vehicle;
 };
+
+/** Пометка чужой организации в журнале: «Иванов И.И. (ООО «Ромашка»)». */
+const withOrganization = (text: string, organization: PrintOrganization): string =>
+  organization.name ? `${text} (${organization.name})` : text;
 
 type GeneratedFile = { buffer: Buffer; filename: string; formNumber: number | null; summary: string };
 
@@ -128,6 +155,8 @@ async function generateByTemplate(
 ): Promise<GeneratedFile> {
   const settings = await loadPrintSettings();
   const org = settings.org;
+  // старые записи журнала без counterpartyId — наша организация
+  const organization = await resolvePrintOrganization(rawParams.counterpartyId);
 
   // Вариант доверенности → базовый шаблон с зашитым контрагентом.
   // Старые ключи журнала (poa_warehouse/poa_terminal_vehicle с counterparty в params) обрабатываются как есть.
@@ -138,7 +167,7 @@ async function generateByTemplate(
     : rawParams;
 
   if (templateKey === 'poa_warehouse' || templateKey === 'poa_pl') {
-    const employee = await loadEmployee(params.employeeId, location);
+    const employee = await loadEmployee(params.employeeId, location, organization);
     const issueDate = isoDate(params.issueDate, 'дата выдачи');
     const validUntil = isoDate(params.validUntil, 'действительна по');
     const counterparty = typeof params.counterparty === 'string' && params.counterparty ? params.counterparty : httpError(400, 'Не выбран контрагент') as never;
@@ -161,7 +190,7 @@ async function generateByTemplate(
         buffer,
         filename: `Доверенность №${number} ${shortName}.docx`,
         formNumber: number as number,
-        summary: `${employee.fullName} · ${counterparty}`,
+        summary: `${withOrganization(employee.fullName, organization)} · ${counterparty}`,
       };
     }
     const buffer = buildPoaPl(org, employee, {
@@ -176,13 +205,13 @@ async function generateByTemplate(
       buffer,
       filename: `Доверенность ${number === null ? 'б-н' : `№${number}`} ${shortName}.docx`,
       formNumber: number,
-      summary: `${employee.fullName} · ${counterparty}`,
+      summary: `${withOrganization(employee.fullName, organization)} · ${counterparty}`,
     };
   }
 
   if (templateKey === 'poa_terminal_vehicle') {
-    const employee = await loadEmployee(params.employeeId, location);
-    const vehicle = await loadVehicle(params.vehicleId, location);
+    const employee = await loadEmployee(params.employeeId, location, organization);
+    const vehicle = await loadVehicle(params.vehicleId, location, organization);
     const issueDate = isoDate(params.issueDate, 'дата выдачи');
     const validFrom = isoDate(params.validFrom, 'действительна с');
     const validUntil = isoDate(params.validUntil, 'действительна по');
@@ -204,7 +233,7 @@ async function generateByTemplate(
       buffer,
       filename: `Доверенность №${number} ${shortName} ${vehicle.plate}.docx`,
       formNumber: number,
-      summary: `${employee.fullName} · ${vehicle.plate} · ${counterparty}`,
+      summary: `${withOrganization(employee.fullName, organization)} · ${vehicle.plate} · ${counterparty}`,
     };
   }
 
@@ -212,25 +241,31 @@ async function generateByTemplate(
     const contractLine = typeof params.contractLine === 'string' && params.contractLine.trim()
       ? params.contractLine.trim()
       : httpError(400, 'Укажите договор аккредитации') as never;
-    const carrierName = typeof params.carrierName === 'string' && params.carrierName.trim() ? params.carrierName.trim() : org.shortName;
+    // автоперевозчик — выбранная организация (по умолчанию мы)
+    const carrierName = typeof params.carrierName === 'string' && params.carrierName.trim()
+      ? params.carrierName.trim()
+      : organization.name ?? org.shortName;
     if (templateKey === 'vmpp_drivers_approval') {
       const ids = Array.isArray(params.employeeIds) ? params.employeeIds.filter((x): x is string => typeof x === 'string') : [];
       if (!ids.length) httpError(400, 'Выберите водителей');
-      const employees = await employeeRepo.find({ where: { id: In(ids), location }, order: { fullName: 'ASC' } });
-      if (!employees.length) httpError(404, 'Водители не найдены');
+      const employees = await employeeRepo.find({
+        where: { id: In(ids), location, counterpartyId: organization.counterpartyId ?? IsNull() },
+        order: { fullName: 'ASC' },
+      });
+      if (!employees.length) httpError(404, 'Водители выбранной организации не найдены');
       const buffer = buildVmppDriversApproval(org, employees, { contractLine: contractLine as string, carrierName, location });
       return {
         buffer,
         filename: `Согласование водителей ВМПП (${employees.length}).docx`,
         formNumber: null,
-        summary: employees.map((e) => e.fullName).join(', ').slice(0, 5000),
+        summary: withOrganization(employees.map((e) => e.fullName).join(', '), organization).slice(0, 5000),
       };
     }
     const pairsRaw = Array.isArray(params.pairs) ? params.pairs : [];
     const pairs: Array<{ employee: Employee; vehicle: FleetVehicle | null }> = [];
     for (const raw of pairsRaw as Array<Record<string, unknown>>) {
-      const employee = await loadEmployee(raw.employeeId, location);
-      const vehicle = typeof raw.vehicleId === 'string' && raw.vehicleId ? await loadVehicle(raw.vehicleId, location) : null;
+      const employee = await loadEmployee(raw.employeeId, location, organization);
+      const vehicle = typeof raw.vehicleId === 'string' && raw.vehicleId ? await loadVehicle(raw.vehicleId, location, organization) : null;
       pairs.push({ employee, vehicle });
     }
     if (!pairs.length) httpError(400, 'Добавьте хотя бы одну строку «водитель + ТС»');
@@ -239,18 +274,19 @@ async function generateByTemplate(
       buffer,
       filename: `Заявка ИС ВМПП автотранспорт (${pairs.length}).docx`,
       formNumber: null,
-      summary: pairs
-        .map((pair) => `${pair.employee.fullName}${pair.vehicle ? ` — ${pair.vehicle.plate}` : ''}`)
-        .join('; ')
-        .slice(0, 5000),
+      summary: withOrganization(
+        pairs.map((pair) => `${pair.employee.fullName}${pair.vehicle ? ` — ${pair.vehicle.plate}` : ''}`).join('; '),
+        organization,
+      ).slice(0, 5000),
     };
   }
 
   // carrier_vehicles — Excel со списком ТС
   const ids = Array.isArray(params.vehicleIds) ? params.vehicleIds.filter((x): x is string => typeof x === 'string') : [];
+  const ownerFilter = organization.counterpartyId ?? IsNull();
   const vehicles = ids.length
-    ? await vehicleRepo.find({ where: { id: In(ids), location }, relations: { model: true }, order: { plate: 'ASC' } })
-    : await vehicleRepo.find({ where: { location, status: 'active' }, relations: { model: true }, order: { plate: 'ASC' } });
+    ? await vehicleRepo.find({ where: { id: In(ids), location, counterpartyId: ownerFilter }, relations: { model: true }, order: { plate: 'ASC' } })
+    : await vehicleRepo.find({ where: { location, status: 'active', counterpartyId: ownerFilter }, relations: { model: true }, order: { plate: 'ASC' } });
   if (!vehicles.length) httpError(404, 'Техника не найдена');
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Лист1');
@@ -286,7 +322,7 @@ async function generateByTemplate(
     buffer,
     filename: `Форма перевозчику ТС (${vehicles.length}).xlsx`,
     formNumber: null,
-    summary: `ТС (${vehicles.length}): ${vehicles.map((v) => v.plate).join(', ')}`.slice(0, 5000),
+    summary: withOrganization(`ТС (${vehicles.length}): ${vehicles.map((v) => v.plate).join(', ')}`, organization).slice(0, 5000),
   };
 }
 
