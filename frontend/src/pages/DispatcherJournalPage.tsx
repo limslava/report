@@ -401,6 +401,13 @@ export default function DispatcherJournalPage() {
   const [filterMenu, setFilterMenu] = useState<{ field: string; anchor: HTMLElement } | null>(null);
   // строки, созданные в этой сессии, не прячутся фильтром — иначе новая заявка «исчезает» при вводе
   const sessionCreatedIdsRef = useRef<Set<string>>(new Set());
+  // фильтр, применённый пользователем, действует на ВСЕ строки: исключение для
+  // только что созданных живёт лишь до следующего изменения фильтров
+  // (иначе строка, добавленная раньше, «торчала» среди отфильтрованных — 14.09)
+  const applyFilters = useCallback((updater: (prev: Record<string, string[]>) => Record<string, string[]>) => {
+    sessionCreatedIdsRef.current = new Set();
+    setFilters(updater);
+  }, []);
 
   // ширина области таблицы: колонки без ручной ширины растягиваются на большом экране
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -1308,7 +1315,7 @@ export default function DispatcherJournalPage() {
             ))}
           </TextField>
           {activeFilterCount > 0 && (
-            <button type="button" className="dj-filter-chip" onClick={() => setFilters({})}>
+            <button type="button" className="dj-filter-chip" onClick={() => applyFilters(() => ({}))}>
               <FilterList sx={{ fontSize: 14 }} />
               Фильтры: {activeFilterCount} · показано {displayRows.length} из {rows.length} · сбросить
             </button>
@@ -1580,7 +1587,7 @@ export default function DispatcherJournalPage() {
           hidden={filters[filterMenu.field] ?? []}
           isPinnedUntilHere={pinnedUntil === filterMenu.field}
           onSort={(direction) => setSort({ field: filterMenu.field, direction })}
-          onApply={(hidden) => setFilters((prev) => {
+          onApply={(hidden) => applyFilters((prev) => {
             const next = { ...prev };
             if (hidden.length) next[filterMenu.field] = hidden;
             else delete next[filterMenu.field];
