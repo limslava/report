@@ -20,6 +20,12 @@ async function buildWorkbook(): Promise<Buffer> {
   ]);
   // разделитель дня — только дата
   sheet.addRow([new Date(Date.UTC(2026, 8, 1))]);
+  // заготовка: дата, «НДС22%» и галочки — в реестре выглядела бы пустой строкой
+  const blank: unknown[] = new Array(HEADER.length).fill(null);
+  blank[0] = new Date(Date.UTC(2026, 8, 1));
+  blank[23] = 'НДС22%';
+  blank[29] = 'TRUE';
+  sheet.addRow(blank);
   // заявка ниже таблицы без даты («ожидает прибытия») и подпись раздела
   sheet.addRow([null, null, null, null, null, null, 'ОЖИДАЕТ ПРИБЫТИЯ ЖД']);
   sheet.addRow([null, 'Бронь', null, 'Хасан', null, null, 'TGBU5678866']);
@@ -33,8 +39,8 @@ describe('parseDispatcherWorkbook', () => {
     expect(sheets.map((sheet) => sheet.name)).toEqual(['Сентябрь 2026']);
     const [sheet] = sheets;
     expect(sheet.orders).toHaveLength(1);
-    expect(sheet.skippedRows).toBe(2);
-    expect(sheet.undatedOrders).toEqual([{ row: 5, status: 'Бронь', client: 'Хасан', ktkNumber: 'TGBU5678866', arrival: 'ЖД' }]);
+    expect(sheet.skippedRows).toBe(3);
+    expect(sheet.undatedOrders).toEqual([{ row: 6, status: 'Бронь', client: 'Хасан', ktkNumber: 'TGBU5678866', arrival: 'ЖД' }]);
     const [order] = sheet.orders;
     expect(order).toMatchObject({
       orderDate: '2026-09-01',
