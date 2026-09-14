@@ -1235,8 +1235,9 @@ export default function DispatcherJournalPage() {
     const cellRect = td.getBoundingClientRect();
     const wrapRect = wrap.getBoundingClientRect();
     const next = {
-      left: Math.round(cellRect.right - wrapRect.left + wrap.scrollLeft - 5),
-      top: Math.round(cellRect.bottom - wrapRect.top + wrap.scrollTop - 5),
+      // квадратик садится на угол рамки активной ячейки
+      left: Math.round(cellRect.right - wrapRect.left + wrap.scrollLeft - 6),
+      top: Math.round(cellRect.bottom - wrapRect.top + wrap.scrollTop - 6),
     };
     setFillHandlePos((prev) => (prev && prev.left === next.left && prev.top === next.top ? prev : next));
   }, []);
@@ -1294,8 +1295,10 @@ export default function DispatcherJournalPage() {
       if (moveEvent.clientY > rect.bottom - 28) wrap.scrollTop += 24;
       else if (moveEvent.clientY < rect.top + 60) wrap.scrollTop -= 24;
       const probeY = Math.min(Math.max(moveEvent.clientY, rect.top + 2), rect.bottom - 2);
-      const element = document.elementFromPoint(moveEvent.clientX, probeY) as HTMLElement | null;
-      const tr = element?.closest('tr[data-row-index]') as HTMLElement | null;
+      // elementsFromPoint: строку находим и под всплывающим сообщением/подсказкой
+      const tr = document.elementsFromPoint(moveEvent.clientX, probeY)
+        .map((element) => (element as HTMLElement).closest?.('tr[data-row-index]') as HTMLElement | null)
+        .find(Boolean) ?? null;
       if (!tr) return;
       endIndex = Number(tr.dataset.rowIndex);
       const from = Math.min(startIndex, endIndex);
