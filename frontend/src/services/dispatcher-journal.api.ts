@@ -137,3 +137,18 @@ export type DispatcherCrewEntry = { driverName: string; plate: string; onLine: b
 
 export const getDispatcherCrew = (date: string) =>
   api.get<DispatcherCrewEntry[]>('/dispatcher-journal/crew', { params: { date } });
+
+// ── Разовый импорт google-таблицы (.xlsx) ──
+
+export type DispatcherImportSummary = {
+  sheets: Array<{ name: string; orders: number; skippedRows: number; from: string | null; to: string | null }>;
+  total: number;
+  from: string;
+  to: string;
+  existingInRange: number;
+  unknownStatuses: string[];
+  imported: number;
+};
+
+export const importDispatcherOrders = (fileBase64: string, dryRun: boolean) =>
+  api.post<DispatcherImportSummary>('/dispatcher-journal/import', { fileBase64, dryRun }, { timeout: 300_000 });
