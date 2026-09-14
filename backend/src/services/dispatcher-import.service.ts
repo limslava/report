@@ -216,6 +216,16 @@ function planColumns(header: string[]): ColumnPlan | null {
   return { date: 1, text, bool, unmapped };
 }
 
+/**
+ * Поля, по которым строка — действительно заявка. В заготовках google-таблицы
+ * бывают заранее проставлены «НДС22%», ставка или галочки — такие строки в
+ * реестре выглядят пустыми (нужные колонки за краем экрана) и не переносятся.
+ */
+const SUBSTANTIVE_FIELDS: TextField[] = [
+  'status', 'info', 'client', 'driverName', 'vehiclePlate', 'ktkNumber', 'comments', 'operation',
+  'terminalFrom', 'terminalTo', 'deliveryAddress', 'extraAddress', 'driverRemarks',
+];
+
 const emptyOrder = (orderDate: string): ImportedOrder => ({
   orderDate,
   status: null, info: null, client: null, driverName: null, vehiclePlate: null, ktkNumber: null,
@@ -270,8 +280,8 @@ export async function parseDispatcherWorkbook(buffer: Buffer): Promise<ImportedS
         order[field] = value;
         if (value) filled = true;
       });
-      // строка-разделитель дня (только дата) или пустая заготовка — не заявка
-      if (!filled) {
+      // строка-разделитель дня (только дата) или заготовка (только НДС/ставки/галочки) — не заявка
+      if (!filled || !SUBSTANTIVE_FIELDS.some((field) => order[field])) {
         if (row.hasValues) skippedRows += 1;
         continue;
       }
