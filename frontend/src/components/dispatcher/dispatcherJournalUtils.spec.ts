@@ -66,10 +66,12 @@ describe('dispatcherJournalUtils', () => {
       submitTime: '10:00',
       terminalTo: 'Первомайский',
       vehiclePlate: 'Н099СВ 125',
+      comments: '8 914 711-32-23 Алексей',
     });
     expect(text.split('\n')[0]).toBe('ДАТА 01.09.26');
     expect(text).toContain('*Номер контейнера* TRZU1103134');
     expect(text).toContain('*Пин*\n');
+    expect(text).toContain('*Контактная информация* 8 914 711-32-23 Алексей');
     expect(text).toContain('*Примечание* Н099СВ 125\n❗️');
   });
 
@@ -77,7 +79,7 @@ describe('dispatcherJournalUtils', () => {
     const base = {
       orderDate: '2026-09-01', ktkNumber: 'TRZU1103134', ktkType: '40HC', grossWeight: null,
       terminalFrom: 'Сухой порт', slotFrom: null, pinFrom: null, deliveryAddress: 'г.Артем',
-      submitTime: '10:00', terminalTo: 'Первомайский', vehiclePlate: null,
+      submitTime: '10:00', terminalTo: 'Первомайский', vehiclePlate: null, comments: null,
     };
     const relocation = buildOrderText({ ...base, operation: 'Перемещение' });
     expect(relocation).not.toContain('Адрес доставки');

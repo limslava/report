@@ -137,6 +137,8 @@ export type OrderTextSource = {
   submitTime: string | null;
   terminalTo: string | null;
   vehiclePlate: string | null;
+  /** «Комментарии» реестра — там диспетчеры пишут контакт получателя */
+  comments: string | null;
 };
 
 /** Перемещение КТК между терминалами: доставки на адрес нет. */
@@ -162,7 +164,7 @@ export function buildOrderText(row: OrderTextSource): string {
     ['Пин', value(row.pinFrom)],
     relocation ? null : ['Адрес доставки', value(row.deliveryAddress)],
     relocation ? null : ['Время доставки', value(row.submitTime)],
-    ['Контактная информация', ''],
+    ['Контактная информация', value(row.comments)],
     ['Сдача контейнера', value(row.terminalTo)],
     ['Примечание', note],
   ];
