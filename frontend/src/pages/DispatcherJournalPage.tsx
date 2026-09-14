@@ -605,17 +605,19 @@ export default function DispatcherJournalPage() {
     return stats;
   }, [displayRows]);
 
-  // полоса дня перед каждой сменой даты; при сортировке по колонке дни перемешаны — полос нет
+  // полоса дня перед каждой сменой даты. При сортировке по дате (↑/↓) дни идут подряд —
+  // полосы остаются; при сортировке по другой колонке дни перемешаны — полос нет
+  const showDayBands = !sort || sort.field === DATE_KEY;
   const displayItems = useMemo(() => {
     const items: DisplayItem[] = [];
     displayRows.forEach((row, index) => {
-      if (!sort && (index === 0 || row.orderDate !== displayRows[index - 1].orderDate)) {
+      if (showDayBands && (index === 0 || row.orderDate !== displayRows[index - 1].orderDate)) {
         items.push({ kind: 'band', date: row.orderDate, key: `band-${index}-${row.orderDate}` });
       }
       items.push({ kind: 'row', row, index });
     });
     return items;
-  }, [displayRows, sort]);
+  }, [displayRows, showDayBands]);
 
   const itemOffsets = useMemo(() => {
     const offsets = new Array<number>(displayItems.length + 1);
@@ -1334,7 +1336,7 @@ export default function DispatcherJournalPage() {
       </Paper>
 
       <div className="dj-table-wrap" ref={wrapRef} onScroll={handleWrapScroll}>
-        {stickyDate && !sort && (
+        {stickyDate && showDayBands && (
           <div className="dj-sticky-band" style={{ top: headerHeight }} aria-hidden="true">
             <div className="dj-band__label dj-sticky-band__inner" style={{ width: wrapWidth }}>
               {renderBandLabel(stickyDate)}
