@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Checkbox,
@@ -182,6 +183,10 @@ const DEFAULT_ROW_HEIGHT = 37;
 /** Высота жёлтой полосы дня (уточняется замером) и запас отрисовки за краем окна, px. */
 const DEFAULT_BAND_HEIGHT = 28;
 const OVERSCAN_PX = 720;
+/** Масштаб таблицы: варианты в списке и допустимые границы ручного ввода. */
+const ZOOM_OPTIONS = ['50%', '60%', '70%', '80%', '90%', '100%', '110%', '125%'];
+const MIN_ZOOM = 0.3;
+const MAX_ZOOM = 1.5;
 
 const WEEKDAYS = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
 
@@ -409,6 +414,44 @@ export default function DispatcherJournalPage() {
     setFilters(updater);
   }, []);
 
+  // масштаб таблицы (как в операционном отчёте) — у каждого сотрудника свой
+  const zoomStorageKey = `dj-zoom-v1:${userKey}`;
+  const [zoom, setZoom] = useState<number>(() => {
+    try {
+      const stored = Number(localStorage.getItem(zoomStorageKey));
+      return Number.isFinite(stored) && stored >= MIN_ZOOM && stored <= MAX_ZOOM ? stored : 1;
+    } catch {
+      return 1;
+    }
+  });
+  const [zoomInput, setZoomInput] = useState(`${Math.round(zoom * 100)}%`);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  useEffect(() => {
+    setZoomInput(`${Math.round(zoom * 100)}%`);
+    try {
+      localStorage.setItem(zoomStorageKey, String(zoom));
+    } catch {
+      // приватный режим — масштаб живёт до перезагрузки
+    }
+  }, [zoom, zoomStorageKey]);
+  const applyZoomFromInput = (raw: string) => {
+    const normalized = raw.trim().replace(',', '.');
+    if (!normalized) return;
+    const numeric = Number(normalized.replace('%', ''));
+    if (!Number.isFinite(numeric)) {
+      setZoomInput(`${Math.round(zoom * 100)}%`);
+      return;
+    }
+    const scale = normalized.includes('%') || numeric > 2 ? numeric / 100 : numeric;
+    if (scale < MIN_ZOOM || scale > MAX_ZOOM) {
+      setZoomInput(`${Math.round(zoom * 100)}%`);
+      return;
+    }
+    setZoom(Math.round(scale * 100) / 100);
+    setZoomInput(`${Math.round(scale * 100)}%`);
+  };
+
   // ширина области таблицы: колонки без ручной ширины растягиваются на большом экране
   const wrapRef = useRef<HTMLDivElement>(null);
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
@@ -440,8 +483,11 @@ export default function DispatcherJournalPage() {
     // окно пересчитывается шагами по 5 строк: при прокрутке страница перерисовывается
     // не на каждый пиксель, а запаса отрисовки хватает, чтобы края не мелькали
     // (requestAnimationFrame не используем — во фоновых вкладках он засыпает)
+    // все расчёты окна — в «несжатых» px таблицы: при масштабе 50% прокрутка на 100 px = 200 px таблицы
+    const scale = zoomRef.current;
+    const scrollTop = wrap.scrollTop / scale;
     const step = rowHeight * 5;
-    const next = { top: Math.floor(wrap.scrollTop / step) * step, height: wrap.clientHeight };
+    const next = { top: Math.floor(scrollTop / step) * step, height: wrap.clientHeight / scale };
     // строка с незаконченной правкой уходит из окна — сначала сохраняем её (blur),
     // иначе при размонтировании черновик потерялся бы
     const active = document.activeElement as HTMLElement | null;
@@ -454,11 +500,11 @@ export default function DispatcherJournalPage() {
     }
     setScrollWindow((prev) => (prev.top === next.top && prev.height === next.height ? prev : next));
     // прилипшая полоса: день первой строки под шапкой, если его собственная полоса уже ушла вверх
-    const topItemIndex = itemAtOffset(offsets, wrap.scrollTop);
+    const topItemIndex = itemAtOffset(offsets, scrollTop);
     const topItem = items[topItemIndex];
     let date: string | null = null;
-    if (topItem && wrap.scrollTop > 1) {
-      const bandAtTop = topItem.kind === 'band' && wrap.scrollTop - offsets[topItemIndex] < 2;
+    if (topItem && scrollTop > 1) {
+      const bandAtTop = topItem.kind === 'band' && scrollTop - offsets[topItemIndex] < 2;
       if (!bandAtTop) date = topItem.kind === 'band' ? topItem.date : topItem.row.orderDate;
     }
     setStickyDate((prev) => (prev === date ? prev : date));
@@ -467,7 +513,7 @@ export default function DispatcherJournalPage() {
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap) return undefined;
-    const update = () => setScrollWindow({ top: wrap.scrollTop, height: wrap.clientHeight });
+    const update = () => setScrollWindow({ top: wrap.scrollTop / zoomRef.current, height: wrap.clientHeight / zoomRef.current });
     update();
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
@@ -477,17 +523,17 @@ export default function DispatcherJournalPage() {
   useLayoutEffect(() => {
     const firstRow = tbodyRef.current?.querySelector('tr[data-row-index]') as HTMLElement | null;
     if (firstRow) {
-      const height = firstRow.getBoundingClientRect().height;
+      const height = firstRow.getBoundingClientRect().height / zoom;
       if (height > 10 && Math.abs(height - rowHeight) > 0.5) setRowHeight(height);
     }
     const firstBand = tbodyRef.current?.querySelector('tr.dj-band') as HTMLElement | null;
     if (firstBand) {
-      const height = firstBand.getBoundingClientRect().height;
+      const height = firstBand.getBoundingClientRect().height / zoom;
       if (height > 10 && Math.abs(height - bandHeight) > 0.5) setBandHeight(height);
     }
     const head = wrapRef.current?.querySelector('thead') as HTMLElement | null;
     if (head) {
-      const height = head.getBoundingClientRect().height;
+      const height = head.getBoundingClientRect().height / zoom;
       if (Math.abs(height - headerHeight) > 0.5) setHeaderHeight(height);
     }
   });
@@ -495,7 +541,7 @@ export default function DispatcherJournalPage() {
   const columnWidths = useMemo(() => {
     const customSum = visibleColumns.reduce((sum, column) => sum + (customWidths[column.field] ?? 0), 0);
     const defaultSum = visibleColumns.reduce((sum, column) => sum + (customWidths[column.field] ? 0 : column.width), 0);
-    const free = wrapWidth - ROWNUM_WIDTH - DATE_WIDTH - DELETE_WIDTH - customSum - 2;
+    const free = wrapWidth / zoom - ROWNUM_WIDTH - DATE_WIDTH - DELETE_WIDTH - customSum - 2;
     const scale = defaultSum > 0 ? Math.max(1, free / defaultSum) : 1;
     const widths: Record<string, number> = {};
     visibleColumns.forEach((column) => {
@@ -539,7 +585,7 @@ export default function DispatcherJournalPage() {
     const startWidth = columnWidths[field] ?? MIN_COLUMN_WIDTH;
     document.body.classList.add('dj-resizing');
     const onMove = (moveEvent: MouseEvent) => {
-      const width = Math.max(MIN_COLUMN_WIDTH, Math.round(startWidth + moveEvent.clientX - startX));
+      const width = Math.max(MIN_COLUMN_WIDTH, Math.round(startWidth + (moveEvent.clientX - startX) / zoomRef.current));
       setCustomWidths((prev) => ({ ...prev, [field]: width }));
     };
     const onUp = () => {
@@ -644,10 +690,10 @@ export default function DispatcherJournalPage() {
   }, [displayItems]);
   layoutRef.current = { items: displayItems, offsets: itemOffsets, itemByRowIndex };
 
-  // список поменялся (месяц, фильтр, сортировка) — пересчитать окно и прилипшую полосу
+  // список или масштаб поменялись — пересчитать окно и прилипшую полосу
   useEffect(() => {
     handleWrapScroll();
-  }, [displayItems, handleWrapScroll]);
+  }, [displayItems, handleWrapScroll, zoom]);
 
   const loadRows = useCallback(async (withSpinner = false) => {
     const target = rangeRef.current;
@@ -1314,6 +1360,29 @@ export default function DispatcherJournalPage() {
               <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
             ))}
           </TextField>
+          <Autocomplete
+            freeSolo
+            disableClearable
+            options={ZOOM_OPTIONS}
+            inputValue={zoomInput}
+            onInputChange={(_event, value) => setZoomInput(value)}
+            onChange={(_event, value) => {
+              if (typeof value === 'string') applyZoomFromInput(value);
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Масштаб"
+                size="small"
+                placeholder="например 80%"
+                onBlur={() => applyZoomFromInput(zoomInput)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') applyZoomFromInput(zoomInput);
+                }}
+              />
+            )}
+            sx={{ width: 140 }}
+          />
           {activeFilterCount > 0 && (
             <button type="button" className="dj-filter-chip" onClick={() => applyFilters(() => ({}))}>
               <FilterList sx={{ fontSize: 14 }} />
@@ -1344,13 +1413,13 @@ export default function DispatcherJournalPage() {
 
       <div className="dj-table-wrap" ref={wrapRef} onScroll={handleWrapScroll}>
         {stickyDate && showDayBands && (
-          <div className="dj-sticky-band" style={{ top: headerHeight }} aria-hidden="true">
-            <div className="dj-band__label dj-sticky-band__inner" style={{ width: wrapWidth }}>
+          <div className="dj-sticky-band" style={{ top: headerHeight * zoom }} aria-hidden="true">
+            <div className="dj-band__label dj-sticky-band__inner" style={{ width: wrapWidth / zoom, zoom }}>
               {renderBandLabel(stickyDate)}
             </div>
           </div>
         )}
-        <table className="dj-table" style={{ width: tableWidth }}>
+        <table className="dj-table" style={{ width: tableWidth, zoom }}>
           <colgroup>
             <col style={{ width: ROWNUM_WIDTH }} />
             <col style={{ width: DATE_WIDTH }} />
