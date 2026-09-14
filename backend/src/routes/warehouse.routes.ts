@@ -6,6 +6,7 @@ import {
   WAREHOUSE_BILLING_VIEW_ROLES,
   WAREHOUSE_CLIENT_TARIFF_MANAGEMENT_ROLES,
   WAREHOUSE_FINANCE_VIEW_ROLES,
+  WAREHOUSE_RECORDED_DATA_ROLES,
   WAREHOUSE_CLIENT_MANAGEMENT_ROLES,
   WAREHOUSE_DATE_CORRECTION_ROLES,
   WAREHOUSE_SERVICE_EXECUTION_ROLES,
@@ -400,7 +401,7 @@ router.get(
 
 router.delete(
   '/vehicles/:id/photos/:photoId',
-  authorizeRole(...WAREHOUSE_STAFF_ROLES),
+  authorizeRole(...WAREHOUSE_RECORDED_DATA_ROLES),
   [
     param('id').isUUID(),
     param('photoId').isUUID(),
@@ -495,7 +496,7 @@ router.post(
 
 router.patch(
   '/vehicles/:id',
-  authorizeRole(...WAREHOUSE_STAFF_ROLES),
+  authorizeRole(...WAREHOUSE_RECORDED_DATA_ROLES),
   [
     param('id').isUUID(),
     body('vehicleType').optional().isIn(WAREHOUSE_VEHICLE_TYPES),
@@ -531,7 +532,7 @@ router.post(
   [
     param('id').isUUID(),
     body('issuedDate').optional().isISO8601({ strict: true }),
-    body('issuePhotoIds').isArray({ min: 1, max: 60 }),
+    body('issuePhotoIds').isArray({ min: 1, max: MAX_WAREHOUSE_PHOTOS_PER_VEHICLE }),
     body('issuePhotoIds.*').isUUID(),
   ],
   handleValidationErrors,

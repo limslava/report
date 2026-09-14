@@ -61,8 +61,10 @@ interface Props {
   open: boolean;
   vehicle: WarehouseVehicle | null;
   client?: WarehouseClient | null;
-  /** кладовщик/заведующий/админ: правка карточки и осмотра, пока ТС не выдано */
+  /** складские роли: выдача, добавление фото и услуг, пока ТС на стоянке */
   canOperate: boolean;
+  /** данные приёмки и выдачи (карточка, осмотры, удаление фото) — только администратор */
+  canEditRecorded: boolean;
   canCorrectDates: boolean;
   canEditServices: boolean;
   /** журнал операций — внутренний, клиенту склада не показывается */
@@ -181,6 +183,7 @@ export default function WarehouseVehicleCard({
   vehicle,
   client,
   canOperate,
+  canEditRecorded,
   canCorrectDates,
   canEditServices,
   canViewHistory,
@@ -207,7 +210,7 @@ export default function WarehouseVehicleCard({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const editable = canOperate && vehicle?.status !== 'issued';
+  const editable = canEditRecorded;
 
   useEffect(() => {
     if (!open || !vehicle) return;
@@ -274,7 +277,7 @@ export default function WarehouseVehicleCard({
   const dirty = editable && (mainDirty || receptionDirty);
 
   const missing = useMemo(() => {
-    if (!editable || !mainForm) return [];
+    if (!(editable || canOperate) || !mainForm || vehicle?.status === 'issued') return [];
     const list: string[] = [];
     if (!mainForm.registrationNumber.trim()) list.push('госномер');
     if (!mainForm.vin.trim() && !mainForm.chassisNumber.trim()) list.push('VIN или номер шасси');
@@ -282,7 +285,7 @@ export default function WarehouseVehicleCard({
     if (reception && !String(groupOf(reception, 'vehicleDetails').odometerKm ?? '').trim()) list.push('одометр');
     if (reception && !groupOf(reception, 'documentsAndKeys').ignitionKeys) list.push('ключи зажигания не отмечены');
     return list;
-  }, [editable, mainForm, reception]);
+  }, [canOperate, editable, mainForm, reception, vehicle?.status]);
 
   const handleClose = () => {
     if (dirty && !window.confirm('Есть несохранённые изменения. Закрыть карточку без сохранения?')) return;
@@ -514,7 +517,9 @@ export default function WarehouseVehicleCard({
             ) : (
               <>
                 {!receptionMeta && (
-                  <Alert severity="warning">Осмотр при приёмке не сохранялся{editable ? ' — заполните и сохраните карточку.' : '.'}</Alert>
+                  <Alert severity="warning">
+                    Осмотр при приёмке не сохранялся{editable ? ' — заполните и сохраните карточку.' : ' — заполнить его может администратор.'}
+                  </Alert>
                 )}
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.3fr 1fr' }, gap: 1.5, alignItems: 'start' }}>
                   <WarehouseInspectionForm
@@ -728,7 +733,14 @@ export default function WarehouseVehicleCard({
           )}
 
           {tab === 'photos' && (
-            <WarehousePhotoDialog open vehicle={vehicle} readOnly={!canOperate} onClose={() => undefined} embedded />
+            <WarehousePhotoDialog
+              open
+              vehicle={vehicle}
+              readOnly={!canOperate}
+              canDelete={canEditRecorded}
+              onClose={() => undefined}
+              embedded
+            />
           )}
 
           {tab === 'docs' && (
@@ -798,15 +810,17 @@ export default function WarehouseVehicleCard({
         </Stack>
       </DialogContent>
 
-      {editable && missing.length > 0 && (
+      {missing.length > 0 && (
         <Box sx={{ bgcolor: '#fff7ed', color: '#9a3412', fontSize: 12, px: 2.5, py: 0.9, borderTop: '1px solid #fde7cf' }}>
-          Не заполнено: {missing.join(', ')} — проверьте перед выдачей.
+          Не заполнено: {missing.join(', ')} — {editable ? 'проверьте перед выдачей.' : 'для исправления обратитесь к администратору.'}
         </Box>
       )}
       <DialogActions sx={{ px: 2.5, py: 1.25, borderTop: '1px solid #eef1f5' }}>
         {!editable && (
           <Typography sx={{ fontSize: 12, color: '#5b6472', mr: 'auto' }}>
-            {vehicle.status === 'issued' && canOperate ? 'ТС выдано — карточка только для просмотра' : 'Режим просмотра'}
+            {canOperate
+              ? 'Данные приёмки и выдачи меняет только администратор. Фото и услуги можно добавлять, пока ТС на стоянке.'
+              : 'Режим просмотра'}
           </Typography>
         )}
         <Button onClick={handleClose} disabled={saving}>Закрыть</Button>

@@ -52,6 +52,8 @@ interface WarehousePhotoDialogProps {
   onClose: () => void;
   /** без окна-диалога: содержимое встраивается во вкладку «Фото» карточки ТС */
   embedded?: boolean;
+  /** удаление зафиксированных фото — только администратор */
+  canDelete?: boolean;
 }
 
 interface PhotoPreview extends WarehousePhoto {
@@ -82,6 +84,7 @@ export default function WarehousePhotoDialog({
   readOnly = false,
   onClose,
   embedded = false,
+  canDelete = false,
 }: WarehousePhotoDialogProps) {
   const fullScreenDialog = useMediaQuery('(max-width:600px)');
   const [photos, setPhotos] = useState<PhotoPreview[]>([]);
@@ -480,8 +483,8 @@ export default function WarehousePhotoDialog({
                     <Typography variant="caption" noWrap display="block">{photo.originalName}</Typography>
                     <Typography variant="caption" color="text.secondary">{formatBytes(photo.sizeBytes)}</Typography>
                   </Box>
-                  {canUpload && (
-                    <Tooltip title="Удалить фотографию">
+                  {canDelete && (
+                    <Tooltip title="Удалить фотографию (только администратор)">
                       <IconButton
                         size="small"
                         color="error"

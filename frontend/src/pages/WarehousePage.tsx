@@ -154,7 +154,9 @@ export default function WarehousePage() {
   const canViewTariffs = canManageTariffs || isFinanceViewer;
   const canViewBilling = user?.role !== 'warehouse_keeper';
   const canCloseBilling = ['admin', 'warehouse_manager_vvo', 'financer'].includes(user?.role ?? '');
-  const canCorrectDates = user?.role === 'admin' || user?.role === 'warehouse_manager_vvo';
+  // данные приёмки и выдачи (карточка, осмотры, даты, удаление фото) — только администратор
+  const canEditRecordedData = user?.role === 'admin';
+  const canCorrectDates = canEditRecordedData;
   const showTabs = canViewClients || canViewTariffs || canViewBilling;
   const [tab, setTab] = useState<'registry' | 'clients' | 'tariffs' | 'billing'>('registry');
   const [vehicles, setVehicles] = useState<WarehouseVehicle[]>([]);
@@ -841,6 +843,7 @@ export default function WarehousePage() {
         vehicle={cardVehicle}
         client={cardClient}
         canOperate={canOperateWarehouse}
+        canEditRecorded={canEditRecordedData}
         canCorrectDates={canCorrectDates}
         canEditServices={canEditServices}
         canViewHistory={user?.role !== 'counterparty_user'}
@@ -855,6 +858,7 @@ export default function WarehousePage() {
         open={Boolean(photoVehicle)}
         vehicle={photoVehicle}
         readOnly={!canOperateWarehouse}
+        canDelete={canEditRecordedData}
         onClose={() => setPhotoVehicle(null)}
       />
       <WarehouseServicesDialog

@@ -501,12 +501,8 @@ export const updateWarehouseVehicle = async (
         error.statusCode = 404;
         throw error;
       }
-      if (vehicle.status === 'issued') {
-        const error: any = new Error('Выданную карточку нельзя редактировать');
-        error.statusCode = 409;
-        throw error;
-      }
-
+      // правка карточки — только администратор (роут), в т.ч. после выдачи;
+      // закрытые периоды по-прежнему защищены проверками ниже
       const before = serializeVehicle(vehicle);
       if (req.body.receivedDate !== undefined) {
         const error: any = new Error(
@@ -1208,10 +1204,7 @@ export const deleteWarehouseVehiclePhoto = async (
       res.status(404).json({ message: 'Карточка ТС не найдена' });
       return;
     }
-    if (vehicle.status !== 'on_site') {
-      res.status(409).json({ message: 'Фотографии выданного ТС уже закрыты для изменений' });
-      return;
-    }
+    // удаление фото — только администратор (роут), в т.ч. после выдачи
     const repository = AppDataSource.getRepository(WarehousePhoto);
     const photo = await repository.findOne({
       where: {
@@ -1310,15 +1303,29 @@ export const upsertWarehouseVehicleInspection = async (
         throw error;
       }
       const phase = req.params.phase as WarehouseInspectionPhase;
+      const repository = manager.getRepository(WarehouseVehicleInspection);
+      const existing = await repository.findOne({
+        where: { vehicleId: vehicle.id, phase },
+      });
+      // Складские роли фиксируют осмотр только в момент приёмки (первое
+      // сохранение) и выдачи (пока ТС не выдано); дальше — только админ.
+      if (req.user?.role !== 'admin') {
+        if (phase === 'reception' && existing) {
+          const error: any = new Error('Осмотр при приёмке уже зафиксирован — изменить его может только администратор');
+          error.statusCode = 403;
+          throw error;
+        }
+        if (phase === 'issue' && vehicle.status === 'issued') {
+          const error: any = new Error('Осмотр при выдаче уже зафиксирован — изменить его может только администратор');
+          error.statusCode = 403;
+          throw error;
+        }
+      }
       if (phase === 'reception') {
         await assertWarehouseDateIsOpen(vehicle.counterpartyId, vehicle.receivedDate);
       } else if (vehicle.issuedDate) {
         await assertWarehouseDateIsOpen(vehicle.counterpartyId, vehicle.issuedDate);
       }
-      const repository = manager.getRepository(WarehouseVehicleInspection);
-      const existing = await repository.findOne({
-        where: { vehicleId: vehicle.id, phase },
-      });
       const payload = {
         vehicleId: vehicle.id,
         phase,

@@ -16,10 +16,15 @@ export const WAREHOUSE_STAFF_ROLES = [
   'warehouse_keeper',
 ] as const;
 
-export const WAREHOUSE_DATE_CORRECTION_ROLES = [
-  'admin',
-  'warehouse_manager_vvo',
-] as const;
+/**
+ * Данные, зафиксированные при приёмке и выдаче (карточка ТС, осмотры, даты,
+ * удаление фото), меняет только администратор (решение 2026-09-14).
+ * Складские роли пишут их только в момент самой приёмки / выдачи; добавлять
+ * фото и услуги, пока ТС на стоянке, им по-прежнему можно.
+ */
+export const WAREHOUSE_RECORDED_DATA_ROLES = ['admin'] as const;
+
+export const WAREHOUSE_DATE_CORRECTION_ROLES = WAREHOUSE_RECORDED_DATA_ROLES;
 
 export const WAREHOUSE_CLIENT_MANAGEMENT_ROLES = [
   'admin',

@@ -17,11 +17,8 @@ describe('warehouse role matrix', () => {
     ]);
   });
 
-  it('limits date correction to manager and administrator', () => {
-    expect(WAREHOUSE_DATE_CORRECTION_ROLES).toEqual([
-      'admin',
-      'warehouse_manager_vvo',
-    ]);
+  it('limits date correction to administrator (recorded reception/issue data)', () => {
+    expect(WAREHOUSE_DATE_CORRECTION_ROLES).toEqual(['admin']);
   });
 
   it('keeps financial permissions separate from physical operations', () => {
