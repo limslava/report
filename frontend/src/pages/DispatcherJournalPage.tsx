@@ -179,7 +179,37 @@ const DELETE_WIDTH = 28;
 const MIN_COLUMN_WIDTH = 40;
 /** Виртуализация строк: стартовая высота строки (уточняется замером) и запас строк за краем окна. */
 const DEFAULT_ROW_HEIGHT = 37;
-const ROW_OVERSCAN = 20;
+/** Высота жёлтой полосы дня (уточняется замером) и запас отрисовки за краем окна, px. */
+const DEFAULT_BAND_HEIGHT = 28;
+const OVERSCAN_PX = 720;
+
+const WEEKDAYS = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+
+const pluralOrders = (count: number): string => {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'заявка';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'заявки';
+  return 'заявок';
+};
+
+/** Элемент виртуального списка: полоса дня или строка заявки. */
+type DisplayItem =
+  | { kind: 'band'; date: string; key: string }
+  | { kind: 'row'; row: DispatcherOrderRow; index: number };
+
+/** Индекс последнего элемента, начало которого ≤ px (offsets — префиксные суммы высот). */
+const itemAtOffset = (offsets: number[], px: number): number => {
+  let low = 0;
+  let high = offsets.length - 2;
+  if (high < 0) return 0;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (offsets[mid] <= px) low = mid;
+    else high = mid - 1;
+  }
+  return Math.max(0, low);
+};
 /** Псевдо-ключ колонки даты (фильтр, сортировка, закрепление). */
 const DATE_KEY = 'orderDate';
 
@@ -379,7 +409,15 @@ export default function DispatcherJournalPage() {
   // окно прокрутки для виртуализации строк (месяц — это 1–1,5 тыс. заявок)
   const [scrollWindow, setScrollWindow] = useState({ top: 0, height: 900 });
   const [rowHeight, setRowHeight] = useState(DEFAULT_ROW_HEIGHT);
+  const [bandHeight, setBandHeight] = useState(DEFAULT_BAND_HEIGHT);
   const [headerHeight, setHeaderHeight] = useState(40);
+  // день, чья полоса «прилипла» под шапкой при прокрутке
+  const [stickyDate, setStickyDate] = useState<string | null>(null);
+  const layoutRef = useRef<{ items: DisplayItem[]; offsets: number[]; itemByRowIndex: Map<number, number> }>({
+    items: [],
+    offsets: [0],
+    itemByRowIndex: new Map(),
+  });
   useEffect(() => {
     const element = wrapRef.current;
     if (!element) return undefined;
@@ -391,8 +429,9 @@ export default function DispatcherJournalPage() {
   const handleWrapScroll = useCallback(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
+    const { items, offsets, itemByRowIndex } = layoutRef.current;
     // окно пересчитывается шагами по 5 строк: при прокрутке страница перерисовывается
-    // не на каждый пиксель, а запаса в 20 строк хватает, чтобы края не мелькали
+    // не на каждый пиксель, а запаса отрисовки хватает, чтобы края не мелькали
     // (requestAnimationFrame не используем — во фоновых вкладках он засыпает)
     const step = rowHeight * 5;
     const next = { top: Math.floor(wrap.scrollTop / step) * step, height: wrap.clientHeight };
@@ -401,12 +440,21 @@ export default function DispatcherJournalPage() {
     const active = document.activeElement as HTMLElement | null;
     const activeRow = active?.closest?.('tr[data-row-index]') as HTMLElement | null;
     if (activeRow && wrap.contains(activeRow)) {
-      const index = Number(activeRow.dataset.rowIndex);
-      const from = Math.floor((next.top - headerHeight) / rowHeight) - ROW_OVERSCAN;
-      const to = Math.ceil((next.top - headerHeight + next.height) / rowHeight) + ROW_OVERSCAN;
-      if (index < from || index >= to) active?.blur();
+      const itemIndex = itemByRowIndex.get(Number(activeRow.dataset.rowIndex)) ?? 0;
+      const from = itemAtOffset(offsets, next.top - headerHeight - OVERSCAN_PX);
+      const to = itemAtOffset(offsets, next.top - headerHeight + next.height + OVERSCAN_PX) + 1;
+      if (itemIndex < from || itemIndex >= to) active?.blur();
     }
     setScrollWindow((prev) => (prev.top === next.top && prev.height === next.height ? prev : next));
+    // прилипшая полоса: день первой строки под шапкой, если его собственная полоса уже ушла вверх
+    const topItemIndex = itemAtOffset(offsets, wrap.scrollTop);
+    const topItem = items[topItemIndex];
+    let date: string | null = null;
+    if (topItem && wrap.scrollTop > 1) {
+      const bandAtTop = topItem.kind === 'band' && wrap.scrollTop - offsets[topItemIndex] < 2;
+      if (!bandAtTop) date = topItem.kind === 'band' ? topItem.date : topItem.row.orderDate;
+    }
+    setStickyDate((prev) => (prev === date ? prev : date));
   }, [headerHeight, rowHeight]);
 
   useEffect(() => {
@@ -424,6 +472,11 @@ export default function DispatcherJournalPage() {
     if (firstRow) {
       const height = firstRow.getBoundingClientRect().height;
       if (height > 10 && Math.abs(height - rowHeight) > 0.5) setRowHeight(height);
+    }
+    const firstBand = tbodyRef.current?.querySelector('tr.dj-band') as HTMLElement | null;
+    if (firstBand) {
+      const height = firstBand.getBoundingClientRect().height;
+      if (height > 10 && Math.abs(height - bandHeight) > 0.5) setBandHeight(height);
     }
     const head = wrapRef.current?.querySelector('thead') as HTMLElement | null;
     if (head) {
@@ -539,6 +592,53 @@ export default function DispatcherJournalPage() {
       : rows;
     return applySort(filtered, sort, sortValue);
   }, [filterText, filters, rows, sort, sortValue]);
+
+  // итоги дня для жёлтых полос: сколько заявок и сколько выполнено (по видимым строкам)
+  const dayStats = useMemo(() => {
+    const stats = new Map<string, { count: number; done: number }>();
+    displayRows.forEach((row) => {
+      const entry = stats.get(row.orderDate) ?? { count: 0, done: 0 };
+      entry.count += 1;
+      if (isCompletedStatus(row.status)) entry.done += 1;
+      stats.set(row.orderDate, entry);
+    });
+    return stats;
+  }, [displayRows]);
+
+  // полоса дня перед каждой сменой даты; при сортировке по колонке дни перемешаны — полос нет
+  const displayItems = useMemo(() => {
+    const items: DisplayItem[] = [];
+    displayRows.forEach((row, index) => {
+      if (!sort && (index === 0 || row.orderDate !== displayRows[index - 1].orderDate)) {
+        items.push({ kind: 'band', date: row.orderDate, key: `band-${index}-${row.orderDate}` });
+      }
+      items.push({ kind: 'row', row, index });
+    });
+    return items;
+  }, [displayRows, sort]);
+
+  const itemOffsets = useMemo(() => {
+    const offsets = new Array<number>(displayItems.length + 1);
+    offsets[0] = 0;
+    displayItems.forEach((item, index) => {
+      offsets[index + 1] = offsets[index] + (item.kind === 'band' ? bandHeight : rowHeight);
+    });
+    return offsets;
+  }, [bandHeight, displayItems, rowHeight]);
+
+  const itemByRowIndex = useMemo(() => {
+    const map = new Map<number, number>();
+    displayItems.forEach((item, itemIndex) => {
+      if (item.kind === 'row') map.set(item.index, itemIndex);
+    });
+    return map;
+  }, [displayItems]);
+  layoutRef.current = { items: displayItems, offsets: itemOffsets, itemByRowIndex };
+
+  // список поменялся (месяц, фильтр, сортировка) — пересчитать окно и прилипшую полосу
+  useEffect(() => {
+    handleWrapScroll();
+  }, [displayItems, handleWrapScroll]);
 
   const loadRows = useCallback(async (withSpinner = false) => {
     const target = rangeRef.current;
@@ -1147,14 +1247,32 @@ export default function DispatcherJournalPage() {
     ? (filterMenu.field === DATE_KEY ? 'Дата' : COLUMN_BY_KEY.get(filterMenu.field)?.title ?? '')
     : '';
 
-  // ── виртуализация: рисуются только строки в окне прокрутки (+ запас) ──
-  const firstVisibleIndex = Math.max(0, Math.floor((scrollWindow.top - headerHeight) / rowHeight) - ROW_OVERSCAN);
-  const lastVisibleIndex = Math.min(
-    displayRows.length,
-    Math.ceil((scrollWindow.top - headerHeight + scrollWindow.height) / rowHeight) + ROW_OVERSCAN,
+  // ── виртуализация: рисуются только элементы в окне прокрутки (+ запас) ──
+  const windowStart = Math.min(
+    itemAtOffset(itemOffsets, scrollWindow.top - headerHeight - OVERSCAN_PX),
+    Math.max(0, displayItems.length - 1),
   );
-  const windowStart = Math.min(firstVisibleIndex, Math.max(0, displayRows.length - 1));
-  const windowRows = displayRows.slice(windowStart, Math.max(windowStart, lastVisibleIndex));
+  const windowEnd = Math.min(
+    displayItems.length,
+    itemAtOffset(itemOffsets, scrollWindow.top - headerHeight + scrollWindow.height + OVERSCAN_PX) + 1,
+  );
+  const windowItems = displayItems.slice(windowStart, Math.max(windowStart, windowEnd));
+  const totalItemsHeight = itemOffsets[itemOffsets.length - 1] ?? 0;
+
+  const todayDate = todayYmd();
+  const renderBandLabel = (date: string) => {
+    const [year, month, day] = date.split('-').map(Number);
+    const weekday = WEEKDAYS[new Date(year, month - 1, day).getDay()];
+    const stats = dayStats.get(date) ?? { count: 0, done: 0 };
+    return (
+      <>
+        <b>{weekday}, {pad2(day)}.{pad2(month)}.{year}</b>
+        <span className="dj-band__count">· {stats.count} {pluralOrders(stats.count)}</span>
+        {date === todayDate && <span className="dj-band__today">сегодня</span>}
+        <span className="dj-band__stat">выполнено {stats.done} из {stats.count}</span>
+      </>
+    );
+  };
 
   return (
     <Box className="dj-page">
@@ -1216,6 +1334,13 @@ export default function DispatcherJournalPage() {
       </Paper>
 
       <div className="dj-table-wrap" ref={wrapRef} onScroll={handleWrapScroll}>
+        {stickyDate && !sort && (
+          <div className="dj-sticky-band" style={{ top: headerHeight }} aria-hidden="true">
+            <div className="dj-band__label dj-sticky-band__inner" style={{ width: wrapWidth }}>
+              {renderBandLabel(stickyDate)}
+            </div>
+          </div>
+        )}
         <table className="dj-table" style={{ width: tableWidth }}>
           <colgroup>
             <col style={{ width: ROWNUM_WIDTH }} />
@@ -1233,13 +1358,20 @@ export default function DispatcherJournalPage() {
           </thead>
           <tbody ref={tbodyRef}>
             {windowStart > 0 && (
-              <tr className="dj-spacer" aria-hidden="true"><td colSpan={visibleColumns.length + 3} style={{ height: windowStart * rowHeight }} /></tr>
+              <tr className="dj-spacer" aria-hidden="true"><td colSpan={visibleColumns.length + 3} style={{ height: itemOffsets[windowStart] }} /></tr>
             )}
-            {windowRows.map((row, windowIndex) => {
-              const index = windowStart + windowIndex;
-              const dayStart = !sort && (index === 0 || row.orderDate !== displayRows[index - 1].orderDate);
+            {windowItems.map((item) => {
+              if (item.kind === 'band') {
+                return (
+                  <tr key={item.key} className="dj-band">
+                    <td colSpan={visibleColumns.length + 3}>
+                      <div className="dj-band__label">{renderBandLabel(item.date)}</div>
+                    </td>
+                  </tr>
+                );
+              }
+              const { row, index } = item;
               const classes = [
-                dayStart ? 'dj-row--day-start' : '',
                 dropTarget?.id === row.id ? (dropTarget.after ? 'dj-row--drop-after' : 'dj-row--drop-before') : '',
                 isCompletedStatus(row.status) ? 'dj-row--done' : '',
                 selectedRowId === row.id ? 'dj-row--selected' : '',
@@ -1331,9 +1463,9 @@ export default function DispatcherJournalPage() {
                 </tr>
               );
             })}
-            {lastVisibleIndex < displayRows.length && (
+            {windowEnd < displayItems.length && (
               <tr className="dj-spacer" aria-hidden="true">
-                <td colSpan={visibleColumns.length + 3} style={{ height: (displayRows.length - lastVisibleIndex) * rowHeight }} />
+                <td colSpan={visibleColumns.length + 3} style={{ height: totalItemsHeight - itemOffsets[windowEnd] }} />
               </tr>
             )}
             <tr key={`ghost-${ghostKey}`} className="dj-row--ghost dj-row--day-start">

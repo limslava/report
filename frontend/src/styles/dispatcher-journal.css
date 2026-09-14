@@ -628,3 +628,58 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
 
 /* статус — та же ячейка-список, что у справочников, в виде чипа */
 .dj-status-cell .dj-cell-input { border-radius: 6px; margin: 1px 2px; width: calc(100% - 4px); font-weight: 600; }
+
+/* ── жёлтые полосы дней (мягкий жёлтый, решение 2026-09-14) ── */
+.dj-table tr.dj-band td {
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0;
+  background: #fff3b0;
+  border-top: 2px solid #e2c94a;
+  border-bottom: 1px solid #e8d77a;
+  border-right: 0;
+}
+.dj-table tr.dj-band:hover td { background: #fff3b0; }
+.dj-band__label {
+  position: sticky;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 0 10px;
+  font-size: 12.5px;
+  color: #3f3200;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+.dj-band__label b { font-size: 13px; }
+.dj-band__count { color: #7a6a1e; }
+.dj-band__today {
+  background: #2a78d6;
+  color: #fff;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 8px;
+}
+.dj-band__stat { color: #7a6a1e; font-size: 11.5px; margin-left: 12px; }
+
+/* полоса текущего дня прилипает под шапкой таблицы */
+.dj-table-wrap { position: relative; }
+.dj-sticky-band {
+  position: sticky;
+  left: 0;
+  height: 0;
+  z-index: 3;
+}
+.dj-sticky-band__inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 26px;
+  background: #fff3b0;
+  border-bottom: 1px solid #e8d77a;
+  box-shadow: 0 3px 6px -3px rgba(63, 50, 0, 0.35);
+  display: flex;
+}
