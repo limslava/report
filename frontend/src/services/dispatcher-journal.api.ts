@@ -191,5 +191,8 @@ export type DispatcherHistoryQuery = {
   limit?: number;
 };
 
+export const getDispatcherHistoryUsers = () =>
+  api.get<Array<{ id: string; name: string }>>('/dispatcher-journal/history/users');
+
 export const getDispatcherHistory = (params: DispatcherHistoryQuery) =>
   api.get<{ items: DispatcherHistoryItem[]; nextBefore: string | null }>('/dispatcher-journal/history', { params });

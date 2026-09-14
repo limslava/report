@@ -17,6 +17,7 @@ import {
   listDispatcherDictionaries,
   listDispatcherDictionaryOptions,
   listDispatcherHistory,
+  listDispatcherHistoryUsers,
   listDispatcherOrders,
   listDispatcherStatuses,
   reorderDispatcherDictionary,
@@ -71,6 +72,7 @@ router.delete(
 );
 router.post('/import', authorizeRole('admin'), importDispatcherOrders);
 router.get('/history', authorizeRole(...DISPATCHER_HISTORY_ROLES), listDispatcherHistory);
+router.get('/history/users', authorizeRole(...DISPATCHER_HISTORY_ROLES), listDispatcherHistoryUsers);
 router.post('/dictionaries/reorder', authorizeRole(...DISPATCHER_DICTIONARY_EDIT_ROLES), reorderDispatcherDictionary);
 router.get(
   '/orders',
