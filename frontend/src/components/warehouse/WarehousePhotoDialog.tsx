@@ -73,6 +73,9 @@ const blobToDataUrl = (blob: Blob): Promise<string> => new Promise((resolve, rej
   reader.readAsDataURL(blob);
 });
 
+/** Лимит фото на одно ТС (как MAX_WAREHOUSE_PHOTOS_PER_VEHICLE на сервере). */
+const MAX_PHOTOS_PER_VEHICLE = 100;
+
 const formatBytes = (bytes: number): string =>
   bytes < 1024 * 1024
     ? `${Math.max(1, Math.round(bytes / 1024))} КБ`
@@ -97,6 +100,12 @@ export default function WarehousePhotoDialog({
   const [phaseFilter, setPhaseFilter] = useState<'all' | 'reception' | 'issue'>('all');
   const [fullPhotoUrl, setFullPhotoUrl] = useState<string | null>(null);
   const processingRef = useRef(false);
+  const photosRef = useRef<PhotoPreview[]>([]);
+  photosRef.current = photos;
+  // Реестр склада перечитывает список ТС каждые 5 с — объект vehicle приходит
+  // новый, хотя ТС то же. Все загрузки завязаны на id, иначе вкладка «Фото»
+  // перекачивала все миниатюры по кругу (баг 14.09).
+  const vehicleId = vehicle?.id ?? null;
 
   // Полноразмерное фото качаем только при открытии просмотра (в сетке — миниатюры).
   useEffect(() => {
@@ -115,7 +124,8 @@ export default function WarehousePhotoDialog({
       cancelled = true;
       setFullPhotoUrl(null);
     };
-  }, [selectedPhoto, vehicle]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPhoto, vehicleId]);
 
   const loadGenerationRef = useRef(0);
 
@@ -124,25 +134,28 @@ export default function WarehousePhotoDialog({
   // ВСЕ фото в полном размере разом — на плохой связи это не заканчивалось
   // никогда, а на телефоне ещё и убивало вкладку по памяти.
   const loadPhotos = useCallback(async () => {
-    if (!vehicle) return;
+    if (!vehicleId) return;
     const generation = loadGenerationRef.current + 1;
     loadGenerationRef.current = generation;
     setLoading(true);
     setError(null);
     try {
-      const listResponse = await getWarehouseVehiclePhotos(vehicle.id);
+      const listResponse = await getWarehouseVehiclePhotos(vehicleId);
       if (loadGenerationRef.current !== generation) return;
-      setPhotos(listResponse.data.map((photo) => ({ ...photo, url: '' })));
+      // уже показанные миниатюры не сбрасываем — после загрузки новых фото
+      // сетка не мигает, докачиваются только новые
+      const known = new Map(photosRef.current.filter((item) => item.url).map((item) => [item.id, item.url]));
+      setPhotos(listResponse.data.map((photo) => ({ ...photo, url: known.get(photo.id) ?? '' })));
       setLoading(false);
 
-      const queue = [...listResponse.data];
+      const queue = listResponse.data.filter((photo) => !known.has(photo.id));
       const worker = async () => {
         while (queue.length > 0) {
           if (loadGenerationRef.current !== generation) return;
           const photo = queue.shift();
           if (!photo) return;
           try {
-            const imageResponse = await downloadWarehouseVehiclePhoto(vehicle.id, photo.id, 'thumb');
+            const imageResponse = await downloadWarehouseVehiclePhoto(vehicleId, photo.id, 'thumb');
             if (loadGenerationRef.current !== generation) return;
             const blob = imageResponse.data;
             // первые байты — в журнал: по ним видно, JPEG это или чужое тело
@@ -173,14 +186,14 @@ export default function WarehousePhotoDialog({
       setError(loadError instanceof Error ? loadError.message : 'Не удалось загрузить фотографии.');
       setLoading(false);
     }
-  }, [vehicle]);
+  }, [vehicleId]);
 
   const processQueue = useCallback(async () => {
-    if (!vehicle || processingRef.current || !navigator.onLine) return;
+    if (!vehicleId || processingRef.current || !navigator.onLine) return;
     processingRef.current = true;
     setUploading(true);
     try {
-      const queue = await listWarehousePhotoQueue(vehicle.id);
+      const queue = await listWarehousePhotoQueue(vehicleId);
       setProgress({ done: 0, total: queue.length });
       let done = 0;
       let failed = 0;
@@ -196,7 +209,7 @@ export default function WarehousePhotoDialog({
         let uploaded = false;
         for (let attempt = 0; attempt < 3; attempt += 1) {
           try {
-            await uploadWarehouseVehiclePhoto(vehicle.id, item.blob, item.name, 'reception', item.checklistItem, clientHash);
+            await uploadWarehouseVehiclePhoto(vehicleId, item.blob, item.name, 'reception', item.checklistItem, clientHash);
             uploaded = true;
             break;
           } catch (uploadError) {
@@ -232,13 +245,13 @@ export default function WarehousePhotoDialog({
       processingRef.current = false;
       setUploading(false);
     }
-  }, [loadPhotos, vehicle]);
+  }, [loadPhotos, vehicleId]);
 
   useEffect(() => {
-    if (!open || !vehicle) return;
+    if (!open || !vehicleId) return;
     void loadPhotos();
     void processQueue();
-  }, [loadPhotos, open, processQueue, vehicle]);
+  }, [loadPhotos, open, processQueue, vehicleId]);
 
   useEffect(() => {
     const handleOnline = () => void processQueue();
@@ -251,8 +264,8 @@ export default function WarehousePhotoDialog({
     const files = Array.from(event.target.files ?? []);
     event.target.value = '';
     if (files.length === 0) return;
-    if (photos.length + files.length > 60) {
-      setError('Для одного ТС разрешено не более 60 фотографий.');
+    if (photos.length + files.length > MAX_PHOTOS_PER_VEHICLE) {
+      setError(`Для одного ТС разрешено не более ${MAX_PHOTOS_PER_VEHICLE} фотографий.`);
       return;
     }
     setProcessing(true);
@@ -366,7 +379,7 @@ export default function WarehousePhotoDialog({
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
             <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-              Фотографий: {photos.length} из 100. Фото сжимаются автоматически.
+              Фотографий: {photos.length} из {MAX_PHOTOS_PER_VEHICLE}. Фото сжимаются автоматически.
             </Typography>
             {issueCount > 0 && (
               <ToggleButtonGroup
