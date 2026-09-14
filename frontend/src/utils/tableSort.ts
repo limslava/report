@@ -54,7 +54,11 @@ export function loadSortState<T>(storageKey: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(storageKey);
     if (!raw) return fallback;
-    return { ...fallback, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    // null/не-объект сохраняем как есть: иначе выключенная сортировка (null)
+    // после перезагрузки превращалась в пустой объект {}
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return (parsed ?? fallback) as T;
+    return { ...fallback, ...parsed };
   } catch {
     return fallback;
   }

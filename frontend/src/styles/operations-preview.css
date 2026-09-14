@@ -4,10 +4,10 @@
   flex-direction: column;
   gap: 20px;
   background: #f6f7fb;
-  /* страница ровно в высоту окна: внешнего скролла нет, таблица занимает
-     всё свободное место и скроллится внутри (решение 2026-08-20) */
-  height: calc(100dvh - 80px);
-  min-height: 420px;
+  /* Таблица подгоняется под окно (fit-scale), но не скроллится внутри:
+     если контент выше окна (дашборд парка под графиком) — прокручивается
+     сама страница (решение 2026-09-11, ранее был внутренний скролл). */
+  min-height: calc(100dvh - 80px);
   color: #1b1f2a;
 }
 
@@ -308,7 +308,7 @@
 }
 
 .ops-matrix {
-  --col-a: 250px; /* полное ФИО в одну строку */
+  --col-a: 276px; /* полное ФИО в одну строку (шрифт ФИО крупнее остальных ячеек) */
   --col-b: 80px;
   --col-t: 0px;
   --col-c: 100px;
@@ -542,6 +542,15 @@
 
 .ops-matrix__person-grid .ops-matrix__name {
   align-items: flex-start;
+}
+
+/* ФИО крупнее остальной таблицы: график ужимается по высоте (zoom до 0.7),
+   и при 12px фамилии читались хуже всего. Место под шрифт взято у колонок
+   «Примечание» и «Итого». */
+.ops-matrix .ops-matrix__cell--name > .ops-matrix__name > span {
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827;
 }
 
 /* ФИО в одну строку; чрезмерно длинное — с многоточием */
@@ -907,6 +916,12 @@
   font-weight: 600;
 }
 
+.ops-matrix__cell--knevichi {
+  background: #bfc8e6;
+  color: #1e293b;
+  font-weight: 600;
+}
+
 .ops-matrix__cell--count {
   background: #f3f4f6;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
@@ -1025,6 +1040,7 @@
 .legend-item.sick { background: #9ad6f5; color: #0f172a; }
 .legend-item.wash { background: #c7a2f3; color: #2e1065; }
 .legend-item.idle { background: #9aa6b2; color: #111827; }
+.legend-item.knevichi { background: #bfc8e6; color: #1e293b; }
 .legend-item.nodriver { background: #9ad6f5; color: #0f172a; }
 
 .ops-calendar__weekdays {
