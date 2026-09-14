@@ -107,6 +107,31 @@ export default function UchetTsComparisonPage() {
     void load();
   }, [load]);
 
+  // Итоги за месяц: суммируем «принято/отправлено»; для «в ожидании»
+  // сумма остатков смысла не имеет — показываем прочерк.
+  const totals = useMemo(() => {
+    const manual: Record<string, number | null> = {};
+    const uchet: Record<string, number | null> = {};
+    for (const metric of ALL_METRICS) {
+      if (metric.code.endsWith('_waiting')) {
+        manual[metric.code] = null;
+        uchet[metric.code] = null;
+        continue;
+      }
+      let manualSum: number | null = null;
+      let uchetSum: number | null = null;
+      for (const day of data?.days ?? []) {
+        const m = day.manual[metric.code];
+        const u = day.uchet[metric.code];
+        if (m !== null) manualSum = (manualSum ?? 0) + m;
+        if (u !== null) uchetSum = (uchetSum ?? 0) + u;
+      }
+      manual[metric.code] = manualSum;
+      uchet[metric.code] = uchetSum;
+    }
+    return { manual, uchet };
+  }, [data]);
+
   const mismatchStats = useMemo(() => {
     if (!data) return { cells: 0, days: 0 };
     let cells = 0;
@@ -254,11 +279,14 @@ export default function UchetTsComparisonPage() {
                 },
               }}
             >
+              {/* Двухуровневая липкая шапка: высота первой строки фиксирована,
+                  смещение второй задано от неё — иначе при компактном шрифте
+                  строки шапки съезжают и наезжают на данные (замечание 11.09) */}
               <TableHead>
-                <TableRow>
-                  <TableCell rowSpan={2} sx={{ fontWeight: 700 }}>Дата</TableCell>
-                  <TableCell rowSpan={2} sx={{ fontWeight: 700 }}>День</TableCell>
-                  <TableCell rowSpan={2} sx={{ fontWeight: 700 }}>Источник</TableCell>
+                <TableRow sx={{ '& th': { height: 30, boxSizing: 'border-box' } }}>
+                  <TableCell rowSpan={2} sx={{ fontWeight: 700, bgcolor: 'background.paper', zIndex: 3 }}>Дата</TableCell>
+                  <TableCell rowSpan={2} sx={{ fontWeight: 700, bgcolor: 'background.paper', zIndex: 3 }}>День</TableCell>
+                  <TableCell rowSpan={2} sx={{ fontWeight: 700, bgcolor: 'background.paper', zIndex: 3 }}>Источник</TableCell>
                   {METRIC_GROUPS.map((group) => (
                     <TableCell
                       key={group.label}
@@ -272,7 +300,7 @@ export default function UchetTsComparisonPage() {
                 </TableRow>
                 <TableRow>
                   {ALL_METRICS.map((metric) => (
-                    <TableCell key={metric.code} align="center" sx={{ fontWeight: 600, top: 37 }}>
+                    <TableCell key={metric.code} align="center" sx={{ fontWeight: 600, top: 30, bgcolor: 'grey.100' }}>
                       {metric.label}
                     </TableCell>
                   ))}
@@ -309,6 +337,16 @@ export default function UchetTsComparisonPage() {
                     </TableRow>,
                   ];
                 })}
+                {/* Итого за месяц: «в ожидании» не суммируется (остаток) */}
+                <TableRow sx={{ '& td': { fontWeight: 700, borderTop: '2px solid', borderTopColor: 'grey.400' } }}>
+                  <TableCell rowSpan={2} colSpan={2} sx={{ fontWeight: 700 }}>Итого</TableCell>
+                  <TableCell sx={{ color: 'text.secondary', fontSize: 11, fontWeight: 400 }}>вручную</TableCell>
+                  {ALL_METRICS.map((metric) => renderCell(totals.manual[metric.code], null, false))}
+                </TableRow>
+                <TableRow sx={{ bgcolor: '#EEF4FB', '& td': { fontWeight: 700 } }}>
+                  <TableCell sx={{ color: 'text.secondary', fontSize: 11, fontWeight: 400 }}>из учёта ТС</TableCell>
+                  {ALL_METRICS.map((metric) => renderCell(totals.uchet[metric.code], totals.manual[metric.code], true))}
+                </TableRow>
               </TableBody>
             </Table>
           </TableContainer>
