@@ -19,6 +19,8 @@ import {
   LinearProgress,
   Modal,
   Stack,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
   useMediaQuery,
@@ -48,6 +50,8 @@ interface WarehousePhotoDialogProps {
   vehicle: WarehouseVehicle | null;
   readOnly?: boolean;
   onClose: () => void;
+  /** без окна-диалога: содержимое встраивается во вкладку «Фото» карточки ТС */
+  embedded?: boolean;
 }
 
 interface PhotoPreview extends WarehousePhoto {
@@ -77,6 +81,7 @@ export default function WarehousePhotoDialog({
   vehicle,
   readOnly = false,
   onClose,
+  embedded = false,
 }: WarehousePhotoDialogProps) {
   const fullScreenDialog = useMediaQuery('(max-width:600px)');
   const [photos, setPhotos] = useState<PhotoPreview[]>([]);
@@ -86,6 +91,7 @@ export default function WarehousePhotoDialog({
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoPreview | null>(null);
+  const [phaseFilter, setPhaseFilter] = useState<'all' | 'reception' | 'issue'>('all');
   const [fullPhotoUrl, setFullPhotoUrl] = useState<string | null>(null);
   const processingRef = useRef(false);
 
@@ -287,38 +293,27 @@ export default function WarehousePhotoDialog({
 
   const canUpload = vehicle?.status === 'on_site' && !readOnly;
   const busy = processing || uploading;
+  const receptionCount = photos.filter((photo) => photo.phase !== 'issue').length;
+  const issueCount = photos.filter((photo) => photo.phase === 'issue').length;
+  const visiblePhotos = phaseFilter === 'all'
+    ? photos
+    : photos.filter((photo) => (phaseFilter === 'issue' ? photo.phase === 'issue' : photo.phase !== 'issue'));
 
-  return (
-    <Dialog
-      open={open}
-      onClose={busy ? undefined : onClose}
-      fullWidth
-      maxWidth="lg"
-      // на телефоне — во весь экран: обрезанный модал со своим внутренним
-      // скроллом был неудобен (замечание тестирования 09.09)
-      fullScreen={fullScreenDialog}
-    >
-      <DialogTitle sx={{ pr: 7 }}>
-        Фотофиксация {vehicle?.warehouseNumber}
-        <IconButton
-          aria-label="Закрыть"
-          onClick={onClose}
-          disabled={busy}
-          sx={{ position: 'absolute', right: 12, top: 12 }}
-        >
-          <Close />
-        </IconButton>
-      </DialogTitle>
-      <DialogContent dividers>
+  const content = (
         <Stack spacing={2}>
           {error && (
             <Alert severity="error" onClose={() => setError(null)} action={<UploadReportButton />}>
               {error}
             </Alert>
           )}
-          {vehicle?.status !== 'on_site' && (
+          {vehicle?.status === 'issued' && !loading && photos.length === 0 && (
             <Alert severity="info">
               ТС выдано. Фотографии удалены по истечении срока хранения (3 месяца после выдачи).
+            </Alert>
+          )}
+          {vehicle?.status === 'issued' && photos.length > 0 && (
+            <Alert severity="info">
+              ТС выдано. Фотографии хранятся 3 месяца после выдачи, затем удаляются автоматически.
             </Alert>
           )}
           {canUpload && (
@@ -366,9 +361,23 @@ export default function WarehousePhotoDialog({
             </Box>
           )}
 
-          <Typography variant="body2" color="text.secondary">
-            Фотографий: {photos.length} из 60. Фото сжимаются автоматически.
-          </Typography>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+            <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+              Фотографий: {photos.length} из 100. Фото сжимаются автоматически.
+            </Typography>
+            {issueCount > 0 && (
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={phaseFilter}
+                onChange={(_event, value) => value && setPhaseFilter(value)}
+              >
+                <ToggleButton value="all">Все · {photos.length}</ToggleButton>
+                <ToggleButton value="reception">Приёмка · {receptionCount}</ToggleButton>
+                <ToggleButton value="issue">Выдача · {issueCount}</ToggleButton>
+              </ToggleButtonGroup>
+            )}
+          </Stack>
 
           {loading ? (
             <Box sx={{ py: 8, textAlign: 'center' }}><CircularProgress /></Box>
@@ -388,7 +397,7 @@ export default function WarehousePhotoDialog({
                 gap: 1.5,
               }}
             >
-              {photos.map((photo, index) => (
+              {visiblePhotos.map((photo, index) => (
                 <Box
                   key={photo.id}
                   sx={{
@@ -494,11 +503,9 @@ export default function WarehousePhotoDialog({
             </Box>
           )}
         </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={busy}>Закрыть</Button>
-      </DialogActions>
+  );
 
+  const viewer = (
       <Modal open={Boolean(selectedPhoto)} onClose={() => setSelectedPhoto(null)}>
         <Box
           onClick={() => setSelectedPhoto(null)}
@@ -537,6 +544,45 @@ export default function WarehousePhotoDialog({
           )}
         </Box>
       </Modal>
+  );
+
+  if (embedded) {
+    return (
+      <>
+        {content}
+        {viewer}
+      </>
+    );
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onClose={busy ? undefined : onClose}
+      fullWidth
+      maxWidth="lg"
+      // на телефоне — во весь экран: обрезанный модал со своим внутренним
+      // скроллом был неудобен (замечание тестирования 09.09)
+      fullScreen={fullScreenDialog}
+    >
+      <DialogTitle sx={{ pr: 7 }}>
+        Фотофиксация {vehicle?.warehouseNumber}
+        <IconButton
+          aria-label="Закрыть"
+          onClick={onClose}
+          disabled={busy}
+          sx={{ position: 'absolute', right: 12, top: 12 }}
+        >
+          <Close />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent dividers>
+        {content}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={busy}>Закрыть</Button>
+      </DialogActions>
+      {viewer}
     </Dialog>
   );
 }

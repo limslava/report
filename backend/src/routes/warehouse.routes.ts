@@ -27,6 +27,7 @@ import {
   deleteWarehouseVehiclePhoto,
   exportWarehouseVehicleInspectionAct,
   getWarehouseVehicleInspection,
+  listWarehouseVehicleOperations,
   getWarehouseVehiclePhoto,
   getWarehouseVehicle,
   importWarehouseCounterparty,
@@ -406,6 +407,14 @@ router.delete(
   ],
   handleValidationErrors,
   deleteWarehouseVehiclePhoto,
+);
+
+router.get(
+  '/vehicles/:id/operations',
+  authorizeRole(...new Set([...WAREHOUSE_STAFF_ROLES, ...WAREHOUSE_FINANCE_VIEW_ROLES])),
+  [param('id').isUUID()],
+  handleValidationErrors,
+  listWarehouseVehicleOperations,
 );
 
 router.get(

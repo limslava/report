@@ -36,6 +36,7 @@ import {
 } from '../services/warehouse-billing-lock.service';
 import { recordAuditLog } from '../services/audit-log.service';
 import { buildWarehouseInspectionActPdf } from '../services/warehouse-inspection-act.service';
+import { summarizeWarehouseOperation } from '../services/warehouse-operation-summary.service';
 
 const normalizeNullable = (value: unknown): string | null => {
   const normalized = String(value ?? '').trim();
@@ -1257,6 +1258,37 @@ export const getWarehouseVehicleInspection = async (
       },
     });
     res.json(inspection ? serializeInspection(inspection) : null);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** История операций по карточке ТС (вкладка «История»); клиенту склада недоступна. */
+export const listWarehouseVehicleOperations = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const vehicle = await AppDataSource.getRepository(WarehouseVehicle).findOne({
+      where: { id: req.params.id },
+    });
+    if (!vehicle) {
+      res.status(404).json({ message: 'Карточка ТС не найдена' });
+      return;
+    }
+    const operations = await AppDataSource.getRepository(WarehouseOperation).find({
+      where: { vehicleId: vehicle.id },
+      order: { createdAt: 'DESC' },
+      take: 500,
+    });
+    res.json(operations.map((operation) => ({
+      id: operation.id,
+      type: operation.type,
+      actorName: operation.actorName,
+      createdAt: operation.createdAt,
+      ...summarizeWarehouseOperation(operation.type, operation.details as Record<string, unknown> | null),
+    })));
   } catch (error) {
     next(error);
   }

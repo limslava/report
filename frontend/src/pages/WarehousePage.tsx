@@ -48,7 +48,6 @@ import {
   deleteWarehouseVehicleAct,
   getWarehouseClients,
   getWarehouseVehicles,
-  updateWarehouseVehicle,
   WarehouseClient,
   WarehouseCounterparty,
   WarehouseVehicle,
@@ -59,6 +58,7 @@ import {
 import WarehousePhotoDialog from '../components/warehouse/WarehousePhotoDialog';
 import WarehouseClientsPanel, { WarehouseClientsPanelHandle } from '../components/warehouse/WarehouseClientsPanel';
 import WarehouseServicesDialog from '../components/warehouse/WarehouseServicesDialog';
+import WarehouseVehicleCard from '../components/warehouse/WarehouseVehicleCard';
 import WarehouseTariffsPanel from '../components/warehouse/WarehouseTariffsPanel';
 import WarehouseBillingPanel from '../components/warehouse/WarehouseBillingPanel';
 import { useAuthStore } from '../store/auth-store';
@@ -172,6 +172,10 @@ export default function WarehousePage() {
   const [form, setForm] = useState<WarehouseVehiclePayload>(emptyForm);
   const [photoVehicle, setPhotoVehicle] = useState<WarehouseVehicle | null>(null);
   const [servicesVehicle, setServicesVehicle] = useState<WarehouseVehicle | null>(null);
+  // карточка ТС берёт запись из актуального списка — после сохранения и
+  // корректировок шапка и вкладки показывают свежие данные
+  const [cardVehicleId, setCardVehicleId] = useState<string | null>(null);
+  const [cardRefreshToken, setCardRefreshToken] = useState(0);
   const [deleteVehicleTarget, setDeleteVehicleTarget] = useState<WarehouseVehicle | null>(null);
   const [deletingVehicle, setDeletingVehicle] = useState(false);
   const clientsPanelRef = useRef<WarehouseClientsPanelHandle>(null);
@@ -252,25 +256,14 @@ export default function WarehousePage() {
     setDialogOpen(true);
   };
 
-  const openEditDialog = (vehicle: WarehouseVehicle) => {
-    setEditingVehicle(vehicle);
-    setForm({
-      counterpartyId: vehicle.counterpartyId,
-      requestNumber: vehicle.requestNumber,
-      requestDate: vehicle.requestDate,
-      vehicleType: vehicle.vehicleType,
-      vin: vehicle.vin,
-      chassisNumber: vehicle.chassisNumber,
-      brand: vehicle.brand,
-      model: vehicle.model,
-      registrationNumber: vehicle.registrationNumber,
-      receivedDate: vehicle.receivedDate,
-      fuelLevelPercent: vehicle.fuelLevelPercent,
-      notes: vehicle.notes,
-    });
-    setError(null);
-    setDialogOpen(true);
-  };
+  const cardVehicle = useMemo(
+    () => vehicles.find((vehicle) => vehicle.id === cardVehicleId) ?? null,
+    [cardVehicleId, vehicles],
+  );
+  const cardClient = useMemo(
+    () => (cardVehicle ? warehouseClients.find((client) => client.counterpartyId === cardVehicle.counterpartyId) ?? null : null),
+    [cardVehicle, warehouseClients],
+  );
 
   const openDateCorrectionDialog = (vehicle: WarehouseVehicle) => {
     setDateCorrectionVehicle(vehicle);
@@ -320,22 +313,8 @@ export default function WarehousePage() {
     setSaving(true);
     setError(null);
     try {
-      if (editingVehicle) {
-        await updateWarehouseVehicle(editingVehicle.id, {
-          vehicleType: form.vehicleType,
-          vin: form.vin,
-          chassisNumber: form.chassisNumber,
-          brand: form.brand,
-          model: form.model,
-          registrationNumber: form.registrationNumber,
-          fuelLevelPercent: form.fuelLevelPercent,
-          notes: form.notes,
-        });
-        setSuccess('Карточка ТС обновлена.');
-      } else {
-        const response = await createWarehouseVehicle(form);
-        setSuccess(`Создана карточка ${response.data.warehouseNumber}.`);
-      }
+      const response = await createWarehouseVehicle(form);
+      setSuccess(`Создана карточка ${response.data.warehouseNumber}.`);
       setDialogOpen(false);
       await loadVehicles();
     } catch (saveError) {
@@ -537,19 +516,13 @@ export default function WarehousePage() {
                 </TableRow>
               )}
               {!loading && vehicles.map((vehicle) => {
-                const canOpenVehicleCard = canOperateWarehouse && vehicle.status !== 'issued';
-
                 return (
                 <TableRow
                   key={vehicle.id}
                   hover
-                  title={canOpenVehicleCard ? 'Двойной клик откроет карточку ТС' : undefined}
-                  onDoubleClick={() => {
-                    if (canOpenVehicleCard) {
-                      openEditDialog(vehicle);
-                    }
-                  }}
-                  sx={{ cursor: canOpenVehicleCard ? 'pointer' : 'default' }}
+                  title="Двойной клик откроет карточку ТС"
+                  onDoubleClick={() => setCardVehicleId(vehicle.id)}
+                  sx={{ cursor: 'pointer' }}
                 >
                   <TableCell sx={{ width: 112, fontWeight: 600 }}>
                     {vehicle.warehouseNumber}
@@ -863,6 +836,21 @@ export default function WarehousePage() {
         </DialogActions>
       </Dialog>
 
+      <WarehouseVehicleCard
+        open={Boolean(cardVehicle)}
+        vehicle={cardVehicle}
+        client={cardClient}
+        canOperate={canOperateWarehouse}
+        canCorrectDates={canCorrectDates}
+        canEditServices={canEditServices}
+        canViewHistory={user?.role !== 'counterparty_user'}
+        refreshToken={cardRefreshToken}
+        onClose={() => setCardVehicleId(null)}
+        onChanged={() => void loadVehicles(true)}
+        onCorrectDates={openDateCorrectionDialog}
+        onOpenServices={(vehicle) => setServicesVehicle(vehicle)}
+        onIssue={(vehicle) => navigate(`/warehouse/issue?vehicleId=${vehicle.id}`)}
+      />
       <WarehousePhotoDialog
         open={Boolean(photoVehicle)}
         vehicle={photoVehicle}
@@ -873,7 +861,10 @@ export default function WarehousePage() {
         open={Boolean(servicesVehicle)}
         vehicle={servicesVehicle}
         readOnly={!canEditServices}
-        onClose={() => setServicesVehicle(null)}
+        onClose={() => {
+          setServicesVehicle(null);
+          setCardRefreshToken((value) => value + 1);
+        }}
       />
       <Dialog open={Boolean(deleteVehicleTarget)} onClose={deletingVehicle ? undefined : () => setDeleteVehicleTarget(null)}>
         <DialogTitle>Удалить акт {deleteVehicleTarget?.warehouseNumber}?</DialogTitle>

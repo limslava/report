@@ -366,6 +366,18 @@ export const saveWarehouseVehicleInspection = (
   payload: WarehouseVehicleInspectionPayload,
 ) => api.put<WarehouseVehicleInspection>(`/warehouse/vehicles/${vehicleId}/inspections/${phase}`, payload);
 
+export interface WarehouseVehicleOperation {
+  id: string;
+  type: string;
+  actorName: string;
+  createdAt: string;
+  title: string;
+  description: string | null;
+}
+
+export const getWarehouseVehicleOperations = (vehicleId: string) =>
+  api.get<WarehouseVehicleOperation[]>(`/warehouse/vehicles/${vehicleId}/operations`);
+
 export const downloadWarehouseVehicleInspectionAct = (
   vehicleId: string,
   phase: WarehouseInspectionPhase,

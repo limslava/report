@@ -17,9 +17,13 @@ import { WarehouseVehicleInspectionPayload } from '../../services/warehouse.api'
 interface Props {
   value: WarehouseVehicleInspectionPayload;
   onChange: (value: WarehouseVehicleInspectionPayload) => void;
+  /** просмотр без правки (карточка ТС у финансов/клиента, выданное ТС) */
+  readOnly?: boolean;
+  /** секции раскрыты сразу (в карточке ТС данные должны быть видны без кликов) */
+  defaultExpanded?: boolean;
 }
 
-const vehicleDetailFields = [
+export const vehicleDetailFields = [
   ['engineNumber', 'Модель и номер двигателя'],
   ['bodyNumber', 'Кузов / кабина / прицеп №'],
   ['manufactureYear', 'Год изготовления'],
@@ -29,14 +33,14 @@ const vehicleDetailFields = [
   ['hourMeter', 'Показания счетчика, м/ч'],
 ] as const;
 
-const documentsAndKeys = [
+export const documentsAndKeys = [
   ['serviceBook', 'Сервисная книжка'],
   ['manual', 'Руководство по эксплуатации'],
   ['ignitionKeys', 'Ключи от замка зажигания'],
   ['specialEquipmentKeys', 'Ключи от дверей / спецоборудования'],
 ] as const;
 
-const equipmentFields = [
+export const equipmentFields = [
   ['toolKit', 'Инструмент / ЗИП'],
   ['firstAidKit', 'Аптечка'],
   ['fireExtinguisher', 'Огнетушитель'],
@@ -46,7 +50,7 @@ const equipmentFields = [
   ['wheelWrench', 'Баллонный ключ'],
 ] as const;
 
-const technicalCondition = [
+export const technicalCondition = [
   ['engineStarts', 'Двигатель запускается'],
   ['movesOnOwn', 'ТС передвигается своим ходом'],
   ['batteryPresent', 'Аккумуляторы на месте'],
@@ -61,7 +65,7 @@ const technicalCondition = [
   ['floorMatsPresent', 'Ковры в салоне'],
 ] as const;
 
-const technicalTextFields = [
+export const technicalTextFields = [
   ['wheelInfo', 'Марка, модель колес и год'],
 ] as const;
 
@@ -95,7 +99,7 @@ export const emptyWarehouseInspection = (): WarehouseVehicleInspectionPayload =>
   responsibilityAmount: null,
 });
 
-export default function WarehouseInspectionForm({ value, onChange }: Props) {
+export default function WarehouseInspectionForm({ value, onChange, readOnly = false, defaultExpanded = false }: Props) {
   const textInput = (
     group: keyof WarehouseVehicleInspectionPayload,
     key: string,
@@ -107,6 +111,7 @@ export default function WarehouseInspectionForm({ value, onChange }: Props) {
       label={label}
       value={String(groupValue(value, group, key) ?? '')}
       onChange={(event) => onChange(updateGroup(value, group, key, event.target.value))}
+      InputProps={{ readOnly }}
     />
   );
 
@@ -120,6 +125,7 @@ export default function WarehouseInspectionForm({ value, onChange }: Props) {
       control={(
         <Checkbox
           checked={Boolean(groupValue(value, group, key))}
+          disabled={readOnly}
           onChange={(event) => onChange(updateGroup(value, group, key, event.target.checked))}
         />
       )}
@@ -143,7 +149,7 @@ export default function WarehouseInspectionForm({ value, onChange }: Props) {
     total: number,
     children: ReactNode,
   ) => (
-    <Accordion key={title} disableGutters variant="outlined" sx={{ '&:before': { display: 'none' } }}>
+    <Accordion key={title} defaultExpanded={defaultExpanded} disableGutters variant="outlined" sx={{ '&:before': { display: 'none' } }}>
       <AccordionSummary expandIcon={<ExpandMore />}>
         <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%', pr: 1 }} justifyContent="space-between">
           <Typography fontWeight={700}>{title}</Typography>
@@ -206,6 +212,7 @@ export default function WarehouseInspectionForm({ value, onChange }: Props) {
         label="Личные вещи и примечания"
         value={value.personalItemsNotes ?? ''}
         onChange={(event) => onChange({ ...value, personalItemsNotes: event.target.value })}
+        InputProps={{ readOnly }}
         multiline
         minRows={2}
       />
@@ -213,6 +220,7 @@ export default function WarehouseInspectionForm({ value, onChange }: Props) {
         label="Повреждения и замечания"
         value={value.damageNotes ?? ''}
         onChange={(event) => onChange({ ...value, damageNotes: event.target.value })}
+        InputProps={{ readOnly }}
         multiline
         minRows={3}
       />
@@ -224,7 +232,7 @@ export default function WarehouseInspectionForm({ value, onChange }: Props) {
           ...value,
           responsibilityAmount: event.target.value === '' ? null : Number(event.target.value),
         })}
-        inputProps={{ min: 0, step: 0.01 }}
+        inputProps={{ min: 0, step: 0.01, readOnly }}
       />
     </Stack>
   );

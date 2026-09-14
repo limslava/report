@@ -38,6 +38,8 @@ interface Props {
   value: WarehouseVehicleInspectionPayload;
   vehicleType: WarehouseVehicleType;
   onChange: (value: WarehouseVehicleInspectionPayload) => void;
+  /** просмотр: отметки видны и выбираются, но не ставятся и не удаляются */
+  readOnly?: boolean;
 }
 
 const DAMAGE_CODES: Array<{ code: DamageCode; label: string }> = [
@@ -91,7 +93,7 @@ const getMarks = (value: WarehouseVehicleInspectionPayload): DamageMark[] => {
 const damageCodeLabel = (code: DamageCode) =>
   DAMAGE_CODES.find((item) => item.code === code)?.label ?? code;
 
-export default function WarehouseDamageScheme({ value, vehicleType, onChange }: Props) {
+export default function WarehouseDamageScheme({ value, vehicleType, onChange, readOnly = false }: Props) {
   const schemeType = SCHEME_BY_TYPE[vehicleType] ?? 'full';
   const scheme = SCHEME_ASSETS[schemeType];
   const [selectedCode, setSelectedCode] = useState<DamageCode>('Ц');
@@ -153,6 +155,7 @@ export default function WarehouseDamageScheme({ value, vehicleType, onChange }: 
   const handlePointer = (
     event: MouseEvent<HTMLElement> | TouchEvent<HTMLElement>,
   ) => {
+    if (readOnly) return;
     if ((event.target as HTMLElement).closest('[data-damage-marker="true"]')) return;
     const target = event.currentTarget;
     if ('touches' in event) {
@@ -194,6 +197,7 @@ export default function WarehouseDamageScheme({ value, vehicleType, onChange }: 
   };
 
   const startLongPress = (id: string) => {
+    if (readOnly) return;
     longPressTriggeredRef.current = false;
     if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = window.setTimeout(() => {
@@ -217,7 +221,9 @@ export default function WarehouseDamageScheme({ value, vehicleType, onChange }: 
       <Box>
         <Typography variant="subtitle1" fontWeight={700}>Схема повреждений</Typography>
         <Typography variant="body2" color="text.secondary">
-          {scheme.title}. Выберите тип повреждения и нажмите на место на схеме.
+          {readOnly
+            ? `${scheme.title}. Нажмите на отметку, чтобы увидеть комментарий.`
+            : `${scheme.title}. Выберите тип повреждения и нажмите на место на схеме.`}
         </Typography>
       </Box>
 
@@ -227,6 +233,7 @@ export default function WarehouseDamageScheme({ value, vehicleType, onChange }: 
         </Alert>
       )}
 
+      {!readOnly && (
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 0.75 }}>
         {DAMAGE_CODES.map((item) => (
           <Button
@@ -239,19 +246,22 @@ export default function WarehouseDamageScheme({ value, vehicleType, onChange }: 
           </Button>
         ))}
       </Box>
+      )}
 
       <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
         <Typography variant="body2" color="text.secondary">
           Отметок: {marks.length}
         </Typography>
-        <Button
-          size="small"
-          startIcon={<Undo />}
-          disabled={marks.length === 0}
-          onClick={removeLastMark}
-        >
-          Отменить последнюю
-        </Button>
+        {!readOnly && (
+          <Button
+            size="small"
+            startIcon={<Undo />}
+            disabled={marks.length === 0}
+            onClick={removeLastMark}
+          >
+            Отменить последнюю
+          </Button>
+        )}
       </Stack>
 
       <Box sx={{ overflowX: 'auto', pb: 0.5, WebkitOverflowScrolling: 'touch' }}>
@@ -271,6 +281,7 @@ export default function WarehouseDamageScheme({ value, vehicleType, onChange }: 
             overflow: 'hidden',
             touchAction: 'manipulation',
             bgcolor: 'background.paper',
+            cursor: readOnly ? 'default' : 'crosshair',
           }}
         >
           <Box
@@ -352,10 +363,13 @@ export default function WarehouseDamageScheme({ value, vehicleType, onChange }: 
             label={`${selectedMark.code} - ${damageCodeLabel(selectedMark.code)}: комментарий`}
             value={selectedMark.comment ?? ''}
             onChange={(event) => updateSelectedComment(event.target.value)}
+            InputProps={{ readOnly }}
           />
-          <Typography variant="caption" color="text.secondary">
-            Для удаления удерживайте отметку на схеме.
-          </Typography>
+          {!readOnly && (
+            <Typography variant="caption" color="text.secondary">
+              Для удаления удерживайте отметку на схеме.
+            </Typography>
+          )}
         </Stack>
       )}
       <Dialog open={Boolean(deleteMark)} onClose={() => setDeleteMarkId(null)}>
