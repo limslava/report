@@ -24,6 +24,7 @@ import {
   KeyboardArrowUp,
   MenuBook,
   PushPin,
+  Search,
   Settings,
   UploadFile,
   ViewColumn,
@@ -445,6 +446,14 @@ export default function DispatcherJournalPage() {
     sessionCreatedIdsRef.current = new Set();
     setFilters(updater);
   }, []);
+  // поиск по всем колонкам текущего месяца: прячет строки без совпадения
+  const [search, setSearch] = useState('');
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const searchQuery = search.trim().toLocaleLowerCase('ru');
+  const changeSearch = (value: string) => {
+    sessionCreatedIdsRef.current = new Set();
+    setSearch(value);
+  };
 
   // масштаб таблицы (как в операционном отчёте) — у каждого сотрудника свой
   const zoomStorageKey = `dj-zoom-v1:${userKey}`;
@@ -646,7 +655,7 @@ export default function DispatcherJournalPage() {
     return saved?.field && saved.direction ? saved : null;
   });
   // ручной порядок меняется только на «чистой» таблице: при сортировке или фильтре позиция неоднозначна
-  const canDragRows = !sort && activeFilterCount === 0;
+  const canDragRows = !sort && activeFilterCount === 0 && !searchQuery;
   useEffect(() => saveSortState(sortStorageKey, sort), [sortStorageKey, sort]);
   const sortValue = useCallback((row: DispatcherOrderRow, field: string): unknown => {
     if (field === DATE_KEY) return row.orderDate;
@@ -675,8 +684,13 @@ export default function DispatcherJournalPage() {
       ? rows.filter((row) => sessionCreatedIdsRef.current.has(row.id)
         || activeFilters.every(([field, hidden]) => !hidden.includes(filterText(row, field))))
       : rows;
-    return applySort(filtered, sort, sortValue);
-  }, [filterText, filters, rows, sort, sortValue]);
+    const found = searchQuery
+      ? filtered.filter((row) => sessionCreatedIdsRef.current.has(row.id)
+        || formatDateFull(row.orderDate).includes(searchQuery)
+        || ALL_COLUMNS.some((column) => columnText(row, column).toLocaleLowerCase('ru').includes(searchQuery)))
+      : filtered;
+    return applySort(found, sort, sortValue);
+  }, [filterText, filters, rows, searchQuery, sort, sortValue]);
 
   // итоги дня для жёлтых полос: сколько заявок и сколько выполнено (по видимым строкам)
   const dayStats = useMemo(() => {
@@ -1202,12 +1216,22 @@ export default function DispatcherJournalPage() {
       })();
     };
 
+    // Ctrl/⌘+F — в поиск реестра: поиск браузера не видит строк за пределами экрана
+    const findHandler = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.code === 'KeyF') {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
     window.addEventListener('keydown', escHandler);
+    window.addEventListener('keydown', findHandler);
     document.addEventListener('copy', copyHandler);
     document.addEventListener('cut', cutHandler);
     document.addEventListener('paste', pasteHandler);
     return () => {
       window.removeEventListener('keydown', escHandler);
+      window.removeEventListener('keydown', findHandler);
       document.removeEventListener('copy', copyHandler);
       document.removeEventListener('cut', cutHandler);
       document.removeEventListener('paste', pasteHandler);
@@ -1359,12 +1383,18 @@ export default function DispatcherJournalPage() {
     || activeColumn.kind === 'checkbox';
   const [formulaDraft, setFormulaDraft] = useState('');
   const formulaFocusedRef = useRef(false);
+  const formulaCancelRef = useRef(false);
   useEffect(() => {
     if (!formulaFocusedRef.current) setFormulaDraft(activeValue);
   }, [activeValue, activeCell]);
 
   const commitFormula = () => {
     formulaFocusedRef.current = false;
+    // Escape: blur приходит с ещё старым черновиком — сохранять нечего
+    if (formulaCancelRef.current) {
+      formulaCancelRef.current = false;
+      return;
+    }
     if (formulaReadOnly || !activeCell || formulaDraft === activeValue) return;
     const patch = cellPatchFromText(activeCell.field, formulaDraft);
     if (!patch) return;
@@ -1627,7 +1657,7 @@ export default function DispatcherJournalPage() {
 
   return (
     <Box className="dj-page">
-      <Paper sx={{ p: 1.5 }}>
+      <Paper sx={{ px: 1.5, py: 1 }}>
         <Box className="dj-toolbar">
           <TextField
             label="Год"
@@ -1679,6 +1709,27 @@ export default function DispatcherJournalPage() {
             )}
             sx={{ width: 140 }}
           />
+          <TextField
+            size="small"
+            label="Поиск"
+            placeholder="КТК, клиент, водитель…"
+            value={search}
+            inputRef={searchInputRef}
+            onChange={(event) => changeSearch(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') changeSearch('');
+            }}
+            InputProps={{
+              startAdornment: <Search sx={{ fontSize: 18, color: '#9aa3b0', mr: 0.5 }} />,
+              endAdornment: search ? (
+                <>
+                  <span className="dj-search-count">{searchQuery ? displayRows.length : ''}</span>
+                  <button type="button" className="dj-search-clear" aria-label="Очистить поиск" onClick={() => changeSearch('')}>×</button>
+                </>
+              ) : undefined,
+            }}
+            sx={{ width: 230 }}
+          />
           {activeFilterCount > 0 && (
             <button type="button" className="dj-filter-chip" onClick={() => applyFilters(() => ({}))}>
               <FilterList sx={{ fontSize: 14 }} />
@@ -1691,7 +1742,36 @@ export default function DispatcherJournalPage() {
               Закреплены столбцы · открепить
             </button>
           )}
-          <span className="dj-toolbar__spacer" />
+          <div className={`dj-formula${activeCell ? '' : ' dj-formula--idle'}`}>
+            <div className="dj-formula__box">
+              <span className="dj-formula__label" title={activeTitle}>
+                {activeCell
+                  ? `${activeTitle}${activeCell.rowId ? ` · стр. ${(displayRows.findIndex((row) => row.id === activeCell.rowId) + 1) || '—'}` : ' · новая заявка'}`
+                  : 'Значение ячейки'}
+              </span>
+              <textarea
+                className="dj-formula__input"
+                rows={1}
+                value={formulaDraft}
+                readOnly={formulaReadOnly}
+                placeholder={activeCell ? (formulaReadOnly ? '' : 'пусто') : 'кликните в ячейку — здесь будет её полный текст'}
+                onChange={(event) => setFormulaDraft(event.target.value)}
+                onFocus={() => { formulaFocusedRef.current = true; }}
+                onBlur={commitFormula}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    (event.target as HTMLTextAreaElement).blur();
+                  } else if (event.key === 'Escape') {
+                    formulaCancelRef.current = true;
+                    setFormulaDraft(activeValue);
+                    formulaFocusedRef.current = false;
+                    (event.target as HTMLTextAreaElement).blur();
+                  }
+                }}
+              />
+            </div>
+          </div>
           {loading && <span className="dj-toolbar__hint">Загрузка…</span>}
           <Button
             size="small"
@@ -1706,34 +1786,6 @@ export default function DispatcherJournalPage() {
           </Button>
         </Box>
       </Paper>
-
-      <div className={`dj-formula${activeCell ? '' : ' dj-formula--idle'}`}>
-        <span className="dj-formula__label" title={activeTitle}>
-          {activeCell
-            ? `${activeTitle}${activeCell.rowId ? ` · стр. ${(displayRows.findIndex((row) => row.id === activeCell.rowId) + 1) || '—'}` : ' · новая заявка'}`
-            : 'Значение ячейки'}
-        </span>
-        <textarea
-          className="dj-formula__input"
-          rows={1}
-          value={formulaDraft}
-          readOnly={formulaReadOnly}
-          placeholder={activeCell ? (formulaReadOnly ? '' : 'пусто') : 'кликните в ячейку — здесь будет её полный текст'}
-          onChange={(event) => setFormulaDraft(event.target.value)}
-          onFocus={() => { formulaFocusedRef.current = true; }}
-          onBlur={commitFormula}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault();
-              (event.target as HTMLTextAreaElement).blur();
-            } else if (event.key === 'Escape') {
-              setFormulaDraft(activeValue);
-              formulaFocusedRef.current = false;
-              (event.target as HTMLTextAreaElement).blur();
-            }
-          }}
-        />
-      </div>
 
       <div className="dj-table-wrap" ref={wrapRef} onScroll={handleWrapScroll}>
         {fillHandlePos && (
@@ -1924,7 +1976,9 @@ export default function DispatcherJournalPage() {
           <div className="dj-empty">В этом месяце заявок нет — начните заполнять нижнюю строку, она создастся сама</div>
         )}
         {rows.length > 0 && !displayRows.length && (
-          <div className="dj-empty">Все заявки скрыты фильтрами — сбросьте фильтры в панели сверху</div>
+          <div className="dj-empty">
+            {searchQuery ? `По запросу «${search.trim()}» в этом месяце ничего не найдено` : 'Все заявки скрыты фильтрами — сбросьте фильтры в панели сверху'}
+          </div>
         )}
       </div>
 
