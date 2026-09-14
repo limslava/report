@@ -35,8 +35,8 @@
 
 .dj-table td {
   padding: 0;
-  border-bottom: 1px solid #eef1f5;
-  border-right: 1px solid #f2f4f7;
+  border-bottom: 1px solid #d5dbe3;
+  border-right: 1px solid #dfe3ea;
   vertical-align: middle;
   background: #fff;
 }
@@ -373,3 +373,23 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
 .dj-rownum[draggable="true"]:active { cursor: grabbing; }
 .dj-table tr.dj-row--drop-before td { box-shadow: inset 0 2px 0 #2a78d6; }
 .dj-table tr.dj-row--drop-after td { box-shadow: inset 0 -2px 0 #2a78d6; }
+
+/* статус без крестика очистки: текст не перекрывается, место под стрелку фиксировано */
+.dj-status-cell .MuiAutocomplete-clearIndicator { display: none !important; }
+.dj-status-cell .MuiAutocomplete-inputRoot { padding-right: 22px !important; }
+.dj-status-clear { font-size: 11.5px; color: #8b93a1; font-style: italic; padding: 1.5px 2px; }
+
+/* номер строки: при наведении вместо номера — «ручка» для перетаскивания */
+.dj-rownum { position: relative; }
+.dj-rownum__grip {
+  display: none !important;
+  color: #2a78d6;
+  vertical-align: middle;
+}
+.dj-table tr:hover .dj-rownum[draggable="true"] .dj-rownum__num { display: none; }
+.dj-table tr:hover .dj-rownum[draggable="true"] .dj-rownum__grip { display: inline-block !important; }
+
+/* строка, в ячейке которой идёт работа (фокус), подсвечивается целиком */
+.dj-table tr:focus-within td,
+.dj-table tr.dj-row--done:focus-within td { background: #eef5ff; }
+.dj-table tr:focus-within .dj-rownum { background: #dfeafb !important; color: #2a78d6; }

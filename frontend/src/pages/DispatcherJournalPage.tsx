@@ -277,19 +277,39 @@ type StatusCellProps = {
 };
 
 /** Статус: выпадающий список с подбором по вводу (печатаешь — фильтруются ближайшие). */
+/** Пункт списка «без статуса» — вместо крестика очистки, который налезал на текст статуса. */
+const CLEAR_STATUS_OPTION = '\u0000clear';
+
 function StatusCell({ value, statuses, statusByName, onSave }: StatusCellProps) {
   const status = value ? statusByName.get(value) : undefined;
+  const options = useMemo(
+    () => (value ? [CLEAR_STATUS_OPTION, ...statuses.map((item) => item.name)] : statuses.map((item) => item.name)),
+    [statuses, value],
+  );
   return (
     <Autocomplete
       size="small"
-      options={statuses.map((item) => item.name)}
+      options={options}
       value={value ?? null}
-      onChange={(_event, next) => onSave(next)}
+      onChange={(_event, next) => onSave(next === CLEAR_STATUS_OPTION ? null : next)}
+      getOptionLabel={(option) => (option === CLEAR_STATUS_OPTION ? '' : option)}
+      filterOptions={(list, state) => {
+        const query = state.inputValue.trim().toLowerCase();
+        // пока ввод совпадает с текущим статусом — показываем весь список
+        if (!query || query === (value ?? '').toLowerCase()) return list;
+        return list.filter((option) => option !== CLEAR_STATUS_OPTION && option.toLowerCase().includes(query));
+      }}
       autoHighlight
-      clearOnEscape
       noOptionsText="нет похожих статусов"
       slotProps={{ popper: { sx: { width: 'auto !important', minWidth: 200 }, placement: 'bottom-start' } }}
       renderOption={(props, option) => {
+        if (option === CLEAR_STATUS_OPTION) {
+          return (
+            <li {...props} key={option} style={{ ...(props as { style?: React.CSSProperties }).style, paddingTop: 3, paddingBottom: 3 }}>
+              <span className="dj-status-clear">без статуса</span>
+            </li>
+          );
+        }
         const optionStatus = statusByName.get(option);
         return (
           <li {...props} key={option} style={{ ...(props as { style?: React.CSSProperties }).style, paddingTop: 3, paddingBottom: 3 }}>
@@ -507,7 +527,12 @@ export default function DispatcherJournalPage() {
 
   // сортировка по заголовкам: asc -> desc -> исходный порядок (по датам)
   const sortStorageKey = `dj-sort-v1:${userKey}`;
-  const [sort, setSort] = useState<TableSortState>(() => loadSortState<TableSortState>(sortStorageKey, null));
+  const [sort, setSort] = useState<TableSortState>(() => {
+    // loadSortState склеивает объект с fallback: сохранённый null читается как {} —
+    // такую «пустую» сортировку считаем выключенной (иначе гаснут перетаскивание и разделители дней)
+    const saved = loadSortState<TableSortState>(sortStorageKey, null);
+    return saved?.field && saved.direction ? saved : null;
+  });
   useEffect(() => saveSortState(sortStorageKey, sort), [sortStorageKey, sort]);
   const sortValue = useCallback((row: DispatcherOrderRow, field: string): unknown => {
     if (field === DATE_KEY) return row.orderDate;
@@ -715,8 +740,8 @@ export default function DispatcherJournalPage() {
     }
   }, []);
 
-  // ── перетаскивание строки за номер: выше/ниже, в том числе на другой день ──
-  const dragRowIdRef = useRef<string | null>(null);
+  // ── перетаскивание строки за номер: выше/ниже внутри своего дня (дата не меняется) ──
+  const dragRowRef = useRef<{ id: string; date: string } | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; after: boolean } | null>(null);
 
   const moveRow = useCallback((draggedId: string, targetId: string, after: boolean) => {
@@ -724,7 +749,7 @@ export default function DispatcherJournalPage() {
     const ordered = sortByDate(rowsRef.current);
     const dragged = ordered.find((row) => row.id === draggedId);
     const target = ordered.find((row) => row.id === targetId);
-    if (!dragged || !target) return;
+    if (!dragged || !target || dragged.orderDate !== target.orderDate) return;
     const rest = ordered.filter((row) => row.id !== draggedId);
     const insertAt = rest.findIndex((row) => row.id === targetId) + (after ? 1 : 0);
     const prev = rest[insertAt - 1];
@@ -737,12 +762,7 @@ export default function DispatcherJournalPage() {
     else if (prevPos !== null) position = prevPos + 1000;
     else if (nextPos !== null) position = nextPos - 1000;
     else position = Date.now();
-    const patch: DispatcherOrderPatch = { position };
-    if (date !== dragged.orderDate) patch.orderDate = date;
-    patchRow(draggedId, patch);
-    if (patch.orderDate) {
-      setMessage({ severity: 'success', text: `Заявка перенесена на ${formatDateShort(date)}` });
-    }
+    patchRow(draggedId, { position });
   }, [patchRow]);
 
   const deleteRow = useCallback(async (row: DispatcherOrderRow, options?: { silent?: boolean; skipUndo?: boolean }) => {
@@ -1187,13 +1207,26 @@ export default function DispatcherJournalPage() {
                 <tr
                   key={row.id}
                   className={classes || undefined}
+                  onFocus={() => {
+                    // перешли работать в другую строку — выделение прежней снимается
+                    if (selectedRowIdRef.current && selectedRowIdRef.current !== row.id) setSelectedRowId(null);
+                  }}
+                  onMouseDown={(event) => {
+                    if (!selectedRowIdRef.current || selectedRowIdRef.current === row.id) return;
+                    if ((event.target as HTMLElement).closest('.dj-rownum')) return;
+                    setSelectedRowId(null);
+                  }}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     setSelectedRowId(row.id);
                     setContextMenu({ x: event.clientX, y: event.clientY, row });
                   }}
                   onDragOver={(event) => {
-                    if (!dragRowIdRef.current) return;
+                    // бросить можно только в пределах того же дня
+                    if (!dragRowRef.current || dragRowRef.current.date !== row.orderDate) {
+                      if (dropTarget) setDropTarget(null);
+                      return;
+                    }
                     event.preventDefault();
                     const rect = event.currentTarget.getBoundingClientRect();
                     const after = event.clientY > rect.top + rect.height / 2;
@@ -1201,9 +1234,9 @@ export default function DispatcherJournalPage() {
                   }}
                   onDrop={(event) => {
                     event.preventDefault();
-                    const draggedId = dragRowIdRef.current;
+                    const draggedId = dragRowRef.current?.id;
                     const target = dropTarget;
-                    dragRowIdRef.current = null;
+                    dragRowRef.current = null;
                     setDropTarget(null);
                     if (draggedId && target) moveRow(draggedId, target.id, target.after);
                   }}
@@ -1212,23 +1245,24 @@ export default function DispatcherJournalPage() {
                     className={`dj-rownum${pinClass('__rownum')}`}
                     style={pinStyle('__rownum')}
                     title={sort
-                      ? 'Клик — выделить строку. Перетаскивание строк — без сортировки по колонке'
-                      : 'Клик — выделить строку; потяните за номер, чтобы переместить строку'}
+                      ? 'Клик — выделить строку. Чтобы перетаскивать строки, выключите сортировку по колонке'
+                      : 'Зажмите и тяните вверх/вниз — переместить строку в пределах дня. Клик — выделить строку'}
                     draggable={!sort}
                     onDragStart={(event) => {
-                      dragRowIdRef.current = row.id;
+                      dragRowRef.current = { id: row.id, date: row.orderDate };
                       event.dataTransfer.effectAllowed = 'move';
                       event.dataTransfer.setData('text/plain', row.id);
                       const tr = event.currentTarget.parentElement;
                       if (tr) event.dataTransfer.setDragImage(tr, 16, 12);
                     }}
                     onDragEnd={() => {
-                      dragRowIdRef.current = null;
+                      dragRowRef.current = null;
                       setDropTarget(null);
                     }}
                     onClick={() => setSelectedRowId((prev) => (prev === row.id ? null : row.id))}
                   >
-                    {index + 1}
+                    <span className="dj-rownum__num">{index + 1}</span>
+                    {!sort && <DragIndicator className="dj-rownum__grip" sx={{ fontSize: 16 }} />}
                   </td>
                   <td className={`dj-date-cell${pinClass(DATE_KEY)}`} style={pinStyle(DATE_KEY)}>
                     <input
