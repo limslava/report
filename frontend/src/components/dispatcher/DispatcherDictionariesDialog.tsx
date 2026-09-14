@@ -122,14 +122,20 @@ export default function DispatcherDictionariesDialog({ open, canEdit, onClose, o
   const activeTab = TABS.find((item) => item.key === tab) ?? TABS[0];
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ pb: 0 }}>Справочники реестра</DialogTitle>
       <DialogContent sx={{ pt: 1 }}>
         <Tabs
           value={tab}
           onChange={(_event, next: TabKey) => { setTab(next); setNewName(''); setError(null); }}
           variant="scrollable"
-          sx={{ minHeight: 36, '& .MuiTab-root': { minHeight: 36, textTransform: 'none', fontSize: 13 } }}
+          scrollButtons="auto"
+          sx={{
+            minHeight: 36,
+            // невидимая кнопка прокрутки слева занимала место — вкладки начинались правее списка
+            '& .MuiTabs-scrollButtons.Mui-disabled': { display: 'none' },
+            '& .MuiTab-root': { minHeight: 36, textTransform: 'none', fontSize: 13, px: 1.5, minWidth: 0 },
+          }}
         >
           {TABS.map((item) => <Tab key={item.key} value={item.key} label={item.label} />)}
         </Tabs>

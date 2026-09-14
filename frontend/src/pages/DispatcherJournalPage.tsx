@@ -5,13 +5,9 @@ import {
   Box,
   Button,
   Checkbox,
-  Dialog,
-  DialogActions,
   ListItemIcon,
   ListItemText,
   Menu,
-  DialogContent,
-  DialogTitle,
   IconButton,
   MenuItem,
   Paper,
@@ -45,7 +41,7 @@ import {
   type DispatcherOrderRow,
   type DispatcherStatusOption,
 } from '../services/dispatcher-journal.api';
-import { getDirectoryOptions } from '../services/directories.api';
+import { findEmployeeCardByName, getDirectoryOptions } from '../services/directories.api';
 import { subscribePlansRealtime } from '../services/plans-realtime';
 import { useAuthStore } from '../store/auth-store';
 import {
@@ -367,7 +363,6 @@ export default function DispatcherJournalPage() {
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [ghostKey, setGhostKey] = useState(0);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: DispatcherOrderRow } | null>(null);
-  const [orderText, setOrderText] = useState<{ title: string; text: string } | null>(null);
   const [dictionariesOpen, setDictionariesOpen] = useState(false);
   const reloadTimerRef = useRef<number | null>(null);
   // Текущий месяц показывается вместе с ближайшим будущим (до 60 дней):
@@ -843,6 +838,32 @@ export default function DispatcherJournalPage() {
       }
     });
     return { date: parsedDate ?? todayYmd(), patch };
+  }, []);
+
+  /** «Скопировать данные» — карточка водителя из справочника, как в графике контейнеровозов. */
+  const copyDriverData = useCallback(async (row: DispatcherOrderRow) => {
+    const name = row.driverName?.trim();
+    if (!name) {
+      setMessage({ severity: 'error', text: 'В строке не указан водитель' });
+      return;
+    }
+    try {
+      // текст запрашивается до записи в буфер: writeText должен идти сразу за ответом
+      const { data } = await findEmployeeCardByName('vvo', name);
+      await navigator.clipboard.writeText(data.text);
+      setMessage({ severity: 'success', text: `Данные водителя «${name}» скопированы в буфер обмена` });
+    } catch (error) {
+      const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
+      const serverText = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setMessage({
+        severity: 'error',
+        text: status === 404
+          ? `«${name}» не найден в справочнике сотрудников — заведите карточку в разделе «Справочники»`
+          : status === 409 && serverText
+            ? serverText
+            : 'Не удалось скопировать данные водителя',
+      });
+    }
   }, []);
 
   const copyRowToClipboard = useCallback(async (row: DispatcherOrderRow) => {
@@ -1347,14 +1368,25 @@ export default function DispatcherJournalPage() {
               className="dj-context-item"
               onClick={() => {
                 const current = rowsRef.current.find((item) => item.id === contextMenu.row.id) ?? contextMenu.row;
-                setOrderText({
-                  title: `Заказ${current.ktkNumber ? ` — ${current.ktkNumber}` : ''}`,
-                  text: buildOrderText(current),
-                });
                 setContextMenu(null);
+                // сразу в буфер, как «Скопировать данные» — вставляется в мессенджер
+                navigator.clipboard.writeText(buildOrderText(current))
+                  .then(() => setMessage({ severity: 'success', text: `Заказ${current.ktkNumber ? ` ${current.ktkNumber}` : ''} скопирован в буфер обмена` }))
+                  .catch(() => setMessage({ severity: 'error', text: 'Браузер не дал доступ к буферу обмена' }));
               }}
             >
               Заказ
+            </button>
+            <button
+              type="button"
+              className="dj-context-item"
+              onClick={() => {
+                const current = rowsRef.current.find((item) => item.id === contextMenu.row.id) ?? contextMenu.row;
+                setContextMenu(null);
+                void copyDriverData(current);
+              }}
+            >
+              Скопировать данные
             </button>
             <button
               type="button"
@@ -1381,35 +1413,6 @@ export default function DispatcherJournalPage() {
           </div>
         </div>
       )}
-
-      {/* «Заказ»: текст для мессенджера, можно поправить перед копированием */}
-      <Dialog open={Boolean(orderText)} onClose={() => setOrderText(null)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ pb: 1 }}>{orderText?.title}</DialogTitle>
-        <DialogContent sx={{ pt: 0 }}>
-          <TextField
-            multiline
-            fullWidth
-            minRows={14}
-            value={orderText?.text ?? ''}
-            onChange={(event) => setOrderText((prev) => (prev ? { ...prev, text: event.target.value } : prev))}
-            sx={{ '& textarea': { fontSize: 13, lineHeight: 1.45 } }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOrderText(null)}>Закрыть</Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              if (!orderText) return;
-              navigator.clipboard.writeText(orderText.text)
-                .then(() => setMessage({ severity: 'success', text: 'Заказ скопирован — вставьте в мессенджер' }))
-                .catch(() => setMessage({ severity: 'error', text: 'Не удалось скопировать — выделите текст и нажмите Ctrl+C' }));
-            }}
-          >
-            Скопировать
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       {filterMenu && (
         <ColumnFilterPopover
