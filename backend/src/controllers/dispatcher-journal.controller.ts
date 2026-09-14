@@ -11,6 +11,8 @@ import {
 } from '../models/dispatcher-dictionary-item.model';
 import { OperationsPreviewState } from '../models/operations-preview-state.model';
 import { buildDispatcherCrew } from '../services/dispatcher-crew.service';
+import { parseDispatcherWorkbook } from '../services/dispatcher-import.service';
+import { ensureDispatcherDictionaryCatalog } from '../services/dispatcher-status-seed.service';
 import { planWebSocketService } from '../services/websocket.service';
 
 const orderRepository = AppDataSource.getRepository(DispatcherOrder);
@@ -514,6 +516,87 @@ export const listDispatcherCrew = async (req: Request, res: Response, next: Next
     const date = requireDate(req.query.date);
     const row = await previewStateRepository.findOne({ where: { scopeKey: KTK_VVO_SCHEDULE_SCOPE } });
     res.json(buildDispatcherCrew(row?.payload as Parameters<typeof buildDispatcherCrew>[0], date));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Разовый импорт google-таблицы (.xlsx, base64): dryRun — только разбор и сводка,
+ * без dryRun — запись заявок. Порядок строк как в таблице; импортированные
+ * строки встают перед уже существующими. Только администратор.
+ */
+export const importDispatcherOrders = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const base64 = typeof req.body?.fileBase64 === 'string' ? req.body.fileBase64.replace(/^data:[^,]*,/, '') : '';
+    if (!base64) return httpError(400, 'Файл не передан');
+    let sheets;
+    try {
+      sheets = await parseDispatcherWorkbook(Buffer.from(base64, 'base64'));
+    } catch {
+      return httpError(400, 'Не удалось прочитать файл — нужна выгрузка google-таблицы в формате .xlsx');
+    }
+    const orders = sheets.flatMap((sheet) => sheet.orders);
+    if (!orders.length) return httpError(400, 'В файле не найдено листов реестра (шапка со «статус» и «клиент») или заявок');
+
+    const dates = orders.map((order) => order.orderDate).sort();
+    const from = dates[0];
+    const to = dates[dates.length - 1];
+    const statuses = await statusRepository.find();
+    const statusByLower = new Map(statuses.map((status) => [status.name.toLowerCase(), status.name]));
+    const unknownStatuses = new Set<string>();
+    orders.forEach((order) => {
+      if (!order.status) return;
+      const known = statusByLower.get(order.status.toLowerCase());
+      if (known) order.status = known;
+      else unknownStatuses.add(order.status);
+    });
+    const existingInRange = await orderRepository.count({ where: { orderDate: Between(from, to) } });
+
+    const summary = {
+      sheets: sheets.map((sheet) => ({
+        name: sheet.name,
+        orders: sheet.orders.length,
+        skippedRows: sheet.skippedRows,
+        from: sheet.orders.length ? sheet.orders.map((order) => order.orderDate).sort()[0] : null,
+        to: sheet.orders.length ? sheet.orders.map((order) => order.orderDate).sort().slice(-1)[0] : null,
+      })),
+      total: orders.length,
+      from,
+      to,
+      existingInRange,
+      unknownStatuses: [...unknownStatuses].slice(0, 50),
+    };
+
+    if (req.body?.dryRun !== false) {
+      res.json({ ...summary, imported: 0 });
+      return;
+    }
+
+    // импортированные строки — перед текущими, в порядке таблицы
+    const minRow = await orderRepository
+      .createQueryBuilder('o')
+      .select('MIN(o.position)', 'min')
+      .getRawOne<{ min: number | null }>();
+    const start = (minRow?.min ?? 0) - (orders.length + 1) * 10;
+    const userId = req.user?.id ?? null;
+    await AppDataSource.transaction(async (manager) => {
+      const chunkSize = 500;
+      for (let index = 0; index < orders.length; index += chunkSize) {
+        const chunk = orders.slice(index, index + chunkSize).map((order, offset) => manager.create(DispatcherOrder, {
+          ...order,
+          position: start + (index + offset) * 10,
+          createdBy: userId,
+          updatedBy: userId,
+        }));
+        await manager.save(chunk);
+      }
+    });
+    // терминалы для выпадающих списков — из импортированных заявок (если справочник ещё пуст)
+    await ensureDispatcherDictionaryCatalog().catch(() => undefined);
+    const months = new Set(dates.map((date) => `${date.slice(0, 7)}-01`));
+    months.forEach((date) => planWebSocketService.notifyDispatcherJournalUpdated({ date, userId: req.user?.id }));
+    res.json({ ...summary, imported: orders.length });
   } catch (error) {
     next(error);
   }

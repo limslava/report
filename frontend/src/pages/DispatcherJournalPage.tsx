@@ -24,6 +24,7 @@ import {
   MenuBook,
   PushPin,
   Settings,
+  UploadFile,
   ViewColumn,
 } from '@mui/icons-material';
 import {
@@ -65,6 +66,7 @@ import ListCell from '../components/dispatcher/ListCell';
 import TimeCell from '../components/dispatcher/TimeCell';
 import ColumnFilterPopover, { EMPTY_FILTER_VALUE } from '../components/dispatcher/ColumnFilterPopover';
 import DispatcherDictionariesDialog from '../components/dispatcher/DispatcherDictionariesDialog';
+import DispatcherImportDialog from '../components/dispatcher/DispatcherImportDialog';
 import {
   amountWithoutVat,
   buildOrderText,
@@ -361,6 +363,7 @@ export default function DispatcherJournalPage() {
   const [ghostKey, setGhostKey] = useState(0);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: DispatcherOrderRow } | null>(null);
   const [dictionariesOpen, setDictionariesOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const reloadTimerRef = useRef<number | null>(null);
   // Текущий месяц показывается вместе с ближайшим будущим (до 60 дней):
   // заявка от 29.09 на вывоз 01.10 видна, не дожидаясь октября. Прошлые
@@ -1477,7 +1480,27 @@ export default function DispatcherJournalPage() {
           <ListItemIcon><MenuBook fontSize="small" /></ListItemIcon>
           <ListItemText primary="Справочники" />
         </MenuItem>
+        {user?.role === 'admin' && (
+          <MenuItem
+            onClick={() => {
+              setImportOpen(true);
+              setSettingsAnchor(null);
+            }}
+          >
+            <ListItemIcon><UploadFile fontSize="small" /></ListItemIcon>
+            <ListItemText primary="Импорт из Google-таблицы" />
+          </MenuItem>
+        )}
       </Menu>
+
+      <DispatcherImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => {
+          void loadRows(true);
+          loadDictionaries();
+        }}
+      />
 
       <DispatcherDictionariesDialog
         open={dictionariesOpen}

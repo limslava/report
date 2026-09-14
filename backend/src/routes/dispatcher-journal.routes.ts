@@ -11,6 +11,7 @@ import {
   deleteDispatcherDictionaryItem,
   deleteDispatcherOrder,
   deleteDispatcherStatus,
+  importDispatcherOrders,
   listDispatcherCrew,
   listDispatcherDictionaries,
   listDispatcherDictionaryOptions,
@@ -66,6 +67,7 @@ router.delete(
   handleValidationErrors,
   deleteDispatcherDictionaryItem,
 );
+router.post('/import', authorizeRole('admin'), importDispatcherOrders);
 router.post('/dictionaries/reorder', authorizeRole(...DISPATCHER_DICTIONARY_EDIT_ROLES), reorderDispatcherDictionary);
 router.get(
   '/orders',
