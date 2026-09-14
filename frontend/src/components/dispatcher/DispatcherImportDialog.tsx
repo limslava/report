@@ -86,7 +86,8 @@ export default function DispatcherImportDialog({ open, onClose, onImported }: Pr
   };
 
   const imported = Boolean(summary?.imported);
-  const needsConfirm = Boolean(summary && summary.existingInRange > 0 && !imported);
+  const needsConfirm = Boolean(summary && summary.existingTotal > 0 && !imported);
+  const undated = summary?.sheets.flatMap((sheet) => sheet.undatedOrders.map((order) => ({ ...order, sheet: sheet.name }))) ?? [];
 
   return (
     <Dialog open={open} onClose={close} maxWidth="sm" fullWidth>
@@ -95,6 +96,8 @@ export default function DispatcherImportDialog({ open, onClose, onImported }: Pr
         <Typography sx={{ fontSize: 13, color: '#4b5563', mb: 1.5 }}>
           В Google-таблице: «Файл → Скачать → Microsoft Excel (.xlsx)». Берутся листы с шапкой реестра
           (статус, клиент…) — обычно это листы-месяцы; «терминалы», «почта» и прочие служебные листы пропускаются.
+          Импорт <b>заменяет</b> реестр: все текущие заявки удаляются и загружается всё из файла — повторный
+          импорт просто переносит таблицу заново.
         </Typography>
         <Button variant="outlined" component="label" disabled={busy}>
           {fileName ? 'Выбрать другой файл' : 'Выбрать файл .xlsx'}
@@ -113,7 +116,9 @@ export default function DispatcherImportDialog({ open, onClose, onImported }: Pr
         {summary && (
           <Box sx={{ mt: 1.5, fontSize: 13 }}>
             {imported ? (
-              <Alert severity="success" sx={{ mb: 1 }}>Импортировано заявок: {summary.imported}</Alert>
+              <Alert severity="success" sx={{ mb: 1 }}>
+                Импортировано заявок: {summary.imported}{summary.deleted ? ` (прежних удалено: ${summary.deleted})` : ''}
+              </Alert>
             ) : (
               <Alert severity="info" sx={{ mb: 1 }}>
                 Найдено заявок: {summary.total} за период {formatDate(summary.from)} — {formatDate(summary.to)}
@@ -121,7 +126,7 @@ export default function DispatcherImportDialog({ open, onClose, onImported }: Pr
             )}
             <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse', '& td, & th': { borderBottom: '1px solid #eceff3', py: 0.5, px: 0.75, textAlign: 'left' } }}>
               <thead>
-                <tr><th>Лист</th><th>Заявок</th><th>Период</th><th>Пропущено строк</th></tr>
+                <tr><th>Лист</th><th>Заявок</th><th>Период</th><th>Без даты</th><th>Пустых/служебных строк</th></tr>
               </thead>
               <tbody>
                 {summary.sheets.map((sheet) => (
@@ -129,6 +134,7 @@ export default function DispatcherImportDialog({ open, onClose, onImported }: Pr
                     <td>{sheet.name}</td>
                     <td>{sheet.orders}</td>
                     <td>{formatDate(sheet.from)} — {formatDate(sheet.to)}</td>
+                    <td>{sheet.undatedOrders.length || '—'}</td>
                     <td>{sheet.skippedRows}</td>
                   </tr>
                 ))}
@@ -139,14 +145,20 @@ export default function DispatcherImportDialog({ open, onClose, onImported }: Pr
                 Статусы, которых нет в справочнике (перенесутся текстом, без цвета): {summary.unknownStatuses.join(', ')}
               </Alert>
             )}
+            {undated.length > 0 && !imported && (
+              <Alert severity="info" sx={{ mt: 1 }}>
+                Заявки без даты (ниже таблицы, «ожидают прибытия») пока не переносятся — {undated.length}:{' '}
+                {undated.map((order) => [order.ktkNumber, order.client, order.status].filter(Boolean).join(' · ')).join('; ')}
+              </Alert>
+            )}
             {needsConfirm && (
               <Alert severity="warning" sx={{ mt: 1 }}>
-                За этот период в реестре уже есть заявок: {summary.existingInRange}. Импорт добавит строки из файла
-                к ним — повторный импорт того же файла создаст дубли.
+                Сейчас в реестре заявок: <b>{summary.existingTotal}</b>. Они будут <b>удалены</b> вместе со всеми правками,
+                сделанными в реестре, и заменены данными из файла.
                 <FormControlLabel
                   sx={{ display: 'block', mt: 0.5 }}
                   control={<Checkbox size="small" checked={confirmExisting} onChange={(event) => setConfirmExisting(event.target.checked)} />}
-                  label="Понимаю, всё равно импортировать"
+                  label="Понимаю, текущие заявки реестра будут удалены"
                 />
               </Alert>
             )}
@@ -161,7 +173,7 @@ export default function DispatcherImportDialog({ open, onClose, onImported }: Pr
             disabled={busy || !summary || (needsConfirm && !confirmExisting)}
             onClick={() => void runImport()}
           >
-            Импортировать {summary ? summary.total : ''}
+            {summary && summary.existingTotal > 0 ? 'Заменить реестр' : 'Импортировать'} {summary ? summary.total : ''}
           </Button>
         )}
       </DialogActions>
