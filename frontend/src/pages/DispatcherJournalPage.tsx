@@ -7,7 +7,6 @@ import {
   Checkbox,
   Dialog,
   DialogActions,
-  Divider,
   ListItemIcon,
   ListItemText,
   Menu,
@@ -1342,11 +1341,6 @@ export default function DispatcherJournalPage() {
             secondary={canEditDictionaries ? 'статусы, типы КТК, НДС, операции' : 'просмотр статусов и списков'}
           />
         </MenuItem>
-        <Divider />
-        <Box sx={{ px: 2, py: 0.75, maxWidth: 300, fontSize: 11.5, color: '#8b93a1', lineHeight: 1.5 }}>
-          Правый клик по строке — меню (заказ, копирование, удаление).
-          Клик по № строки → Ctrl+C / Ctrl+X / Ctrl+V, Ctrl+Z — отмена.
-        </Box>
       </Menu>
 
       <DispatcherDictionariesDialog
