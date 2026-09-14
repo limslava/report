@@ -43,7 +43,7 @@ export type ImportedOrder = {
   driverRemarks: string | null;
 };
 
-export type ImportedSheet = { name: string; orders: ImportedOrder[]; skippedRows: number };
+export type ImportedSheet = { name: string; orders: ImportedOrder[]; skippedRows: number; unmappedColumns: string[] };
 
 type TextField = Exclude<keyof ImportedOrder, 'orderDate' | 'orderOnVehicle' | 'invoiceSent' | 'recoupling'>;
 type BoolField = 'orderOnVehicle' | 'invoiceSent' | 'recoupling';
@@ -71,19 +71,49 @@ const unwrap = (value: ExcelJS.CellValue): unknown => {
   return value;
 };
 
+/**
+ * Google сам превращает набранные диапазоны в даты: «10-12» → 10 декабря
+ * текущего года, «8-18» → август 2018 (второе число > 12 — это «год»).
+ * Для слотов/пинов возвращаем текст, как его набирали.
+ */
+const googleDateToTyped = (value: Date): string => {
+  const day = value.getUTCDate();
+  const month = value.getUTCMonth() + 1;
+  const year = value.getUTCFullYear();
+  if (day === 1 && year >= 2013 && year <= 2024) return `${month}-${String(year).slice(2)}`;
+  if (year >= 2025 && year <= 2027) return `${day}-${month}`;
+  return `${pad2(day)}.${pad2(month)}.${year}`;
+};
+
+/** «8», «10-00», «11.00», «8^30» → чч:мм; «к 10», «до 15:30» и прочий текст — как есть. */
+const normalizeTypedTime = (text: string): string => {
+  const match = /^(\d{1,2})(?:[:.\-^](\d{2}))?$/.exec(text);
+  if (!match) return text;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2] ?? '0');
+  return hours <= 23 && minutes <= 59 ? `${pad2(hours)}:${pad2(minutes)}` : text;
+};
+
 const cellText = (value: unknown, field: TextField): string => {
   if (value === null || value === undefined) return '';
   if (value instanceof Date) {
-    if (field === 'submitTime') return `${pad2(value.getUTCHours())}:${pad2(value.getUTCMinutes())}`;
-    // google превращает «8-18» (слот) в дату «авг. 2018»: возвращаем как было набрано
-    if (value.getUTCDate() === 1 && value.getUTCFullYear() >= 2000) {
-      return `${value.getUTCMonth() + 1}-${String(value.getUTCFullYear()).slice(2)}`;
+    if (field === 'submitTime' && value.getUTCFullYear() < 1901) {
+      return `${pad2(value.getUTCHours())}:${pad2(value.getUTCMinutes())}`;
     }
-    return `${pad2(value.getUTCDate())}.${pad2(value.getUTCMonth() + 1)}.${value.getUTCFullYear()}`;
+    return googleDateToTyped(value);
+  }
+  if (typeof value === 'number' && field === 'submitTime') {
+    // «8» — это 08:00; дробь суток (0,375) — время в формате Excel
+    if (Number.isInteger(value) && value >= 0 && value <= 23) return `${pad2(value)}:00`;
+    if (value > 0 && value < 1) {
+      const minutes = Math.round(value * 24 * 60);
+      return `${pad2(Math.floor(minutes / 60))}:${pad2(minutes % 60)}`;
+    }
   }
   if (typeof value === 'number') return Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100);
   if (typeof value === 'boolean') return value ? 'да' : '';
-  return String(value).replace(/\r\n/g, '\n').trim();
+  const text = String(value).replace(/\r\n/g, '\n').trim();
+  return field === 'submitTime' ? normalizeTypedTime(text) : text;
 };
 
 const cellDate = (value: unknown): string | null => {
@@ -100,17 +130,37 @@ const cellDate = (value: unknown): string | null => {
   return null;
 };
 
-type ColumnPlan = { date: number; text: Map<number, TextField>; bool: Map<number, BoolField> };
+type ColumnPlan = {
+  date: number;
+  text: Map<number, TextField>;
+  bool: Map<number, BoolField>;
+  /** колонки шапки, которые не удалось сопоставить (для сводки импорта) */
+  unmapped: string[];
+};
 
 /** Сопоставление колонок по шапке листа; null — лист не похож на реестр. */
 function planColumns(header: string[]): ColumnPlan | null {
   if (!header.includes('статус') || !header.includes('клиент')) return null;
   const text = new Map<number, TextField>();
   const bool = new Map<number, BoolField>();
+  const unmapped: string[] = [];
   let section: 'from' | 'to' | null = null;
+  const clientColumn = header.indexOf('клиент') + 1;
+  const plateColumn = header.indexOf('гос номер') + 1;
   header.forEach((name, index) => {
     const column = index + 1;
-    if (!name) return;
+    if (index === 0) return; // дата
+    // колонку ФИО иногда затирают фамилией — она всегда между «клиентом» и «гос номером»
+    if (clientColumn && plateColumn === clientColumn + 2 && column === clientColumn + 1) {
+      text.set(column, 'driverName');
+      return;
+    }
+    // вторая колонка «пин» бывает без заголовка
+    if (!name) {
+      const previous = text.get(column - 1);
+      if (previous === 'pinFrom' || previous === 'pinTo') text.set(column, previous);
+      return;
+    }
     if (name === 'терминал постановки') { text.set(column, 'terminalFrom'); section = 'from'; return; }
     if (name === 'терминал снятия') { text.set(column, 'terminalTo'); section = 'to'; return; }
     if (name === 'слот' && section) { text.set(column, section === 'from' ? 'slotFrom' : 'slotTo'); return; }
@@ -142,9 +192,10 @@ function planColumns(header: string[]): ColumnPlan | null {
     if (name.startsWith('простой')) { text.set(column, 'demurrage'); return; }
     if (name === 'заказ на тс') { bool.set(column, 'orderOnVehicle'); return; }
     if (name === 'отправка счета') { bool.set(column, 'invoiceSent'); return; }
-    if (name === 'перецеп') { bool.set(column, 'recoupling'); }
+    if (name === 'перецеп') { bool.set(column, 'recoupling'); return; }
+    unmapped.push(name);
   });
-  return { date: 1, text, bool };
+  return { date: 1, text, bool, unmapped };
 }
 
 const emptyOrder = (orderDate: string): ImportedOrder => ({
@@ -197,7 +248,9 @@ export async function parseDispatcherWorkbook(buffer: Buffer): Promise<ImportedS
       });
       plan.bool.forEach((field, column) => {
         const raw = unwrap(row.getCell(column).value);
-        const value = raw === true || (typeof raw === 'string' && TRUE_WORDS.has(raw.trim().toLowerCase()));
+        const value = raw === true
+          || (typeof raw === 'number' && raw !== 0)
+          || (typeof raw === 'string' && TRUE_WORDS.has(raw.trim().toLowerCase()));
         order[field] = value;
         if (value) filled = true;
       });
@@ -208,7 +261,7 @@ export async function parseDispatcherWorkbook(buffer: Buffer): Promise<ImportedS
       }
       orders.push(order);
     }
-    sheets.push({ name: worksheet.name, orders, skippedRows });
+    sheets.push({ name: worksheet.name, orders, skippedRows, unmappedColumns: plan.unmapped });
   });
 
   return sheets;

@@ -10,6 +10,8 @@ import {
 /**
  * Строка журнала диспетчерского отдела (КТК Владивосток): одно задание на
  * перевозку контейнера. Поля повторяют рабочую google-таблицу диспетчеров;
+ * все текстовые поля — text без ограничения длины: в таблице отдела в «ставку»
+ * пишут расчёт на несколько строк, в «слот» — e-mail и т.п. (импорт 2026-09-14);
  * числовые на вид колонки (вес, ставки, простой) намеренно хранятся текстом —
  * диспетчера пишут туда «12000+3800», «2x2500», «к 10» и т.п.
  */
@@ -32,76 +34,76 @@ export class DispatcherOrder {
   @Column({ type: 'double precision', default: 0 })
   position!: number;
 
-  @Column({ type: 'varchar', length: 64, nullable: true })
+  @Column({ type: 'text', nullable: true })
   status!: string | null;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
+  @Column({ type: 'text', nullable: true })
   info!: string | null;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
+  @Column({ type: 'text', nullable: true })
   client!: string | null;
 
-  @Column({ name: 'driver_name', type: 'varchar', length: 255, nullable: true })
+  @Column({ name: 'driver_name', type: 'text', nullable: true })
   driverName!: string | null;
 
-  @Column({ name: 'vehicle_plate', type: 'varchar', length: 64, nullable: true })
+  @Column({ name: 'vehicle_plate', type: 'text', nullable: true })
   vehiclePlate!: string | null;
 
-  @Column({ name: 'ktk_number', type: 'varchar', length: 32, nullable: true })
+  @Column({ name: 'ktk_number', type: 'text', nullable: true })
   ktkNumber!: string | null;
 
-  @Column({ name: 'ktk_type', type: 'varchar', length: 16, nullable: true })
+  @Column({ name: 'ktk_type', type: 'text', nullable: true })
   ktkType!: string | null;
 
-  @Column({ name: 'gross_weight', type: 'varchar', length: 64, nullable: true })
+  @Column({ name: 'gross_weight', type: 'text', nullable: true })
   grossWeight!: string | null;
 
   @Column({ type: 'text', nullable: true })
   comments!: string | null;
 
-  @Column({ type: 'varchar', length: 64, nullable: true })
+  @Column({ type: 'text', nullable: true })
   operation!: string | null;
 
-  @Column({ name: 'terminal_from', type: 'varchar', length: 255, nullable: true })
+  @Column({ name: 'terminal_from', type: 'text', nullable: true })
   terminalFrom!: string | null;
 
-  @Column({ name: 'slot_from', type: 'varchar', length: 64, nullable: true })
+  @Column({ name: 'slot_from', type: 'text', nullable: true })
   slotFrom!: string | null;
 
-  @Column({ name: 'pin_from', type: 'varchar', length: 64, nullable: true })
+  @Column({ name: 'pin_from', type: 'text', nullable: true })
   pinFrom!: string | null;
 
-  @Column({ name: 'submit_time', type: 'varchar', length: 32, nullable: true })
+  @Column({ name: 'submit_time', type: 'text', nullable: true })
   submitTime!: string | null;
 
   @Column({ name: 'delivery_address', type: 'text', nullable: true })
   deliveryAddress!: string | null;
 
-  @Column({ name: 'terminal_to', type: 'varchar', length: 255, nullable: true })
+  @Column({ name: 'terminal_to', type: 'text', nullable: true })
   terminalTo!: string | null;
 
-  @Column({ name: 'slot_to', type: 'varchar', length: 64, nullable: true })
+  @Column({ name: 'slot_to', type: 'text', nullable: true })
   slotTo!: string | null;
 
-  @Column({ name: 'pin_to', type: 'varchar', length: 64, nullable: true })
+  @Column({ name: 'pin_to', type: 'text', nullable: true })
   pinTo!: string | null;
 
-  @Column({ name: 'driver_rate', type: 'varchar', length: 32, nullable: true })
+  @Column({ name: 'driver_rate', type: 'text', nullable: true })
   driverRate!: string | null;
 
-  @Column({ type: 'varchar', length: 16, nullable: true })
+  @Column({ type: 'text', nullable: true })
   vat!: string | null;
 
-  @Column({ name: 'client_rate', type: 'varchar', length: 32, nullable: true })
+  @Column({ name: 'client_rate', type: 'text', nullable: true })
   clientRate!: string | null;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
+  @Column({ type: 'text', nullable: true })
   passes!: string | null;
 
   @Column({ name: 'extra_address', type: 'text', nullable: true })
   extraAddress!: string | null;
 
-  @Column({ type: 'varchar', length: 64, nullable: true })
+  @Column({ type: 'text', nullable: true })
   demurrage!: string | null;
 
   @Column({ name: 'order_on_vehicle', type: 'boolean', default: false })
@@ -110,10 +112,10 @@ export class DispatcherOrder {
   @Column({ name: 'invoice_sent', type: 'boolean', default: false })
   invoiceSent!: boolean;
 
-  @Column({ name: 'extra_ton', type: 'varchar', length: 64, nullable: true })
+  @Column({ name: 'extra_ton', type: 'text', nullable: true })
   extraTon!: string | null;
 
-  @Column({ type: 'varchar', length: 64, nullable: true })
+  @Column({ type: 'text', nullable: true })
   seal!: string | null;
 
   @Column({ type: 'boolean', default: false })
