@@ -1327,7 +1327,7 @@ export default function DispatcherJournalPage() {
           }}
         >
           <ListItemIcon><ViewColumn fontSize="small" /></ListItemIcon>
-          <ListItemText primary="Колонки" secondary="свои у каждого сотрудника" />
+          <ListItemText primary="Колонки" />
         </MenuItem>
         <MenuItem
           onClick={() => {
