@@ -9,6 +9,8 @@ type ListCellProps = {
   /** Преобразование при сохранении (например, ФИО → фамилия с инициалами). */
   normalize?: (value: string) => string;
   placeholder?: string;
+  /** только значения из списка (статус): чужой текст не сохраняется, регистр подправляется */
+  strict?: boolean;
   onSave: (value: string) => void;
 };
 
@@ -19,7 +21,7 @@ const MAX_VISIBLE = 60;
  * не держит поппер на каждую строку: список рисуется порталом только у ячейки
  * в фокусе, поэтому таблица на тысячи строк не тормозит. Свободный ввод разрешён.
  */
-export default function ListCell({ value, options, colorOf, normalize, placeholder, onSave }: ListCellProps) {
+export default function ListCell({ value, options, colorOf, normalize, placeholder, strict, onSave }: ListCellProps) {
   const [draft, setDraft] = useState(value ?? '');
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState(false);
@@ -54,7 +56,15 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
   }, [open]);
 
   const commit = (next: string) => {
-    const normalized = normalize ? normalize(next) : next.trim();
+    let normalized = normalize ? normalize(next) : next.trim();
+    if (strict && normalized) {
+      const match = options.find((option) => option.toLowerCase() === normalized.toLowerCase());
+      if (!match) {
+        setDraft(value ?? '');
+        return;
+      }
+      normalized = match;
+    }
     setDraft(normalized);
     if (normalized !== (value ?? '')) onSave(normalized);
   };
