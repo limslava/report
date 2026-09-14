@@ -36,6 +36,7 @@ import {
   getPrintFormsMeta,
   savePrintForm,
 } from '../services/print-forms.api';
+import api from '../services/api';
 import { TableSortState, cycleSort, sortIndicator, sortRows } from '../utils/tableSort';
 import '../styles/operations-preview.css';
 import '../styles/fuel.css';
@@ -120,6 +121,9 @@ const filenameFromHeaders = (headers: Record<string, unknown>, fallback: string)
 
 type VmppPairDraft = { employee: EmployeeItem | null; vehicle: FleetVehicleItem | null };
 
+/** Организация, чьи водители и ТС идут в форму: id '' — наша, иначе контрагент из справочника. */
+type PrintOrganizationOption = { id: string; label: string };
+
 /** Выпадашки рендерятся в оверлее вне страницы — компактный текст задаём классом. */
 const COMPACT_LISTBOX = { className: 'print-compact-listbox' };
 const COMPACT_SELECT = { MenuProps: { PaperProps: { className: 'print-compact-menu' } } } as const;
@@ -130,6 +134,8 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
   // контрагентов ВВО. Москве добавим её формы, когда появятся образцы.
   const location: FleetLocation = 'vvo';
   const [meta, setMeta] = useState<PrintFormsMeta | null>(null);
+  const [organizations, setOrganizations] = useState<PrintOrganizationOption[]>([]);
+  const [organizationId, setOrganizationId] = useState('');
   const [employees, setEmployees] = useState<EmployeeItem[]>([]);
   const [vehicles, setVehicles] = useState<FleetVehicleItem[]>([]);
   const [journal, setJournal] = useState<PrintJournalRow[]>([]);
@@ -235,16 +241,19 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
 
   const reload = useCallback(async () => {
     try {
-      const [metaRes, employeesRes, vehiclesRes, journalRes] = await Promise.all([
+      const [metaRes, journalRes, counterpartiesRes] = await Promise.all([
         getPrintFormsMeta(location),
-        getEmployees(location),
-        getFleetVehicles(location),
         getPrintFormsJournal(location),
+        api
+          .get<Array<{ id: string; nameShort: string; nameFull: string }>>('/directories/counterparties')
+          .catch(() => ({ data: [] as Array<{ id: string; nameShort: string; nameFull: string }> })),
       ]);
       setMeta(metaRes.data);
-      setEmployees(employeesRes.data);
-      setVehicles(vehiclesRes.data);
       setJournal(journalRes.data);
+      setOrganizations([
+        { id: '', label: metaRes.data.org.shortName },
+        ...counterpartiesRes.data.map((item) => ({ id: item.id, label: item.nameShort || item.nameFull })),
+      ]);
       if (!counterparty && metaRes.data.counterparties.length) {
         setCounterparty(metaRes.data.counterparties[0].label);
       }
@@ -259,8 +268,33 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
     void reload();
   }, [reload]);
 
+  // сотрудники и ТС — из справочника выбранной организации (наша — записи без контрагента)
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      getEmployees(location, organizationId || undefined),
+      getFleetVehicles(location, organizationId || undefined),
+    ])
+      .then(([employeesRes, vehiclesRes]) => {
+        if (cancelled) return;
+        setEmployees(employeesRes.data);
+        setVehicles(vehiclesRes.data);
+      })
+      .catch((error) => {
+        if (!cancelled) setFeedback({ severity: 'error', text: errorText(error) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [location, organizationId]);
 
-  const buildParams = (): Record<string, unknown> => {
+
+  const buildParams = (): Record<string, unknown> => ({
+    ...buildFormParams(),
+    ...(organizationId ? { counterpartyId: organizationId } : {}),
+  });
+
+  const buildFormParams = (): Record<string, unknown> => {
     // номер присваивается на сервере автоматически (сквозной по региону и году)
     if (templateKey === 'poa_vmpp' || templateKey === 'poa_dkh' || templateKey === 'poa_pl') {
       return {
@@ -411,6 +445,32 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
                 <MenuItem key={item.key} value={item.key}>{item.label}</MenuItem>
               ))}
             </TextField>
+            <Autocomplete
+              size="small"
+              ListboxProps={COMPACT_LISTBOX}
+              options={organizations}
+              getOptionLabel={(item) => item.label}
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              value={organizations.find((item) => item.id === organizationId) ?? null}
+              disableClearable={organizations.length > 0}
+              onChange={(_event, item) => {
+                // другая организация — другие люди и машины: выбранное сбрасываем
+                setOrganizationId(item?.id ?? '');
+                setEmployee(null);
+                setVehicle(null);
+                setMultiEmployees([]);
+                setMultiVehicles([]);
+                setPairs([{ employee: null, vehicle: null }]);
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Организация"
+                  title="Чьи сотрудники и ТС попадают в форму (справочник организации)"
+                />
+              )}
+              sx={{ flex: '1.2 1 190px', minWidth: 150, maxWidth: 300 }}
+            />
             {isPoa && (
               <>
                 {employeeField(employee, setEmployee, 'Сотрудник (из справочника)', employees)}

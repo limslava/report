@@ -3,10 +3,22 @@ import { Between } from 'typeorm';
 import { AppDataSource } from '../config/data-source';
 import { DispatcherOrder } from '../models/dispatcher-order.model';
 import { DispatcherStatus } from '../models/dispatcher-status.model';
+import {
+  DISPATCHER_DICTIONARY_KINDS,
+  DispatcherDictionaryItem,
+  type DispatcherDictionaryKind,
+} from '../models/dispatcher-dictionary-item.model';
+import { OperationsPreviewState } from '../models/operations-preview-state.model';
+import { buildDispatcherCrew } from '../services/dispatcher-crew.service';
 import { planWebSocketService } from '../services/websocket.service';
 
 const orderRepository = AppDataSource.getRepository(DispatcherOrder);
 const statusRepository = AppDataSource.getRepository(DispatcherStatus);
+const dictionaryRepository = AppDataSource.getRepository(DispatcherDictionaryItem);
+const previewStateRepository = AppDataSource.getRepository(OperationsPreviewState);
+
+/** Ключ графика работы КТК Владивосток (operations-preview). */
+const KTK_VVO_SCHEDULE_SCOPE = 'ktk_vvo_preview_v1';
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -47,6 +59,12 @@ type EditableBooleanField = typeof EDITABLE_BOOLEAN_FIELDS[number];
 
 const TEXT_FIELD_SET = new Set<string>(EDITABLE_TEXT_FIELDS);
 const BOOLEAN_FIELD_SET = new Set<string>(EDITABLE_BOOLEAN_FIELDS);
+
+const httpError = (statusCode: number, message: string): never => {
+  const error: any = new Error(message);
+  error.statusCode = statusCode;
+  throw error;
+};
 
 const requireDate = (value: unknown): string => {
   if (typeof value !== 'string' || !DATE_PATTERN.test(value)) {
@@ -220,6 +238,215 @@ export const deleteDispatcherOrder = async (req: Request, res: Response, next: N
     await orderRepository.remove(order);
     planWebSocketService.notifyDispatcherJournalUpdated({ date: order.orderDate, userId: req.user?.id });
     res.json({ message: 'Строка удалена' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─────────────── Справочники реестра (статусы, типы КТК, НДС, операции) ───────────────
+
+const serializeStatus = (status: DispatcherStatus) => ({
+  id: status.id,
+  name: status.name,
+  color: status.color,
+  sortOrder: status.sortOrder,
+  isActive: status.isActive,
+});
+
+const serializeDictionaryItem = (item: DispatcherDictionaryItem) => ({
+  id: item.id,
+  kind: item.kind,
+  name: item.name,
+  sortOrder: item.sortOrder,
+  isActive: item.isActive,
+});
+
+const requireName = (value: unknown, maxLength: number): string => {
+  const name = typeof value === 'string' ? value.trim() : '';
+  if (!name) httpError(400, 'Укажите название');
+  if (name.length > maxLength) httpError(400, `Название длиннее ${maxLength} символов`);
+  return name;
+};
+
+const requireColor = (value: unknown): string => {
+  const color = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (!/^#[0-9a-f]{6}$/.test(color)) httpError(400, 'Цвет в формате #rrggbb');
+  return color;
+};
+
+const requireKind = (value: unknown): DispatcherDictionaryKind => {
+  if (!DISPATCHER_DICTIONARY_KINDS.includes(value as DispatcherDictionaryKind)) httpError(400, 'Неизвестный справочник');
+  return value as DispatcherDictionaryKind;
+};
+
+const notifyDictionariesUpdated = (userId?: string) =>
+  planWebSocketService.notifyDispatcherDictionariesUpdated({ userId });
+
+/** Все справочники реестра, включая скрытые записи (для окна ведения справочников). */
+export const listDispatcherDictionaries = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const [statuses, items] = await Promise.all([
+      statusRepository.find({ order: { sortOrder: 'ASC', name: 'ASC' } }),
+      dictionaryRepository.find({ order: { kind: 'ASC', sortOrder: 'ASC', name: 'ASC' } }),
+    ]);
+    res.json({ statuses: statuses.map(serializeStatus), items: items.map(serializeDictionaryItem) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const isUniqueViolation = (error: unknown): boolean => (error as { code?: string })?.code === '23505';
+
+export const createDispatcherStatus = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const name = requireName(req.body?.name, 64);
+    const color = requireColor(req.body?.color);
+    const last = await statusRepository.find({ order: { sortOrder: 'DESC' }, take: 1 });
+    const saved = await statusRepository.save(
+      statusRepository.create({ name, color, sortOrder: (last[0]?.sortOrder ?? 0) + 10 }),
+    );
+    notifyDictionariesUpdated(req.user?.id);
+    res.status(201).json(serializeStatus(saved));
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      next(Object.assign(new Error('Такой статус уже есть'), { statusCode: 409 }));
+      return;
+    }
+    next(error);
+  }
+};
+
+export const updateDispatcherStatus = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const status = await statusRepository.findOne({ where: { id: req.params.id } });
+    if (!status) return httpError(404, 'Статус не найден');
+    const previousName = status.name;
+    if (req.body?.name !== undefined) status.name = requireName(req.body.name, 64);
+    if (req.body?.color !== undefined) status.color = requireColor(req.body.color);
+    if (req.body?.isActive !== undefined) status.isActive = Boolean(req.body.isActive);
+    await AppDataSource.transaction(async (manager) => {
+      await manager.save(status);
+      // заявки хранят статус текстом — переименование переносим в строки реестра
+      if (previousName !== status.name) {
+        await manager.update(DispatcherOrder, { status: previousName }, { status: status.name });
+      }
+    });
+    notifyDictionariesUpdated(req.user?.id);
+    res.json(serializeStatus(status));
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      next(Object.assign(new Error('Такой статус уже есть'), { statusCode: 409 }));
+      return;
+    }
+    next(error);
+  }
+};
+
+export const deleteDispatcherStatus = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const status = await statusRepository.findOne({ where: { id: req.params.id } });
+    if (!status) return httpError(404, 'Статус не найден');
+    const used = await orderRepository.count({ where: { status: status.name } });
+    if (used > 0) {
+      return httpError(409, `Статус стоит в ${used} заявк${used === 1 ? 'е' : 'ах'} — его можно только скрыть`);
+    }
+    await statusRepository.remove(status);
+    notifyDictionariesUpdated(req.user?.id);
+    res.json({ message: 'Статус удалён' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createDispatcherDictionaryItem = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const kind = requireKind(req.body?.kind);
+    const name = requireName(req.body?.name, kind === 'vat' ? 16 : kind === 'ktk_type' ? 16 : 64);
+    const last = await dictionaryRepository.find({ where: { kind }, order: { sortOrder: 'DESC' }, take: 1 });
+    const saved = await dictionaryRepository.save(
+      dictionaryRepository.create({ kind, name, sortOrder: (last[0]?.sortOrder ?? 0) + 10 }),
+    );
+    notifyDictionariesUpdated(req.user?.id);
+    res.status(201).json(serializeDictionaryItem(saved));
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      next(Object.assign(new Error('Такое значение уже есть'), { statusCode: 409 }));
+      return;
+    }
+    next(error);
+  }
+};
+
+export const updateDispatcherDictionaryItem = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const item = await dictionaryRepository.findOne({ where: { id: req.params.id } });
+    if (!item) return httpError(404, 'Запись не найдена');
+    if (req.body?.name !== undefined) {
+      item.name = requireName(req.body.name, item.kind === 'operation' ? 64 : 16);
+    }
+    if (req.body?.isActive !== undefined) item.isActive = Boolean(req.body.isActive);
+    await dictionaryRepository.save(item);
+    notifyDictionariesUpdated(req.user?.id);
+    res.json(serializeDictionaryItem(item));
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      next(Object.assign(new Error('Такое значение уже есть'), { statusCode: 409 }));
+      return;
+    }
+    next(error);
+  }
+};
+
+export const deleteDispatcherDictionaryItem = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const item = await dictionaryRepository.findOne({ where: { id: req.params.id } });
+    if (!item) return httpError(404, 'Запись не найдена');
+    await dictionaryRepository.remove(item);
+    notifyDictionariesUpdated(req.user?.id);
+    res.json({ message: 'Запись удалена' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Порядок записей справочника: ids в нужном порядке (статусы — type=status). */
+export const reorderDispatcherDictionary = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? (req.body.ids as unknown[]).filter((id): id is string => typeof id === 'string') : [];
+    if (!ids.length) return httpError(400, 'Пустой список');
+    const isStatus = req.body?.type === 'status';
+    await AppDataSource.transaction(async (manager) => {
+      for (let index = 0; index < ids.length; index += 1) {
+        await manager.update(isStatus ? DispatcherStatus : DispatcherDictionaryItem, { id: ids[index] }, { sortOrder: (index + 1) * 10 });
+      }
+    });
+    notifyDictionariesUpdated(req.user?.id);
+    res.json({ message: 'Порядок сохранён' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Активные значения простых справочников для ячеек реестра: { ktk_type: [...], vat: [...], operation: [...] }. */
+export const listDispatcherDictionaryOptions = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const items = await dictionaryRepository.find({ where: { isActive: true }, order: { sortOrder: 'ASC', name: 'ASC' } });
+    const result: Record<string, string[]> = Object.fromEntries(DISPATCHER_DICTIONARY_KINDS.map((kind) => [kind, []]));
+    items.forEach((item) => {
+      (result[item.kind] ??= []).push(item.name);
+    });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Экипажи из графика контейнеровозов на дату: подстановка «водитель ⇄ госномер» в реестре. */
+export const listDispatcherCrew = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const date = requireDate(req.query.date);
+    const row = await previewStateRepository.findOne({ where: { scopeKey: KTK_VVO_SCHEDULE_SCOPE } });
+    res.json(buildDispatcherCrew(row?.payload as Parameters<typeof buildDispatcherCrew>[0], date));
   } catch (error) {
     next(error);
   }

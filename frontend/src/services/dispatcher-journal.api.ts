@@ -60,3 +60,53 @@ export const updateDispatcherOrder = (id: string, patch: DispatcherOrderPatch) =
 
 export const deleteDispatcherOrder = (id: string) =>
   api.delete<{ message: string }>(`/dispatcher-journal/orders/${id}`);
+
+// ── Справочники реестра ──
+
+export type DispatcherDictionaryKind = 'ktk_type' | 'vat' | 'operation';
+
+export type DispatcherDictionaryOptions = Record<DispatcherDictionaryKind, string[]>;
+
+export type DispatcherStatusEntry = DispatcherStatusOption & { sortOrder: number; isActive: boolean };
+
+export type DispatcherDictionaryEntry = {
+  id: string;
+  kind: DispatcherDictionaryKind;
+  name: string;
+  sortOrder: number;
+  isActive: boolean;
+};
+
+export const getDispatcherDictionaryOptions = () =>
+  api.get<DispatcherDictionaryOptions>('/dispatcher-journal/dictionary-options');
+
+export const getDispatcherDictionaries = () =>
+  api.get<{ statuses: DispatcherStatusEntry[]; items: DispatcherDictionaryEntry[] }>('/dispatcher-journal/dictionaries');
+
+export const createDispatcherStatusEntry = (payload: { name: string; color: string }) =>
+  api.post<DispatcherStatusEntry>('/dispatcher-journal/dictionaries/statuses', payload);
+
+export const updateDispatcherStatusEntry = (id: string, payload: Partial<{ name: string; color: string; isActive: boolean }>) =>
+  api.patch<DispatcherStatusEntry>(`/dispatcher-journal/dictionaries/statuses/${id}`, payload);
+
+export const deleteDispatcherStatusEntry = (id: string) =>
+  api.delete<{ message: string }>(`/dispatcher-journal/dictionaries/statuses/${id}`);
+
+export const createDispatcherDictionaryEntry = (payload: { kind: DispatcherDictionaryKind; name: string }) =>
+  api.post<DispatcherDictionaryEntry>('/dispatcher-journal/dictionaries/items', payload);
+
+export const updateDispatcherDictionaryEntry = (id: string, payload: Partial<{ name: string; isActive: boolean }>) =>
+  api.patch<DispatcherDictionaryEntry>(`/dispatcher-journal/dictionaries/items/${id}`, payload);
+
+export const deleteDispatcherDictionaryEntry = (id: string) =>
+  api.delete<{ message: string }>(`/dispatcher-journal/dictionaries/items/${id}`);
+
+export const reorderDispatcherDictionary = (type: 'status' | 'item', ids: string[]) =>
+  api.post<{ message: string }>('/dispatcher-journal/dictionaries/reorder', { type, ids });
+
+// ── Экипажи из графика контейнеровозов ──
+
+export type DispatcherCrewEntry = { driverName: string; plate: string; onLine: boolean };
+
+export const getDispatcherCrew = (date: string) =>
+  api.get<DispatcherCrewEntry[]>('/dispatcher-journal/crew', { params: { date } });

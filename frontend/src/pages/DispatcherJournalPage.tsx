@@ -5,22 +5,42 @@ import {
   Box,
   Button,
   Checkbox,
+  Dialog,
+  DialogActions,
+  Divider,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  DialogContent,
+  DialogTitle,
   IconButton,
   MenuItem,
   Paper,
   Popover,
   Snackbar,
   TextField,
-  Tooltip,
   Typography,
 } from '@mui/material';
-import { DragIndicator, KeyboardArrowDown, KeyboardArrowUp, Settings } from '@mui/icons-material';
+import {
+  DragIndicator,
+  FilterList,
+  KeyboardArrowDown,
+  KeyboardArrowUp,
+  MenuBook,
+  PushPin,
+  Settings,
+  ViewColumn,
+} from '@mui/icons-material';
 import {
   createDispatcherOrder,
   deleteDispatcherOrder,
+  getDispatcherCrew,
+  getDispatcherDictionaryOptions,
   getDispatcherOrders,
   getDispatcherStatuses,
   updateDispatcherOrder,
+  type DispatcherCrewEntry,
+  type DispatcherDictionaryOptions,
   type DispatcherOrderPatch,
   type DispatcherOrderRow,
   type DispatcherStatusOption,
@@ -44,6 +64,19 @@ import {
   toggleHidden,
   type ColumnPrefs,
 } from '../utils/tableColumns';
+import ListCell from '../components/dispatcher/ListCell';
+import TimeCell from '../components/dispatcher/TimeCell';
+import ColumnFilterPopover, { EMPTY_FILTER_VALUE } from '../components/dispatcher/ColumnFilterPopover';
+import DispatcherDictionariesDialog from '../components/dispatcher/DispatcherDictionariesDialog';
+import {
+  amountWithoutVat,
+  buildOrderText,
+  formatMoney,
+  isCompletedStatus,
+  personKey,
+  plateKey,
+  shortPersonName,
+} from '../components/dispatcher/dispatcherJournalUtils';
 import '../styles/dispatcher-journal.css';
 
 const pad2 = (value: number): string => String(value).padStart(2, '0');
@@ -60,12 +93,16 @@ const formatDateShort = (ymd: string): string => {
   return `${day}.${month}`;
 };
 
+const formatDateFull = (ymd: string): string => `${formatDateShort(ymd)}.${ymd.slice(0, 4)}`;
+
 /** Парсинг даты из буфера обмена: 01.09.2026 / 01.09 / 2026-09-01. */
 const parseClipboardDate = (raw: string, fallbackMonth: string): string | null => {
   const text = raw.trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
   let match = /^(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(text);
   if (match) return `${match[3]}-${pad2(Number(match[2]))}-${pad2(Number(match[1]))}`;
+  match = /^(\d{1,2})\.(\d{1,2})\.(\d{2})$/.exec(text);
+  if (match) return `20${match[3]}-${pad2(Number(match[2]))}-${pad2(Number(match[1]))}`;
   match = /^(\d{1,2})\.(\d{1,2})$/.exec(text);
   if (match) return `${fallbackMonth.slice(0, 4)}-${pad2(Number(match[2]))}-${pad2(Number(match[1]))}`;
   return null;
@@ -88,45 +125,51 @@ const textColorFor = (hex: string): string => {
 type TextFieldName =
   | 'info' | 'client' | 'driverName' | 'vehiclePlate' | 'ktkNumber' | 'ktkType'
   | 'grossWeight' | 'comments' | 'operation' | 'terminalFrom' | 'slotFrom' | 'pinFrom'
-  | 'submitTime' | 'deliveryAddress' | 'terminalTo' | 'slotTo' | 'pinTo'
+  | 'deliveryAddress' | 'terminalTo' | 'slotTo' | 'pinTo'
   | 'driverRate' | 'vat' | 'clientRate' | 'passes' | 'extraAddress' | 'demurrage'
   | 'extraTon' | 'seal' | 'driverRemarks';
 
 type BooleanFieldName = 'orderOnVehicle' | 'invoiceSent' | 'recoupling';
 
+/** Источник подсказок ячейки: справочники реестра или справочники водителей/техники. */
+type ListSource = keyof DispatcherDictionaryOptions | 'drivers' | 'vehicles';
+
 type ColumnDef =
   | { kind: 'status'; field: 'status'; title: string; width: number }
-  | { kind: 'text'; field: TextFieldName; title: string; width: number; multiline?: boolean; listId?: string }
-  | { kind: 'checkbox'; field: BooleanFieldName; title: string; width: number };
+  | { kind: 'text'; field: TextFieldName; title: string; width: number; multiline?: boolean; list?: ListSource }
+  | { kind: 'time'; field: 'submitTime'; title: string; width: number }
+  | { kind: 'checkbox'; field: BooleanFieldName; title: string; width: number }
+  | { kind: 'computed'; field: 'amountWithoutVat'; title: string; width: number };
 
 /**
- * Все колонки журнала (порядок — как в google-таблице отдела). Видимость и
- * порядок настраиваются пользователем; фиксированы только номер строки,
- * дата и кнопка удаления.
+ * Все колонки журнала (порядок — как в google-таблице отдела). Видимость,
+ * порядок и ширина настраиваются пользователем; фиксированы только номер
+ * строки, дата и кнопка удаления.
  */
 const ALL_COLUMNS: ColumnDef[] = [
   { kind: 'status', field: 'status', title: 'Статус', width: 130 },
   { kind: 'text', field: 'info', title: 'Инфо', width: 70 },
   { kind: 'text', field: 'client', title: 'Клиент', width: 120 },
-  { kind: 'text', field: 'driverName', title: 'ФИО водителя', width: 120, listId: 'dj-drivers' },
-  { kind: 'text', field: 'vehiclePlate', title: 'Гос номер', width: 90, listId: 'dj-vehicles' },
+  { kind: 'text', field: 'driverName', title: 'ФИО водителя', width: 115, list: 'drivers' },
+  { kind: 'text', field: 'vehiclePlate', title: 'Гос номер', width: 90, list: 'vehicles' },
   { kind: 'text', field: 'ktkNumber', title: '№ КТК', width: 105 },
-  { kind: 'text', field: 'ktkType', title: 'Тип', width: 42 },
+  { kind: 'text', field: 'ktkType', title: 'Тип', width: 58, list: 'ktk_type' },
   { kind: 'text', field: 'grossWeight', title: 'Вес (брутто)', width: 80 },
   { kind: 'text', field: 'comments', title: 'Комментарии', width: 140, multiline: true },
-  { kind: 'text', field: 'operation', title: 'Операция', width: 90, listId: 'dj-operations' },
+  { kind: 'text', field: 'operation', title: 'Операция', width: 90, list: 'operation' },
   { kind: 'text', field: 'terminalFrom', title: 'Терминал постановки', width: 150, multiline: true },
   { kind: 'text', field: 'slotFrom', title: 'Слот', width: 60 },
   { kind: 'text', field: 'pinFrom', title: 'Пин', width: 58 },
-  { kind: 'text', field: 'submitTime', title: 'Время подачи', width: 66 },
+  { kind: 'time', field: 'submitTime', title: 'Время подачи', width: 74 },
   { kind: 'text', field: 'deliveryAddress', title: 'Адрес доставки', width: 170, multiline: true },
   { kind: 'text', field: 'terminalTo', title: 'Терминал снятия', width: 150, multiline: true },
   { kind: 'text', field: 'slotTo', title: 'Слот снятия', width: 60 },
   { kind: 'text', field: 'pinTo', title: 'Пин снятия', width: 58 },
   { kind: 'text', field: 'driverRate', title: 'Ставка водителя', width: 70 },
-  { kind: 'text', field: 'vat', title: 'НДС', width: 70, listId: 'dj-vat' },
+  { kind: 'text', field: 'vat', title: 'НДС', width: 74, list: 'vat' },
   { kind: 'text', field: 'clientRate', title: 'Ставка', width: 70 },
   { kind: 'text', field: 'passes', title: 'Пропуска', width: 70 },
+  { kind: 'computed', field: 'amountWithoutVat', title: 'Без НДС', width: 76 },
   { kind: 'text', field: 'extraAddress', title: 'Доп адрес', width: 120, multiline: true },
   { kind: 'text', field: 'demurrage', title: 'Простой/руб', width: 75 },
   { kind: 'checkbox', field: 'orderOnVehicle', title: 'Заказ на ТС', width: 52 },
@@ -140,6 +183,26 @@ const ALL_COLUMNS: ColumnDef[] = [
 const ALL_COLUMN_KEYS = ALL_COLUMNS.map((column) => column.field);
 const COLUMN_BY_KEY = new Map<string, ColumnDef>(ALL_COLUMNS.map((column) => [column.field, column]));
 const NO_DEFAULT_HIDDEN: string[] = [];
+
+/** Ширины служебных колонок: номер строки, дата, удаление. */
+const ROWNUM_WIDTH = 32;
+const DATE_WIDTH = 96;
+const DELETE_WIDTH = 28;
+const MIN_COLUMN_WIDTH = 40;
+/** Псевдо-ключ колонки даты (фильтр, сортировка, закрепление). */
+const DATE_KEY = 'orderDate';
+
+/**
+ * Колонки, появившиеся после того, как пользователь сохранил свой порядок,
+ * встают на место по умолчанию (а не в конец): «Без НДС» — сразу после «Пропуска».
+ */
+const withNewColumnDefaults = (prefs: ColumnPrefs | undefined): ColumnPrefs | undefined => {
+  if (!prefs || prefs.order.includes('amountWithoutVat')) return prefs;
+  const order = [...prefs.order];
+  const passesIndex = order.indexOf('passes');
+  order.splice(passesIndex >= 0 ? passesIndex + 1 : order.length, 0, 'amountWithoutVat');
+  return { ...prefs, order };
+};
 
 const MONTH_OPTIONS = [
   { value: 1, label: 'Январь' },
@@ -156,17 +219,18 @@ const MONTH_OPTIONS = [
   { value: 12, label: 'Декабрь' },
 ];
 
-const OPERATION_SUGGESTIONS = ['выгрузка', 'погрузка', 'перемещение', 'вывоз'];
-const VAT_SUGGESTIONS = ['НДС22%', 'без НДС'];
+const EMPTY_DICTIONARY_OPTIONS: DispatcherDictionaryOptions = { ktk_type: [], vat: [], operation: [] };
+
+/** Кто ведёт справочники реестра (проверка дублируется на сервере). */
+const DICTIONARY_EDIT_ROLES = new Set(['admin', 'head_ktk_vvo']);
 
 type EditableCellProps = {
   value: string | null;
   multiline?: boolean;
-  listId?: string;
   onSave: (value: string) => void;
 };
 
-function EditableCell({ value, multiline, listId, onSave }: EditableCellProps) {
+function EditableCell({ value, multiline, onSave }: EditableCellProps) {
   const [draft, setDraft] = useState(value ?? '');
   const focusedRef = useRef(false);
 
@@ -195,7 +259,6 @@ function EditableCell({ value, multiline, listId, onSave }: EditableCellProps) {
     <input
       className="dj-cell-input"
       value={draft}
-      list={listId}
       onChange={(event) => setDraft(event.target.value)}
       onFocus={() => { focusedRef.current = true; }}
       onBlur={commit}
@@ -260,17 +323,30 @@ function StatusCell({ value, statuses, statusByName, onSave }: StatusCellProps) 
 
 type Message = { severity: 'error' | 'success'; text: string } | null;
 
+/** Текст ячейки для фильтра, копирования и сортировки. */
+const columnText = (row: DispatcherOrderRow, column: ColumnDef): string => {
+  if (column.kind === 'checkbox') return row[column.field] ? 'да' : '';
+  if (column.kind === 'computed') return formatMoney(amountWithoutVat(row.clientRate, row.passes, row.vat));
+  if (column.field === 'driverName') return shortPersonName(row.driverName);
+  return row[column.field] ?? '';
+};
+
 export default function DispatcherJournalPage() {
   const { user } = useAuthStore();
+  const canEditDictionaries = DICTIONARY_EDIT_ROLES.has(user?.role ?? '');
   const [viewMonth, setViewMonth] = useState<string>(currentMonth());
   const [rows, setRows] = useState<DispatcherOrderRow[]>([]);
   const [statuses, setStatuses] = useState<DispatcherStatusOption[]>([]);
+  const [dictionaryOptions, setDictionaryOptions] = useState<DispatcherDictionaryOptions>(EMPTY_DICTIONARY_OPTIONS);
   const [driverOptions, setDriverOptions] = useState<string[]>([]);
   const [vehicleOptions, setVehicleOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<Message>(null);
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [ghostKey, setGhostKey] = useState(0);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: DispatcherOrderRow } | null>(null);
+  const [orderText, setOrderText] = useState<{ title: string; text: string } | null>(null);
+  const [dictionariesOpen, setDictionariesOpen] = useState(false);
   const reloadTimerRef = useRef<number | null>(null);
   // Текущий месяц показывается вместе с ближайшим будущим (до 60 дней):
   // заявка от 29.09 на вывоз 01.10 видна, не дожидаясь октября. Прошлые
@@ -295,13 +371,16 @@ export default function DispatcherJournalPage() {
   // дата новых строк: сегодня в текущем месяце, иначе 1-е число месяца
   const defaultNewDate = viewMonth === currentMonth() ? todayYmd() : `${viewMonth}-01`;
 
+  const userKey = user?.id ?? 'anonymous';
+
   // настройка колонок (видимость + порядок), на пользователя — как в справочниках
-  const columnsStorageKey = `dj-columns-v1:${user?.id ?? 'anonymous'}`;
+  const columnsStorageKey = `dj-columns-v1:${userKey}`;
   const [columnPrefs, setColumnPrefs] = useState<ColumnPrefs | undefined>(() =>
-    loadSortState<ColumnPrefs | undefined>(columnsStorageKey, undefined)
+    withNewColumnDefaults(loadSortState<ColumnPrefs | undefined>(columnsStorageKey, undefined))
   );
   useEffect(() => saveSortState(columnsStorageKey, columnPrefs), [columnsStorageKey, columnPrefs]);
   const [columnsAnchor, setColumnsAnchor] = useState<HTMLElement | null>(null);
+  const [settingsAnchor, setSettingsAnchor] = useState<HTMLElement | null>(null);
   const dragColumnKey = useRef<string | null>(null);
   const visibleColumns = useMemo(
     () => applyColumnPrefs(ALL_COLUMN_KEYS, NO_DEFAULT_HIDDEN, columnPrefs)
@@ -312,24 +391,111 @@ export default function DispatcherJournalPage() {
   const visibleColumnsRef = useRef(visibleColumns);
   visibleColumnsRef.current = visibleColumns;
 
-  // сортировка по заголовкам: asc -> desc -> исходный порядок (по датам)
-  const sortStorageKey = `dj-sort-v1:${user?.id ?? 'anonymous'}`;
-  const [sort, setSort] = useState<TableSortState>(() => loadSortState<TableSortState>(sortStorageKey, null));
-  useEffect(() => saveSortState(sortStorageKey, sort), [sortStorageKey, sort]);
-  const sortValue = useCallback((row: DispatcherOrderRow, field: string): unknown => {
-    if (field === 'orderDate') return row.orderDate;
-    const column = COLUMN_BY_KEY.get(field);
-    if (!column) return '';
-    if (column.kind === 'checkbox') return row[column.field] ? 1 : '';
-    return row[column.field] ?? '';
-  }, []);
-  const displayRows = useMemo(() => applySort(rows, sort, sortValue), [rows, sort, sortValue]);
-  const sortHeader = (field: string, label: string) => (
-    <button type="button" className="dj-sort-btn" onClick={() => setSort((prev) => cycleSort(prev, field))}>
-      <span>{label}</span>
-      <span className={`dj-sort-ind is-${sortIndicator(sort, field)}`} aria-hidden="true" />
-    </button>
+  // ширина колонок — у каждого сотрудника своя (перетаскивание края заголовка)
+  const widthsStorageKey = `dj-widths-v1:${userKey}`;
+  const [customWidths, setCustomWidths] = useState<Record<string, number>>(() =>
+    loadSortState<Record<string, number>>(widthsStorageKey, {})
   );
+  useEffect(() => saveSortState(widthsStorageKey, customWidths), [widthsStorageKey, customWidths]);
+
+  // закреплённые слева колонки: № и дата + всё до выбранной колонки включительно
+  const pinStorageKey = `dj-pin-v1:${userKey}`;
+  const [pinnedUntil, setPinnedUntil] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(pinStorageKey) || null;
+    } catch {
+      return null;
+    }
+  });
+  useEffect(() => {
+    try {
+      if (pinnedUntil) localStorage.setItem(pinStorageKey, pinnedUntil);
+      else localStorage.removeItem(pinStorageKey);
+    } catch {
+      // приватный режим — закрепление живёт до перезагрузки
+    }
+  }, [pinStorageKey, pinnedUntil]);
+
+  // фильтры по значениям (как в google-таблицах): храним скрытые значения
+  const filtersStorageKey = `dj-filters-v1:${userKey}`;
+  const [filters, setFilters] = useState<Record<string, string[]>>(() =>
+    loadSortState<Record<string, string[]>>(filtersStorageKey, {})
+  );
+  useEffect(() => saveSortState(filtersStorageKey, filters), [filtersStorageKey, filters]);
+  const activeFilterCount = Object.values(filters).filter((hidden) => hidden.length > 0).length;
+  const [filterMenu, setFilterMenu] = useState<{ field: string; anchor: HTMLElement } | null>(null);
+  // строки, созданные в этой сессии, не прячутся фильтром — иначе новая заявка «исчезает» при вводе
+  const sessionCreatedIdsRef = useRef<Set<string>>(new Set());
+
+  // ширина области таблицы: колонки без ручной ширины растягиваются на большом экране
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [wrapWidth, setWrapWidth] = useState(0);
+  useEffect(() => {
+    const element = wrapRef.current;
+    if (!element) return undefined;
+    const observer = new ResizeObserver((entries) => setWrapWidth(entries[0]?.contentRect.width ?? 0));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const columnWidths = useMemo(() => {
+    const customSum = visibleColumns.reduce((sum, column) => sum + (customWidths[column.field] ?? 0), 0);
+    const defaultSum = visibleColumns.reduce((sum, column) => sum + (customWidths[column.field] ? 0 : column.width), 0);
+    const free = wrapWidth - ROWNUM_WIDTH - DATE_WIDTH - DELETE_WIDTH - customSum - 2;
+    const scale = defaultSum > 0 ? Math.max(1, free / defaultSum) : 1;
+    const widths: Record<string, number> = {};
+    visibleColumns.forEach((column) => {
+      widths[column.field] = customWidths[column.field] ?? Math.floor(column.width * scale);
+    });
+    return widths;
+  }, [customWidths, visibleColumns, wrapWidth]);
+  const tableWidth = ROWNUM_WIDTH + DATE_WIDTH + DELETE_WIDTH
+    + visibleColumns.reduce((sum, column) => sum + columnWidths[column.field], 0);
+
+  const pinnedOffsets = useMemo(() => {
+    const offsets = new Map<string, number>();
+    if (!pinnedUntil) return offsets;
+    offsets.set('__rownum', 0);
+    offsets.set(DATE_KEY, ROWNUM_WIDTH);
+    const untilIndex = visibleColumns.findIndex((column) => column.field === pinnedUntil);
+    let left = ROWNUM_WIDTH + DATE_WIDTH;
+    for (let index = 0; index <= untilIndex; index += 1) {
+      const field = visibleColumns[index].field;
+      offsets.set(field, left);
+      left += columnWidths[field];
+    }
+    return offsets;
+  }, [columnWidths, pinnedUntil, visibleColumns]);
+  const lastPinnedKey = pinnedUntil
+    ? (visibleColumns.some((column) => column.field === pinnedUntil) ? pinnedUntil : DATE_KEY)
+    : null;
+  const pinStyle = (key: string): React.CSSProperties | undefined => {
+    const left = pinnedOffsets.get(key);
+    return left === undefined ? undefined : { position: 'sticky', left };
+  };
+  const pinClass = (key: string): string => {
+    if (!pinnedOffsets.has(key)) return '';
+    return key === lastPinnedKey ? ' dj-pinned dj-pinned--last' : ' dj-pinned';
+  };
+
+  const startResize = (event: React.MouseEvent, field: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = columnWidths[field] ?? MIN_COLUMN_WIDTH;
+    document.body.classList.add('dj-resizing');
+    const onMove = (moveEvent: MouseEvent) => {
+      const width = Math.max(MIN_COLUMN_WIDTH, Math.round(startWidth + moveEvent.clientX - startX));
+      setCustomWidths((prev) => ({ ...prev, [field]: width }));
+    };
+    const onUp = () => {
+      document.body.classList.remove('dj-resizing');
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
 
   const statusByName = useMemo(() => {
     const map = new Map<string, DispatcherStatusOption>();
@@ -338,6 +504,40 @@ export default function DispatcherJournalPage() {
   }, [statuses]);
   const statusesRef = useRef(statuses);
   statusesRef.current = statuses;
+
+  // сортировка по заголовкам: asc -> desc -> исходный порядок (по датам)
+  const sortStorageKey = `dj-sort-v1:${userKey}`;
+  const [sort, setSort] = useState<TableSortState>(() => loadSortState<TableSortState>(sortStorageKey, null));
+  useEffect(() => saveSortState(sortStorageKey, sort), [sortStorageKey, sort]);
+  const sortValue = useCallback((row: DispatcherOrderRow, field: string): unknown => {
+    if (field === DATE_KEY) return row.orderDate;
+    const column = COLUMN_BY_KEY.get(field);
+    if (!column) return '';
+    if (column.kind === 'checkbox') return row[column.field] ? 1 : '';
+    if (column.kind === 'computed') return amountWithoutVat(row.clientRate, row.passes, row.vat) ?? '';
+    if (column.field === 'ktkType' && row.ktkType) {
+      // типы КТК — в порядке справочника (20DC, 20HC … 40FR), а не по алфавиту
+      const index = dictionaryOptions.ktk_type.indexOf(row.ktkType);
+      return index >= 0 ? index : 1000 + row.ktkType.charCodeAt(0);
+    }
+    return columnText(row, column);
+  }, [dictionaryOptions.ktk_type]);
+
+  const filterText = useCallback((row: DispatcherOrderRow, field: string): string => {
+    if (field === DATE_KEY) return formatDateFull(row.orderDate);
+    const column = COLUMN_BY_KEY.get(field);
+    const text = column ? columnText(row, column).trim() : '';
+    return text || EMPTY_FILTER_VALUE;
+  }, []);
+
+  const displayRows = useMemo(() => {
+    const activeFilters = Object.entries(filters).filter(([, hidden]) => hidden.length > 0);
+    const filtered = activeFilters.length
+      ? rows.filter((row) => sessionCreatedIdsRef.current.has(row.id)
+        || activeFilters.every(([field, hidden]) => !hidden.includes(filterText(row, field))))
+      : rows;
+    return applySort(filtered, sort, sortValue);
+  }, [filterText, filters, rows, sort, sortValue]);
 
   const loadRows = useCallback(async (withSpinner = false) => {
     const target = rangeRef.current;
@@ -356,22 +556,36 @@ export default function DispatcherJournalPage() {
     void loadRows(true);
   }, [range, loadRows]);
 
-  useEffect(() => {
+  const loadDictionaries = useCallback(() => {
     getDispatcherStatuses()
       .then((response) => setStatuses(response.data))
       .catch(() => setMessage({ severity: 'error', text: 'Не удалось загрузить статусы' }));
-    getDirectoryOptions('vvo')
-      .then((response) => {
-        setDriverOptions(response.data.employees.map((employee) => employee.fullName));
-        setVehicleOptions(response.data.vehicles);
-      })
+    getDispatcherDictionaryOptions()
+      .then((response) => setDictionaryOptions({ ...EMPTY_DICTIONARY_OPTIONS, ...response.data }))
       .catch(() => undefined);
   }, []);
 
-  // realtime: другие диспетчера меняют журнал — подтягиваем изменения
+  useEffect(() => {
+    loadDictionaries();
+    getDirectoryOptions('vvo')
+      .then((response) => {
+        const drivers = response.data.employees
+          .filter((employee) => employee.position === 'водитель')
+          .map((employee) => shortPersonName(employee.fullName));
+        setDriverOptions([...new Set(drivers)].sort((a, b) => a.localeCompare(b, 'ru')));
+        setVehicleOptions(response.data.vehicles);
+      })
+      .catch(() => undefined);
+  }, [loadDictionaries]);
+
+  // realtime: другие диспетчера меняют журнал или справочники — подтягиваем изменения
   useEffect(() => {
     const unsubscribe = subscribePlansRealtime((payload) => {
       const event = payload as { type?: string; date?: string };
+      if (event?.type === 'dispatcher-journal:dictionaries-updated') {
+        loadDictionaries();
+        return;
+      }
       if (event?.type !== 'dispatcher-journal:updated') return;
       if (!event.date || event.date < rangeRef.current.from || event.date > rangeRef.current.to) return;
       if (reloadTimerRef.current) window.clearTimeout(reloadTimerRef.current);
@@ -383,7 +597,56 @@ export default function DispatcherJournalPage() {
       unsubscribe();
       if (reloadTimerRef.current) window.clearTimeout(reloadTimerRef.current);
     };
-  }, [loadRows]);
+  }, [loadDictionaries, loadRows]);
+
+  // ── экипажи из графика контейнеровозов (кэш на дату, 2 минуты) ──
+  const crewCacheRef = useRef(new Map<string, { at: number; promise: Promise<DispatcherCrewEntry[]> }>());
+  const getCrew = useCallback((date: string): Promise<DispatcherCrewEntry[]> => {
+    const cached = crewCacheRef.current.get(date);
+    if (cached && Date.now() - cached.at < 120_000) return cached.promise;
+    const promise = getDispatcherCrew(date)
+      .then((response) => response.data)
+      .catch(() => {
+        crewCacheRef.current.delete(date);
+        return [] as DispatcherCrewEntry[];
+      });
+    crewCacheRef.current.set(date, { at: Date.now(), promise });
+    return promise;
+  }, []);
+
+  /**
+   * Подстановка экипажа из графика работы:
+   * - выбрали водителя — госномер подтягивается, если он пуст или был машиной прежнего водителя;
+   * - выбрали госномер — водитель подтягивается, только если ячейка водителя пуста
+   *   (на машине двое — берём того, кто в этот день на линии).
+   * Подставленное значение можно исправить вручную — повторно оно не перезапишется.
+   */
+  const withCrew = useCallback(async (
+    date: string,
+    current: DispatcherOrderRow | null,
+    field: 'driverName' | 'vehiclePlate',
+    value: string,
+  ): Promise<DispatcherOrderPatch> => {
+    const patch: DispatcherOrderPatch = { [field]: value || null };
+    if (!value) return patch;
+    const crew = await getCrew(date);
+    if (!crew.length) return patch;
+    if (field === 'driverName') {
+      const plateOf = (name: string | null | undefined) =>
+        crew.find((entry) => personKey(entry.driverName) === personKey(name))?.plate ?? '';
+      const plate = plateOf(value);
+      const currentPlate = current?.vehiclePlate?.trim() ?? '';
+      const previousPairPlate = current?.driverName ? plateOf(current.driverName) : '';
+      const canReplace = !currentPlate || (previousPairPlate && plateKey(previousPairPlate) === plateKey(currentPlate));
+      if (plate && canReplace && plateKey(plate) !== plateKey(currentPlate)) patch.vehiclePlate = plate;
+    } else if (!current?.driverName?.trim()) {
+      const matches = crew.filter((entry) => entry.plate && plateKey(entry.plate) === plateKey(value));
+      const onLine = matches.filter((entry) => entry.onLine);
+      const pick = onLine.length === 1 ? onLine[0] : matches.length === 1 ? matches[0] : null;
+      if (pick) patch.driverName = shortPersonName(pick.driverName);
+    }
+    return patch;
+  }, [getCrew]);
 
   const sortByDate = (list: DispatcherOrderRow[]): DispatcherOrderRow[] =>
     [...list].sort((a, b) => a.orderDate.localeCompare(b.orderDate));
@@ -421,6 +684,7 @@ export default function DispatcherJournalPage() {
   const createRow = useCallback(async (orderDate: string, initial?: DispatcherOrderPatch, options?: { skipUndo?: boolean }) => {
     try {
       const { data } = await createDispatcherOrder(orderDate, initial);
+      sessionCreatedIdsRef.current.add(data.id);
       if (orderDate >= rangeRef.current.from && orderDate <= rangeRef.current.to) {
         setRows((prev) => sortByDate([...prev, data]));
       }
@@ -468,14 +732,22 @@ export default function DispatcherJournalPage() {
     }
   }, [createRow, deleteRow, patchRow]);
 
+  const saveCrewField = useCallback(async (row: DispatcherOrderRow, field: 'driverName' | 'vehiclePlate', value: string) => {
+    const current = rowsRef.current.find((item) => item.id === row.id) ?? row;
+    const patch = await withCrew(current.orderDate, current, field, value);
+    patchRow(row.id, patch);
+    if (field === 'driverName' && patch.vehiclePlate) {
+      setMessage({ severity: 'success', text: `Госномер из графика: ${patch.vehiclePlate}` });
+    } else if (field === 'vehiclePlate' && patch.driverName) {
+      setMessage({ severity: 'success', text: `Водитель из графика: ${patch.driverName}` });
+    }
+  }, [patchRow, withCrew]);
+
   // ── Excel-обмен: выделение строки, Ctrl+C / Ctrl+X / Ctrl+V ──
   const rowToTsv = useCallback((row: DispatcherOrderRow): string => {
-    const cells: string[] = [
-      `${formatDateShort(row.orderDate)}.${row.orderDate.slice(0, 4)}`,
-    ];
+    const cells: string[] = [formatDateFull(row.orderDate)];
     visibleColumnsRef.current.forEach((column) => {
-      if (column.kind === 'checkbox') cells.push(row[column.field] ? 'да' : '');
-      else cells.push((row[column.field] ?? '').replace(/\t/g, ' ').replace(/\r?\n/g, ' '));
+      cells.push(columnText(row, column).replace(/\t/g, ' ').replace(/\r?\n/g, ' '));
     });
     return cells.join('\t');
   }, []);
@@ -487,18 +759,30 @@ export default function DispatcherJournalPage() {
     visibleColumnsRef.current.forEach((column, index) => {
       const raw = cells[index + 1];
       if (raw == null) return;
+      if (column.kind === 'computed') return;
       if (column.kind === 'checkbox') {
         patch[column.field] = TRUE_WORDS.has(raw.trim().toLowerCase());
       } else if (column.kind === 'status') {
         const trimmed = raw.trim();
         const exact = statusesRef.current.find((status) => status.name.toLowerCase() === trimmed.toLowerCase());
         patch.status = exact?.name ?? (trimmed || null);
+      } else if (column.field === 'driverName') {
+        patch.driverName = shortPersonName(raw) || null;
       } else {
         patch[column.field] = raw.trim() || null;
       }
     });
     return { date: parsedDate ?? todayYmd(), patch };
   }, []);
+
+  const copyRowToClipboard = useCallback(async (row: DispatcherOrderRow) => {
+    try {
+      await navigator.clipboard.writeText(rowToTsv(row));
+      setMessage({ severity: 'success', text: 'Строка скопирована в буфер' });
+    } catch {
+      setMessage({ severity: 'error', text: 'Браузер не дал доступ к буферу — выделите строку и нажмите Ctrl+C' });
+    }
+  }, [rowToTsv]);
 
   // Копирование/вставка через нативные события copy/cut/paste — работают
   // без запроса разрешения на буфер (readText в ряде браузеров блокируется).
@@ -575,10 +859,19 @@ export default function DispatcherJournalPage() {
     };
   }, [applyTsvLine, createRow, deleteRow, patchRow, rowToTsv, undoLast]);
 
+  const listOptions = (source: ListSource): string[] => {
+    if (source === 'drivers') return driverOptions;
+    if (source === 'vehicles') return vehicleOptions;
+    return dictionaryOptions[source] ?? [];
+  };
+
   const renderColumnCell = (row: DispatcherOrderRow, column: ColumnDef) => {
+    const key = column.field;
+    const pin = pinStyle(key);
+    const pinCls = pinClass(key);
     if (column.kind === 'status') {
       return (
-        <td key={column.field} className="dj-status-cell">
+        <td key={key} className={`dj-status-cell${pinCls}`} style={pin}>
           <StatusCell
             value={row.status}
             statuses={statuses}
@@ -590,7 +883,7 @@ export default function DispatcherJournalPage() {
     }
     if (column.kind === 'checkbox') {
       return (
-        <td key={column.field} className="dj-checkbox-cell">
+        <td key={key} className={`dj-checkbox-cell${pinCls}`} style={pin}>
           <Checkbox
             size="small"
             sx={{ p: 0.25 }}
@@ -600,12 +893,42 @@ export default function DispatcherJournalPage() {
         </td>
       );
     }
+    if (column.kind === 'computed') {
+      const amount = amountWithoutVat(row.clientRate, row.passes, row.vat);
+      return (
+        <td key={key} className={`dj-computed-cell${pinCls}`} style={pin} title="(Ставка + Пропуска) без НДС">
+          {formatMoney(amount)}
+        </td>
+      );
+    }
+    if (column.kind === 'time') {
+      return (
+        <td key={key} className={pinCls.trim()} style={pin}>
+          <TimeCell value={row.submitTime} onSave={(value) => patchRow(row.id, { submitTime: value || null })} />
+        </td>
+      );
+    }
+    if (column.list) {
+      const isCrewField = column.field === 'driverName' || column.field === 'vehiclePlate';
+      return (
+        <td key={key} className={pinCls.trim()} style={pin}>
+          <ListCell
+            value={column.field === 'driverName' ? shortPersonName(row.driverName) : row[column.field]}
+            options={listOptions(column.list)}
+            normalize={column.field === 'driverName' ? shortPersonName : undefined}
+            onSave={(value) => {
+              if (isCrewField) void saveCrewField(row, column.field as 'driverName' | 'vehiclePlate', value);
+              else patchRow(row.id, { [column.field]: value || null });
+            }}
+          />
+        </td>
+      );
+    }
     return (
-      <td key={column.field}>
+      <td key={key} className={pinCls.trim()} style={pin}>
         <EditableCell
           value={row[column.field]}
           multiline={column.multiline}
-          listId={column.listId}
           onSave={(value) => patchRow(row.id, { [column.field]: value || null })}
         />
       </td>
@@ -614,9 +937,12 @@ export default function DispatcherJournalPage() {
 
   // «призрачная» строка: начал заполнять — заявка создаётся сама
   const renderGhostCell = (column: ColumnDef) => {
+    const key = column.field;
+    const pin = pinStyle(key);
+    const pinCls = pinClass(key);
     if (column.kind === 'status') {
       return (
-        <td key={column.field} className="dj-status-cell">
+        <td key={key} className={`dj-status-cell${pinCls}`} style={pin}>
           <StatusCell
             value={null}
             statuses={statuses}
@@ -628,7 +954,7 @@ export default function DispatcherJournalPage() {
     }
     if (column.kind === 'checkbox') {
       return (
-        <td key={column.field} className="dj-checkbox-cell">
+        <td key={key} className={`dj-checkbox-cell${pinCls}`} style={pin}>
           <Checkbox
             size="small"
             sx={{ p: 0.25 }}
@@ -638,17 +964,89 @@ export default function DispatcherJournalPage() {
         </td>
       );
     }
+    if (column.kind === 'computed') {
+      return <td key={key} className={`dj-computed-cell${pinCls}`} style={pin} />;
+    }
+    if (column.kind === 'time') {
+      return (
+        <td key={key} className={pinCls.trim()} style={pin}>
+          <TimeCell value="" onSave={(value) => { if (value) void createRow(defaultNewDate, { submitTime: value }); }} />
+        </td>
+      );
+    }
+    if (column.list) {
+      const isCrewField = column.field === 'driverName' || column.field === 'vehiclePlate';
+      return (
+        <td key={key} className={pinCls.trim()} style={pin}>
+          <ListCell
+            value=""
+            options={listOptions(column.list)}
+            normalize={column.field === 'driverName' ? shortPersonName : undefined}
+            onSave={(value) => {
+              if (!value) return;
+              if (isCrewField) {
+                void withCrew(defaultNewDate, null, column.field as 'driverName' | 'vehiclePlate', value)
+                  .then((patch) => createRow(defaultNewDate, patch));
+              } else {
+                void createRow(defaultNewDate, { [column.field]: value });
+              }
+            }}
+          />
+        </td>
+      );
+    }
     return (
-      <td key={column.field}>
+      <td key={key} className={pinCls.trim()} style={pin}>
         <EditableCell
           value=""
           multiline={column.multiline}
-          listId={column.listId}
           onSave={(value) => { if (value) void createRow(defaultNewDate, { [column.field]: value }); }}
         />
       </td>
     );
   };
+
+  const headerCell = (key: string, title: string, width: number, resizable: boolean) => {
+    const filtered = (filters[key]?.length ?? 0) > 0;
+    return (
+      <th
+        key={key}
+        className={`${pinClass(key).trim()}${filtered ? ' dj-th--filtered' : ''}`}
+        style={{ width, ...pinStyle(key) }}
+      >
+        <div className="dj-th">
+          <button type="button" className="dj-sort-btn" onClick={() => setSort((prev) => cycleSort(prev, key))}>
+            <span>{title}</span>
+            <span className={`dj-sort-ind is-${sortIndicator(sort, key)}`} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className={`dj-filter-btn${filtered ? ' is-active' : ''}`}
+            title={filtered ? 'Фильтр включён' : 'Сортировка, фильтр, закрепление'}
+            onClick={(event) => setFilterMenu({ field: key, anchor: event.currentTarget })}
+          >
+            <FilterList sx={{ fontSize: 13 }} />
+          </button>
+        </div>
+        {resizable && (
+          <span
+            className="dj-resize"
+            title="Потяните, чтобы изменить ширину; двойной клик — ширина по умолчанию"
+            onMouseDown={(event) => startResize(event, key)}
+            onDoubleClick={() => setCustomWidths((prev) => {
+              const next = { ...prev };
+              delete next[key];
+              return next;
+            })}
+          />
+        )}
+      </th>
+    );
+  };
+
+  const filterMenuTitle = filterMenu
+    ? (filterMenu.field === DATE_KEY ? 'Дата' : COLUMN_BY_KEY.get(filterMenu.field)?.title ?? '')
+    : '';
 
   let previousDate: string | null = null;
 
@@ -683,42 +1081,47 @@ export default function DispatcherJournalPage() {
               <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
             ))}
           </TextField>
+          {activeFilterCount > 0 && (
+            <button type="button" className="dj-filter-chip" onClick={() => setFilters({})}>
+              <FilterList sx={{ fontSize: 14 }} />
+              Фильтры: {activeFilterCount} · показано {displayRows.length} из {rows.length} · сбросить
+            </button>
+          )}
+          {pinnedUntil && (
+            <button type="button" className="dj-filter-chip dj-filter-chip--pin" onClick={() => setPinnedUntil(null)}>
+              <PushPin sx={{ fontSize: 14 }} />
+              Закреплены столбцы · открепить
+            </button>
+          )}
           <span className="dj-toolbar__spacer" />
-          <span className="dj-toolbar__hint">
-            {loading
-              ? 'Загрузка…'
-              : `Заявок: ${rows.length} · автосохранение · № строки → Ctrl+C/X/V, Ctrl+Z — отмена`}
-          </span>
-          <Tooltip title="Настроить колонки">
-            <IconButton size="small" onClick={(event) => setColumnsAnchor(event.currentTarget)}>
-              <Settings sx={{ fontSize: 20, color: '#6b7280' }} />
-            </IconButton>
-          </Tooltip>
+          {loading && <span className="dj-toolbar__hint">Загрузка…</span>}
+          <Button
+            size="small"
+            variant="outlined"
+            color="inherit"
+            startIcon={<Settings sx={{ fontSize: 18 }} />}
+            endIcon={<KeyboardArrowDown sx={{ fontSize: 18 }} />}
+            onClick={(event) => setSettingsAnchor(event.currentTarget)}
+            sx={{ textTransform: 'none', color: '#3d4757', borderColor: '#d8dde5', fontSize: 13 }}
+          >
+            Настройки
+          </Button>
         </Box>
       </Paper>
 
-      <datalist id="dj-drivers">
-        {driverOptions.map((name) => <option key={name} value={name} />)}
-      </datalist>
-      <datalist id="dj-vehicles">
-        {vehicleOptions.map((plate) => <option key={plate} value={plate} />)}
-      </datalist>
-      <datalist id="dj-operations">
-        {OPERATION_SUGGESTIONS.map((operation) => <option key={operation} value={operation} />)}
-      </datalist>
-      <datalist id="dj-vat">
-        {VAT_SUGGESTIONS.map((vat) => <option key={vat} value={vat} />)}
-      </datalist>
-
-      <div className="dj-table-wrap">
-        <table className="dj-table">
+      <div className="dj-table-wrap" ref={wrapRef}>
+        <table className="dj-table" style={{ width: tableWidth }}>
+          <colgroup>
+            <col style={{ width: ROWNUM_WIDTH }} />
+            <col style={{ width: DATE_WIDTH }} />
+            {visibleColumns.map((column) => <col key={column.field} style={{ width: columnWidths[column.field] }} />)}
+            <col style={{ width: DELETE_WIDTH }} />
+          </colgroup>
           <thead>
             <tr>
-              <th className="dj-rownum-head" aria-label="Номер строки">№</th>
-              <th style={{ minWidth: 84 }}>{sortHeader('orderDate', 'Дата')}</th>
-              {visibleColumns.map((column) => (
-                <th key={column.field} style={{ minWidth: column.width }}>{sortHeader(column.field, column.title)}</th>
-              ))}
+              <th className={`dj-rownum-head${pinClass('__rownum')}`} style={pinStyle('__rownum')} aria-label="Номер строки">№</th>
+              {headerCell(DATE_KEY, 'Дата', DATE_WIDTH, false)}
+              {visibleColumns.map((column) => headerCell(column.field, column.title, columnWidths[column.field], true))}
               <th aria-label="Удаление" />
             </tr>
           </thead>
@@ -726,19 +1129,30 @@ export default function DispatcherJournalPage() {
             {displayRows.map((row, index) => {
               const dayStart = !sort && row.orderDate !== previousDate;
               previousDate = row.orderDate;
+              const classes = [
+                dayStart ? 'dj-row--day-start' : '',
+                isCompletedStatus(row.status) ? 'dj-row--done' : '',
+                selectedRowId === row.id ? 'dj-row--selected' : '',
+              ].filter(Boolean).join(' ');
               return (
                 <tr
                   key={row.id}
-                  className={`${dayStart ? 'dj-row--day-start' : ''}${selectedRowId === row.id ? ' dj-row--selected' : ''}`}
+                  className={classes || undefined}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setSelectedRowId(row.id);
+                    setContextMenu({ x: event.clientX, y: event.clientY, row });
+                  }}
                 >
                   <td
-                    className="dj-rownum"
+                    className={`dj-rownum${pinClass('__rownum')}`}
+                    style={pinStyle('__rownum')}
                     title="Клик — выделить строку (Ctrl+C — копировать, Ctrl+X — вырезать, Ctrl+V — вставить)"
                     onClick={() => setSelectedRowId((prev) => (prev === row.id ? null : row.id))}
                   >
                     {index + 1}
                   </td>
-                  <td className="dj-date-cell">
+                  <td className={`dj-date-cell${pinClass(DATE_KEY)}`} style={pinStyle(DATE_KEY)}>
                     <input
                       type="date"
                       className="dj-date-input"
@@ -768,8 +1182,8 @@ export default function DispatcherJournalPage() {
               );
             })}
             <tr key={`ghost-${ghostKey}`} className="dj-row--ghost dj-row--day-start">
-              <td className="dj-rownum">＋</td>
-              <td className="dj-date-cell">
+              <td className={`dj-rownum${pinClass('__rownum')}`} style={pinStyle('__rownum')}>＋</td>
+              <td className={`dj-date-cell${pinClass(DATE_KEY)}`} style={pinStyle(DATE_KEY)}>
                 <input
                   type="date"
                   className="dj-date-input"
@@ -788,7 +1202,159 @@ export default function DispatcherJournalPage() {
         {!rows.length && !loading && (
           <div className="dj-empty">В этом месяце заявок нет — начните заполнять нижнюю строку, она создастся сама</div>
         )}
+        {rows.length > 0 && !displayRows.length && (
+          <div className="dj-empty">Все заявки скрыты фильтрами — сбросьте фильтры в панели сверху</div>
+        )}
       </div>
+
+      {/* меню строки по правому клику */}
+      {contextMenu && (
+        <div
+          className="dj-context-overlay"
+          onClick={() => setContextMenu(null)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setContextMenu(null);
+          }}
+        >
+          <div
+            className="dj-context-menu"
+            style={{
+              left: Math.min(contextMenu.x, window.innerWidth - 220),
+              top: Math.min(contextMenu.y, window.innerHeight - 140),
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="dj-context-item"
+              onClick={() => {
+                const current = rowsRef.current.find((item) => item.id === contextMenu.row.id) ?? contextMenu.row;
+                setOrderText({
+                  title: `Заказ${current.ktkNumber ? ` — ${current.ktkNumber}` : ''}`,
+                  text: buildOrderText(current),
+                });
+                setContextMenu(null);
+              }}
+            >
+              Заказ
+            </button>
+            <button
+              type="button"
+              className="dj-context-item"
+              onClick={() => {
+                const current = rowsRef.current.find((item) => item.id === contextMenu.row.id) ?? contextMenu.row;
+                void copyRowToClipboard(current);
+                setContextMenu(null);
+              }}
+            >
+              Копировать строку
+            </button>
+            <button
+              type="button"
+              className="dj-context-item danger"
+              onClick={() => {
+                const current = rowsRef.current.find((item) => item.id === contextMenu.row.id) ?? contextMenu.row;
+                setContextMenu(null);
+                void deleteRow(current);
+              }}
+            >
+              Удалить
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* «Заказ»: текст для мессенджера, можно поправить перед копированием */}
+      <Dialog open={Boolean(orderText)} onClose={() => setOrderText(null)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>{orderText?.title}</DialogTitle>
+        <DialogContent sx={{ pt: 0 }}>
+          <TextField
+            multiline
+            fullWidth
+            minRows={14}
+            value={orderText?.text ?? ''}
+            onChange={(event) => setOrderText((prev) => (prev ? { ...prev, text: event.target.value } : prev))}
+            sx={{ '& textarea': { fontSize: 13, lineHeight: 1.45 } }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOrderText(null)}>Закрыть</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              if (!orderText) return;
+              navigator.clipboard.writeText(orderText.text)
+                .then(() => setMessage({ severity: 'success', text: 'Заказ скопирован — вставьте в мессенджер' }))
+                .catch(() => setMessage({ severity: 'error', text: 'Не удалось скопировать — выделите текст и нажмите Ctrl+C' }));
+            }}
+          >
+            Скопировать
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {filterMenu && (
+        <ColumnFilterPopover
+          anchorEl={filterMenu.anchor}
+          title={filterMenuTitle}
+          values={rows.map((row) => filterText(row, filterMenu.field))}
+          hidden={filters[filterMenu.field] ?? []}
+          isPinnedUntilHere={pinnedUntil === filterMenu.field}
+          onSort={(direction) => setSort({ field: filterMenu.field, direction })}
+          onApply={(hidden) => setFilters((prev) => {
+            const next = { ...prev };
+            if (hidden.length) next[filterMenu.field] = hidden;
+            else delete next[filterMenu.field];
+            return next;
+          })}
+          onTogglePin={() => setPinnedUntil((prev) => (prev === filterMenu.field ? null : filterMenu.field))}
+          onClose={() => setFilterMenu(null)}
+        />
+      )}
+
+      {/* одна кнопка «Настройки»: колонки таблицы (у каждого свои) и общие справочники реестра */}
+      <Menu
+        open={Boolean(settingsAnchor)}
+        anchorEl={settingsAnchor}
+        onClose={() => setSettingsAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MenuItem
+          onClick={() => {
+            setColumnsAnchor(settingsAnchor);
+            setSettingsAnchor(null);
+          }}
+        >
+          <ListItemIcon><ViewColumn fontSize="small" /></ListItemIcon>
+          <ListItemText primary="Колонки" secondary="свои у каждого сотрудника" />
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setDictionariesOpen(true);
+            setSettingsAnchor(null);
+          }}
+        >
+          <ListItemIcon><MenuBook fontSize="small" /></ListItemIcon>
+          <ListItemText
+            primary="Справочники"
+            secondary={canEditDictionaries ? 'статусы, типы КТК, НДС, операции' : 'просмотр статусов и списков'}
+          />
+        </MenuItem>
+        <Divider />
+        <Box sx={{ px: 2, py: 0.75, maxWidth: 300, fontSize: 11.5, color: '#8b93a1', lineHeight: 1.5 }}>
+          Правый клик по строке — меню (заказ, копирование, удаление).
+          Клик по № строки → Ctrl+C / Ctrl+X / Ctrl+V, Ctrl+Z — отмена.
+        </Box>
+      </Menu>
+
+      <DispatcherDictionariesDialog
+        open={dictionariesOpen}
+        canEdit={canEditDictionaries}
+        onClose={() => setDictionariesOpen(false)}
+        onChanged={loadDictionaries}
+      />
 
       {/* настройка колонок: видимость чекбоксами, порядок перетаскиванием (как в справочниках) */}
       <Popover
@@ -801,7 +1367,7 @@ export default function DispatcherJournalPage() {
         <Box sx={{ p: 1.5, width: 300, maxHeight: 480, overflowY: 'auto' }}>
           <Typography sx={{ fontWeight: 600, fontSize: 15 }}>Колонки</Typography>
           <Typography sx={{ fontSize: 12, color: '#6b7280', mb: 1 }}>
-            Отметьте нужные и перетащите для порядка
+            Отметьте нужные и перетащите для порядка. Ширина — перетаскиванием края заголовка.
           </Typography>
           {orderedKeys(ALL_COLUMN_KEYS, columnPrefs).map((key, index) => {
             const column = COLUMN_BY_KEY.get(key);
@@ -850,9 +1416,12 @@ export default function DispatcherJournalPage() {
               </Box>
             );
           })}
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 0.5, mt: 1 }}>
             <Button size="small" onClick={() => setColumnPrefs(undefined)}>
-              Сбросить
+              Сбросить порядок
+            </Button>
+            <Button size="small" disabled={!Object.keys(customWidths).length} onClick={() => setCustomWidths({})}>
+              Сбросить ширину
             </Button>
             <Button size="small" onClick={() => setColumnsAnchor(null)}>Готово</Button>
           </Box>

@@ -2472,8 +2472,8 @@ export default function OperationsPreview() {
               ['--ops-fit-scale' as string]: String(matrixScale),
               ['--col-b' as string]: showPlateColumn ? '80px' : '0px',
               ['--col-t' as string]: showTrailerColumn ? '90px' : '0px',
-              ['--col-c' as string]: isPersonnelSection ? '0px' : '100px',
-              ['--col-count' as string]: isPersonnelSection ? '130px' : '70px',
+              ['--col-c' as string]: isPersonnelSection ? '0px' : '84px',
+              ['--col-count' as string]: isPersonnelSection ? '130px' : '56px',
               ['--days-count' as string]: String(monthDays.length),
             }}
           >

@@ -52,13 +52,20 @@ export interface DispatcherJournalUpdatedEvent {
   userId?: string;
 }
 
+export interface DispatcherDictionariesUpdatedEvent {
+  type: 'dispatcher-journal:dictionaries-updated';
+  timestamp: string;
+  userId?: string;
+}
+
 type OutgoingWebSocketEvent =
   | PlanUpdateEvent
   | PlanningV2SegmentUpdateEvent
   | FinancialPlanUpdateEvent
   | NotesUnreadRefreshEvent
   | ContractApprovalUpdatedEvent
-  | DispatcherJournalUpdatedEvent;
+  | DispatcherJournalUpdatedEvent
+  | DispatcherDictionariesUpdatedEvent;
 
 type SocketClient = {
   userId: string;
@@ -374,6 +381,14 @@ export class PlanWebSocketService {
     this.broadcastPlanUpdate({
       type: 'dispatcher-journal:updated',
       date: params.date,
+      userId: params.userId,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  notifyDispatcherDictionariesUpdated(params: { userId?: string }) {
+    this.broadcastPlanUpdate({
+      type: 'dispatcher-journal:dictionaries-updated',
       userId: params.userId,
       timestamp: new Date().toISOString(),
     });

@@ -14,8 +14,9 @@
   max-height: calc(100vh - 180px);
 }
 
-/* width:100% — на больших экранах таблица растягивается, колонки делят остаток */
-.dj-table { border-collapse: separate; border-spacing: 0; width: 100%; }
+/* ширины колонок считает страница: без ручной ширины колонки растягиваются на
+   большом экране, с ручной — держат заданную (table-layout: fixed) */
+.dj-table { border-collapse: separate; border-spacing: 0; table-layout: fixed; }
 
 .dj-table th {
   position: sticky;
@@ -48,10 +49,8 @@
 /* выделенная строка (Ctrl+C / Ctrl+X / Ctrl+V) */
 .dj-row--selected td { background: #e9f2ff !important; }
 
-.dj-rownum-head { width: 30px; min-width: 30px; text-align: center !important; }
+.dj-rownum-head { text-align: center !important; }
 .dj-rownum {
-  width: 30px;
-  min-width: 30px;
   text-align: center;
   font-size: 10.5px;
   color: #9aa3b0;
@@ -72,7 +71,8 @@
   padding: 4px 4px;
   background: transparent;
   color: #1f2733;
-  width: 92px;
+  width: 100%;
+  box-sizing: border-box;
 }
 .dj-date-input:focus { background: #eef5ff; box-shadow: inset 0 0 0 2px #2a78d6; border-radius: 4px; }
 .dj-ghost-date { font-size: 11px; color: #9aa3b0; padding: 5px 6px; display: inline-block; }
@@ -97,7 +97,6 @@
 
 .dj-checkbox-cell { text-align: center; padding: 1px 2px !important; }
 
-.dj-status-cell { min-width: 130px; }
 .dj-status-cell .MuiAutocomplete-root { padding: 1px 2px; }
 .dj-status-input {
   font-size: 11px !important;
@@ -157,3 +156,213 @@
   color: #8b93a1;
   font-size: 12.5px;
 }
+
+/* ── заголовок: сортировка + меню фильтра + ручка ширины ── */
+.dj-th { display: flex; align-items: flex-start; gap: 2px; min-width: 0; }
+.dj-th .dj-sort-btn { flex: 1; min-width: 0; overflow: hidden; }
+.dj-filter-btn {
+  flex: none;
+  border: 0;
+  background: transparent;
+  padding: 0 1px;
+  line-height: 0;
+  color: #b3bac5;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.dj-filter-btn:hover { color: #2a78d6; background: #e6effb; }
+.dj-filter-btn.is-active { color: #fff; background: #2a78d6; }
+.dj-th--filtered { background: #e8f1fd !important; }
+
+.dj-resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+}
+.dj-resize:hover,
+body.dj-resizing .dj-resize:active { background: rgba(42, 120, 214, 0.35); }
+body.dj-resizing { cursor: col-resize !important; user-select: none; }
+
+/* ── закреплённые слева колонки ── */
+.dj-table td.dj-pinned { z-index: 1; }
+.dj-table th.dj-pinned { z-index: 4; }
+.dj-pinned--last { box-shadow: 3px 0 4px -2px rgba(31, 39, 51, 0.18); }
+
+/* ── выполненные заявки: лёгкая зелёная заливка всей строки ── */
+.dj-row--done td { background: #eaf6e7; }
+.dj-table tr.dj-row--done:hover td { background: #e1f1dd; }
+
+/* расчётная колонка «Без НДС» */
+.dj-computed-cell {
+  font-size: 11px;
+  text-align: right;
+  padding: 4px 6px !important;
+  color: #1f2733;
+  font-variant-numeric: tabular-nums;
+  background: #f8fafc;
+}
+.dj-row--done .dj-computed-cell { background: #e3f1df; }
+
+/* ── ячейка со списком подсказок ── */
+.dj-list-popup {
+  position: fixed;
+  z-index: 1500;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #d8dde5;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(31, 39, 51, 0.14);
+  padding: 3px 0;
+}
+.dj-list-option {
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: #1f2733;
+}
+.dj-list-option.is-active { background: #eef5ff; }
+.dj-list-option.is-selected { font-weight: 650; color: #2a78d6; }
+
+/* ── время подачи ── */
+.dj-time-cell { display: flex; align-items: center; }
+.dj-time-cell .dj-cell-input { flex: 1; min-width: 0; }
+.dj-cell-input--warn { color: #b45309; }
+.dj-time-btn {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: #b3bac5;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 0;
+}
+.dj-time-btn:hover { color: #2a78d6; }
+.dj-time-picker { padding: 8px 10px; width: 236px; }
+.dj-time-picker__title { font-size: 11px; font-weight: 650; color: #6b7280; margin: 2px 0 4px; }
+.dj-time-picker__grid { display: grid; gap: 3px; margin-bottom: 6px; }
+.dj-time-picker__grid--hours { grid-template-columns: repeat(6, 1fr); }
+.dj-time-picker__grid--minutes { grid-template-columns: repeat(4, 1fr); }
+.dj-time-picker__grid button {
+  border: 1px solid #e1e4ea;
+  background: #fff;
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 3px 0;
+  cursor: pointer;
+  color: #1f2733;
+}
+.dj-time-picker__grid button:hover:not(:disabled) { border-color: #2a78d6; color: #2a78d6; }
+.dj-time-picker__grid button.is-active { background: #2a78d6; border-color: #2a78d6; color: #fff; }
+.dj-time-picker__grid button:disabled { opacity: 0.4; cursor: default; }
+
+/* ── меню строки (правый клик) ── */
+.dj-context-overlay { position: fixed; inset: 0; z-index: 1400; }
+.dj-context-menu {
+  position: fixed;
+  min-width: 190px;
+  background: #fff;
+  border: 1px solid #d8dde5;
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(31, 39, 51, 0.18);
+  padding: 4px 0;
+}
+.dj-context-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 14px;
+  cursor: pointer;
+  color: #1f2733;
+}
+.dj-context-item:hover { background: #eef5ff; }
+.dj-context-item.danger { color: #c62828; }
+.dj-context-item.danger:hover { background: #fdecec; }
+
+/* ── меню заголовка: сортировка, фильтр, закрепление ── */
+.dj-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #1f2733;
+}
+.dj-menu-item:hover { background: #eef5ff; }
+.dj-link-btn {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: #2a78d6;
+  cursor: pointer;
+}
+.dj-filter-option {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.dj-filter-option:hover { background: #f6f8fb; }
+.dj-filter-option__text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dj-filter-option__count { color: #9aa3b0; font-size: 11px; }
+
+.dj-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #bcd4f3;
+  background: #eef5ff;
+  color: #1d5fb0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.dj-filter-chip:hover { background: #e0edff; }
+.dj-filter-chip--pin { border-color: #d8dde5; background: #f6f8fb; color: #3d4757; }
+
+/* ── окно справочников ── */
+.dj-color-input {
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #d8dde5;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  flex: none;
+}
+.dj-dict-name {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 6px;
+  background: transparent;
+  color: #1f2733;
+}
+.dj-dict-name:hover:not(:disabled) { border-color: #e1e4ea; }
+.dj-dict-name:focus { outline: none; border-color: #2a78d6; background: #fff; }

@@ -1,5 +1,10 @@
 import { AppDataSource } from '../config/data-source';
 import { DispatcherStatus } from '../models/dispatcher-status.model';
+import {
+  DISPATCHER_DICTIONARY_SEED,
+  DispatcherDictionaryItem,
+  type DispatcherDictionaryKind,
+} from '../models/dispatcher-dictionary-item.model';
 import { logger } from '../utils/logger';
 
 /**
@@ -67,4 +72,17 @@ export async function ensureDispatcherStatusCatalog(): Promise<void> {
     ),
   );
   logger.info(`Диспетчерский журнал: справочник статусов засеян (${STATUS_SEED.length})`);
+}
+
+/** Досев справочников реестра при старте: вид засевается, только если в нём нет ни одной записи. */
+export async function ensureDispatcherDictionaryCatalog(): Promise<void> {
+  const repository = AppDataSource.getRepository(DispatcherDictionaryItem);
+  for (const [kind, names] of Object.entries(DISPATCHER_DICTIONARY_SEED) as Array<[DispatcherDictionaryKind, string[]]>) {
+    const existing = await repository.count({ where: { kind } });
+    if (existing > 0) continue;
+    await repository.save(
+      names.map((name, index) => repository.create({ kind, name, sortOrder: (index + 1) * 10 })),
+    );
+    logger.info(`Реестр диспетчеров: справочник ${kind} засеян (${names.length})`);
+  }
 }

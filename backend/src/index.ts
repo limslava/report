@@ -16,7 +16,7 @@ import { planningV2Service } from './services/planning-v2.service';
 import { withRetry } from './utils/db-retry';
 import { createApp } from './app';
 import { ensureWarehouseServiceCatalog } from './services/warehouse-service-catalog.service';
-import { ensureDispatcherStatusCatalog } from './services/dispatcher-status-seed.service';
+import { ensureDispatcherDictionaryCatalog, ensureDispatcherStatusCatalog } from './services/dispatcher-status-seed.service';
 import { ensureWarehousePhotoStorageReady, purgeExpiredIssuedWarehousePhotos } from './services/warehouse-photo-storage.service';
 
 config();
@@ -38,6 +38,12 @@ async function startServer() {
     }
     await ensureWarehouseServiceCatalog();
     await ensureDispatcherStatusCatalog();
+    try {
+      await ensureDispatcherDictionaryCatalog();
+    } catch (err) {
+      // справочник реестра не критичен для запуска: без него ячейки остаются свободным вводом
+      logger.error('Failed to bootstrap dispatcher dictionaries:', err);
+    }
     await ensureWarehousePhotoStorageReady();
     logger.info('Warehouse service catalog bootstrapped');
     startHhBackgroundJobs();
