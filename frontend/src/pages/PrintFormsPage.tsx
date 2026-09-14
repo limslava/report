@@ -424,27 +424,6 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
       <section className="ops-preview__controls">
         <Paper sx={{ p: 1.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-            <TextField
-              select size="small" label="Форма" SelectProps={COMPACT_SELECT} value={templateKey}
-              onChange={(event) => {
-                // смена формы очищает заполненное — поля разных форм не смешиваются
-                setTemplateKey(event.target.value);
-                setEmployee(null);
-                setVehicle(null);
-                setMultiEmployees([]);
-                setMultiVehicles([]);
-                setPairs([{ employee: null, vehicle: null }]);
-                setContractLine('');
-                setIssueDate(today());
-                setValidFrom(today());
-                setValidUntil(endOfYear());
-              }}
-              sx={{ flex: '1.5 1 220px', minWidth: 180, maxWidth: 400 }}
-            >
-              {modeTemplates.map((item) => (
-                <MenuItem key={item.key} value={item.key}>{item.label}</MenuItem>
-              ))}
-            </TextField>
             <Autocomplete
               size="small"
               ListboxProps={COMPACT_LISTBOX}
@@ -471,6 +450,27 @@ export default function PrintFormsPage({ mode = 'poa' }: { mode?: PrintFormsMode
               )}
               sx={{ flex: '1.2 1 190px', minWidth: 150, maxWidth: 300 }}
             />
+            <TextField
+              select size="small" label="Форма" SelectProps={COMPACT_SELECT} value={templateKey}
+              onChange={(event) => {
+                // смена формы очищает заполненное — поля разных форм не смешиваются
+                setTemplateKey(event.target.value);
+                setEmployee(null);
+                setVehicle(null);
+                setMultiEmployees([]);
+                setMultiVehicles([]);
+                setPairs([{ employee: null, vehicle: null }]);
+                setContractLine('');
+                setIssueDate(today());
+                setValidFrom(today());
+                setValidUntil(endOfYear());
+              }}
+              sx={{ flex: '1.5 1 220px', minWidth: 180, maxWidth: 400 }}
+            >
+              {modeTemplates.map((item) => (
+                <MenuItem key={item.key} value={item.key}>{item.label}</MenuItem>
+              ))}
+            </TextField>
             {isPoa && (
               <>
                 {employeeField(employee, setEmployee, 'Сотрудник (из справочника)', employees)}

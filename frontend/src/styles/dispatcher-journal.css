@@ -396,3 +396,35 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
 .dj-table tr:focus-within td,
 .dj-table tr.dj-row--done:focus-within td { background: #eef5ff; }
 .dj-table tr:focus-within .dj-rownum { background: #dfeafb !important; color: #2a78d6; }
+
+/* значение справочника с цветом — ячейка-«чип», как статус */
+.dj-cell-input--chip {
+  border-radius: 6px;
+  font-weight: 600;
+  margin: 1px 0;
+  padding: 3px 6px;
+}
+.dj-list-chip { white-space: normal; }
+
+/* квадратик цвета в окне справочников */
+.dj-color-swatch { position: relative; display: inline-flex; flex: none; }
+.dj-color-input--empty {
+  background: linear-gradient(135deg, #fff 45%, #d03b3b 45%, #d03b3b 55%, #fff 55%) !important;
+}
+.dj-color-input--empty::-webkit-color-swatch { opacity: 0; }
+.dj-color-clear {
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid #d8dde5;
+  background: #fff;
+  color: #6b7280;
+  font-size: 11px;
+  line-height: 11px;
+  padding: 0;
+  cursor: pointer;
+}
+.dj-color-clear:hover { color: #d03b3b; border-color: #d03b3b; }

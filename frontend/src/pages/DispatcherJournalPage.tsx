@@ -36,6 +36,7 @@ import {
   getDispatcherStatuses,
   updateDispatcherOrder,
   type DispatcherCrewEntry,
+  type DispatcherDictionaryColors,
   type DispatcherDictionaryOptions,
   type DispatcherOrderPatch,
   type DispatcherOrderRow,
@@ -72,6 +73,7 @@ import {
   personKey,
   plateKey,
   shortPersonName,
+  textColorFor,
 } from '../components/dispatcher/dispatcherJournalUtils';
 import '../styles/dispatcher-journal.css';
 
@@ -106,17 +108,6 @@ const parseClipboardDate = (raw: string, fallbackMonth: string): string | null =
 
 const TRUE_WORDS = new Set(['да', 'true', '1', 'истина', 'yes', '+']);
 
-/** Тёмный или светлый текст поверх цвета статуса. */
-const textColorFor = (hex: string): string => {
-  const match = /^#([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!match) return '#1f2733';
-  const value = parseInt(match[1], 16);
-  const r = (value >> 16) & 255;
-  const g = (value >> 8) & 255;
-  const b = value & 255;
-  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return luminance > 150 ? '#1f2733' : '#ffffff';
-};
 
 type TextFieldName =
   | 'info' | 'client' | 'driverName' | 'vehiclePlate' | 'ktkNumber' | 'ktkType'
@@ -217,6 +208,9 @@ const MONTH_OPTIONS = [
 
 const EMPTY_DICTIONARY_OPTIONS: DispatcherDictionaryOptions = {
   ktk_type: [], vat: [], operation: [], terminal_from: [], terminal_to: [],
+};
+const EMPTY_DICTIONARY_COLORS: DispatcherDictionaryColors = {
+  ktk_type: {}, vat: {}, operation: {}, terminal_from: {}, terminal_to: {},
 };
 
 /** Кто ведёт справочники реестра (проверка дублируется на сервере). */
@@ -356,6 +350,7 @@ export default function DispatcherJournalPage() {
   const [rows, setRows] = useState<DispatcherOrderRow[]>([]);
   const [statuses, setStatuses] = useState<DispatcherStatusOption[]>([]);
   const [dictionaryOptions, setDictionaryOptions] = useState<DispatcherDictionaryOptions>(EMPTY_DICTIONARY_OPTIONS);
+  const [dictionaryColors, setDictionaryColors] = useState<DispatcherDictionaryColors>(EMPTY_DICTIONARY_COLORS);
   const [driverOptions, setDriverOptions] = useState<string[]>([]);
   const [vehicleOptions, setVehicleOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -585,7 +580,10 @@ export default function DispatcherJournalPage() {
       .then((response) => setStatuses(response.data))
       .catch(() => setMessage({ severity: 'error', text: 'Не удалось загрузить статусы' }));
     getDispatcherDictionaryOptions()
-      .then((response) => setDictionaryOptions({ ...EMPTY_DICTIONARY_OPTIONS, ...response.data }))
+      .then((response) => {
+        setDictionaryOptions({ ...EMPTY_DICTIONARY_OPTIONS, ...response.data.lists });
+        setDictionaryColors({ ...EMPTY_DICTIONARY_COLORS, ...response.data.colors });
+      })
       .catch(() => undefined);
   }, []);
 
@@ -956,6 +954,13 @@ export default function DispatcherJournalPage() {
     return dictionaryOptions[source] ?? [];
   };
 
+  /** Цвет значения из справочника реестра (водители и техника — без цвета). */
+  const listColorOf = (source: ListSource): ((value: string) => string | undefined) | undefined => {
+    if (source === 'drivers' || source === 'vehicles') return undefined;
+    const colors = dictionaryColors[source] ?? {};
+    return (value: string) => colors[value];
+  };
+
   const renderColumnCell = (row: DispatcherOrderRow, column: ColumnDef) => {
     const key = column.field;
     const pin = pinStyle(key);
@@ -1006,6 +1011,7 @@ export default function DispatcherJournalPage() {
           <ListCell
             value={column.field === 'driverName' ? shortPersonName(row.driverName) : row[column.field]}
             options={listOptions(column.list)}
+            colorOf={listColorOf(column.list)}
             normalize={column.field === 'driverName' ? shortPersonName : undefined}
             onSave={(value) => {
               if (isCrewField) void saveCrewField(row, column.field as 'driverName' | 'vehiclePlate', value);
@@ -1072,6 +1078,7 @@ export default function DispatcherJournalPage() {
           <ListCell
             value=""
             options={listOptions(column.list)}
+            colorOf={listColorOf(column.list)}
             normalize={column.field === 'driverName' ? shortPersonName : undefined}
             onSave={(value) => {
               if (!value) return;

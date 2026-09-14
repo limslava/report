@@ -294,6 +294,7 @@ const serializeDictionaryItem = (item: DispatcherDictionaryItem) => ({
   id: item.id,
   kind: item.kind,
   name: item.name,
+  color: item.color,
   sortOrder: item.sortOrder,
   isActive: item.isActive,
 });
@@ -310,6 +311,10 @@ const requireColor = (value: unknown): string => {
   if (!/^#[0-9a-f]{6}$/.test(color)) httpError(400, 'Цвет в формате #rrggbb');
   return color;
 };
+
+/** Необязательный цвет значения справочника: пусто — без заливки. */
+const optionalColor = (value: unknown): string | null =>
+  value == null || value === '' ? null : requireColor(value);
 
 const requireKind = (value: unknown): DispatcherDictionaryKind => {
   if (!DISPATCHER_DICTIONARY_KINDS.includes(value as DispatcherDictionaryKind)) httpError(400, 'Неизвестный справочник');
@@ -401,7 +406,12 @@ export const createDispatcherDictionaryItem = async (req: Request, res: Response
     const name = requireName(req.body?.name, dispatcherDictionaryNameLimit(kind));
     const last = await dictionaryRepository.find({ where: { kind }, order: { sortOrder: 'DESC' }, take: 1 });
     const saved = await dictionaryRepository.save(
-      dictionaryRepository.create({ kind, name, sortOrder: (last[0]?.sortOrder ?? 0) + 10 }),
+      dictionaryRepository.create({
+        kind,
+        name,
+        color: optionalColor(req.body?.color),
+        sortOrder: (last[0]?.sortOrder ?? 0) + 10,
+      }),
     );
     notifyDictionariesUpdated(req.user?.id);
     res.status(201).json(serializeDictionaryItem(saved));
@@ -421,6 +431,7 @@ export const updateDispatcherDictionaryItem = async (req: Request, res: Response
     if (req.body?.name !== undefined) {
       item.name = requireName(req.body.name, dispatcherDictionaryNameLimit(item.kind));
     }
+    if (req.body?.color !== undefined) item.color = optionalColor(req.body.color);
     if (req.body?.isActive !== undefined) item.isActive = Boolean(req.body.isActive);
     await dictionaryRepository.save(item);
     notifyDictionariesUpdated(req.user?.id);
@@ -464,15 +475,20 @@ export const reorderDispatcherDictionary = async (req: Request, res: Response, n
   }
 };
 
-/** Активные значения простых справочников для ячеек реестра: { ktk_type: [...], vat: [...], operation: [...] }. */
+/**
+ * Активные значения простых справочников для ячеек реестра:
+ * { lists: { ktk_type: [...], ... }, colors: { vat: { 'НДС22%': '#38761d' }, ... } }.
+ */
 export const listDispatcherDictionaryOptions = async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const items = await dictionaryRepository.find({ where: { isActive: true }, order: { sortOrder: 'ASC', name: 'ASC' } });
-    const result: Record<string, string[]> = Object.fromEntries(DISPATCHER_DICTIONARY_KINDS.map((kind) => [kind, []]));
+    const lists: Record<string, string[]> = Object.fromEntries(DISPATCHER_DICTIONARY_KINDS.map((kind) => [kind, []]));
+    const colors: Record<string, Record<string, string>> = Object.fromEntries(DISPATCHER_DICTIONARY_KINDS.map((kind) => [kind, {}]));
     items.forEach((item) => {
-      (result[item.kind] ??= []).push(item.name);
+      (lists[item.kind] ??= []).push(item.name);
+      if (item.color) (colors[item.kind] ??= {})[item.name] = item.color;
     });
-    res.json(result);
+    res.json({ lists, colors });
   } catch (error) {
     next(error);
   }

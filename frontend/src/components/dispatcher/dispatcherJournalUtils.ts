@@ -3,6 +3,18 @@
  * «текстовых» денежных ячеек, НДС, время подачи, текст заказа водителю.
  */
 
+/** Тёмный или светлый текст поверх цветной заливки (статус, значение справочника). */
+export function textColorFor(hex: string): string {
+  const match = /^#([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!match) return '#1f2733';
+  const value = parseInt(match[1], 16);
+  const r = (value >> 16) & 255;
+  const g = (value >> 8) & 255;
+  const b = value & 255;
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return luminance > 150 ? '#1f2733' : '#ffffff';
+}
+
 /** «Чугунов Иван Петрович» → «Чугунов И.П.»; уже сокращённое и одиночное слово — как есть. */
 export function shortPersonName(raw: string | null | undefined): string {
   const parts = (raw ?? '').trim().split(/\s+/).filter(Boolean);

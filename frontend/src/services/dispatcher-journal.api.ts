@@ -73,18 +73,22 @@ export type DispatcherDictionaryKind = 'ktk_type' | 'vat' | 'operation' | 'termi
 
 export type DispatcherDictionaryOptions = Record<DispatcherDictionaryKind, string[]>;
 
+/** Цвета значений: вид справочника → значение → #rrggbb. */
+export type DispatcherDictionaryColors = Record<DispatcherDictionaryKind, Record<string, string>>;
+
 export type DispatcherStatusEntry = DispatcherStatusOption & { sortOrder: number; isActive: boolean };
 
 export type DispatcherDictionaryEntry = {
   id: string;
   kind: DispatcherDictionaryKind;
   name: string;
+  color: string | null;
   sortOrder: number;
   isActive: boolean;
 };
 
 export const getDispatcherDictionaryOptions = () =>
-  api.get<DispatcherDictionaryOptions>('/dispatcher-journal/dictionary-options');
+  api.get<{ lists: DispatcherDictionaryOptions; colors: DispatcherDictionaryColors }>('/dispatcher-journal/dictionary-options');
 
 export const getDispatcherDictionaries = () =>
   api.get<{ statuses: DispatcherStatusEntry[]; items: DispatcherDictionaryEntry[] }>('/dispatcher-journal/dictionaries');
@@ -98,10 +102,10 @@ export const updateDispatcherStatusEntry = (id: string, payload: Partial<{ name:
 export const deleteDispatcherStatusEntry = (id: string) =>
   api.delete<{ message: string }>(`/dispatcher-journal/dictionaries/statuses/${id}`);
 
-export const createDispatcherDictionaryEntry = (payload: { kind: DispatcherDictionaryKind; name: string }) =>
+export const createDispatcherDictionaryEntry = (payload: { kind: DispatcherDictionaryKind; name: string; color?: string | null }) =>
   api.post<DispatcherDictionaryEntry>('/dispatcher-journal/dictionaries/items', payload);
 
-export const updateDispatcherDictionaryEntry = (id: string, payload: Partial<{ name: string; isActive: boolean }>) =>
+export const updateDispatcherDictionaryEntry = (id: string, payload: Partial<{ name: string; color: string | null; isActive: boolean }>) =>
   api.patch<DispatcherDictionaryEntry>(`/dispatcher-journal/dictionaries/items/${id}`, payload);
 
 export const deleteDispatcherDictionaryEntry = (id: string) =>

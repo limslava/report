@@ -3,6 +3,7 @@ import { DispatcherStatus } from '../models/dispatcher-status.model';
 import { DispatcherOrder } from '../models/dispatcher-order.model';
 import {
   DISPATCHER_DICTIONARY_SEED,
+  DISPATCHER_DICTIONARY_SEED_COLORS,
   DispatcherDictionaryItem,
   type DispatcherDictionaryKind,
 } from '../models/dispatcher-dictionary-item.model';
@@ -108,7 +109,12 @@ export async function ensureDispatcherDictionaryCatalog(): Promise<void> {
     const names = column ? await distinctOrderValues(column) : seedNames;
     if (!names.length) continue;
     await repository.save(
-      names.map((name, index) => repository.create({ kind, name, sortOrder: (index + 1) * 10 })),
+      names.map((name, index) => repository.create({
+        kind,
+        name,
+        color: DISPATCHER_DICTIONARY_SEED_COLORS[kind]?.[name] ?? null,
+        sortOrder: (index + 1) * 10,
+      })),
     );
     logger.info(`Реестр диспетчеров: справочник ${kind} засеян (${names.length})`);
   }

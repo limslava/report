@@ -1,9 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { textColorFor } from './dispatcherJournalUtils';
 
 type ListCellProps = {
   value: string | null;
   options: string[];
+  /** Цвет значения из справочника: ячейка и пункт списка заливаются им. */
+  colorOf?: (value: string) => string | undefined;
   /** Преобразование при сохранении (например, ФИО → фамилия с инициалами). */
   normalize?: (value: string) => string;
   placeholder?: string;
@@ -17,7 +20,7 @@ const MAX_VISIBLE = 60;
  * не держит поппер на каждую строку: список рисуется порталом только у ячейки
  * в фокусе, поэтому таблица на тысячи строк не тормозит. Свободный ввод разрешён.
  */
-export default function ListCell({ value, options, normalize, placeholder, onSave }: ListCellProps) {
+export default function ListCell({ value, options, colorOf, normalize, placeholder, onSave }: ListCellProps) {
   const [draft, setDraft] = useState(value ?? '');
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState(false);
@@ -64,11 +67,14 @@ export default function ListCell({ value, options, normalize, placeholder, onSav
     inputRef.current?.blur();
   };
 
+  const cellColor = colorOf && draft ? colorOf(draft) : undefined;
+
   return (
     <>
       <input
         ref={inputRef}
-        className="dj-cell-input"
+        className={`dj-cell-input${cellColor ? ' dj-cell-input--chip' : ''}`}
+        style={cellColor ? { background: cellColor, color: textColorFor(cellColor) } : undefined}
         value={draft}
         title={draft.length > 14 ? draft : undefined}
         placeholder={placeholder}
@@ -125,7 +131,14 @@ export default function ListCell({ value, options, normalize, placeholder, onSav
               onMouseEnter={() => setHighlight(index)}
               onClick={() => choose(option)}
             >
-              {option}
+              {colorOf?.(option) ? (
+                <span
+                  className="dj-status-chip dj-list-chip"
+                  style={{ background: colorOf(option), color: textColorFor(colorOf(option) ?? '') }}
+                >
+                  {option}
+                </span>
+              ) : option}
             </div>
           ))}
         </div>,

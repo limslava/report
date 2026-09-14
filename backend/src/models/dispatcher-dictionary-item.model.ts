@@ -8,6 +8,11 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Unique } from
 export const DISPATCHER_DICTIONARY_KINDS = ['ktk_type', 'vat', 'operation', 'terminal_from', 'terminal_to'] as const;
 export type DispatcherDictionaryKind = typeof DISPATCHER_DICTIONARY_KINDS[number];
 
+/** Стартовые цвета (как в google-таблице отдела). */
+export const DISPATCHER_DICTIONARY_SEED_COLORS: Partial<Record<DispatcherDictionaryKind, Record<string, string>>> = {
+  vat: { 'НДС22%': '#38761d', нал: '#ffe599' },
+};
+
 /**
  * Стартовые значения (миграция + досев при старте). Порядок типов КТК —
  * по размеру, внутри размера от ходовых к специальным.
@@ -42,6 +47,10 @@ export class DispatcherDictionaryItem {
 
   @Column({ type: 'varchar', length: 128 })
   name!: string;
+
+  /** Цвет заливки значения в реестре (#rrggbb); null — без заливки. */
+  @Column({ type: 'varchar', length: 7, nullable: true })
+  color!: string | null;
 
   @Column({ name: 'sort_order', type: 'int', default: 0 })
   sortOrder!: number;

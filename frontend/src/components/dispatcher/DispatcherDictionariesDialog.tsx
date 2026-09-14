@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -29,19 +29,72 @@ import {
   type DispatcherDictionaryKind,
   type DispatcherStatusEntry,
 } from '../../services/dispatcher-journal.api';
+import { textColorFor } from './dispatcherJournalUtils';
 
 type TabKey = 'status' | DispatcherDictionaryKind;
 
 const TABS: Array<{ key: TabKey; label: string; hint: string }> = [
   { key: 'status', label: 'Статусы', hint: 'Цвет — заливка статуса в реестре. Переименование меняет статус и в заявках.' },
-  { key: 'ktk_type', label: 'Типы КТК', hint: 'Порядок здесь = порядок в выпадающем списке и при сортировке колонки.' },
-  { key: 'vat', label: 'НДС', hint: 'Процент в названии («НДС22%») используется в расчёте колонки «Без НДС»; без процента — сумма без вычета.' },
-  { key: 'operation', label: 'Операции', hint: 'Подсказки для колонки «Операция» — можно писать и своё.' },
-  { key: 'terminal_from', label: 'Терминалы постановки', hint: 'Выпадающий список колонки «Терминал постановки» — можно писать и своё.' },
-  { key: 'terminal_to', label: 'Терминалы снятия', hint: 'Выпадающий список колонки «Терминал снятия» — можно писать и своё.' },
+  { key: 'ktk_type', label: 'Типы КТК', hint: 'Порядок здесь = порядок в выпадающем списке и при сортировке колонки. Цвет — заливка значения в реестре (необязательно).' },
+  { key: 'vat', label: 'НДС', hint: 'Процент в названии («НДС22%») используется в расчёте колонки «Без НДС»; без процента — сумма без вычета. Цвет — заливка значения в реестре (необязательно).' },
+  { key: 'operation', label: 'Операции', hint: 'Подсказки для колонки «Операция» — можно писать и своё. Цвет — заливка значения в реестре (необязательно).' },
+  { key: 'terminal_from', label: 'Терминалы постановки', hint: 'Выпадающий список колонки «Терминал постановки» — можно писать и своё. Цвет — заливка значения в реестре (необязательно).' },
+  { key: 'terminal_to', label: 'Терминалы снятия', hint: 'Выпадающий список колонки «Терминал снятия» — можно писать и своё. Цвет — заливка значения в реестре (необязательно).' },
 ];
 
-type Row = { id: string; name: string; color?: string; isActive: boolean };
+type Row = { id: string; name: string; color: string | null; isActive: boolean };
+
+type ColorSwatchProps = {
+  color: string | null;
+  disabled: boolean;
+  /** статусу цвет обязателен; значениям справочников — нет */
+  clearable: boolean;
+  onPick: (color: string | null) => void;
+};
+
+/**
+ * Квадратик цвета: нативная палитра браузера. Сохранение — через паузу после
+ * выбора (палитра шлёт событие на каждое движение мыши), «×» снимает заливку.
+ */
+function ColorSwatch({ color, disabled, clearable, onPick }: ColorSwatchProps) {
+  const [draft, setDraft] = useState<string | null>(color);
+  const timerRef = useRef<number | null>(null);
+  useEffect(() => setDraft(color), [color]);
+  useEffect(() => () => {
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+  }, []);
+  return (
+    <span className="dj-color-swatch">
+      <input
+        type="color"
+        className={`dj-color-input${draft ? '' : ' dj-color-input--empty'}`}
+        value={draft ?? '#ffffff'}
+        disabled={disabled}
+        title={draft ? 'Цвет заливки' : 'Без цвета — выбрать'}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          if (timerRef.current) window.clearTimeout(timerRef.current);
+          timerRef.current = window.setTimeout(() => onPick(next), 600);
+        }}
+      />
+      {clearable && draft && !disabled && (
+        <button
+          type="button"
+          className="dj-color-clear"
+          title="Убрать цвет"
+          onClick={() => {
+            if (timerRef.current) window.clearTimeout(timerRef.current);
+            setDraft(null);
+            onPick(null);
+          }}
+        >
+          ×
+        </button>
+      )}
+    </span>
+  );
+}
 
 const errorText = (error: unknown): string =>
   (error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Не удалось сохранить';
@@ -60,7 +113,7 @@ export default function DispatcherDictionariesDialog({ open, canEdit, onClose, o
   const [statuses, setStatuses] = useState<DispatcherStatusEntry[]>([]);
   const [items, setItems] = useState<DispatcherDictionaryEntry[]>([]);
   const [newName, setNewName] = useState('');
-  const [newColor, setNewColor] = useState('#d9ead3');
+  const [newColor, setNewColor] = useState<string | null>('#d9ead3');
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -113,8 +166,8 @@ export default function DispatcherDictionariesDialog({ open, canEdit, onClose, o
     const name = newName.trim();
     if (!name) return;
     void run(async () => {
-      if (tab === 'status') await createDispatcherStatusEntry({ name, color: newColor });
-      else await createDispatcherDictionaryEntry({ kind: tab, name });
+      if (tab === 'status') await createDispatcherStatusEntry({ name, color: newColor ?? '#efefef' });
+      else await createDispatcherDictionaryEntry({ kind: tab, name, color: newColor });
       setNewName('');
     });
   };
@@ -127,7 +180,13 @@ export default function DispatcherDictionariesDialog({ open, canEdit, onClose, o
       <DialogContent sx={{ pt: 1 }}>
         <Tabs
           value={tab}
-          onChange={(_event, next: TabKey) => { setTab(next); setNewName(''); setError(null); }}
+          onChange={(_event, next: TabKey) => {
+            setTab(next);
+            setNewName('');
+            // новому статусу нужен цвет, значениям справочников по умолчанию — без заливки
+            setNewColor(next === 'status' ? '#d9ead3' : null);
+            setError(null);
+          }}
           variant="scrollable"
           scrollButtons="auto"
           sx={{
@@ -152,26 +211,21 @@ export default function DispatcherDictionariesDialog({ open, canEdit, onClose, o
                 borderBottom: '1px solid #f2f4f7', opacity: row.isActive ? 1 : 0.55,
               }}
             >
-              {tab === 'status' && (
-                <input
-                  type="color"
-                  className="dj-color-input"
-                  value={row.color ?? '#efefef'}
-                  disabled={!canEdit}
-                  title="Цвет статуса"
-                  onChange={(event) => {
-                    const color = event.target.value;
-                    setStatuses((prev) => prev.map((item) => (item.id === row.id ? { ...item, color } : item)));
-                  }}
-                  onBlur={(event) => {
-                    const original = statuses.find((item) => item.id === row.id);
-                    if (original) void run(() => updateDispatcherStatusEntry(row.id, { color: event.target.value }));
-                  }}
-                />
-              )}
+              <ColorSwatch
+                color={row.color}
+                disabled={!canEdit}
+                clearable={tab !== 'status'}
+                onPick={(color) => {
+                  if (color === row.color) return;
+                  void run(() => (tab === 'status'
+                    ? updateDispatcherStatusEntry(row.id, { color: color ?? '#efefef' })
+                    : updateDispatcherDictionaryEntry(row.id, { color })));
+                }}
+              />
               <input
                 key={`${row.id}:${row.name}`}
                 className="dj-dict-name"
+                style={row.color ? { background: row.color, color: textColorFor(row.color), fontWeight: 600 } : undefined}
                 defaultValue={row.name}
                 disabled={!canEdit}
                 onBlur={(event) => rename(row, event.target.value)}
@@ -214,15 +268,12 @@ export default function DispatcherDictionariesDialog({ open, canEdit, onClose, o
         </Box>
         {canEdit && (
           <Box sx={{ display: 'flex', gap: 1, mt: 1.25, alignItems: 'center' }}>
-            {tab === 'status' && (
-              <input
-                type="color"
-                className="dj-color-input"
-                value={newColor}
-                title="Цвет нового статуса"
-                onChange={(event) => setNewColor(event.target.value)}
-              />
-            )}
+            <ColorSwatch
+              color={newColor}
+              disabled={false}
+              clearable={tab !== 'status'}
+              onPick={setNewColor}
+            />
             <TextField
               size="small"
               fullWidth
