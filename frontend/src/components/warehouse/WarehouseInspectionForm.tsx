@@ -21,6 +21,10 @@ interface Props {
   readOnly?: boolean;
   /** секции раскрыты сразу (в карточке ТС данные должны быть видны без кликов) */
   defaultExpanded?: boolean;
+  /** плотная раскладка для карточки ТС: мелкий шрифт, 3 колонки */
+  compact?: boolean;
+  /** не выводить поля «Личные вещи», «Повреждения», «Ответственность» (карточка рисует их рядом со схемой) */
+  hideNotes?: boolean;
 }
 
 export const vehicleDetailFields = [
@@ -99,7 +103,17 @@ export const emptyWarehouseInspection = (): WarehouseVehicleInspectionPayload =>
   responsibilityAmount: null,
 });
 
-export default function WarehouseInspectionForm({ value, onChange, readOnly = false, defaultExpanded = false }: Props) {
+export default function WarehouseInspectionForm({
+  value,
+  onChange,
+  readOnly = false,
+  defaultExpanded = false,
+  compact = false,
+  hideNotes = false,
+}: Props) {
+  const columns = compact
+    ? { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))' }
+    : { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' };
   const textInput = (
     group: keyof WarehouseVehicleInspectionPayload,
     key: string,
@@ -108,6 +122,7 @@ export default function WarehouseInspectionForm({ value, onChange, readOnly = fa
     <TextField
       key={`${String(group)}.${key}`}
       fullWidth
+      size={compact ? 'small' : 'medium'}
       label={label}
       value={String(groupValue(value, group, key) ?? '')}
       onChange={(event) => onChange(updateGroup(value, group, key, event.target.value))}
@@ -124,12 +139,15 @@ export default function WarehouseInspectionForm({ value, onChange, readOnly = fa
       key={`${String(group)}.${key}`}
       control={(
         <Checkbox
+          size={compact ? 'small' : 'medium'}
+          sx={compact ? { py: 0.25 } : undefined}
           checked={Boolean(groupValue(value, group, key))}
           disabled={readOnly}
           onChange={(event) => onChange(updateGroup(value, group, key, event.target.checked))}
         />
       )}
       label={label}
+      sx={compact ? { mr: 0, '& .MuiFormControlLabel-label': { fontSize: 12.5, lineHeight: 1.25 } } : undefined}
     />
   );
 
@@ -150,9 +168,12 @@ export default function WarehouseInspectionForm({ value, onChange, readOnly = fa
     children: ReactNode,
   ) => (
     <Accordion key={title} defaultExpanded={defaultExpanded} disableGutters variant="outlined" sx={{ '&:before': { display: 'none' } }}>
-      <AccordionSummary expandIcon={<ExpandMore />}>
+      <AccordionSummary
+        expandIcon={<ExpandMore />}
+        sx={compact ? { minHeight: 38, '& .MuiAccordionSummary-content': { my: 0.5 } } : undefined}
+      >
         <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%', pr: 1 }} justifyContent="space-between">
-          <Typography fontWeight={700}>{title}</Typography>
+          <Typography fontWeight={700} sx={compact ? { fontSize: 13 } : undefined}>{title}</Typography>
           <Chip
             size="small"
             color={filled > 0 ? 'primary' : 'default'}
@@ -161,17 +182,17 @@ export default function WarehouseInspectionForm({ value, onChange, readOnly = fa
           />
         </Stack>
       </AccordionSummary>
-      <AccordionDetails>{children}</AccordionDetails>
+      <AccordionDetails sx={compact ? { pt: 0.5, pb: 1.25 } : undefined}>{children}</AccordionDetails>
     </Accordion>
   );
 
   return (
-    <Stack spacing={1.5}>
+    <Stack spacing={compact ? 1 : 1.5}>
       {section(
         'Реквизиты техники',
         countFilled('vehicleDetails', vehicleDetailFields),
         vehicleDetailFields.length,
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 1.5 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: columns, gap: compact ? 1 : 1.5 }}>
           {vehicleDetailFields.map(([key, label]) => textInput('vehicleDetails', key, label))}
         </Box>,
       )}
@@ -180,7 +201,7 @@ export default function WarehouseInspectionForm({ value, onChange, readOnly = fa
         'Документы и ключи',
         countFilled('documentsAndKeys', documentsAndKeys),
         documentsAndKeys.length,
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 0.5 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: columns, gap: compact ? 0 : 0.5, columnGap: 1 }}>
           {documentsAndKeys.map(([key, label]) => checkboxInput('documentsAndKeys', key, label))}
         </Box>,
       )}
@@ -189,7 +210,7 @@ export default function WarehouseInspectionForm({ value, onChange, readOnly = fa
         'Комплектность',
         countFilled('equipment', equipmentFields),
         equipmentFields.length,
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 0.5 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: columns, gap: compact ? 0 : 0.5, columnGap: 1 }}>
           {equipmentFields.map(([key, label]) => checkboxInput('equipment', key, label))}
         </Box>,
       )}
@@ -199,15 +220,17 @@ export default function WarehouseInspectionForm({ value, onChange, readOnly = fa
         countFilled('technicalCondition', technicalCondition),
         technicalCondition.length,
         <>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 0.5 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: columns, gap: compact ? 0 : 0.5, columnGap: 1 }}>
             {technicalCondition.map(([key, label]) => checkboxInput('technicalCondition', key, label))}
           </Box>
-          <Box sx={{ mt: 1.5 }}>
+          <Box sx={{ mt: compact ? 1 : 1.5 }}>
             {technicalTextFields.map(([key, label]) => textInput('technicalCondition', key, label))}
           </Box>
         </>,
       )}
 
+      {!hideNotes && (
+        <>
       <TextField
         label="Личные вещи и примечания"
         value={value.personalItemsNotes ?? ''}
@@ -234,6 +257,8 @@ export default function WarehouseInspectionForm({ value, onChange, readOnly = fa
         })}
         inputProps={{ min: 0, step: 0.01, readOnly }}
       />
+        </>
+      )}
     </Stack>
   );
 }

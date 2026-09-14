@@ -439,7 +439,16 @@ export default function WarehouseVehicleCard({
         {canViewHistory && <Tab value="history" label="История" />}
       </Tabs>
 
-      <DialogContent sx={{ px: 2.5, py: 1.75, bgcolor: '#fff' }}>
+      <DialogContent
+        sx={{
+          px: 2.5,
+          py: 1.5,
+          bgcolor: '#fff',
+          '& .MuiInputBase-input, & .MuiSelect-select': { fontSize: 13 },
+          '& .MuiInputLabel-root': { fontSize: 13 },
+          '& .MuiInputLabel-shrink': { fontSize: 12 },
+        }}
+      >
         <Stack spacing={1.5}>
           {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
           {success && <Alert severity="success" onClose={() => setSuccess(null)}>{success}</Alert>}
@@ -507,26 +516,65 @@ export default function WarehouseVehicleCard({
                 {!receptionMeta && (
                   <Alert severity="warning">Осмотр при приёмке не сохранялся{editable ? ' — заполните и сохраните карточку.' : '.'}</Alert>
                 )}
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.15fr 0.85fr' }, gap: 1.5, alignItems: 'start' }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.3fr 1fr' }, gap: 1.5, alignItems: 'start' }}>
                   <WarehouseInspectionForm
                     value={reception}
                     readOnly={!editable}
                     defaultExpanded
+                    compact
+                    hideNotes
                     onChange={(next) => { setReception(next); setReceptionDirty(true); }}
                   />
-                  <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
-                    <WarehouseDamageScheme
-                      value={reception}
-                      vehicleType={vehicle.vehicleType}
-                      readOnly={!editable}
-                      onChange={(next) => { setReception(next); setReceptionDirty(true); }}
-                    />
-                    {receptionMeta && (
-                      <Typography sx={{ fontSize: 11, color: '#8b93a1', mt: 1 }}>
-                        Осмотр провёл: {receptionMeta.inspectedByName} · {dateTime(receptionMeta.updatedAt)}
-                      </Typography>
-                    )}
-                  </Paper>
+                  {/* схема и заметки рядом с осмотром; колонка прилипает при прокрутке длинного осмотра */}
+                  <Stack spacing={1.25} sx={{ position: { lg: 'sticky' }, top: 0 }}>
+                    <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 2 }}>
+                      <WarehouseDamageScheme
+                        value={reception}
+                        vehicleType={vehicle.vehicleType}
+                        readOnly={!editable}
+                        compact
+                        onChange={(next) => { setReception(next); setReceptionDirty(true); }}
+                      />
+                    </Paper>
+                    <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 2 }}>
+                      <Stack spacing={1}>
+                        <TextField
+                          size="small"
+                          label="Личные вещи и примечания"
+                          value={reception.personalItemsNotes ?? ''}
+                          multiline
+                          minRows={2}
+                          InputProps={{ readOnly: !editable }}
+                          onChange={(event) => { setReception({ ...reception, personalItemsNotes: event.target.value }); setReceptionDirty(true); }}
+                        />
+                        <TextField
+                          size="small"
+                          label="Повреждения и замечания"
+                          value={reception.damageNotes ?? ''}
+                          multiline
+                          minRows={2}
+                          InputProps={{ readOnly: !editable }}
+                          onChange={(event) => { setReception({ ...reception, damageNotes: event.target.value }); setReceptionDirty(true); }}
+                        />
+                        <TextField
+                          size="small"
+                          type="number"
+                          label="Размер ответственности Хранителя, ₽"
+                          value={reception.responsibilityAmount ?? ''}
+                          inputProps={{ min: 0, step: 0.01, readOnly: !editable }}
+                          onChange={(event) => {
+                            setReception({ ...reception, responsibilityAmount: event.target.value === '' ? null : Number(event.target.value) });
+                            setReceptionDirty(true);
+                          }}
+                        />
+                        {receptionMeta && (
+                          <Typography sx={{ fontSize: 11, color: '#8b93a1' }}>
+                            Осмотр провёл: {receptionMeta.inspectedByName} · {dateTime(receptionMeta.updatedAt)}
+                          </Typography>
+                        )}
+                      </Stack>
+                    </Paper>
+                  </Stack>
                 </Box>
               </>
             )
@@ -587,8 +635,8 @@ export default function WarehouseVehicleCard({
                     </TableBody>
                   </Table>
                 </Section>
-                <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, maxWidth: 640 }}>
-                  <WarehouseDamageScheme value={issue} vehicleType={vehicle.vehicleType} readOnly onChange={() => undefined} />
+                <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 2, maxWidth: 560 }}>
+                  <WarehouseDamageScheme value={issue} vehicleType={vehicle.vehicleType} readOnly compact onChange={() => undefined} />
                   {issueMeta && (
                     <Typography sx={{ fontSize: 11, color: '#8b93a1', mt: 1 }}>
                       Осмотр при выдаче: {issueMeta.inspectedByName} · {dateTime(issueMeta.updatedAt)}

@@ -40,6 +40,8 @@ interface Props {
   onChange: (value: WarehouseVehicleInspectionPayload) => void;
   /** просмотр: отметки видны и выбираются, но не ставятся и не удаляются */
   readOnly?: boolean;
+  /** плотная раскладка для карточки ТС */
+  compact?: boolean;
 }
 
 const DAMAGE_CODES: Array<{ code: DamageCode; label: string }> = [
@@ -93,7 +95,7 @@ const getMarks = (value: WarehouseVehicleInspectionPayload): DamageMark[] => {
 const damageCodeLabel = (code: DamageCode) =>
   DAMAGE_CODES.find((item) => item.code === code)?.label ?? code;
 
-export default function WarehouseDamageScheme({ value, vehicleType, onChange, readOnly = false }: Props) {
+export default function WarehouseDamageScheme({ value, vehicleType, onChange, readOnly = false, compact = false }: Props) {
   const schemeType = SCHEME_BY_TYPE[vehicleType] ?? 'full';
   const scheme = SCHEME_ASSETS[schemeType];
   const [selectedCode, setSelectedCode] = useState<DamageCode>('Ц');
@@ -217,10 +219,10 @@ export default function WarehouseDamageScheme({ value, vehicleType, onChange, re
   useEffect(() => () => cancelLongPress(), []);
 
   return (
-    <Stack spacing={1.25}>
+    <Stack spacing={compact ? 0.75 : 1.25}>
       <Box>
-        <Typography variant="subtitle1" fontWeight={700}>Схема повреждений</Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="subtitle1" fontWeight={700} sx={compact ? { fontSize: 13 } : undefined}>Схема повреждений</Typography>
+        <Typography variant="body2" color="text.secondary" sx={compact ? { fontSize: 11.5 } : undefined}>
           {readOnly
             ? `${scheme.title}. Нажмите на отметку, чтобы увидеть комментарий.`
             : `${scheme.title}. Выберите тип повреждения и нажмите на место на схеме.`}
@@ -234,13 +236,25 @@ export default function WarehouseDamageScheme({ value, vehicleType, onChange, re
       )}
 
       {!readOnly && (
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 0.75 }}>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: compact
+            ? { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(4, minmax(0, 1fr))' }
+            : { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
+          gap: compact ? 0.5 : 0.75,
+        }}
+      >
         {DAMAGE_CODES.map((item) => (
           <Button
             key={item.code}
+            size={compact ? 'small' : 'medium'}
             variant={selectedCode === item.code ? 'contained' : 'outlined'}
             onClick={() => setSelectedCode(item.code)}
-            sx={{ justifyContent: 'flex-start', minHeight: 40 }}
+            title={`${item.code} - ${item.label}`}
+            sx={compact
+              ? { justifyContent: 'flex-start', minHeight: 30, fontSize: 11, px: 1, textTransform: 'none', whiteSpace: 'nowrap' }
+              : { justifyContent: 'flex-start', minHeight: 40 }}
           >
             {item.code} - {item.label}
           </Button>
