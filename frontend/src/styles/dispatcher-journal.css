@@ -739,17 +739,25 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
 .dj-formula__input[readonly] { color: #4b5563; }
 
 /* ── активная ячейка и протягивание ── */
+/* активная ячейка — одна рамка на ячейке (как в google); у поля внутри своей рамки нет */
 .dj-table td.dj-cell--active { box-shadow: inset 0 0 0 2px #2a78d6; }
+.dj-table td.dj-cell--active .dj-cell-input:focus,
+.dj-table td.dj-cell--active .dj-cell-textarea:focus,
+.dj-table td.dj-cell--active .dj-date-input:focus {
+  box-shadow: none;
+  border-radius: 0;
+  background: transparent;
+}
+.dj-table td.dj-cell--active .dj-cell-input--chip:focus { box-shadow: none; }
 .dj-table td.dj-fill-target { background: #dbe9fb !important; box-shadow: inset 2px 0 0 #2a78d6, inset -2px 0 0 #2a78d6; }
 .dj-fill-handle {
   position: absolute;
   z-index: 6;
-  width: 9px;
-  height: 9px;
+  width: 7px;
+  height: 7px;
   background: #2a78d6;
-  border: 1.5px solid #fff;
-  border-radius: 2px;
+  border: 1px solid #fff;
+  border-radius: 1px;
   cursor: crosshair;
-  box-shadow: 0 0 0 1px rgba(42, 120, 214, 0.35);
 }
 body.dj-filling, body.dj-filling * { cursor: crosshair !important; user-select: none; }
