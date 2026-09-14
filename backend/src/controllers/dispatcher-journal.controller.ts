@@ -119,7 +119,12 @@ export const listDispatcherStatuses = async (_req: Request, res: Response, next:
       where: { isActive: true },
       order: { sortOrder: 'ASC', name: 'ASC' },
     });
-    res.json(statuses.map((status) => ({ id: status.id, name: status.name, color: status.color })));
+    res.json(statuses.map((status) => ({
+      id: status.id,
+      name: status.name,
+      color: status.color,
+      textColor: status.textColor,
+    })));
   } catch (error) {
     next(error);
   }
@@ -286,6 +291,7 @@ const serializeStatus = (status: DispatcherStatus) => ({
   id: status.id,
   name: status.name,
   color: status.color,
+  textColor: status.textColor,
   sortOrder: status.sortOrder,
   isActive: status.isActive,
 });
@@ -295,6 +301,7 @@ const serializeDictionaryItem = (item: DispatcherDictionaryItem) => ({
   kind: item.kind,
   name: item.name,
   color: item.color,
+  textColor: item.textColor,
   sortOrder: item.sortOrder,
   isActive: item.isActive,
 });
@@ -343,9 +350,10 @@ export const createDispatcherStatus = async (req: Request, res: Response, next: 
   try {
     const name = requireName(req.body?.name, 64);
     const color = requireColor(req.body?.color);
+    const textColor = optionalColor(req.body?.textColor);
     const last = await statusRepository.find({ order: { sortOrder: 'DESC' }, take: 1 });
     const saved = await statusRepository.save(
-      statusRepository.create({ name, color, sortOrder: (last[0]?.sortOrder ?? 0) + 10 }),
+      statusRepository.create({ name, color, textColor, sortOrder: (last[0]?.sortOrder ?? 0) + 10 }),
     );
     notifyDictionariesUpdated(req.user?.id);
     res.status(201).json(serializeStatus(saved));
@@ -365,6 +373,7 @@ export const updateDispatcherStatus = async (req: Request, res: Response, next: 
     const previousName = status.name;
     if (req.body?.name !== undefined) status.name = requireName(req.body.name, 64);
     if (req.body?.color !== undefined) status.color = requireColor(req.body.color);
+    if (req.body?.textColor !== undefined) status.textColor = optionalColor(req.body.textColor);
     if (req.body?.isActive !== undefined) status.isActive = Boolean(req.body.isActive);
     await AppDataSource.transaction(async (manager) => {
       await manager.save(status);
@@ -410,6 +419,7 @@ export const createDispatcherDictionaryItem = async (req: Request, res: Response
         kind,
         name,
         color: optionalColor(req.body?.color),
+        textColor: optionalColor(req.body?.textColor),
         sortOrder: (last[0]?.sortOrder ?? 0) + 10,
       }),
     );
@@ -432,6 +442,7 @@ export const updateDispatcherDictionaryItem = async (req: Request, res: Response
       item.name = requireName(req.body.name, dispatcherDictionaryNameLimit(item.kind));
     }
     if (req.body?.color !== undefined) item.color = optionalColor(req.body.color);
+    if (req.body?.textColor !== undefined) item.textColor = optionalColor(req.body.textColor);
     if (req.body?.isActive !== undefined) item.isActive = Boolean(req.body.isActive);
     await dictionaryRepository.save(item);
     notifyDictionariesUpdated(req.user?.id);
@@ -477,16 +488,19 @@ export const reorderDispatcherDictionary = async (req: Request, res: Response, n
 
 /**
  * Активные значения простых справочников для ячеек реестра:
- * { lists: { ktk_type: [...], ... }, colors: { vat: { 'НДС22%': '#38761d' }, ... } }.
+ * { lists: { ktk_type: [...], ... }, colors: { vat: { 'НДС22%': { color, textColor } }, ... } }.
  */
 export const listDispatcherDictionaryOptions = async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const items = await dictionaryRepository.find({ where: { isActive: true }, order: { sortOrder: 'ASC', name: 'ASC' } });
     const lists: Record<string, string[]> = Object.fromEntries(DISPATCHER_DICTIONARY_KINDS.map((kind) => [kind, []]));
-    const colors: Record<string, Record<string, string>> = Object.fromEntries(DISPATCHER_DICTIONARY_KINDS.map((kind) => [kind, {}]));
+    const colors: Record<string, Record<string, { color: string | null; textColor: string | null }>> =
+      Object.fromEntries(DISPATCHER_DICTIONARY_KINDS.map((kind) => [kind, {}]));
     items.forEach((item) => {
       (lists[item.kind] ??= []).push(item.name);
-      if (item.color) (colors[item.kind] ??= {})[item.name] = item.color;
+      if (item.color || item.textColor) {
+        (colors[item.kind] ??= {})[item.name] = { color: item.color, textColor: item.textColor };
+      }
     });
     res.json({ lists, colors });
   } catch (error) {

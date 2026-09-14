@@ -4,6 +4,8 @@ export type DispatcherStatusOption = {
   id: string;
   name: string;
   color: string;
+  /** null — цвет текста подбирается под фон */
+  textColor: string | null;
 };
 
 export type DispatcherOrderRow = {
@@ -73,8 +75,11 @@ export type DispatcherDictionaryKind = 'ktk_type' | 'vat' | 'operation' | 'termi
 
 export type DispatcherDictionaryOptions = Record<DispatcherDictionaryKind, string[]>;
 
-/** Цвета значений: вид справочника → значение → #rrggbb. */
-export type DispatcherDictionaryColors = Record<DispatcherDictionaryKind, Record<string, string>>;
+/** Цвета значений: вид справочника → значение → фон и текст (#rrggbb). */
+export type DispatcherDictionaryColors = Record<
+  DispatcherDictionaryKind,
+  Record<string, { color: string | null; textColor: string | null }>
+>;
 
 export type DispatcherStatusEntry = DispatcherStatusOption & { sortOrder: number; isActive: boolean };
 
@@ -83,6 +88,7 @@ export type DispatcherDictionaryEntry = {
   kind: DispatcherDictionaryKind;
   name: string;
   color: string | null;
+  textColor: string | null;
   sortOrder: number;
   isActive: boolean;
 };
@@ -93,19 +99,30 @@ export const getDispatcherDictionaryOptions = () =>
 export const getDispatcherDictionaries = () =>
   api.get<{ statuses: DispatcherStatusEntry[]; items: DispatcherDictionaryEntry[] }>('/dispatcher-journal/dictionaries');
 
-export const createDispatcherStatusEntry = (payload: { name: string; color: string }) =>
+export const createDispatcherStatusEntry = (payload: { name: string; color: string; textColor?: string | null }) =>
   api.post<DispatcherStatusEntry>('/dispatcher-journal/dictionaries/statuses', payload);
 
-export const updateDispatcherStatusEntry = (id: string, payload: Partial<{ name: string; color: string; isActive: boolean }>) =>
+export const updateDispatcherStatusEntry = (
+  id: string,
+  payload: Partial<{ name: string; color: string; textColor: string | null; isActive: boolean }>,
+) =>
   api.patch<DispatcherStatusEntry>(`/dispatcher-journal/dictionaries/statuses/${id}`, payload);
 
 export const deleteDispatcherStatusEntry = (id: string) =>
   api.delete<{ message: string }>(`/dispatcher-journal/dictionaries/statuses/${id}`);
 
-export const createDispatcherDictionaryEntry = (payload: { kind: DispatcherDictionaryKind; name: string; color?: string | null }) =>
+export const createDispatcherDictionaryEntry = (payload: {
+  kind: DispatcherDictionaryKind;
+  name: string;
+  color?: string | null;
+  textColor?: string | null;
+}) =>
   api.post<DispatcherDictionaryEntry>('/dispatcher-journal/dictionaries/items', payload);
 
-export const updateDispatcherDictionaryEntry = (id: string, payload: Partial<{ name: string; color: string | null; isActive: boolean }>) =>
+export const updateDispatcherDictionaryEntry = (
+  id: string,
+  payload: Partial<{ name: string; color: string | null; textColor: string | null; isActive: boolean }>,
+) =>
   api.patch<DispatcherDictionaryEntry>(`/dispatcher-journal/dictionaries/items/${id}`, payload);
 
 export const deleteDispatcherDictionaryEntry = (id: string) =>

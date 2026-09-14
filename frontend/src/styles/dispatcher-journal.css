@@ -428,3 +428,194 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
   cursor: pointer;
 }
 .dj-color-clear:hover { color: #d03b3b; border-color: #d03b3b; }
+
+/* ── выбор цвета в стиле google-таблиц ── */
+.dj-color-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  flex: none;
+  border: 1px solid #d8dde5;
+  border-radius: 8px;
+  background: #fff;
+  padding: 3px 1px 3px 5px;
+  cursor: pointer;
+}
+.dj-color-trigger:hover:not(:disabled) { border-color: #9aa3b0; }
+.dj-color-trigger:disabled { cursor: default; opacity: 0.7; }
+.dj-color-trigger__dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(31, 39, 51, 0.15);
+  box-sizing: border-box;
+}
+.dj-color-trigger__dot.is-empty {
+  background: linear-gradient(135deg, #fff 44%, #d03b3b 44%, #d03b3b 56%, #fff 56%);
+}
+
+.dj-picker { width: 252px; padding: 12px 14px; box-sizing: border-box; font-size: 13px; color: #1f2733; }
+.dj-picker__title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: #5f6368; margin-bottom: 8px; }
+.dj-picker__grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; margin-bottom: 10px; }
+.dj-picker__dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(31, 39, 51, 0.12);
+  padding: 0;
+  cursor: pointer;
+}
+.dj-picker__dot:hover { transform: scale(1.12); }
+.dj-picker__dot.is-selected { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #1a73e8; }
+.dj-picker__link {
+  border: 0;
+  background: transparent;
+  color: #137333;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 2px 0;
+  cursor: pointer;
+}
+.dj-picker__link:hover { text-decoration: underline; }
+.dj-picker__reset {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin: 10px 0 12px;
+  border: 1px solid #dadce0;
+  border-radius: 999px;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 0;
+  cursor: pointer;
+  color: #3c4043;
+}
+.dj-picker__reset:hover { background: #f6f8fb; }
+.dj-picker__preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid #eceff3;
+  padding-top: 10px;
+  font-size: 12.5px;
+  color: #3c4043;
+}
+.dj-picker--custom .dj-picker__preview { border-top: 0; padding-top: 0; margin-bottom: 8px; }
+.dj-picker__tabs { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 10px; border-bottom: 1px solid #eceff3; }
+.dj-picker__tabs button {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 0;
+  cursor: pointer;
+  color: #3c4043;
+  border-bottom: 3px solid transparent;
+}
+.dj-picker__tabs button.is-active { color: #1a73e8; border-bottom-color: #1a73e8; font-weight: 600; }
+.dj-picker__area {
+  position: relative;
+  height: 140px;
+  border-radius: 6px;
+  cursor: crosshair;
+  touch-action: none;
+  /* фон — чистый оттенок (inline), поверх белый и чёрный градиенты */
+}
+.dj-picker__area::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  background: linear-gradient(to right, #fff, rgba(255, 255, 255, 0));
+}
+.dj-picker__area::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  background: linear-gradient(to top, #000, rgba(0, 0, 0, 0));
+}
+.dj-picker__area-thumb {
+  position: absolute;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.dj-picker__row { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+.dj-picker__swatch { width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, 0.15); flex: none; }
+.dj-picker__icon-btn {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  line-height: 0;
+  color: #3c4043;
+}
+.dj-picker__hue {
+  flex: 1;
+  min-width: 0;
+  height: 10px;
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: 999px;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  outline: none;
+}
+.dj-picker__hue::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+.dj-picker__hue::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+.dj-picker__fields { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 6px; }
+.dj-picker__fields label { display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; color: #5f6368; white-space: nowrap; }
+.dj-picker__fields input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12.5px;
+  color: #1f2733;
+  padding: 5px 6px;
+}
+.dj-picker__fields input:focus { outline: none; border-color: #1a73e8; }
+.dj-picker__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+/* кнопка «Настройки» — как поле «Месяц» (ширина 140, высота small-поля) */
+.dj-settings-btn.MuiButton-root {
+  width: 140px;
+  height: 40px;
+  justify-content: space-between;
+  text-transform: none;
+  font-size: 16px;
+  font-weight: 400;
+  color: rgba(0, 0, 0, 0.87);
+  border-color: rgba(0, 0, 0, 0.23);
+  border-radius: 4px;
+  padding: 0 8px 0 12px;
+}
+.dj-settings-btn.MuiButton-root:hover { border-color: rgba(0, 0, 0, 0.87); background: transparent; }

@@ -14,6 +14,10 @@ export class DispatcherStatus {
   @Column({ type: 'varchar', length: 7 })
   color!: string;
 
+  /** Цвет текста чипа (#rrggbb); null — подбирается автоматически под фон. */
+  @Column({ name: 'text_color', type: 'varchar', length: 7, nullable: true })
+  textColor!: string | null;
+
   @Column({ name: 'sort_order', type: 'int', default: 0 })
   sortOrder!: number;
 

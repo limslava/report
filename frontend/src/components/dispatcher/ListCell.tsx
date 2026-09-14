@@ -1,12 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { textColorFor } from './dispatcherJournalUtils';
 
 type ListCellProps = {
   value: string | null;
   options: string[];
-  /** Цвет значения из справочника: ячейка и пункт списка заливаются им. */
-  colorOf?: (value: string) => string | undefined;
+  /** Цвета значения из справочника (фон и текст): ячейка и пункт списка окрашиваются ими. */
+  colorOf?: (value: string) => { background?: string; color: string } | undefined;
   /** Преобразование при сохранении (например, ФИО → фамилия с инициалами). */
   normalize?: (value: string) => string;
   placeholder?: string;
@@ -67,14 +66,14 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
     inputRef.current?.blur();
   };
 
-  const cellColor = colorOf && draft ? colorOf(draft) : undefined;
+  const cellStyle = colorOf && draft ? colorOf(draft) : undefined;
 
   return (
     <>
       <input
         ref={inputRef}
-        className={`dj-cell-input${cellColor ? ' dj-cell-input--chip' : ''}`}
-        style={cellColor ? { background: cellColor, color: textColorFor(cellColor) } : undefined}
+        className={`dj-cell-input${cellStyle?.background ? ' dj-cell-input--chip' : ''}`}
+        style={cellStyle}
         value={draft}
         title={draft.length > 14 ? draft : undefined}
         placeholder={placeholder}
@@ -132,10 +131,7 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
               onClick={() => choose(option)}
             >
               {colorOf?.(option) ? (
-                <span
-                  className="dj-status-chip dj-list-chip"
-                  style={{ background: colorOf(option), color: textColorFor(colorOf(option) ?? '') }}
-                >
+                <span className="dj-status-chip dj-list-chip" style={colorOf(option)}>
                   {option}
                 </span>
               ) : option}

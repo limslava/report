@@ -307,7 +307,9 @@ function StatusCell({ value, statuses, statusByName, onSave }: StatusCellProps) 
           <li {...props} key={option} style={{ ...(props as { style?: React.CSSProperties }).style, paddingTop: 3, paddingBottom: 3 }}>
             <span
               className="dj-status-chip"
-              style={optionStatus ? { background: optionStatus.color, color: textColorFor(optionStatus.color) } : undefined}
+              style={optionStatus
+                ? { background: optionStatus.color, color: optionStatus.textColor ?? textColorFor(optionStatus.color) }
+                : undefined}
             >
               {option}
             </span>
@@ -324,7 +326,7 @@ function StatusCell({ value, statuses, statusByName, onSave }: StatusCellProps) 
             disableUnderline: true,
             className: 'dj-status-input',
             style: status
-              ? { background: status.color, color: textColorFor(status.color) }
+              ? { background: status.color, color: status.textColor ?? textColorFor(status.color) }
               : undefined,
           }}
         />
@@ -955,10 +957,19 @@ export default function DispatcherJournalPage() {
   };
 
   /** Цвет значения из справочника реестра (водители и техника — без цвета). */
-  const listColorOf = (source: ListSource): ((value: string) => string | undefined) | undefined => {
+  const listColorOf = (
+    source: ListSource,
+  ): ((value: string) => { background?: string; color: string } | undefined) | undefined => {
     if (source === 'drivers' || source === 'vehicles') return undefined;
     const colors = dictionaryColors[source] ?? {};
-    return (value: string) => colors[value];
+    return (value: string) => {
+      const entry = colors[value];
+      if (!entry) return undefined;
+      return {
+        background: entry.color ?? undefined,
+        color: entry.textColor ?? (entry.color ? textColorFor(entry.color) : '#1f2733'),
+      };
+    };
   };
 
   const renderColumnCell = (row: DispatcherOrderRow, column: ColumnDef) => {
@@ -1197,12 +1208,12 @@ export default function DispatcherJournalPage() {
             size="small"
             variant="outlined"
             color="inherit"
-            startIcon={<Settings sx={{ fontSize: 18 }} />}
-            endIcon={<KeyboardArrowDown sx={{ fontSize: 18 }} />}
+            className="dj-settings-btn"
+            startIcon={<Settings sx={{ fontSize: 20, color: '#6b7280' }} />}
+            endIcon={<KeyboardArrowDown sx={{ fontSize: 22, color: 'rgba(0, 0, 0, 0.54)' }} />}
             onClick={(event) => setSettingsAnchor(event.currentTarget)}
-            sx={{ textTransform: 'none', color: '#3d4757', borderColor: '#d8dde5', fontSize: 13 }}
           >
-            Настройки
+            <span style={{ flex: 1, textAlign: 'left' }}>Настройки</span>
           </Button>
         </Box>
       </Paper>
