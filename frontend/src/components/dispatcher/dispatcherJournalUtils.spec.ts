@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addDaysYmd,
   amountWithoutVat,
+  parseClipboardGrid,
+  seriesValue,
   buildOrderText,
   isCompletedStatus,
   normalizeTimeInput,
@@ -86,5 +89,22 @@ describe('dispatcherJournalUtils', () => {
     expect(relocation).not.toContain('Время доставки');
     expect(relocation).toContain('*Сдача контейнера* Первомайский');
     expect(buildOrderText({ ...base, operation: 'выгрузка' })).toContain('*Адрес доставки* г.Артем');
+  });
+
+  it('разбирает вставку из Excel/google: столбик, таблица, ячейки с переносами', () => {
+    expect(parseClipboardGrid('TRZU1\nTRZU2\nTRZU3\n')).toEqual([['TRZU1'], ['TRZU2'], ['TRZU3']]);
+    expect(parseClipboardGrid('a\tb\r\nc\td')).toEqual([['a', 'b'], ['c', 'd']]);
+    expect(parseClipboardGrid('"Владивосток,\nПолтавская 18"\tвыгрузка\nx\ty')).toEqual([
+      ['Владивосток,\nПолтавская 18', 'выгрузка'],
+      ['x', 'y'],
+    ]);
+    expect(parseClipboardGrid('кузов "А"\t1')).toEqual([['кузов "А"', '1']]);
+  });
+
+  it('протягивание рядом: число в конце увеличивается, нули сохраняются', () => {
+    expect(seriesValue('TRZU0009', 1)).toBe('TRZU0010');
+    expect(seriesValue('5', 2)).toBe('7');
+    expect(seriesValue('выгрузка', 3)).toBe('выгрузка');
+    expect(addDaysYmd('2026-09-30', 1)).toBe('2026-10-01');
   });
 });

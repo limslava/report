@@ -696,3 +696,60 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
 .dj-history__row--delete td { background: #fdf1f1; }
 .dj-history__row--import td { background: #fff8db; }
 .dj-history__empty { text-align: center; color: #8b93a1; padding: 18px !important; }
+
+/* ── строка значения над таблицей (полный текст активной ячейки) ── */
+.dj-formula {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid #e1e4ea;
+  border-radius: 8px;
+  padding: 5px 10px;
+}
+.dj-formula__label {
+  flex: none;
+  max-width: 220px;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: #2a78d6;
+  padding-top: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dj-formula--idle .dj-formula__label { color: #9aa3b0; font-weight: 500; }
+.dj-formula__input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  border: 0;
+  outline: none;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.4;
+  padding: 4px 6px;
+  border-radius: 4px;
+  color: #1f2733;
+  max-height: 110px;
+  field-sizing: content;
+  background: transparent;
+}
+.dj-formula__input:focus:not([readonly]) { background: #eef5ff; box-shadow: inset 0 0 0 2px #2a78d6; }
+.dj-formula__input[readonly] { color: #4b5563; }
+
+/* ── активная ячейка и протягивание ── */
+.dj-table td.dj-cell--active { box-shadow: inset 0 0 0 2px #2a78d6; }
+.dj-table td.dj-fill-target { background: #dbe9fb !important; box-shadow: inset 2px 0 0 #2a78d6, inset -2px 0 0 #2a78d6; }
+.dj-fill-handle {
+  position: absolute;
+  z-index: 6;
+  width: 9px;
+  height: 9px;
+  background: #2a78d6;
+  border: 1.5px solid #fff;
+  border-radius: 2px;
+  cursor: crosshair;
+  box-shadow: 0 0 0 1px rgba(42, 120, 214, 0.35);
+}
+body.dj-filling, body.dj-filling * { cursor: crosshair !important; user-select: none; }
