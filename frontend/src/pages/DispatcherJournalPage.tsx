@@ -19,6 +19,7 @@ import {
 import {
   DragIndicator,
   FilterList,
+  History,
   KeyboardArrowDown,
   KeyboardArrowUp,
   MenuBook,
@@ -67,6 +68,7 @@ import TimeCell from '../components/dispatcher/TimeCell';
 import ColumnFilterPopover, { EMPTY_FILTER_VALUE } from '../components/dispatcher/ColumnFilterPopover';
 import DispatcherDictionariesDialog from '../components/dispatcher/DispatcherDictionariesDialog';
 import DispatcherImportDialog from '../components/dispatcher/DispatcherImportDialog';
+import DispatcherHistoryDialog from '../components/dispatcher/DispatcherHistoryDialog';
 import {
   amountWithoutVat,
   buildOrderText,
@@ -254,6 +256,20 @@ const EMPTY_DICTIONARY_COLORS: DispatcherDictionaryColors = {
 
 /** Кто ведёт справочники реестра (проверка дублируется на сервере). */
 const DICTIONARY_EDIT_ROLES = new Set(['admin', 'head_ktk_vvo']);
+/** История изменений реестра видна администратору и руководителю КТК (проверка и на сервере). */
+const HISTORY_ROLES = new Set(['admin', 'head_ktk_vvo']);
+
+/** Названия полей реестра для окна истории. */
+const FIELD_TITLES: Record<string, string> = {
+  orderDate: 'Дата',
+  ...Object.fromEntries(ALL_COLUMNS.map((column) => [column.field, column.title])),
+};
+
+const formatEditedAt = (iso: string | null): string => {
+  if (!iso) return '';
+  const date = new Date(iso);
+  return `${pad2(date.getDate())}.${pad2(date.getMonth() + 1)} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+};
 
 type EditableCellProps = {
   value: string | null;
@@ -313,6 +329,7 @@ const columnText = (row: DispatcherOrderRow, column: ColumnDef): string => {
 export default function DispatcherJournalPage() {
   const { user } = useAuthStore();
   const canEditDictionaries = DICTIONARY_EDIT_ROLES.has(user?.role ?? '');
+  const canViewHistory = HISTORY_ROLES.has(user?.role ?? '');
   const [viewMonth, setViewMonth] = useState<string>(currentMonth());
   const [rows, setRows] = useState<DispatcherOrderRow[]>([]);
   const [statuses, setStatuses] = useState<DispatcherStatusOption[]>([]);
@@ -327,6 +344,8 @@ export default function DispatcherJournalPage() {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: DispatcherOrderRow } | null>(null);
   const [dictionariesOpen, setDictionariesOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  // история: весь реестр (orderId = null) или одна строка
+  const [history, setHistory] = useState<{ orderId: string | null; label?: string } | null>(null);
   const reloadTimerRef = useRef<number | null>(null);
   // Текущий месяц показывается вместе с ближайшим будущим (до 60 дней):
   // заявка от 29.09 на вывоз 01.10 видна, не дожидаясь октября. Прошлые
@@ -1492,9 +1511,12 @@ export default function DispatcherJournalPage() {
                   <td
                     className={`dj-rownum${pinClass('__rownum')}`}
                     style={pinStyle('__rownum')}
-                    title={canDragRows
-                      ? 'Зажмите и тяните вверх/вниз — переместить строку. Клик — выделить строку'
-                      : 'Клик — выделить строку. Чтобы перетаскивать строки, выключите сортировку и фильтры'}
+                    title={[
+                      canDragRows
+                        ? 'Зажмите и тяните вверх/вниз — переместить строку. Клик — выделить строку'
+                        : 'Клик — выделить строку. Чтобы перетаскивать строки, выключите сортировку и фильтры',
+                      row.lastEditorName ? `Изменено: ${row.lastEditorName}, ${formatEditedAt(row.updatedAt)}` : '',
+                    ].filter(Boolean).join('\n')}
                     draggable={canDragRows}
                     onDragStart={(event) => {
                       dragRowRef.current = { id: row.id, date: row.orderDate };
@@ -1633,6 +1655,22 @@ export default function DispatcherJournalPage() {
             >
               Копировать строку
             </button>
+            {canViewHistory && (
+              <button
+                type="button"
+                className="dj-context-item"
+                onClick={() => {
+                  const current = rowsRef.current.find((item) => item.id === contextMenu.row.id) ?? contextMenu.row;
+                  setHistory({
+                    orderId: current.id,
+                    label: [formatDateShort(current.orderDate), current.ktkNumber, current.client].filter(Boolean).join(' · '),
+                  });
+                  setContextMenu(null);
+                }}
+              >
+                История строки
+              </button>
+            )}
             <button
               type="button"
               className="dj-context-item danger"
@@ -1693,6 +1731,17 @@ export default function DispatcherJournalPage() {
           <ListItemIcon><MenuBook fontSize="small" /></ListItemIcon>
           <ListItemText primary="Справочники" />
         </MenuItem>
+        {canViewHistory && (
+          <MenuItem
+            onClick={() => {
+              setHistory({ orderId: null });
+              setSettingsAnchor(null);
+            }}
+          >
+            <ListItemIcon><History fontSize="small" /></ListItemIcon>
+            <ListItemText primary="История изменений" />
+          </MenuItem>
+        )}
         {user?.role === 'admin' && (
           <MenuItem
             onClick={() => {
@@ -1705,6 +1754,16 @@ export default function DispatcherJournalPage() {
           </MenuItem>
         )}
       </Menu>
+
+      {history && (
+        <DispatcherHistoryDialog
+          open
+          onClose={() => setHistory(null)}
+          orderId={history.orderId}
+          orderLabel={history.label}
+          fieldTitles={FIELD_TITLES}
+        />
+      )}
 
       <DispatcherImportDialog
         open={importOpen}

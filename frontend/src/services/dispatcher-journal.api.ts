@@ -44,10 +44,12 @@ export type DispatcherOrderRow = {
   recoupling: boolean;
   driverRemarks: string | null;
   updatedAt: string | null;
+  /** кто последним менял строку — приходит только ролям, которым видна история */
+  lastEditorName?: string | null;
 };
 
 export type DispatcherOrderPatch = Partial<
-  Omit<DispatcherOrderRow, 'id' | 'updatedAt'>
+  Omit<DispatcherOrderRow, 'id' | 'updatedAt' | 'lastEditorName'>
 >;
 
 export const getDispatcherStatuses = () =>
@@ -161,3 +163,33 @@ export type DispatcherImportSummary = {
 
 export const importDispatcherOrders = (fileBase64: string, dryRun: boolean) =>
   api.post<DispatcherImportSummary>('/dispatcher-journal/import', { fileBase64, dryRun }, { timeout: 300_000 });
+
+// ── История изменений (администратор, руководитель КТК) ──
+
+export type DispatcherHistoryItem = {
+  id: string;
+  orderId: string | null;
+  action: 'create' | 'update' | 'delete' | 'move' | 'import';
+  field: string | null;
+  oldValue: string | null;
+  newValue: string | null;
+  orderDate: string | null;
+  ktkNumber: string | null;
+  client: string | null;
+  userId: string | null;
+  userName: string | null;
+  createdAt: string;
+};
+
+export type DispatcherHistoryQuery = {
+  from?: string;
+  to?: string;
+  userId?: string;
+  orderId?: string;
+  q?: string;
+  before?: string;
+  limit?: number;
+};
+
+export const getDispatcherHistory = (params: DispatcherHistoryQuery) =>
+  api.get<{ items: DispatcherHistoryItem[]; nextBefore: string | null }>('/dispatcher-journal/history', { params });
