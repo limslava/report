@@ -551,6 +551,26 @@ export const importDispatcherOrders = async (req: Request, res: Response, next: 
       if (known) order.status = known;
       else unknownStatuses.add(order.status);
     });
+    // «НАЛ», «Перемещение» и т.п. — к написанию из справочников реестра (тогда работают цвета и расчёты)
+    const dictionaryItems = await dictionaryRepository.find();
+    const dictionaryByKind = new Map<string, Map<string, string>>();
+    dictionaryItems.forEach((item) => {
+      const map = dictionaryByKind.get(item.kind) ?? new Map<string, string>();
+      map.set(item.name.toLowerCase(), item.name);
+      dictionaryByKind.set(item.kind, map);
+    });
+    const DICTIONARY_FIELDS: Array<['vat' | 'operation' | 'ktkType', DispatcherDictionaryKind]> = [
+      ['vat', 'vat'],
+      ['operation', 'operation'],
+      ['ktkType', 'ktk_type'],
+    ];
+    orders.forEach((order) => {
+      DICTIONARY_FIELDS.forEach(([field, kind]) => {
+        const raw = order[field];
+        const known = raw ? dictionaryByKind.get(kind)?.get(raw.toLowerCase()) : undefined;
+        if (known) order[field] = known;
+      });
+    });
     const existingInRange = await orderRepository.count({ where: { orderDate: Between(from, to) } });
 
     const summary = {
