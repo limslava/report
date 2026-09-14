@@ -1312,7 +1312,10 @@ export default function DispatcherJournalPage() {
       document.body.classList.remove('dj-filling');
       setFillRange(null);
       if (endIndex === startIndex) return;
-      const series = ctrlHeld || upEvent.ctrlKey || upEvent.metaKey;
+      // ряд (+1) — только дата и свободные колонки (№ КТК, вес, пин…); значения из
+      // справочников (тип КТК, НДС, терминал), статус, водитель и время всегда копируются
+      const seriesAllowed = field === DATE_KEY || (column?.kind === 'text' && !column.list);
+      const series = seriesAllowed && (ctrlHeld || upEvent.ctrlKey || upEvent.metaKey);
       const direction = endIndex > startIndex ? 1 : -1;
       const patches: Array<{ id: string; patch: DispatcherOrderPatch }> = [];
       for (let index = startIndex + direction, step = 1; direction > 0 ? index <= endIndex : index >= endIndex; index += direction, step += 1) {
