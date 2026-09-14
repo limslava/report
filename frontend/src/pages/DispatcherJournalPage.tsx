@@ -70,10 +70,14 @@ import DispatcherDictionariesDialog from '../components/dispatcher/DispatcherDic
 import DispatcherImportDialog from '../components/dispatcher/DispatcherImportDialog';
 import DispatcherHistoryDialog from '../components/dispatcher/DispatcherHistoryDialog';
 import {
+  addDaysYmd,
   amountWithoutVat,
   buildOrderText,
   formatMoney,
   isCompletedStatus,
+  normalizeTimeInput,
+  parseClipboardGrid,
+  seriesValue,
   personKey,
   plateKey,
   shortPersonName,
@@ -296,6 +300,7 @@ function EditableCell({ value, multiline, onSave }: EditableCellProps) {
         className="dj-cell-textarea"
         rows={2}
         value={draft}
+        title={draft.length > 40 ? draft : undefined}
         onChange={(event) => setDraft(event.target.value)}
         onFocus={() => { focusedRef.current = true; }}
         onBlur={commit}
@@ -306,6 +311,7 @@ function EditableCell({ value, multiline, onSave }: EditableCellProps) {
     <input
       className="dj-cell-input"
       value={draft}
+      title={draft.length > 14 ? draft : undefined}
       onChange={(event) => setDraft(event.target.value)}
       onFocus={() => { focusedRef.current = true; }}
       onBlur={commit}
@@ -369,6 +375,13 @@ export default function DispatcherJournalPage() {
 
   // дата новых строк: сегодня в текущем месяце, иначе 1-е число месяца
   const defaultNewDate = viewMonth === currentMonth() ? todayYmd() : `${viewMonth}-01`;
+  const defaultNewDateRef = useRef(defaultNewDate);
+  defaultNewDateRef.current = defaultNewDate;
+
+  // активная ячейка (последняя, где был курсор): строка значения сверху и «ручка» протягивания.
+  // rowId = null — нижняя строка новой заявки
+  const [activeCell, setActiveCell] = useState<{ rowId: string | null; field: string } | null>(null);
+  const [fillRange, setFillRange] = useState<{ field: string; ids: Set<string> } | null>(null);
 
   const userKey = user?.id ?? 'anonymous';
 
@@ -708,6 +721,8 @@ export default function DispatcherJournalPage() {
     return map;
   }, [displayItems]);
   layoutRef.current = { items: displayItems, offsets: itemOffsets, itemByRowIndex };
+  const displayRowsRef = useRef(displayRows);
+  displayRowsRef.current = displayRows;
 
   // список или масштаб поменялись — пересчитать окно и прилипшую полосу
   useEffect(() => {
@@ -834,7 +849,9 @@ export default function DispatcherJournalPage() {
   type UndoEntry =
     | { kind: 'patch'; id: string; before: DispatcherOrderPatch }
     | { kind: 'create'; id: string }
-    | { kind: 'delete'; row: DispatcherOrderRow };
+    | { kind: 'delete'; row: DispatcherOrderRow }
+    /** массовое действие (вставка столбиком, протягивание) — отменяется целиком */
+    | { kind: 'multi'; patches: Array<{ id: string; before: DispatcherOrderPatch }>; created: string[] };
   const undoStackRef = useRef<UndoEntry[]>([]);
   const pushUndo = (entry: UndoEntry) => {
     undoStackRef.current.push(entry);
@@ -940,6 +957,13 @@ export default function DispatcherJournalPage() {
     if (entry.kind === 'patch') {
       patchRow(entry.id, entry.before, { skipUndo: true });
       setMessage({ severity: 'success', text: 'Правка отменена' });
+    } else if (entry.kind === 'multi') {
+      entry.patches.forEach((item) => patchRow(item.id, item.before, { skipUndo: true }));
+      entry.created.forEach((id) => {
+        const row = rowsRef.current.find((item) => item.id === id);
+        if (row) void deleteRow(row, { silent: true, skipUndo: true });
+      });
+      setMessage({ severity: 'success', text: 'Вставка / протягивание отменены' });
     } else if (entry.kind === 'create') {
       const row = rowsRef.current.find((item) => item.id === entry.id);
       if (row) void deleteRow(row, { silent: true, skipUndo: true });
@@ -970,6 +994,52 @@ export default function DispatcherJournalPage() {
     });
     return cells.join('\t');
   }, []);
+
+  /** Текст из буфера/протягивания → значение поля заявки (галочки, статус из справочника, ФИО, время). */
+  const cellPatchFromText = useCallback((field: string, raw: string): DispatcherOrderPatch | null => {
+    if (field === DATE_KEY) {
+      const date = parseClipboardDate(raw, rangeRef.current.from.slice(0, 7));
+      return date ? { orderDate: date } : null;
+    }
+    const column = COLUMN_BY_KEY.get(field);
+    if (!column || column.kind === 'computed') return null;
+    const trimmed = raw.trim();
+    if (column.kind === 'checkbox') return { [column.field]: TRUE_WORDS.has(trimmed.toLowerCase()) };
+    if (column.kind === 'status') {
+      const exact = statusesRef.current.find((status) => status.name.toLowerCase() === trimmed.toLowerCase());
+      return { status: exact?.name ?? (trimmed || null) };
+    }
+    if (column.kind === 'time') return { submitTime: normalizeTimeInput(trimmed) || null };
+    if (column.field === 'driverName') return { driverName: shortPersonName(trimmed) || null };
+    return { [column.field]: trimmed || null };
+  }, []);
+
+  /** Пакет правок и новых строк одним действием — одна запись в Ctrl+Z. */
+  const applyBulkChanges = useCallback(async (
+    patches: Array<{ id: string; patch: DispatcherOrderPatch }>,
+    creations: Array<{ date: string; patch: DispatcherOrderPatch }>,
+  ) => {
+    const undoPatches: Array<{ id: string; before: DispatcherOrderPatch }> = [];
+    patches.forEach(({ id, patch }) => {
+      const current = rowsRef.current.find((row) => row.id === id);
+      if (!current || !Object.keys(patch).length) return;
+      const before: DispatcherOrderPatch = {};
+      (Object.keys(patch) as Array<keyof DispatcherOrderPatch>).forEach((key) => {
+        (before as Record<string, unknown>)[key] = current[key] ?? null;
+      });
+      undoPatches.push({ id, before });
+      patchRow(id, patch, { skipUndo: true });
+    });
+    const created: string[] = [];
+    for (const { date, patch } of creations) {
+      // последовательно — сохраняется порядок строк из буфера
+      // eslint-disable-next-line no-await-in-loop
+      const row = await createRow(date, patch, { skipUndo: true });
+      if (row) created.push(row.id);
+    }
+    if (undoPatches.length || created.length) pushUndo({ kind: 'multi', patches: undoPatches, created });
+    return { patched: undoPatches.length, created: created.length };
+  }, [createRow, patchRow]);
 
   const applyTsvLine = useCallback((line: string): { date: string; patch: DispatcherOrderPatch } => {
     const cells = line.split('\t');
@@ -1069,7 +1139,47 @@ export default function DispatcherJournalPage() {
     };
 
     const pasteHandler = (event: ClipboardEvent) => {
-      if (inField(event.target)) return;
+      if (inField(event.target)) {
+        // вставка в ячейку: несколько строк/колонок из Excel или google — раскладываем
+        // вниз и вправо от ячейки (как в таблицах); одно значение — обычная вставка в поле
+        const cellElement = (event.target as HTMLElement).closest('td[data-field]') as HTMLElement | null;
+        const rowElement = cellElement?.closest('tr') as HTMLElement | null;
+        const grid = parseClipboardGrid(event.clipboardData?.getData('text/plain') ?? '');
+        if (!cellElement || !rowElement || (grid.length <= 1 && (grid[0]?.length ?? 0) <= 1)) return;
+        event.preventDefault();
+        // черновик текущей ячейки сохраняется до вставки, иначе blur позже затёр бы вставленное
+        (document.activeElement as HTMLElement | null)?.blur();
+        const fieldOrder = [DATE_KEY, ...visibleColumnsRef.current.map((column) => column.field as string)];
+        const startColumn = fieldOrder.indexOf(cellElement.dataset.field ?? '');
+        const isGhost = !rowElement.dataset.rowId;
+        const list = displayRowsRef.current;
+        const startIndex = isGhost ? list.length : Number(rowElement.dataset.rowIndex);
+        let lastDate = isGhost ? defaultNewDateRef.current : list[startIndex]?.orderDate ?? defaultNewDateRef.current;
+        const patches: Array<{ id: string; patch: DispatcherOrderPatch }> = [];
+        const creations: Array<{ date: string; patch: DispatcherOrderPatch }> = [];
+        grid.forEach((cells, rowOffset) => {
+          const patch: DispatcherOrderPatch = {};
+          cells.forEach((raw, cellOffset) => {
+            const field = fieldOrder[startColumn + cellOffset];
+            if (!field) return;
+            Object.assign(patch, cellPatchFromText(field, raw) ?? {});
+          });
+          const target = list[startIndex + rowOffset];
+          if (target) {
+            patches.push({ id: target.id, patch });
+            lastDate = patch.orderDate ?? target.orderDate;
+          } else {
+            creations.push({ date: patch.orderDate ?? lastDate, patch });
+          }
+        });
+        void applyBulkChanges(patches, creations).then(({ patched, created }) => {
+          setMessage({
+            severity: 'success',
+            text: `Вставлено: ${grid.length} стр.${patched ? ` · изменено ${patched}` : ''}${created ? ` · создано ${created}` : ''} (Ctrl+Z — отменить)`,
+          });
+        });
+        return;
+      }
       const text = event.clipboardData?.getData('text/plain') ?? '';
       const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
       if (!lines.length) return;
@@ -1102,7 +1212,168 @@ export default function DispatcherJournalPage() {
       document.removeEventListener('cut', cutHandler);
       document.removeEventListener('paste', pasteHandler);
     };
-  }, [applyTsvLine, createRow, deleteRow, patchRow, rowToTsv, undoLast]);
+  }, [applyBulkChanges, applyTsvLine, cellPatchFromText, createRow, deleteRow, patchRow, rowToTsv, undoLast]);
+
+  // ── «ручка» протягивания у активной ячейки (правый нижний угол) ──
+  const [fillHandlePos, setFillHandlePos] = useState<{ left: number; top: number } | null>(null);
+  const activeCellRef = useRef(activeCell);
+  activeCellRef.current = activeCell;
+
+  const updateFillHandle = useCallback(() => {
+    const wrap = wrapRef.current;
+    const cell = activeCellRef.current;
+    const column = cell && cell.field !== DATE_KEY ? COLUMN_BY_KEY.get(cell.field) : null;
+    if (!wrap || !cell?.rowId || (column && column.kind === 'computed')) {
+      setFillHandlePos((prev) => (prev ? null : prev));
+      return;
+    }
+    const td = wrap.querySelector(`tr[data-row-id="${cell.rowId}"] td[data-field="${cell.field}"]`) as HTMLElement | null;
+    if (!td) {
+      setFillHandlePos((prev) => (prev ? null : prev));
+      return;
+    }
+    const cellRect = td.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    const next = {
+      left: Math.round(cellRect.right - wrapRect.left + wrap.scrollLeft - 5),
+      top: Math.round(cellRect.bottom - wrapRect.top + wrap.scrollTop - 5),
+    };
+    setFillHandlePos((prev) => (prev && prev.left === next.left && prev.top === next.top ? prev : next));
+  }, []);
+
+  useLayoutEffect(() => {
+    updateFillHandle();
+  });
+
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return undefined;
+    wrap.addEventListener('scroll', updateFillHandle);
+    window.addEventListener('resize', updateFillHandle);
+    return () => {
+      wrap.removeEventListener('scroll', updateFillHandle);
+      window.removeEventListener('resize', updateFillHandle);
+    };
+  }, [updateFillHandle]);
+
+  /**
+   * Протягивание как в Excel/google: тянем квадратик вниз (или вверх) — значение
+   * копируется в строки; с зажатым Ctrl — ряд (число в конце +1, дата +1 день).
+   */
+  const startFill = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const cell = activeCellRef.current;
+    if (!cell?.rowId) return;
+    const { field } = cell;
+    const startIndex = displayRowsRef.current.findIndex((row) => row.id === cell.rowId);
+    if (startIndex < 0) return;
+    const td = wrapRef.current?.querySelector(`tr[data-row-id="${cell.rowId}"] td[data-field="${field}"]`) as HTMLElement | null;
+    const checkbox = td?.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+    const editor = td?.querySelector('input:not([type="checkbox"]), textarea') as HTMLInputElement | HTMLTextAreaElement | null;
+    const row = displayRowsRef.current[startIndex];
+    const column = COLUMN_BY_KEY.get(field);
+    // значение берём из самой ячейки: там может быть ещё не сохранённый ввод
+    const sourceText = field === DATE_KEY
+      ? row.orderDate
+      : checkbox
+        ? (checkbox.checked ? 'да' : '')
+        : editor
+          ? editor.value
+          : (column ? columnText(row, column) : '');
+    (document.activeElement as HTMLElement | null)?.blur();
+    let endIndex = startIndex;
+    let ctrlHeld = event.ctrlKey || event.metaKey;
+    document.body.classList.add('dj-filling');
+
+    const onMove = (moveEvent: MouseEvent) => {
+      const wrap = wrapRef.current;
+      if (!wrap) return;
+      ctrlHeld = ctrlHeld || moveEvent.ctrlKey || moveEvent.metaKey;
+      const rect = wrap.getBoundingClientRect();
+      if (moveEvent.clientY > rect.bottom - 28) wrap.scrollTop += 24;
+      else if (moveEvent.clientY < rect.top + 60) wrap.scrollTop -= 24;
+      const probeY = Math.min(Math.max(moveEvent.clientY, rect.top + 2), rect.bottom - 2);
+      const element = document.elementFromPoint(moveEvent.clientX, probeY) as HTMLElement | null;
+      const tr = element?.closest('tr[data-row-index]') as HTMLElement | null;
+      if (!tr) return;
+      endIndex = Number(tr.dataset.rowIndex);
+      const from = Math.min(startIndex, endIndex);
+      const to = Math.max(startIndex, endIndex);
+      setFillRange({ field, ids: new Set(displayRowsRef.current.slice(from, to + 1).map((item) => item.id)) });
+    };
+
+    const onUp = (upEvent: MouseEvent) => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.classList.remove('dj-filling');
+      setFillRange(null);
+      if (endIndex === startIndex) return;
+      const series = ctrlHeld || upEvent.ctrlKey || upEvent.metaKey;
+      const direction = endIndex > startIndex ? 1 : -1;
+      const patches: Array<{ id: string; patch: DispatcherOrderPatch }> = [];
+      for (let index = startIndex + direction, step = 1; direction > 0 ? index <= endIndex : index >= endIndex; index += direction, step += 1) {
+        const target = displayRowsRef.current[index];
+        if (!target) continue;
+        let text = sourceText;
+        if (series && sourceText) {
+          text = field === DATE_KEY ? addDaysYmd(sourceText, step * direction) : seriesValue(sourceText, step * direction);
+        }
+        const patch = cellPatchFromText(field, text);
+        if (patch) patches.push({ id: target.id, patch });
+      }
+      void applyBulkChanges(patches, []).then(({ patched }) => {
+        if (patched) {
+          setMessage({
+            severity: 'success',
+            text: `${series ? 'Заполнено рядом' : 'Скопировано'} в ${patched} стр. (Ctrl+Z — отменить)`,
+          });
+        }
+      });
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  // ── строка значения над таблицей (как строка формул в google): полный текст активной ячейки ──
+  const activeRow = activeCell?.rowId ? rows.find((row) => row.id === activeCell.rowId) ?? null : null;
+  const activeColumn = activeCell && activeCell.field !== DATE_KEY ? COLUMN_BY_KEY.get(activeCell.field) ?? null : null;
+  const activeTitle = activeCell ? (activeCell.field === DATE_KEY ? 'Дата' : activeColumn?.title ?? '') : '';
+  const activeValue = !activeCell
+    ? ''
+    : activeCell.field === DATE_KEY
+      ? (activeRow ? formatDateFull(activeRow.orderDate) : '')
+      : activeRow && activeColumn
+        ? (activeColumn.field === 'driverName' ? (activeRow.driverName ?? '') : columnText(activeRow, activeColumn))
+        : '';
+  const formulaReadOnly = !activeCell
+    || activeCell.field === DATE_KEY
+    || !activeColumn
+    || activeColumn.kind === 'computed'
+    || activeColumn.kind === 'checkbox';
+  const [formulaDraft, setFormulaDraft] = useState('');
+  const formulaFocusedRef = useRef(false);
+  useEffect(() => {
+    if (!formulaFocusedRef.current) setFormulaDraft(activeValue);
+  }, [activeValue, activeCell]);
+
+  const commitFormula = () => {
+    formulaFocusedRef.current = false;
+    if (formulaReadOnly || !activeCell || formulaDraft === activeValue) return;
+    const patch = cellPatchFromText(activeCell.field, formulaDraft);
+    if (!patch) return;
+    if (!activeCell.rowId) {
+      if (formulaDraft.trim()) void createRow(defaultNewDateRef.current, patch);
+      return;
+    }
+    const current = rowsRef.current.find((row) => row.id === activeCell.rowId);
+    if (!current) return;
+    if (activeCell.field === 'driverName' || activeCell.field === 'vehiclePlate') {
+      void saveCrewField(current, activeCell.field, String(Object.values(patch)[0] ?? ''));
+    } else {
+      patchRow(current.id, patch);
+    }
+  };
 
   const listOptions = (source: ListSource): string[] => {
     if (source === 'drivers') return driverOptions;
@@ -1135,10 +1406,10 @@ export default function DispatcherJournalPage() {
   const renderColumnCell = (row: DispatcherOrderRow, column: ColumnDef) => {
     const key = column.field;
     const pin = pinStyle(key);
-    const pinCls = pinClass(key);
+    const pinCls = `${pinClass(key)}${fillRange?.field === key && fillRange.ids.has(row.id) ? ' dj-fill-target' : ''}${activeCell?.rowId === row.id && activeCell.field === key ? ' dj-cell--active' : ''}`;
     if (column.kind === 'status') {
       return (
-        <td key={key} className={`dj-status-cell${pinCls}`} style={pin}>
+        <td key={key} data-field={key} className={`dj-status-cell${pinCls}`} style={pin}>
           <ListCell
             value={row.status}
             options={statusNames}
@@ -1152,7 +1423,7 @@ export default function DispatcherJournalPage() {
     }
     if (column.kind === 'checkbox') {
       return (
-        <td key={key} className={`dj-checkbox-cell${pinCls}`} style={pin}>
+        <td key={key} data-field={key} className={`dj-checkbox-cell${pinCls}`} style={pin}>
           <input
             type="checkbox"
             className="dj-check"
@@ -1165,14 +1436,14 @@ export default function DispatcherJournalPage() {
     if (column.kind === 'computed') {
       const amount = amountWithoutVat(row.clientRate, row.passes, row.vat);
       return (
-        <td key={key} className={`dj-computed-cell${pinCls}`} style={pin} title="(Ставка + Пропуска) без НДС">
+        <td key={key} data-field={key} className={`dj-computed-cell${pinCls}`} style={pin} title="(Ставка + Пропуска) без НДС">
           {formatMoney(amount)}
         </td>
       );
     }
     if (column.kind === 'time') {
       return (
-        <td key={key} className={pinCls.trim()} style={pin}>
+        <td key={key} data-field={key} className={pinCls.trim()} style={pin}>
           <TimeCell value={row.submitTime} onSave={(value) => patchRow(row.id, { submitTime: value || null })} />
         </td>
       );
@@ -1180,7 +1451,7 @@ export default function DispatcherJournalPage() {
     if (column.list) {
       const isCrewField = column.field === 'driverName' || column.field === 'vehiclePlate';
       return (
-        <td key={key} className={pinCls.trim()} style={pin}>
+        <td key={key} data-field={key} className={pinCls.trim()} style={pin}>
           <ListCell
             value={column.field === 'driverName' ? shortPersonName(row.driverName) : row[column.field]}
             options={listOptions(column.list)}
@@ -1195,7 +1466,7 @@ export default function DispatcherJournalPage() {
       );
     }
     return (
-      <td key={key} className={pinCls.trim()} style={pin}>
+      <td key={key} data-field={key} className={pinCls.trim()} style={pin}>
         <EditableCell
           value={row[column.field]}
           multiline={column.multiline}
@@ -1212,7 +1483,7 @@ export default function DispatcherJournalPage() {
     const pinCls = pinClass(key);
     if (column.kind === 'status') {
       return (
-        <td key={key} className={`dj-status-cell${pinCls}`} style={pin}>
+        <td key={key} data-field={key} className={`dj-status-cell${pinCls}`} style={pin}>
           <ListCell
             value=""
             options={statusNames}
@@ -1226,7 +1497,7 @@ export default function DispatcherJournalPage() {
     }
     if (column.kind === 'checkbox') {
       return (
-        <td key={key} className={`dj-checkbox-cell${pinCls}`} style={pin}>
+        <td key={key} data-field={key} className={`dj-checkbox-cell${pinCls}`} style={pin}>
           <input
             type="checkbox"
             className="dj-check"
@@ -1237,11 +1508,11 @@ export default function DispatcherJournalPage() {
       );
     }
     if (column.kind === 'computed') {
-      return <td key={key} className={`dj-computed-cell${pinCls}`} style={pin} />;
+      return <td key={key} data-field={key} className={`dj-computed-cell${pinCls}`} style={pin} />;
     }
     if (column.kind === 'time') {
       return (
-        <td key={key} className={pinCls.trim()} style={pin}>
+        <td key={key} data-field={key} className={pinCls.trim()} style={pin}>
           <TimeCell value="" onSave={(value) => { if (value) void createRow(defaultNewDate, { submitTime: value }); }} />
         </td>
       );
@@ -1249,7 +1520,7 @@ export default function DispatcherJournalPage() {
     if (column.list) {
       const isCrewField = column.field === 'driverName' || column.field === 'vehiclePlate';
       return (
-        <td key={key} className={pinCls.trim()} style={pin}>
+        <td key={key} data-field={key} className={pinCls.trim()} style={pin}>
           <ListCell
             value=""
             options={listOptions(column.list)}
@@ -1269,7 +1540,7 @@ export default function DispatcherJournalPage() {
       );
     }
     return (
-      <td key={key} className={pinCls.trim()} style={pin}>
+      <td key={key} data-field={key} className={pinCls.trim()} style={pin}>
         <EditableCell
           value=""
           multiline={column.multiline}
@@ -1430,7 +1701,43 @@ export default function DispatcherJournalPage() {
         </Box>
       </Paper>
 
+      <div className={`dj-formula${activeCell ? '' : ' dj-formula--idle'}`}>
+        <span className="dj-formula__label" title={activeTitle}>
+          {activeCell
+            ? `${activeTitle}${activeCell.rowId ? ` · стр. ${(displayRows.findIndex((row) => row.id === activeCell.rowId) + 1) || '—'}` : ' · новая заявка'}`
+            : 'Значение ячейки'}
+        </span>
+        <textarea
+          className="dj-formula__input"
+          rows={1}
+          value={formulaDraft}
+          readOnly={formulaReadOnly}
+          placeholder={activeCell ? (formulaReadOnly ? '' : 'пусто') : 'кликните в ячейку — здесь будет её полный текст'}
+          onChange={(event) => setFormulaDraft(event.target.value)}
+          onFocus={() => { formulaFocusedRef.current = true; }}
+          onBlur={commitFormula}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              (event.target as HTMLTextAreaElement).blur();
+            } else if (event.key === 'Escape') {
+              setFormulaDraft(activeValue);
+              formulaFocusedRef.current = false;
+              (event.target as HTMLTextAreaElement).blur();
+            }
+          }}
+        />
+      </div>
+
       <div className="dj-table-wrap" ref={wrapRef} onScroll={handleWrapScroll}>
+        {fillHandlePos && (
+          <div
+            className="dj-fill-handle"
+            style={{ left: fillHandlePos.left, top: fillHandlePos.top }}
+            title="Потяните вниз или вверх — скопировать значение; с Ctrl — ряд (1, 2, 3…, дата +1 день)"
+            onMouseDown={startFill}
+          />
+        )}
         {stickyDate && showDayBands && (
           <div className="dj-sticky-band" style={{ top: headerHeight * zoom }} aria-hidden="true">
             <div className="dj-band__label dj-sticky-band__inner" style={{ width: wrapWidth / zoom, zoom }}>
@@ -1453,7 +1760,16 @@ export default function DispatcherJournalPage() {
               <th aria-label="Удаление" />
             </tr>
           </thead>
-          <tbody ref={tbodyRef}>
+          <tbody
+            ref={tbodyRef}
+            onFocus={(event) => {
+              const cell = (event.target as HTMLElement).closest('td[data-field]') as HTMLElement | null;
+              const rowElement = cell?.closest('tr') as HTMLElement | null;
+              if (!cell || !rowElement) return;
+              const next = { rowId: rowElement.dataset.rowId ?? null, field: cell.dataset.field ?? '' };
+              setActiveCell((prev) => (prev?.rowId === next.rowId && prev?.field === next.field ? prev : next));
+            }}
+          >
             {windowStart > 0 && (
               <tr className="dj-spacer" aria-hidden="true"><td colSpan={visibleColumns.length + 3} style={{ height: itemOffsets[windowStart] }} /></tr>
             )}
@@ -1476,6 +1792,7 @@ export default function DispatcherJournalPage() {
               return (
                 <tr
                   key={row.id}
+                  data-row-id={row.id}
                   data-row-index={index}
                   className={classes || undefined}
                   onFocus={() => {
@@ -1534,7 +1851,11 @@ export default function DispatcherJournalPage() {
                     <span className="dj-rownum__num">{index + 1}</span>
                     {canDragRows && <DragIndicator className="dj-rownum__grip" sx={{ fontSize: 16 }} />}
                   </td>
-                  <td className={`dj-date-cell${pinClass(DATE_KEY)}`} style={pinStyle(DATE_KEY)}>
+                  <td
+                    data-field={DATE_KEY}
+                    className={`dj-date-cell${pinClass(DATE_KEY)}${fillRange?.field === DATE_KEY && fillRange.ids.has(row.id) ? ' dj-fill-target' : ''}${activeCell?.rowId === row.id && activeCell.field === DATE_KEY ? ' dj-cell--active' : ''}`}
+                    style={pinStyle(DATE_KEY)}
+                  >
                     <input
                       type="date"
                       className="dj-date-input"
@@ -1577,7 +1898,7 @@ export default function DispatcherJournalPage() {
               >
                 ＋
               </td>
-              <td className={`dj-date-cell${pinClass(DATE_KEY)}`} style={pinStyle(DATE_KEY)}>
+              <td data-field={DATE_KEY} className={`dj-date-cell${pinClass(DATE_KEY)}`} style={pinStyle(DATE_KEY)}>
                 <input
                   type="date"
                   className="dj-date-input"

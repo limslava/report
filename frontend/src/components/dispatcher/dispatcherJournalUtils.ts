@@ -175,3 +175,80 @@ export function buildOrderText(row: OrderTextSource): string {
       .map(([label, text]) => `*${label}* ${text}`.trimEnd()),
   ].join('\n');
 }
+
+/**
+ * Разбор буфера обмена из Excel / google-таблиц в сетку ячеек: колонки — табуляция,
+ * строки — перевод строки; ячейка с переносами внутри приходит в кавычках ("…", "" — кавычка).
+ * Завершающая пустая строка (Excel добавляет её в конце) отбрасывается.
+ */
+export function parseClipboardGrid(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let index = 0;
+  const source = text.replace(/\r\n?/g, '\n');
+  while (index < source.length) {
+    const char = source[index];
+    if (cell === '' && char === '"') {
+      // ячейка в кавычках: читаем до закрывающей кавычки перед \t, \n или концом
+      let end = index + 1;
+      let value = '';
+      let closed = false;
+      while (end < source.length) {
+        if (source[end] === '"') {
+          if (source[end + 1] === '"') {
+            value += '"';
+            end += 2;
+            continue;
+          }
+          const after = source[end + 1];
+          if (after === undefined || after === '\t' || after === '\n') {
+            closed = true;
+            break;
+          }
+        }
+        value += source[end];
+        end += 1;
+      }
+      if (closed) {
+        cell = value;
+        index = end + 1;
+        continue;
+      }
+    }
+    if (char === '\t') {
+      row.push(cell);
+      cell = '';
+    } else if (char === '\n') {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = '';
+    } else {
+      cell += char;
+    }
+    index += 1;
+  }
+  if (cell !== '' || row.length) {
+    row.push(cell);
+    rows.push(row);
+  }
+  return rows;
+}
+
+/** Протягивание с Ctrl: «TRZU0009» + 1 → «TRZU0010», «5» + 2 → «7»; без числа в конце — как есть. */
+export function seriesValue(value: string, step: number): string {
+  const match = /^(.*?)(\d+)(\D*)$/.exec(value);
+  if (!match) return value;
+  const [, prefix, digits, suffix] = match;
+  const next = Number(digits) + step;
+  if (next < 0) return value;
+  return `${prefix}${String(next).padStart(digits.length, '0')}${suffix}`;
+}
+
+/** Дата «YYYY-MM-DD» + дни. */
+export function addDaysYmd(value: string, days: number): string {
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day + days);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
