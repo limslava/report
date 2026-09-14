@@ -20,6 +20,9 @@ const MAX_VISIBLE = 60;
  * Лёгкая ячейка «ввод + подсказки из справочника». В отличие от MUI Autocomplete
  * не держит поппер на каждую строку: список рисуется порталом только у ячейки
  * в фокусе, поэтому таблица на тысячи строк не тормозит. Свободный ввод разрешён.
+ *
+ * Как в google-таблицах: клик только выделяет ячейку (видна «ручка» протягивания),
+ * список открывают стрелка ▾, повторный клик, Enter, ↓ или начало ввода.
  */
 export default function ListCell({ value, options, colorOf, normalize, placeholder, strict, onSave }: ListCellProps) {
   const [draft, setDraft] = useState(value ?? '');
@@ -55,6 +58,12 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
     };
   }, [open]);
 
+  const toggleList = () => {
+    setTyped(false);
+    setHighlight(Math.max(0, options.indexOf(draft)));
+    setOpen((prev) => !prev);
+  };
+
   const commit = (next: string) => {
     let normalized = normalize ? normalize(next) : next.trim();
     if (strict && normalized) {
@@ -79,7 +88,7 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
   const cellStyle = colorOf && draft ? colorOf(draft) : undefined;
 
   return (
-    <>
+    <span className="dj-list-cell">
       <input
         ref={inputRef}
         className={`dj-cell-input${cellStyle?.background ? ' dj-cell-input--chip' : ''}`}
@@ -93,11 +102,14 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
           setHighlight(0);
           setOpen(true);
         }}
+        onMouseDown={() => {
+          // повторный клик по уже выделенной ячейке — открыть/закрыть список
+          if (focusedRef.current) toggleList();
+        }}
         onFocus={() => {
           focusedRef.current = true;
           setTyped(false);
           setHighlight(Math.max(0, options.indexOf(draft)));
-          setOpen(true);
         }}
         onBlur={() => {
           focusedRef.current = false;
@@ -111,14 +123,18 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown') {
             event.preventDefault();
-            setOpen(true);
+            if (!open) {
+              toggleList();
+              return;
+            }
             setHighlight((prev) => Math.min(prev + 1, filtered.length - 1));
           } else if (event.key === 'ArrowUp') {
             event.preventDefault();
             setHighlight((prev) => Math.max(prev - 1, 0));
           } else if (event.key === 'Enter') {
             event.preventDefault();
-            if (open && typed && filtered[highlight]) choose(filtered[highlight]);
+            if (!open && !typed) toggleList();
+            else if (open && filtered[highlight]) choose(filtered[highlight]);
             else inputRef.current?.blur();
           } else if (event.key === 'Escape') {
             setDraft(value ?? '');
@@ -126,6 +142,18 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
           }
         }}
       />
+      <span
+        className="dj-list-caret"
+        aria-hidden="true"
+        onMouseDown={(event) => {
+          event.preventDefault();
+          if (!focusedRef.current) inputRef.current?.focus();
+          toggleList();
+        }}
+      >
+        ▾
+      </span>
+
       {open && rect && filtered.length > 0 && createPortal(
         <div
           className="dj-list-popup"
@@ -150,6 +178,6 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
         </div>,
         document.body,
       )}
-    </>
+    </span>
   );
 }
