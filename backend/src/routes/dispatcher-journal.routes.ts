@@ -3,6 +3,7 @@ import { body, param, query } from 'express-validator';
 import { authenticate } from '../middleware/authenticate';
 import { authorizeRole } from '../middleware/authorize';
 import { handleValidationErrors } from '../middleware/express-validator.middleware';
+import { DISPATCHER_HISTORY_ROLES } from '../services/dispatcher-history.service';
 import {
   createDispatcherDictionaryItem,
   createDispatcherOrder,
@@ -15,6 +16,7 @@ import {
   listDispatcherCrew,
   listDispatcherDictionaries,
   listDispatcherDictionaryOptions,
+  listDispatcherHistory,
   listDispatcherOrders,
   listDispatcherStatuses,
   reorderDispatcherDictionary,
@@ -68,6 +70,7 @@ router.delete(
   deleteDispatcherDictionaryItem,
 );
 router.post('/import', authorizeRole('admin'), importDispatcherOrders);
+router.get('/history', authorizeRole(...DISPATCHER_HISTORY_ROLES), listDispatcherHistory);
 router.post('/dictionaries/reorder', authorizeRole(...DISPATCHER_DICTIONARY_EDIT_ROLES), reorderDispatcherDictionary);
 router.get(
   '/orders',

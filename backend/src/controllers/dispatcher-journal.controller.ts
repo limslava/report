@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { Between } from 'typeorm';
+import { Between, In } from 'typeorm';
 import { AppDataSource } from '../config/data-source';
 import { DispatcherOrder } from '../models/dispatcher-order.model';
 import { DispatcherStatus } from '../models/dispatcher-status.model';
@@ -12,6 +12,13 @@ import {
 import { OperationsPreviewState } from '../models/operations-preview-state.model';
 import { buildDispatcherCrew } from '../services/dispatcher-crew.service';
 import { parseDispatcherWorkbook } from '../services/dispatcher-import.service';
+import {
+  HISTORY_FIELDS,
+  canViewDispatcherHistory,
+  recordDispatcherChanges,
+} from '../services/dispatcher-history.service';
+import { DispatcherOrderChange } from '../models/dispatcher-order-change.model';
+import { User } from '../models/user.model';
 import { ensureDispatcherDictionaryCatalog } from '../services/dispatcher-status-seed.service';
 import { planWebSocketService } from '../services/websocket.service';
 
@@ -157,10 +164,26 @@ export const listDispatcherOrders = async (req: Request, res: Response, next: Ne
       // порядок строк — ручной (перетаскивание), как в google-таблице отдела
       order: { position: 'ASC', createdAt: 'ASC' },
     });
+    // кто последним менял строку — только тем, кому видна история (подсказка на № строки)
+    if (canViewDispatcherHistory(req.user?.role)) {
+      const names = await userNamesById(orders.map((order) => order.updatedBy ?? order.createdBy));
+      res.json(orders.map((order) => ({
+        ...serializeOrder(order),
+        lastEditorName: names.get(order.updatedBy ?? order.createdBy ?? '') ?? null,
+      })));
+      return;
+    }
     res.json(orders.map(serializeOrder));
   } catch (error) {
     next(error);
   }
+};
+
+const userNamesById = async (ids: Array<string | null | undefined>): Promise<Map<string, string>> => {
+  const unique = [...new Set(ids.filter((id): id is string => Boolean(id)))];
+  if (!unique.length) return new Map();
+  const users = await AppDataSource.getRepository(User).find({ where: { id: In(unique) } });
+  return new Map(users.map((user) => [user.id, user.fullName]));
 };
 
 /** Позиция строки из запроса (перетаскивание, восстановление по Ctrl+Z). */
@@ -189,6 +212,7 @@ export const createDispatcherOrder = async (req: Request, res: Response, next: N
       }
     });
     const saved = await orderRepository.save(order);
+    await recordDispatcherChanges([{ action: 'create', order: saved, userId: req.user?.id }]);
     planWebSocketService.notifyDispatcherJournalUpdated({ date, userId: req.user?.id });
     res.status(201).json(serializeOrder(saved));
   } catch (error) {
@@ -211,6 +235,7 @@ export const createDispatcherOrdersBatch = async (req: Request, res: Response, n
       updatedBy: req.user?.id ?? null,
     }));
     const saved = await orderRepository.save(orders);
+    await recordDispatcherChanges(saved.map((item) => ({ action: 'create' as const, order: item, userId: req.user?.id })));
     planWebSocketService.notifyDispatcherJournalUpdated({ date, userId: req.user?.id });
     res.status(201).json(saved.map(serializeOrder));
   } catch (error) {
@@ -231,6 +256,7 @@ export const updateDispatcherOrder = async (req: Request, res: Response, next: N
     const patch = (req.body ?? {}) as Record<string, unknown>;
     let changed = false;
     const previousDate = order.orderDate;
+    const before = { ...order };
     if (typeof patch.orderDate === 'string' && DATE_PATTERN.test(patch.orderDate) && patch.orderDate !== order.orderDate) {
       order.orderDate = patch.orderDate;
       changed = true;
@@ -259,6 +285,21 @@ export const updateDispatcherOrder = async (req: Request, res: Response, next: N
     if (changed) {
       order.updatedBy = req.user?.id ?? null;
       await orderRepository.save(order);
+      const fieldChanges: Parameters<typeof recordDispatcherChanges>[0] = HISTORY_FIELDS
+        .filter((field) => (before as any)[field] !== (order as any)[field])
+        .map((field) => ({
+          action: 'update' as const,
+          order: before,
+          field,
+          oldValue: (before as any)[field],
+          newValue: (order as any)[field],
+          userId: req.user?.id,
+        }));
+      // перетаскивание строки — одна запись «перенос», без чисел позиции
+      if (before.position !== order.position && fieldChanges.length === 0) {
+        fieldChanges.push({ action: 'move', order: before, userId: req.user?.id });
+      }
+      await recordDispatcherChanges(fieldChanges);
       planWebSocketService.notifyDispatcherJournalUpdated({ date: order.orderDate, userId: req.user?.id });
       if (previousDate !== order.orderDate) {
         planWebSocketService.notifyDispatcherJournalUpdated({ date: previousDate, userId: req.user?.id });
@@ -279,8 +320,10 @@ export const deleteDispatcherOrder = async (req: Request, res: Response, next: N
       error.statusCode = 404;
       throw error;
     }
+    const snapshot = { id: order.id, orderDate: order.orderDate, ktkNumber: order.ktkNumber, client: order.client };
     await orderRepository.remove(order);
-    planWebSocketService.notifyDispatcherJournalUpdated({ date: order.orderDate, userId: req.user?.id });
+    await recordDispatcherChanges([{ action: 'delete', order: snapshot, userId: req.user?.id }]);
+    planWebSocketService.notifyDispatcherJournalUpdated({ date: snapshot.orderDate, userId: req.user?.id });
     res.json({ message: 'Строка удалена' });
   } catch (error) {
     next(error);
@@ -618,6 +661,13 @@ export const importDispatcherOrders = async (req: Request, res: Response, next: 
       }
     });
     // терминалы для выпадающих списков — из импортированных заявок (если справочник ещё пуст)
+    await recordDispatcherChanges([{
+      action: 'import',
+      field: null,
+      oldValue: `удалено заявок: ${existingTotal}`,
+      newValue: `загружено заявок: ${orders.length} (${from.split('-').reverse().join('.')} — ${to.split('-').reverse().join('.')})`,
+      userId: req.user?.id,
+    }]);
     await ensureDispatcherDictionaryCatalog().catch(() => undefined);
     const months = new Set([
       ...dates.map((date) => `${date.slice(0, 7)}-01`),
@@ -625,6 +675,59 @@ export const importDispatcherOrders = async (req: Request, res: Response, next: 
     ]);
     months.forEach((date) => planWebSocketService.notifyDispatcherJournalUpdated({ date, userId: req.user?.id }));
     res.json({ ...summary, imported: orders.length, deleted: existingTotal });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * История изменений реестра (администратор, руководитель КТК): фильтры —
+ * период изменений (from/to), сотрудник (userId), заявка (orderId), поиск по
+ * КТК/клиенту (q); постранично (before = createdAt последней записи).
+ */
+export const listDispatcherHistory = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));
+    const query = AppDataSource.getRepository(DispatcherOrderChange)
+      .createQueryBuilder('c')
+      .orderBy('c.created_at', 'DESC')
+      .addOrderBy('c.id', 'DESC')
+      .take(limit + 1);
+    if (typeof req.query.from === 'string' && DATE_PATTERN.test(req.query.from)) {
+      query.andWhere('c.created_at >= :from', { from: `${req.query.from} 00:00:00` });
+    }
+    if (typeof req.query.to === 'string' && DATE_PATTERN.test(req.query.to)) {
+      query.andWhere("c.created_at < (CAST(:to AS date) + interval '1 day')", { to: req.query.to });
+    }
+    if (typeof req.query.userId === 'string' && req.query.userId) query.andWhere('c.user_id = :userId', { userId: req.query.userId });
+    if (typeof req.query.orderId === 'string' && req.query.orderId) query.andWhere('c.order_id = :orderId', { orderId: req.query.orderId });
+    if (typeof req.query.q === 'string' && req.query.q.trim()) {
+      query.andWhere('(c.ktk_number ILIKE :q OR c.client ILIKE :q)', { q: `%${req.query.q.trim()}%` });
+    }
+    if (typeof req.query.before === 'string' && req.query.before) {
+      const before = new Date(req.query.before);
+      if (!Number.isNaN(before.getTime())) query.andWhere('c.created_at < :before', { before });
+    }
+    const rows = await query.getMany();
+    const page = rows.slice(0, limit);
+    const names = await userNamesById(page.map((row) => row.userId));
+    res.json({
+      items: page.map((row) => ({
+        id: row.id,
+        orderId: row.orderId,
+        action: row.action,
+        field: row.field,
+        oldValue: row.oldValue,
+        newValue: row.newValue,
+        orderDate: row.orderDate,
+        ktkNumber: row.ktkNumber,
+        client: row.client,
+        userId: row.userId,
+        userName: row.userId ? names.get(row.userId) ?? null : null,
+        createdAt: row.createdAt.toISOString(),
+      })),
+      nextBefore: rows.length > limit ? page[page.length - 1].createdAt.toISOString() : null,
+    });
   } catch (error) {
     next(error);
   }

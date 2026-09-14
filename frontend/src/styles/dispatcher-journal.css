@@ -683,3 +683,16 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
   box-shadow: 0 3px 6px -3px rgba(63, 50, 0, 0.35);
   display: flex;
 }
+
+/* ── окно истории изменений ── */
+.dj-history { max-height: 60vh; overflow: auto; border: 1px solid #e1e4ea; border-radius: 8px; }
+.dj-history table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 12px; }
+.dj-history th { position: sticky; top: 0; background: #f4f6f9; text-align: left; padding: 6px 8px; border-bottom: 1px solid #d8dde5; font-weight: 650; color: #3d4757; }
+.dj-history td { padding: 5px 8px; border-bottom: 1px solid #eef1f5; vertical-align: top; white-space: pre-wrap; word-break: break-word; }
+.dj-history__what { font-weight: 600; }
+.dj-history__old { color: #9b2c2c; text-decoration: line-through; text-decoration-color: rgba(155, 44, 44, 0.45); }
+.dj-history__new { color: #1e6b36; }
+.dj-history__row--create td { background: #f3faf1; }
+.dj-history__row--delete td { background: #fdf1f1; }
+.dj-history__row--import td { background: #fff8db; }
+.dj-history__empty { text-align: center; color: #8b93a1; padding: 18px !important; }
