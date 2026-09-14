@@ -329,9 +329,9 @@ const WarehouseClientsPanel = forwardRef<WarehouseClientsPanelHandle, WarehouseC
                 <TableCell>{client.isActive ? 'Активен' : 'Отключён'}</TableCell>
                 <TableCell
                   sx={client.individualTariffsCount ? { color: '#1d4ed8', fontWeight: 700 } : undefined}
-                  title={client.individualTariffsCount ? 'Есть индивидуальные цены — см. «Услуги и тарифы»' : undefined}
+                  title={client.individualTariffsCount ? 'У клиента есть свой прайс — см. «Услуги и тарифы»' : undefined}
                 >
-                  {client.individualTariffsCount ? 'Индивидуальные' : 'Базовые'}
+                  {client.individualTariffsCount ? 'Свой прайс' : 'Базовый'}
                 </TableCell>
                 <TableCell>{client.notes || '—'}</TableCell>
               </TableRow>

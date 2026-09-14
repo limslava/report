@@ -99,10 +99,17 @@ export interface WarehouseTariff {
   isIndividual?: boolean;
 }
 
-export interface WarehouseClientTariff extends WarehouseTariff {
-  serviceId: string;
-  serviceName: string;
-  unit: WarehouseServiceUnit;
+/** Версия прайса клиента: полный набор ставок, действующий с одной даты. */
+export interface WarehouseClientPriceList {
+  validFrom: string;
+  validTo: string | null;
+  items: Array<{
+    serviceId: string;
+    serviceName: string;
+    unit: WarehouseServiceUnit;
+    vehicleType: WarehouseVehicleType;
+    price: number;
+  }>;
 }
 
 export interface WarehouseServiceDefinition {
@@ -396,15 +403,20 @@ export const getWarehouseServices = (onDate?: string, counterpartyId?: string | 
     params: { onDate: onDate || undefined, counterpartyId: counterpartyId || undefined },
   });
 
-export const getWarehouseClientTariffs = (counterpartyId?: string | null) =>
-  api.get<WarehouseClientTariff[]>('/warehouse/client-tariffs', {
-    params: { counterpartyId: counterpartyId || undefined },
-  });
+export const getWarehouseClientPriceLists = (counterpartyId: string) =>
+  api.get<WarehouseClientPriceList[]>('/warehouse/client-price-lists', { params: { counterpartyId } });
 
-export const endWarehouseClientTariff = (
-  serviceId: string,
-  payload: { counterpartyId: string; vehicleType: WarehouseVehicleType; fromDate: string },
-) => api.post<{ removed: number; closed: number }>(`/warehouse/services/${serviceId}/client-tariffs/end`, payload);
+export const saveWarehouseClientPriceList = (payload: {
+  counterpartyId: string;
+  validFrom: string;
+  prices: Array<{ serviceId: string; vehicleType: WarehouseVehicleType; price: number }>;
+}) => api.post<{ validFrom: string; validTo: string | null; positions: number; closedPrevious: boolean }>(
+  '/warehouse/client-price-lists',
+  payload,
+);
+
+export const endWarehouseClientPriceList = (payload: { counterpartyId: string; fromDate: string }) =>
+  api.post<{ removedVersions: number; closedPositions: number }>('/warehouse/client-price-lists/end', payload);
 
 export const updateWarehouseService = (
   serviceId: string,
@@ -413,7 +425,7 @@ export const updateWarehouseService = (
 
 export const createWarehouseTariff = (
   serviceId: string,
-  payload: { vehicleType: WarehouseVehicleType; price: number; validFrom: string; counterpartyId?: string | null },
+  payload: { vehicleType: WarehouseVehicleType; price: number; validFrom: string },
 ) => api.post<WarehouseTariff>(`/warehouse/services/${serviceId}/tariffs`, payload);
 
 export const getWarehousePerformedServices = (vehicleId: string) =>

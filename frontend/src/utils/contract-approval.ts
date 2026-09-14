@@ -86,10 +86,12 @@ export function formatDateOnly(value: string | null): string {
 export function formatContractTypeLabel(
   contractType: 'expense' | 'income',
   incomeSubtype: 'standard' | 'with_psr' | null,
-  incomeKind?: 'teu' | 'agency' | null,
+  incomeKind?: 'teu' | 'agency' | 'storage' | null,
 ): string {
   if (contractType === 'expense') return 'Расходный';
-  const kindLabel = incomeKind === 'agency' ? 'Агентский' : 'ТЭУ';
+  const kindLabel = incomeKind === 'storage'
+    ? 'Договор хранения'
+    : incomeKind === 'agency' ? 'Агентский' : 'ТЭУ';
   const psrLabel = incomeSubtype === 'with_psr' ? 'с ПСР' : 'без ПСР';
   return `Доходный · ${kindLabel} (${psrLabel})`;
 }

@@ -1,4 +1,4 @@
-import { Contract, ContractIncomeSubtype, ContractStatus, ContractType } from '../models/contract.model';
+import { Contract, ContractIncomeKind, ContractIncomeSubtype, ContractStatus, ContractType } from '../models/contract.model';
 import { ContractApprovalDecision, ContractApprovalStep } from '../models/contract-approval-step.model';
 import {
   arePreSecretaryApprovalsComplete,
@@ -65,6 +65,20 @@ describe('contract approval route service', () => {
       contractType: ContractType.INCOME,
       incomeSubtype: null,
     }))).toEqual(['security', 'secretary']);
+  });
+
+  it('sends storage contracts through the full route with and without PSR (no template yet)', () => {
+    const fullRoute = ['security', 'lawyer', 'chief_accountant', 'financer', 'secretary'];
+    expect(buildContractApprovalRouteRoles(contract({
+      contractType: ContractType.INCOME,
+      incomeKind: ContractIncomeKind.STORAGE,
+      incomeSubtype: ContractIncomeSubtype.STANDARD,
+    }))).toEqual(fullRoute);
+    expect(buildContractApprovalRouteRoles(contract({
+      contractType: ContractType.INCOME,
+      incomeKind: ContractIncomeKind.STORAGE,
+      incomeSubtype: ContractIncomeSubtype.WITH_PSR,
+    }))).toEqual(fullRoute);
   });
 
   it('treats every non-secretary step as the pre-secretary approval block', () => {

@@ -95,7 +95,8 @@ export function ContractWizard({
 }: ContractWizardProps) {
   const isIncomeContract = wizard.contractType === 'income';
   const isAddendum = wizard.documentKind === 'addendum';
-  const isGeneratedIncomeContract = isIncomeContract && !importSigned && !isAddendum;
+  const isStorageContract = isIncomeContract && wizard.incomeKind === 'storage';
+  const isGeneratedIncomeContract = isIncomeContract && !isStorageContract && !importSigned && !isAddendum;
 
   return (
     <Dialog
@@ -258,6 +259,7 @@ export function ContractWizard({
                 >
                   <MenuItem value="teu">ТЭУ</MenuItem>
                   <MenuItem value="agency">Агентский</MenuItem>
+                  <MenuItem value="storage">Договор хранения (без шаблона)</MenuItem>
                 </Select>
               </FormControl>
             )}
@@ -331,10 +333,17 @@ export function ContractWizard({
 
         {step === 5 && (
           <Stack spacing={2} sx={{ mt: 1 }}>
-            {isIncomeContract && !importSigned && !isAddendum ? (
+            {isGeneratedIncomeContract ? (
               <Alert severity="info">
                 Номер доходного договора будет присвоен автоматически при отправке.
               </Alert>
+            ) : isStorageContract && !importSigned && !isAddendum ? (
+              <TextField
+                label="№ договора хранения"
+                value={wizard.contractNumber}
+                onChange={(event) => setWizard({ ...wizard, contractNumber: event.target.value })}
+                helperText="Если номер уже есть в вашем файле договора — укажите его. Пусто — номер присвоится автоматически."
+              />
             ) : (
               <TextField
                 label={isAddendum ? '№ доп. соглашения' : '№ договора'}
@@ -467,9 +476,15 @@ export function ContractWizard({
         {step === 6 && (
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Typography variant="body1">Приложите файлы договора (можно перетащить в область ниже)</Typography>
-            {isIncomeContract && wizard.psrMode === 'with_psr' && !importSigned && !isAddendum && (
+            {isGeneratedIncomeContract && wizard.psrMode === 'with_psr' && (
               <Alert severity="info">
                 Договор будет сформирован автоматически по проформе. Здесь приложите ПСР клиента и другие сопроводительные файлы.
+              </Alert>
+            )}
+            {isStorageContract && !importSigned && !isAddendum && (
+              <Alert severity="warning">
+                Шаблона договора хранения пока нет — обязательно приложите файл договора
+                {wizard.psrMode === 'with_psr' ? ' и ПСР клиента' : ''}. Договор хранения согласуется полным маршрутом: СБ, юрист, бухгалтерия, финансист.
               </Alert>
             )}
             <Box

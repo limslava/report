@@ -1,4 +1,4 @@
-import { Contract, ContractIncomeSubtype, ContractStatus, ContractType } from '../models/contract.model';
+import { Contract, ContractIncomeKind, ContractIncomeSubtype, ContractStatus, ContractType } from '../models/contract.model';
 import { ContractApprovalDecision, ContractApprovalStep } from '../models/contract-approval-step.model';
 import { CONTRACT_PRE_SECRETARY_APPROVAL_ROLES } from '../constants/contract-approval';
 
@@ -10,7 +10,14 @@ export type ContractFlowMeta = {
 };
 
 export function buildContractApprovalRouteRoles(contract: Contract): string[] {
-  if (contract.contractType === ContractType.INCOME && contract.incomeSubtype !== ContractIncomeSubtype.WITH_PSR) {
+  // Короткий маршрут (СБ → офис-менеджер) — только для доходных по утверждённой
+  // проформе без ПСР. Договор хранения пока без проформы: текст приходит файлом,
+  // поэтому идёт полным маршрутом с юристом, бухгалтерией и финансистом.
+  if (
+    contract.contractType === ContractType.INCOME
+    && contract.incomeSubtype !== ContractIncomeSubtype.WITH_PSR
+    && contract.incomeKind !== ContractIncomeKind.STORAGE
+  ) {
     return ['security', 'secretary'];
   }
   return [...CONTRACT_PRE_SECRETARY_APPROVAL_ROLES, 'secretary'];

@@ -173,7 +173,7 @@ export const syncWorkCalendar = (year: number, source: 'isdayoff' | 'weekend-def
   api.post('/contracts/work-calendar/sync', null, { params: { year, source } });
 export const upsertWorkCalendarDay = (date: string, payload: { isWorkday: boolean; comment?: string | null }) =>
   api.put(`/contracts/work-calendar/${date}`, payload);
-export const getContractDuplicates = (params: { inn: string; contractType: 'expense' | 'income'; incomeKind?: 'teu' | 'agency' | null }) =>
+export const getContractDuplicates = (params: { inn: string; contractType: 'expense' | 'income'; incomeKind?: 'teu' | 'agency' | 'storage' | null }) =>
   api.get('/contracts/duplicates', { params });
 export const resolveCounterpartyByInn = (inn: string) => api.get('/counterparties/resolve', { params: { inn } });
 export const resolveCounterpartyByName = (name: string) => api.get('/counterparties/resolve-by-name', { params: { name } });
@@ -193,7 +193,7 @@ export const createContract = (data: {
   parentContractRef?: string | null;
   contractType: 'expense' | 'income';
   incomeSubtype?: 'standard' | 'with_psr' | null;
-  incomeKind?: 'teu' | 'agency' | null;
+  incomeKind?: 'teu' | 'agency' | 'storage' | null;
   counterpartyName: string;
   counterpartyShortName?: string | null;
   ownershipForm?: string | null;

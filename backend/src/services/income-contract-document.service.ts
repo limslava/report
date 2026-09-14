@@ -22,7 +22,9 @@ type GeneratedContractDocument = {
 
 function isGeneratedIncomeContract(contract: Contract): boolean {
   return contract.contractType === ContractType.INCOME
-    && contract.documentKind !== ContractDocumentKind.ADDENDUM;
+    && contract.documentKind !== ContractDocumentKind.ADDENDUM
+    // договор хранения пока без проформы: файл прикладывает инициатор
+    && contract.incomeKind !== ContractIncomeKind.STORAGE;
 }
 
 export function shouldGenerateIncomeStandardContract(contract: Contract): boolean {

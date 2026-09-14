@@ -13,6 +13,8 @@ import {
   Contract,
   ContractDocumentKind,
   ContractIncomeKind,
+  contractIncomeKindSubject,
+  normalizeContractIncomeKind,
   ContractIncomeSubtype,
   ContractSigningMethod,
   ContractStatus,
@@ -748,7 +750,9 @@ function formatPdfDateTime(value: Date | string | null | undefined): string {
 
 function formatPdfContractType(contract: Contract): string {
   if (contract.contractType === ContractType.EXPENSE) return 'Расходный';
-  const kindLabel = contract.incomeKind === ContractIncomeKind.AGENCY ? 'Агентский' : 'ТЭУ';
+  const kindLabel = contract.incomeKind === ContractIncomeKind.STORAGE
+    ? 'Договор хранения'
+    : contract.incomeKind === ContractIncomeKind.AGENCY ? 'Агентский' : 'ТЭУ';
   const psrLabel = contract.incomeSubtype === ContractIncomeSubtype.WITH_PSR ? 'с ПСР' : 'без ПСР';
   return `Доходный · ${kindLabel} (${psrLabel})`;
 }
@@ -1230,9 +1234,7 @@ export const findContractDuplicates = async (req: Request, res: Response, next: 
       contractType,
     };
     if (contractType === ContractType.INCOME) {
-      duplicateWhere.incomeKind = rawIncomeKind === 'agency'
-        ? ContractIncomeKind.AGENCY
-        : ContractIncomeKind.TEU;
+      duplicateWhere.incomeKind = normalizeContractIncomeKind(rawIncomeKind);
     }
 
     const duplicates = await contractRepository.find({
@@ -1876,10 +1878,10 @@ export const createContract = async (req: Request, res: Response, next: NextFunc
 
     const normalizedIncomeSubtype = contractType === ContractType.INCOME ? (incomeSubtype ?? ContractIncomeSubtype.STANDARD) : null;
     const normalizedIncomeKind = contractType === ContractType.INCOME
-      ? (incomeKind === 'agency' ? ContractIncomeKind.AGENCY : ContractIncomeKind.TEU)
+      ? normalizeContractIncomeKind(incomeKind)
       : null;
     const normalizedSubject = contractType === ContractType.INCOME
-      ? (normalizedIncomeKind === ContractIncomeKind.AGENCY ? 'Агентский' : 'ТЭУ')
+      ? contractIncomeKindSubject(normalizedIncomeKind)
       : (subject?.trim() || null);
     const parsedContractDate = contractDate
       ? new Date(contractDate)
@@ -2091,9 +2093,7 @@ export const importSignedContract = async (req: Request, res: Response, next: Ne
         contractType,
       };
       if (contractType === ContractType.INCOME) {
-        sameKindWhere.incomeKind = incomeKind === 'agency'
-          ? ContractIncomeKind.AGENCY
-          : ContractIncomeKind.TEU;
+        sameKindWhere.incomeKind = normalizeContractIncomeKind(incomeKind);
       }
       const duplicates = await contractRepository.find({
         where: [
@@ -2123,10 +2123,10 @@ export const importSignedContract = async (req: Request, res: Response, next: Ne
       ? (incomeSubtype ?? ContractIncomeSubtype.STANDARD)
       : null;
     const normalizedIncomeKind = contractType === ContractType.INCOME
-      ? (incomeKind === 'agency' ? ContractIncomeKind.AGENCY : ContractIncomeKind.TEU)
+      ? normalizeContractIncomeKind(incomeKind)
       : null;
     const normalizedSubject = contractType === ContractType.INCOME
-      ? (normalizedIncomeKind === ContractIncomeKind.AGENCY ? 'Агентский' : 'ТЭУ')
+      ? contractIncomeKindSubject(normalizedIncomeKind)
       : (subject?.trim() || null);
     const normalizedPsrFlag = contractType === ContractType.INCOME && normalizedIncomeSubtype === ContractIncomeSubtype.WITH_PSR
       ? true
@@ -2292,10 +2292,10 @@ export const updateDraftContract = async (req: Request, res: Response, next: Nex
       ? (incomeSubtype ?? ContractIncomeSubtype.STANDARD)
       : null;
     const normalizedIncomeKind = contractType === ContractType.INCOME
-      ? (incomeKind === 'agency' ? ContractIncomeKind.AGENCY : ContractIncomeKind.TEU)
+      ? normalizeContractIncomeKind(incomeKind)
       : null;
     const normalizedSubject = contractType === ContractType.INCOME
-      ? (normalizedIncomeKind === ContractIncomeKind.AGENCY ? 'Агентский' : 'ТЭУ')
+      ? contractIncomeKindSubject(normalizedIncomeKind)
       : (subject?.trim() || null);
     contract.contractNumber = normalizeNullableString(contractNumber)
       ?? contract.contractNumber
@@ -3292,6 +3292,21 @@ export const startContractApproval = async (req: Request, res: Response, next: N
     const revisionNo = contract.status === ContractStatus.REWORK
       ? getLatestApprovalRevision(existingRouteSteps) + 1
       : 1;
+    if (
+      contract.contractType === ContractType.INCOME
+      && contract.incomeKind === ContractIncomeKind.STORAGE
+      && contract.documentKind !== ContractDocumentKind.ADDENDUM
+    ) {
+      // проформы договора хранения пока нет — без приложенного файла согласовывать нечего
+      const contractFilesCount = await attachmentRepository.count({
+        where: { contractId: contract.id, approvalStepId: IsNull(), revisionNo },
+      });
+      if (!contractFilesCount) {
+        const error: any = new Error('Приложите файл договора хранения — шаблона для автоматического формирования пока нет');
+        error.statusCode = 400;
+        throw error;
+      }
+    }
     if (contract.status === ContractStatus.REWORK) {
       const revisedFilesCount = await attachmentRepository.count({
         where: { contractId: contract.id, approvalStepId: IsNull(), revisionNo },

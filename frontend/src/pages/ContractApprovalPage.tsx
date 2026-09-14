@@ -269,7 +269,7 @@ export default function ContractApprovalPage() {
     counterpartyInn: '',
     contractType: 'expense' as 'expense' | 'income',
     psrMode: 'without_psr' as 'with_psr' | 'without_psr',
-    incomeKind: 'teu' as 'teu' | 'agency',
+    incomeKind: 'teu' as 'teu' | 'agency' | 'storage',
     contractNumber: '',
     subject: '',
     contractDate: '',
@@ -281,7 +281,12 @@ export default function ContractApprovalPage() {
   const isWizardInnInvalidLength = wizardInnInput.length > 0 && !isWizardInnValidLength;
   const isIncomeContractWizard = wizard.contractType === 'income';
   const isIncomeWithoutPsrWizard = isIncomeContractWizard && wizard.psrMode === 'without_psr';
-  const shouldGenerateIncomeWizard = isIncomeContractWizard && wizard.documentKind !== 'addendum' && !wizardImportSigned;
+  // договор хранения пока без проформы: документ не формируется, файл прикладывает инициатор
+  const isStorageContractWizard = isIncomeContractWizard && wizard.incomeKind === 'storage';
+  const shouldGenerateIncomeWizard = isIncomeContractWizard
+    && !isStorageContractWizard
+    && wizard.documentKind !== 'addendum'
+    && !wizardImportSigned;
   const normalizedWizardInn = wizard.counterpartyInn.trim();
   const masterContractOptions = contracts
     .filter((contract) => (
@@ -540,7 +545,7 @@ export default function ContractApprovalPage() {
       counterpartyForm: (draft.counterpartyForm || '') as ContractWizardForm['counterpartyForm'],
       contractType: draft.contractType,
       psrMode: draft.incomeSubtype === 'with_psr' || draft.psrFlag ? 'with_psr' : 'without_psr',
-      incomeKind: draft.incomeKind === 'agency' ? 'agency' : 'teu',
+      incomeKind: draft.incomeKind === 'agency' || draft.incomeKind === 'storage' ? draft.incomeKind : 'teu',
       contractNumber: draft.contractNumber,
       subject: draft.subject || '',
       contractDate: draft.contractDate || '',
@@ -640,7 +645,7 @@ export default function ContractApprovalPage() {
     resetWizard();
   };
 
-  const requiresAttachmentStep = () => wizardImportSigned || !isIncomeWithoutPsrWizard;
+  const requiresAttachmentStep = () => wizardImportSigned || isStorageContractWizard || !isIncomeWithoutPsrWizard;
 
   const appendWizardFiles = (files: File[]) => {
     if (!files.length) return;
@@ -820,9 +825,9 @@ export default function ContractApprovalPage() {
         parentContractRef: wizard.documentKind === 'addendum' && !wizard.parentContractId
           ? wizard.parentContractRef.trim() || null
           : null,
-        contractNumber: isIncomeContractWizard && !wizardImportSigned && wizard.documentKind !== 'addendum'
+        contractNumber: shouldGenerateIncomeWizard
           ? null
-          : wizard.contractNumber.trim(),
+          : wizard.contractNumber.trim() || (isStorageContractWizard ? null : ''),
         contractType: wizard.contractType,
         incomeSubtype: wizard.contractType === 'income'
           ? (wizard.psrMode === 'with_psr' ? 'with_psr' : 'standard')
@@ -854,6 +859,10 @@ export default function ContractApprovalPage() {
       };
       if (wizardImportSigned && !wizardFiles.length && !wizardExistingFiles.length) {
         setError('Для импорта подписанного договора приложите файл договора');
+        return;
+      }
+      if (isStorageContractWizard && wizard.documentKind !== 'addendum' && !wizardFiles.length && !wizardExistingFiles.length) {
+        setError('Приложите файл договора хранения — шаблона для автоматического формирования пока нет');
         return;
       }
       const filesPayload = wizardFiles.length ? await Promise.all(wizardFiles.map(fileToUploadPayload)) : [];

@@ -50,8 +50,9 @@ import {
 import {
   correctWarehousePerformedService,
   createWarehouseTariff,
-  endWarehouseClientTariff,
-  listWarehouseClientTariffs,
+  endWarehouseClientPriceList,
+  listWarehouseClientPriceLists,
+  saveWarehouseClientPriceList,
   listWarehousePerformedServices,
   listWarehouseServices,
   performWarehouseService,
@@ -245,24 +246,37 @@ router.get(
 );
 
 router.get(
-  '/client-tariffs',
+  '/client-price-lists',
   authorizeRole(...WAREHOUSE_FINANCE_VIEW_ROLES),
-  [query('counterpartyId').optional({ checkFalsy: true }).isUUID()],
+  [query('counterpartyId').isUUID()],
   handleValidationErrors,
-  listWarehouseClientTariffs,
+  listWarehouseClientPriceLists,
 );
 
 router.post(
-  '/services/:serviceId/client-tariffs/end',
+  '/client-price-lists',
   authorizeRole(...WAREHOUSE_CLIENT_TARIFF_MANAGEMENT_ROLES),
   [
-    param('serviceId').isUUID(),
     body('counterpartyId').isUUID(),
-    body('vehicleType').isIn(WAREHOUSE_VEHICLE_TYPES),
+    body('validFrom').isISO8601({ strict: true }),
+    body('prices').isArray({ max: 2000 }),
+    body('prices.*.serviceId').isUUID(),
+    body('prices.*.vehicleType').isIn(WAREHOUSE_VEHICLE_TYPES),
+    body('prices.*.price').isFloat({ min: 0, max: 1000000000 }),
+  ],
+  handleValidationErrors,
+  saveWarehouseClientPriceList,
+);
+
+router.post(
+  '/client-price-lists/end',
+  authorizeRole(...WAREHOUSE_CLIENT_TARIFF_MANAGEMENT_ROLES),
+  [
+    body('counterpartyId').isUUID(),
     body('fromDate').isISO8601({ strict: true }),
   ],
   handleValidationErrors,
-  endWarehouseClientTariff,
+  endWarehouseClientPriceList,
 );
 
 router.patch(
@@ -288,7 +302,6 @@ router.post(
     body('vehicleType').isIn(WAREHOUSE_VEHICLE_TYPES),
     body('price').isFloat({ min: 0, max: 1000000000 }),
     body('validFrom').isISO8601({ strict: true }),
-    body('counterpartyId').optional({ nullable: true, checkFalsy: true }).isUUID(),
   ],
   handleValidationErrors,
   createWarehouseTariff,

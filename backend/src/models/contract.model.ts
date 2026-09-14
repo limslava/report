@@ -33,11 +33,26 @@ export enum ContractIncomeSubtype {
   WITH_PSR = 'with_psr',
 }
 
-// Вид доходного договора: ТЭУ (транспортно-экспедиционные услуги) или Агентский.
-// Ортогонально ПСР (incomeSubtype). Для расходных — null.
+// Вид доходного договора: ТЭУ (транспортно-экспедиционные услуги), Агентский
+// или Договор хранения (склад ТС, пока без проформы — файл прикладывает
+// инициатор). Ортогонально ПСР (incomeSubtype). Для расходных — null.
 export enum ContractIncomeKind {
   TEU = 'teu',
   AGENCY = 'agency',
+  STORAGE = 'storage',
+}
+
+export function normalizeContractIncomeKind(value: unknown): ContractIncomeKind {
+  if (value === ContractIncomeKind.AGENCY) return ContractIncomeKind.AGENCY;
+  if (value === ContractIncomeKind.STORAGE) return ContractIncomeKind.STORAGE;
+  return ContractIncomeKind.TEU;
+}
+
+/** Предмет доходного договора по виду (показывается в реестре). */
+export function contractIncomeKindSubject(kind: ContractIncomeKind | null): string {
+  if (kind === ContractIncomeKind.AGENCY) return 'Агентский';
+  if (kind === ContractIncomeKind.STORAGE) return 'Хранение';
+  return 'ТЭУ';
 }
 
 export enum ContractSigningMethod {

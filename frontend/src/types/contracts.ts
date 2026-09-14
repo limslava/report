@@ -14,7 +14,7 @@ export type ContractRecord = {
   parentContractRef?: string | null;
   contractType: 'expense' | 'income';
   incomeSubtype: 'standard' | 'with_psr' | null;
-  incomeKind: 'teu' | 'agency' | null;
+  incomeKind: 'teu' | 'agency' | 'storage' | null;
   counterpartyName: string;
   counterpartyShortName: string | null;
   counterpartyForm: CounterpartyFormRef['code'] | null;
@@ -76,7 +76,7 @@ export type ContractWizardForm = {
   counterpartyForm: CounterpartyFormRef['code'] | '';
   contractType: 'expense' | 'income';
   psrMode: 'with_psr' | 'without_psr';
-  incomeKind: 'teu' | 'agency';
+  incomeKind: 'teu' | 'agency' | 'storage';
   contractNumber: string;
   subject: string;
   contractDate: string;
@@ -176,7 +176,7 @@ export type ApprovalSheet = {
     parentContractRef?: string | null;
     contractType: 'expense' | 'income';
     incomeSubtype: 'standard' | 'with_psr' | null;
-    incomeKind: 'teu' | 'agency' | null;
+    incomeKind: 'teu' | 'agency' | 'storage' | null;
     counterpartyName: string;
     counterpartyShortName: string | null;
     counterpartyInn: string;
@@ -230,7 +230,7 @@ export type SecurityInboxItem = {
   counterpartyInn: string;
   contractType: 'expense' | 'income';
   incomeSubtype: 'standard' | 'with_psr' | null;
-  incomeKind: 'teu' | 'agency' | null;
+  incomeKind: 'teu' | 'agency' | 'storage' | null;
   counterpartyName: string;
   subject: string | null;
   contractDate: string | null;
@@ -251,7 +251,7 @@ export type ApprovalInboxItem = {
   counterpartyInn: string;
   contractType: 'expense' | 'income';
   incomeSubtype: 'standard' | 'with_psr' | null;
-  incomeKind: 'teu' | 'agency' | null;
+  incomeKind: 'teu' | 'agency' | 'storage' | null;
   counterpartyName: string;
   subject: string | null;
   contractDate: string | null;

@@ -2,7 +2,6 @@ import { NextFunction, Request, Response } from 'express';
 import { EntityManager, IsNull, LessThanOrEqual, MoreThan, MoreThanOrEqual } from 'typeorm';
 import { AppDataSource } from '../config/data-source';
 import {
-  WAREHOUSE_CLIENT_TARIFF_MANAGEMENT_ROLES,
   WAREHOUSE_FINANCE_VIEW_ROLES,
   WAREHOUSE_VEHICLE_TYPES,
 } from '../constants/warehouse';
@@ -234,26 +233,17 @@ export const createWarehouseTariff = async (
   next: NextFunction,
 ) => {
   try {
-    const counterpartyId = normalizeNullable(req.body.counterpartyId);
-    if (counterpartyId && !WAREHOUSE_CLIENT_TARIFF_MANAGEMENT_ROLES.includes(req.user?.role as never)) {
-      throw httpError(403, 'Индивидуальные тарифы клиентов могут устанавливать только администратор и финансист');
-    }
     const result = await AppDataSource.transaction(async (manager) => {
       const service = await manager.getRepository(WarehouseServiceDefinition).findOne({
         where: { id: req.params.serviceId },
       });
       if (!service) throw httpError(404, 'Услуга не найдена');
-      if (counterpartyId) await assertWarehouseClientCounterparty(manager, counterpartyId);
 
       const vehicleType = req.body.vehicleType as WarehouseVehicleType;
       const validFrom = req.body.validFrom as string;
       const repository = manager.getRepository(WarehouseTariff);
-      // Версии цены ведутся отдельно: базовая линейка и линейка каждого клиента.
-      const scope = {
-        serviceId: service.id,
-        vehicleType,
-        counterpartyId: counterpartyId ?? IsNull(),
-      };
+      // базовая линейка цен; ставки клиентов ведутся целыми прайсами (см. saveWarehouseClientPriceList)
+      const scope = { serviceId: service.id, vehicleType, counterpartyId: IsNull() };
       const sameDate = await repository.findOne({ where: { ...scope, validFrom } });
       if (sameDate) throw httpError(409, 'Тариф на эту дату уже существует');
 
@@ -273,7 +263,7 @@ export const createWarehouseTariff = async (
 
       return repository.save(repository.create({
         serviceId: service.id,
-        counterpartyId,
+        counterpartyId: null,
         vehicleType,
         price: String(req.body.price),
         validFrom,
@@ -288,70 +278,136 @@ export const createWarehouseTariff = async (
 };
 
 /**
- * Все индивидуальные тарифы клиента (история версий) — для карточки
- * «Индивидуальные тарифы» и отметок в реестре клиентов.
+ * Прайсы клиента по версиям (дата начала). Одна версия — полный набор ставок
+ * клиента, заведённый с одной даты (решение 2026-09-14: ставки клиента меняются
+ * целиком, не по позициям). Последняя версия — первой.
  */
-export const listWarehouseClientTariffs = async (
+export const listWarehouseClientPriceLists = async (
   req: Request,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    const counterpartyId = normalizeNullable(req.query.counterpartyId);
-    const query = AppDataSource.getRepository(WarehouseTariff)
+    const counterpartyId = String(req.query.counterpartyId);
+    const tariffs = await AppDataSource.getRepository(WarehouseTariff)
       .createQueryBuilder('tariff')
       .innerJoinAndSelect('tariff.service', 'service')
-      .where('tariff.counterpartyId IS NOT NULL')
-      .orderBy('service.name', 'ASC')
-      .addOrderBy('tariff.vehicleType', 'ASC')
-      .addOrderBy('tariff.validFrom', 'DESC');
-    if (counterpartyId) query.andWhere('tariff.counterpartyId = :counterpartyId', { counterpartyId });
-    const tariffs = await query.getMany();
-    res.json(tariffs.map((tariff) => ({
-      ...serializeTariff(tariff),
-      serviceId: tariff.serviceId,
-      serviceName: tariff.service.name,
-      unit: tariff.service.unit,
-    })));
+      .where('tariff.counterpartyId = :counterpartyId', { counterpartyId })
+      .orderBy('tariff.validFrom', 'DESC')
+      .addOrderBy('service.name', 'ASC')
+      .getMany();
+    const versions = new Map<string, {
+      validFrom: string;
+      validTo: string | null;
+      items: Array<{ serviceId: string; serviceName: string; unit: string; vehicleType: WarehouseVehicleType; price: number }>;
+    }>();
+    tariffs.forEach((tariff) => {
+      const version = versions.get(tariff.validFrom) ?? { validFrom: tariff.validFrom, validTo: tariff.validTo, items: [] };
+      // у версии одна дата окончания; на случай расхождений берём самую позднюю
+      if (!tariff.validTo || (version.validTo && tariff.validTo > version.validTo)) version.validTo = tariff.validTo;
+      version.items.push({
+        serviceId: tariff.serviceId,
+        serviceName: tariff.service.name,
+        unit: tariff.service.unit,
+        vehicleType: tariff.vehicleType,
+        price: Number(tariff.price),
+      });
+      versions.set(tariff.validFrom, version);
+    });
+    res.json(Array.from(versions.values()));
   } catch (error) {
     next(error);
   }
 };
 
 /**
- * «Вернуть базовую цену» с даты: действующая на эту дату индивидуальная версия
- * закрывается днём раньше, будущие индивидуальные версии удаляются. Уже
- * начисленные услуги и закрытые периоды не пересчитываются.
+ * Новый прайс клиента с даты: весь набор ставок одной версией. Действующая на
+ * дату версия закрывается днём раньше; версия с той же датой заменяется целиком;
+ * если позже уже заведена следующая версия — новая действует до неё.
+ * Позиция без цены в прайсе клиента считается по базовому тарифу.
  */
-export const endWarehouseClientTariff = async (
+export const saveWarehouseClientPriceList = async (
   req: Request,
   res: Response,
   next: NextFunction,
 ) => {
   try {
     const counterpartyId = String(req.body.counterpartyId);
-    const vehicleType = req.body.vehicleType as WarehouseVehicleType;
-    const fromDate = req.body.fromDate as string;
+    const validFrom = String(req.body.validFrom);
+    const prices = (req.body.prices ?? []) as Array<{ serviceId: string; vehicleType: WarehouseVehicleType; price: number }>;
     const result = await AppDataSource.transaction(async (manager) => {
       await assertWarehouseClientCounterparty(manager, counterpartyId);
       const repository = manager.getRepository(WarehouseTariff);
-      const scope = { serviceId: req.params.serviceId, vehicleType, counterpartyId };
-      const future = await repository.find({ where: { ...scope, validFrom: MoreThanOrEqual(fromDate) } });
-      if (future.length) await repository.remove(future);
-      const active = await repository.findOne({
-        where: { ...scope, validFrom: LessThanOrEqual(fromDate) },
-        order: { validFrom: 'DESC' },
-      });
-      let closed = 0;
-      if (active && (!active.validTo || active.validTo >= fromDate)) {
-        active.validTo = dayBefore(fromDate);
-        await repository.save(active);
-        closed = 1;
+
+      const serviceIds = new Set(
+        (await manager.getRepository(WarehouseServiceDefinition).find({ select: ['id'] })).map((service) => service.id),
+      );
+      const seen = new Set<string>();
+      for (const item of prices) {
+        if (!serviceIds.has(item.serviceId)) throw httpError(400, 'В прайсе указана неизвестная услуга');
+        const key = `${item.serviceId}:${item.vehicleType}`;
+        if (seen.has(key)) throw httpError(400, 'В прайсе повторяется позиция услуги и типа ТС');
+        seen.add(key);
       }
-      return { removed: future.length, closed };
+
+      await repository.delete({ counterpartyId, validFrom });
+      const nextVersion = await repository.findOne({
+        where: { counterpartyId, validFrom: MoreThan(validFrom) },
+        order: { validFrom: 'ASC' },
+      });
+      const active = await repository.find({
+        where: { counterpartyId, validFrom: LessThanOrEqual(validFrom) },
+      });
+      const toClose = active.filter((tariff) => !tariff.validTo || tariff.validTo >= validFrom);
+      toClose.forEach((tariff) => { tariff.validTo = dayBefore(validFrom); });
+      if (toClose.length) await repository.save(toClose);
+
+      const validTo = nextVersion ? dayBefore(nextVersion.validFrom) : null;
+      const created = prices.length
+        ? await repository.save(prices.map((item) => repository.create({
+          serviceId: item.serviceId,
+          counterpartyId,
+          vehicleType: item.vehicleType,
+          price: String(item.price),
+          validFrom,
+          validTo,
+          createdById: req.user!.id,
+        })))
+        : [];
+      return { validFrom, validTo, positions: created.length, closedPrevious: toClose.length > 0 };
     });
-    if (!result.removed && !result.closed) {
-      res.status(404).json({ message: 'На эту дату индивидуальной цены нет — действует базовый тариф' });
+    res.status(201).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * «Вернуть базовый прайс» с даты: прайс клиента, действующий на дату,
+ * закрывается днём раньше, более поздние версии удаляются. Начисленные
+ * услуги и закрытые периоды не пересчитываются.
+ */
+export const endWarehouseClientPriceList = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const counterpartyId = String(req.body.counterpartyId);
+    const fromDate = String(req.body.fromDate);
+    const result = await AppDataSource.transaction(async (manager) => {
+      await assertWarehouseClientCounterparty(manager, counterpartyId);
+      const repository = manager.getRepository(WarehouseTariff);
+      const future = await repository.find({ where: { counterpartyId, validFrom: MoreThanOrEqual(fromDate) } });
+      if (future.length) await repository.remove(future);
+      const active = (await repository.find({ where: { counterpartyId, validFrom: LessThanOrEqual(fromDate) } }))
+        .filter((tariff) => !tariff.validTo || tariff.validTo >= fromDate);
+      active.forEach((tariff) => { tariff.validTo = dayBefore(fromDate); });
+      if (active.length) await repository.save(active);
+      return { removedVersions: new Set(future.map((tariff) => tariff.validFrom)).size, closedPositions: active.length };
+    });
+    if (!result.removedVersions && !result.closedPositions) {
+      res.status(404).json({ message: 'На эту дату у клиента нет индивидуального прайса — уже действует базовый' });
       return;
     }
     res.json(result);
