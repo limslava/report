@@ -1336,10 +1336,7 @@ export default function DispatcherJournalPage() {
           }}
         >
           <ListItemIcon><MenuBook fontSize="small" /></ListItemIcon>
-          <ListItemText
-            primary="Справочники"
-            secondary={canEditDictionaries ? 'статусы, типы КТК, НДС, операции' : 'просмотр статусов и списков'}
-          />
+          <ListItemText primary="Справочники" />
         </MenuItem>
       </Menu>
 
