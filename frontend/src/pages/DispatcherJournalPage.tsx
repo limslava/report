@@ -25,6 +25,7 @@ import {
   KeyboardArrowUp,
   MenuBook,
   FilterListOff,
+  SwapVert,
   Search,
   Settings,
   UploadFile,
@@ -39,7 +40,6 @@ import {
   getDispatcherOrders,
   getDispatcherStatuses,
   updateDispatcherOrder,
-  updateDispatcherOrderPositions,
   downloadDispatcherJournalExcel,
   type DispatcherCrewEntry,
   type DispatcherDictionaryColors,
@@ -109,6 +109,8 @@ import {
   plateKey,
   shortPersonName,
   sortWithinSlots,
+  applyPersonalOrder,
+  orderNumberSortKey,
   summarizeSelection,
   textColorFor,
   type ColumnCondition,
@@ -184,7 +186,11 @@ type ColumnDef =
   | { kind: 'time'; field: 'submitTime'; title: string; width: number }
   /** accent — цвет галочки и заголовка, как «свой цвет» флажка в google-таблице */
   | { kind: 'checkbox'; field: BooleanFieldName; title: string; width: number; accent?: string }
-  | { kind: 'computed'; field: 'amountWithoutVat'; title: string; width: number };
+  /** только чтение: «Без НДС» считается, «№ заказа» выдаётся системой */
+  | { kind: 'computed'; field: 'amountWithoutVat' | 'orderNumber'; title: string; width: number };
+
+/** Своя сортировка сотрудника: порядок id строк и по какой колонке сортировали последний раз. */
+type PersonalOrder = { ids: string[]; by: { field: string; direction: 'asc' | 'desc' } | null };
 
 /**
  * Все колонки журнала (порядок — как в google-таблице отдела). Видимость,
@@ -192,6 +198,7 @@ type ColumnDef =
  * строки, дата и кнопка удаления.
  */
 const ALL_COLUMNS: ColumnDef[] = [
+  { kind: 'computed', field: 'orderNumber', title: '№ заказа', width: 76 },
   { kind: 'status', field: 'status', title: 'Статус', width: 130 },
   { kind: 'text', field: 'info', title: 'Инфо', width: 70 },
   { kind: 'text', field: 'client', title: 'Клиент', width: 120, list: 'client' },
@@ -280,11 +287,15 @@ const DATE_KEY = 'orderDate';
  * встают на место по умолчанию (а не в конец): «Без НДС» — сразу после «Пропуска».
  */
 const withNewColumnDefaults = (prefs: ColumnPrefs | undefined): ColumnPrefs | undefined => {
-  if (!prefs || prefs.order.includes('amountWithoutVat')) return prefs;
+  if (!prefs) return prefs;
   const order = [...prefs.order];
-  const passesIndex = order.indexOf('passes');
-  order.splice(passesIndex >= 0 ? passesIndex + 1 : order.length, 0, 'amountWithoutVat');
-  return { ...prefs, order };
+  if (!order.includes('amountWithoutVat')) {
+    const passesIndex = order.indexOf('passes');
+    order.splice(passesIndex >= 0 ? passesIndex + 1 : order.length, 0, 'amountWithoutVat');
+  }
+  // «№ заказа» (15.09.2026) — первым столбцом у тех, кто уже настраивал колонки
+  if (!order.includes('orderNumber')) order.unshift('orderNumber');
+  return order.length === prefs.order.length ? prefs : { ...prefs, order };
 };
 
 const MONTH_OPTIONS = [
@@ -401,7 +412,9 @@ type Message = { severity: 'error' | 'success'; text: string } | null;
 /** Текст ячейки для фильтра, копирования и сортировки. */
 const columnText = (row: DispatcherOrderRow, column: ColumnDef): string => {
   if (column.kind === 'checkbox') return row[column.field] ? 'да' : '';
-  if (column.kind === 'computed') return formatMoney(amountWithoutVat(row.clientRate, row.passes, row.vat));
+  if (column.kind === 'computed') {
+    return column.field === 'orderNumber' ? row.orderNumber ?? '' : formatMoney(amountWithoutVat(row.clientRate, row.passes, row.vat));
+  }
   if (column.field === 'driverName') return shortPersonName(row.driverName);
   return row[column.field] ?? '';
 };
@@ -813,13 +826,35 @@ export default function DispatcherJournalPage() {
   statusesRef.current = statuses;
 
   // перетаскивание — без фильтров и поиска (при фильтре место строки среди скрытых неоднозначно)
+  // своя сортировка (у каждого своя, хранится в учётной записи): сортировка из меню столбца
+  // один раз переставляет строки только у этого сотрудника; общий порядок коллег не меняется
+  const [personalSort, setPersonalSortValue] = useAccountPreference<PersonalOrder | null>(
+    `dj-order-v1:${viewMonth}`, user?.id, null,
+    (value) => {
+      const saved = value as { ids?: unknown; by?: PersonalOrder['by'] } | null;
+      const ids = Array.isArray(saved?.ids) ? saved!.ids.filter((id): id is string => typeof id === 'string') : [];
+      return ids.length ? { ids, by: saved?.by?.field ? saved.by : null } : null;
+    },
+  );
+  const personalSortRef = useRef(personalSort);
+  personalSortRef.current = personalSort;
+  const setPersonalSort = useCallback((value: PersonalOrder | null) => {
+    personalSortRef.current = value;
+    setPersonalSortValue(value);
+  }, [setPersonalSortValue]);
+  const orderedRows = useMemo(() => applyPersonalOrder(rows, personalSort?.ids), [rows, personalSort]);
+  const orderedRowsRef = useRef(orderedRows);
+  orderedRowsRef.current = orderedRows;
+  // перетаскивание — без фильтров и поиска; при своей сортировке строка переезжает только в своём порядке
   const canDragRows = canManageRows && activeFilterCount === 0 && !searchQuery;
   const sortValue = useCallback((row: DispatcherOrderRow, field: string): unknown => {
     if (field === DATE_KEY) return row.orderDate;
     const column = COLUMN_BY_KEY.get(field);
     if (!column) return '';
     if (column.kind === 'checkbox') return row[column.field] ? 1 : '';
-    if (column.kind === 'computed') return amountWithoutVat(row.clientRate, row.passes, row.vat) ?? '';
+    if (column.kind === 'computed') {
+      return column.field === 'orderNumber' ? orderNumberSortKey(row.orderNumber) : amountWithoutVat(row.clientRate, row.passes, row.vat) ?? '';
+    }
     if (column.field === 'ktkType' && row.ktkType) {
       // типы КТК — в порядке справочника (20DC, 20HC … 40FR), а не по алфавиту
       const index = dictionaryOptions.ktk_type.indexOf(row.ktkType);
@@ -835,8 +870,8 @@ export default function DispatcherJournalPage() {
     return text || EMPTY_FILTER_VALUE;
   }, []);
 
-  /** «№» строки — место в общем порядке месяца; при фильтре и поиске не пересчитывается (как в google). */
-  const rowNumberById = useMemo(() => new Map(rows.map((row, index) => [row.id, index + 1])), [rows]);
+  /** «№» строки — место в порядке месяца (своём или общем); при фильтре и поиске не пересчитывается. */
+  const rowNumberById = useMemo(() => new Map(orderedRows.map((row, index) => [row.id, index + 1])), [orderedRows]);
   /** Фильтры и поиск — одинаково для своего и общего порядка строк. */
   /** Цвет ячейки для фильтра по цвету: заливка статуса / значения справочника или «без цвета». */
   const cellColorKey = useCallback((row: DispatcherOrderRow, field: string): string => {
@@ -871,19 +906,18 @@ export default function DispatcherJournalPage() {
         || ALL_COLUMNS.some((column) => columnText(row, column).toLocaleLowerCase('ru').includes(searchQuery)))
       : filtered;
   }, [cellColorKey, colorFilters, conditionText, conditions, filterText, filteredFields, filters, searchQuery]);
-  const displayRows = useMemo(() => visibleRowsOf(rows), [rows, visibleRowsOf]);
+  const displayRows = useMemo(() => visibleRowsOf(orderedRows), [orderedRows, visibleRowsOf]);
 
   // полоса дня перед каждой сменой даты. Прячем полосы только когда своя сортировка
   // по другой колонке перемешала дни (например, по статусу на весь месяц); в общем
   // порядке полосы есть всегда — даже если строке поменяли дату и день встречается дважды
   const showDayBands = useMemo(() => {
-    if (datesAreGrouped(displayRows)) return true;
-    // весь месяц отсортировали по другой колонке — дни перемешаны, полос было бы почти на каждой
-    // строке; одиночная строка с другой датой (поменяли дату) полос не отключает
-    const dayBreaks = displayRows.filter((row, index) => index > 0 && row.orderDate !== displayRows[index - 1].orderDate).length;
-    const days = new Set(displayRows.map((row) => row.orderDate)).size;
-    return !(dayBreaks > 20 && dayBreaks > days * 2);
-  }, [displayRows]);
+    if (!personalSort || personalSort.by?.field === DATE_KEY || datesAreGrouped(displayRows)) return true;
+    // сортировали внутри одного дня (фильтр по дате → сортировка → фильтр снят): дни перемешаны
+    // не больше, чем в общем порядке — полосы остаются
+    const dayBreaks = (list: DispatcherOrderRow[]) => list.filter((row, index) => index > 0 && row.orderDate !== list[index - 1].orderDate).length;
+    return dayBreaks(displayRows) <= dayBreaks(visibleRowsOf(rows));
+  }, [displayRows, personalSort, rows, visibleRowsOf]);
   const displayItems = useMemo(() => {
     const items: DisplayItem[] = [];
     let band: Extract<DisplayItem, { kind: 'band' }> | null = null;
@@ -1266,7 +1300,7 @@ export default function DispatcherJournalPage() {
     /** массовое действие (вставка столбиком, протягивание) — отменяется целиком */
     | { kind: 'multi'; patches: Array<{ id: string; before: DispatcherOrderPatch }>; created: string[] }
     /** своя сортировка — возвращается прежний порядок */
-    | { kind: 'positions'; before: Array<{ id: string; position: number }> };
+    | { kind: 'order'; before: PersonalOrder | null };
   const undoStackRef = useRef<UndoEntry[]>([]);
   /** Только поля, которые роли можно менять (дата и порядок строк — у тех, кто ведёт реестр целиком). */
   const allowedPatch = (patch: DispatcherOrderPatch): DispatcherOrderPatch => {
@@ -1301,17 +1335,6 @@ export default function DispatcherJournalPage() {
       .filter((row) => row.orderDate >= rangeRef.current.from && row.orderDate <= rangeRef.current.to)));
     updateDispatcherOrder(id, patch).catch(() => {
       setMessage({ severity: 'error', text: 'Не удалось сохранить изменение' });
-      void loadRows();
-    });
-  }, [loadRows]);
-
-  /** Новые места строк (сортировка / её отмена): сразу у себя, пачкой на сервер, коллеги подтянут. */
-  const applyPositions = useCallback((items: Array<{ id: string; position: number }>, label?: string) => {
-    if (accessRef.current !== 'full') return;
-    const byId = new Map(items.map((item) => [item.id, item.position]));
-    setRows((prev) => sortByDate(prev.map((row) => (byId.has(row.id) ? { ...row, position: byId.get(row.id)! } : row))));
-    updateDispatcherOrderPositions(items, label).catch(() => {
-      setMessage({ severity: 'error', text: 'Не удалось сохранить порядок строк' });
       void loadRows();
     });
   }, [loadRows]);
@@ -1358,6 +1381,17 @@ export default function DispatcherJournalPage() {
 
   const moveRow = useCallback((draggedId: string, targetId: string, after: boolean) => {
     if (draggedId === targetId) return;
+    // своя сортировка: строка переезжает только в своём порядке — общий порядок коллег не меняется
+    const personal = personalSortRef.current;
+    if (personal) {
+      const ids = orderedRowsRef.current.map((row) => row.id).filter((id) => id !== draggedId);
+      const at = ids.indexOf(targetId);
+      if (at < 0) return;
+      ids.splice(at + (after ? 1 : 0), 0, draggedId);
+      pushUndo({ kind: 'order', before: personal });
+      setPersonalSort({ ...personal, ids });
+      return;
+    }
     const ordered = sortByDate(rowsRef.current);
     const dragged = ordered.find((row) => row.id === draggedId);
     const target = ordered.find((row) => row.id === targetId);
@@ -1372,7 +1406,7 @@ export default function DispatcherJournalPage() {
     else if (next) position = next.position - 1000;
     else position = Date.now();
     patchRow(draggedId, { position });
-  }, [patchRow]);
+  }, [patchRow, setPersonalSort]);
 
   const deleteRow = useCallback(async (row: DispatcherOrderRow, options?: { silent?: boolean; skipUndo?: boolean }) => {
     if (accessRef.current !== 'full') return;
@@ -1406,50 +1440,47 @@ export default function DispatcherJournalPage() {
         if (row) void deleteRow(row, { silent: true, skipUndo: true });
       });
       setMessage({ severity: 'success', text: 'Вставка / протягивание отменены' });
-    } else if (entry.kind === 'positions') {
-      applyPositions(entry.before, 'Отмена сортировки');
-      setMessage({ severity: 'success', text: 'Сортировка отменена' });
+    } else if (entry.kind === 'order') {
+      rememberViewAnchor();
+      setPersonalSort(entry.before);
+      setMessage({ severity: 'success', text: 'Порядок строк возвращён' });
     } else if (entry.kind === 'create') {
       const row = rowsRef.current.find((item) => item.id === entry.id);
       if (row) void deleteRow(row, { silent: true, skipUndo: true });
       setMessage({ severity: 'success', text: 'Создание строки отменено' });
     } else {
-      const { id: _id, orderDate, updatedAt: _updatedAt, ...fields } = entry.row;
+      const { id: _id, orderDate, updatedAt: _updatedAt, orderNumber: _orderNumber, ...fields } = entry.row;
       void createRow(orderDate, fields, { skipUndo: true });
       setMessage({ severity: 'success', text: 'Строка восстановлена' });
     }
-  }, [applyPositions, createRow, deleteRow, patchRow]);
+  }, [createRow, deleteRow, patchRow, rememberViewAnchor, setPersonalSort]);
 
   /**
-   * Сортировка из меню колонки — как в google: один раз переставляет строки в ОБЩЕМ порядке
-   * (у всех), только видимые (после фильтра) и на их же местах. Отметки на столбце нет:
-   * это просто новый порядок. Ctrl+Z возвращает прежние места.
+   * Сортировка из меню колонки: один раз, только у этого сотрудника, в пределах видимых
+   * (отфильтрованных) строк — они сортируются между собой на своих местах. Снятие фильтра
+   * порядок не сбрасывает (как в Excel); общий порядок возвращает «Настройки» → «Вернуть общий порядок».
    */
   const sortOnce = (field: string, direction: 'asc' | 'desc') => {
     rememberViewAnchor();
-    const full = sortByDate(rowsRef.current);
+    const before = personalSortRef.current;
     const ids = sortWithinSlots(
-      full,
+      orderedRowsRef.current,
       displayRowsRef.current.map((row) => row.id),
       (list) => sortRows(list, { field, direction }, sortValue),
     );
-    // места — позиции строк по порядку; одинаковые позиции разводим, чтобы порядок был однозначным
-    const slots: number[] = [];
-    full.forEach((row, index) => {
-      slots.push(index > 0 && row.position <= slots[index - 1] ? slots[index - 1] + 0.001 : row.position);
-    });
-    const oldById = new Map(full.map((row) => [row.id, row.position]));
-    const changes = ids
-      .map((id, index) => ({ id, position: slots[index] }))
-      .filter((item) => oldById.get(item.id) !== item.position);
-    if (!changes.length) {
-      setMessage({ severity: 'success', text: 'Строки уже в таком порядке' });
-      return;
-    }
-    pushUndo({ kind: 'positions', before: changes.map((item) => ({ id: item.id, position: oldById.get(item.id) ?? 0 })) });
+    pushUndo({ kind: 'order', before });
+    setPersonalSort({ ids, by: { field, direction } });
     const title = field === DATE_KEY ? 'Дата' : COLUMN_BY_KEY.get(field)?.title ?? field;
-    applyPositions(changes, `${title} ${direction === 'asc' ? 'А → Я' : 'Я → А'}`);
-    setMessage({ severity: 'success', text: `Отсортировано для всех: ${title} (Ctrl+Z — отменить)` });
+    setMessage({ severity: 'success', text: `Отсортировано у вас: ${title}. Коллеги видят свой порядок (Ctrl+Z — отменить)` });
+  };
+
+  /** Общий порядок строк вместо своей сортировки. */
+  const resetPersonalSort = () => {
+    if (!personalSortRef.current) return;
+    rememberViewAnchor();
+    pushUndo({ kind: 'order', before: personalSortRef.current });
+    setPersonalSort(null);
+    setMessage({ severity: 'success', text: 'Общий порядок строк (Ctrl+Z — вернуть свой)' });
   };
 
   /** Delete / вырезание при нескольких выделенных ячейках — очищаются все (одно действие для Ctrl+Z). */
@@ -1481,6 +1512,15 @@ export default function DispatcherJournalPage() {
       : row.position + (after ? 1 : -1);
     const created = await createRow(row.orderDate, { position, status: null });
     if (!created) return;
+    const current = personalSortRef.current;
+    if (current) {
+      const without = current.ids.filter((id) => id !== created.id);
+      const at = without.indexOf(row.id);
+      if (at >= 0) {
+        without.splice(at + (after ? 1 : 0), 0, created.id);
+        setPersonalSort({ ...current, ids: without });
+      }
+    }
     pendingFocusRef.current = { rowId: created.id };
   };
 
@@ -2103,14 +2143,15 @@ export default function DispatcherJournalPage() {
       );
     }
     if (column.kind === 'computed') {
+      const isNumber = column.field === 'orderNumber';
       const amount = amountWithoutVat(row.clientRate, row.passes, row.vat);
       return (
         <td
           key={key}
           data-field={key}
-          className={`dj-computed-cell${pinCls}`}
+          className={`dj-computed-cell${isNumber ? ' dj-order-number' : ''}${pinCls}`}
           style={pin}
-          title="(Ставка + Пропуска) без НДС"
+          title={isNumber ? '№ заказа — выдаётся при заведении и не меняется' : '(Ставка + Пропуска) без НДС'}
           tabIndex={-1}
           onKeyDown={(event) => {
             const direction = navDirectionOf(event);
@@ -2119,7 +2160,7 @@ export default function DispatcherJournalPage() {
             requestCellNav(event.currentTarget, direction, event.shiftKey);
           }}
         >
-          {formatFinance(amount)}
+          {isNumber ? row.orderNumber ?? '' : formatFinance(amount)}
         </td>
       );
     }
@@ -2846,7 +2887,7 @@ export default function DispatcherJournalPage() {
           colorOptions={columnColorOptions(filterMenu.field)}
           color={colorFilters[filterMenu.field] ?? null}
           isPinnedUntilHere={pinnedUntil === filterMenu.field}
-          onSort={canManageRows ? (direction) => sortOnce(filterMenu.field, direction) : undefined}
+          onSort={(direction) => sortOnce(filterMenu.field, direction)}
           onApply={(value) => applyColumnFilter(filterMenu.field, value)}
           onTogglePin={() => setPinnedUntil((prev) => (prev === filterMenu.field ? null : filterMenu.field))}
           onClose={() => setFilterMenu(null)}
@@ -2888,6 +2929,16 @@ export default function DispatcherJournalPage() {
         >
           <ListItemIcon><FilterListOff fontSize="small" /></ListItemIcon>
           <ListItemText primary="Сбросить фильтры" />
+        </MenuItem>
+        <MenuItem
+          disabled={!personalSort}
+          onClick={() => {
+            resetPersonalSort();
+            setSettingsAnchor(null);
+          }}
+        >
+          <ListItemIcon><SwapVert fontSize="small" /></ListItemIcon>
+          <ListItemText primary="Вернуть общий порядок" secondary={personalSort ? 'сейчас у вас своя сортировка' : undefined} />
         </MenuItem>
         <MenuItem
           disabled={exporting}

@@ -25,6 +25,7 @@ type ExportColumn = {
 
 /** Столбцы реестра (порядок и названия — как в DispatcherJournalPage). */
 export const DISPATCHER_EXPORT_COLUMNS: ExportColumn[] = [
+  { field: 'orderNumber', title: '№ заказа', width: 11 },
   { field: 'status', title: 'Статус', width: 16, palette: 'status' },
   { field: 'info', title: 'Инфо', width: 10 },
   { field: 'client', title: 'Клиент', width: 18, palette: 'client' },

@@ -34,6 +34,11 @@ export class DispatcherOrder {
   @Column({ type: 'double precision', default: 0 })
   position!: number;
 
+  /** «№ заказа» ГГММ-NNN: выдаётся при заведении и не меняется (dispatcher-order-number.service). */
+  @Index('uq_dispatcher_orders_order_number', { unique: true })
+  @Column({ name: 'order_number', type: 'varchar', length: 16, nullable: true })
+  orderNumber!: string | null;
+
   @Column({ type: 'text', nullable: true })
   status!: string | null;
 

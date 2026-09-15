@@ -951,3 +951,6 @@ body.dj-filling, body.dj-filling * { cursor: crosshair !important; user-select: 
   white-space: nowrap;
 }
 .dj-selection-stats b { font-weight: 600; color: #1f2733; }
+
+/* «№ заказа» — служебный номер, не редактируется */
+.dj-table td.dj-order-number { color: #4b5563; font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; }

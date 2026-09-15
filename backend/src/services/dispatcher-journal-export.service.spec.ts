@@ -12,7 +12,8 @@ describe('Excel реестра', () => {
     const workbook = buildDispatcherJournalWorkbook({ orders, palettes, hideFinance: false });
     expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(['Август 2026', 'Сентябрь 2026']);
     const september = workbook.getWorksheet('Сентябрь 2026')!;
-    expect(september.getRow(1).getCell(3).value).toBe('Статус');
+    expect(september.getRow(1).getCell(3).value).toBe('№ заказа');
+    expect(september.getRow(1).getCell(4).value).toBe('Статус');
     expect(september.getRow(2).getCell('status').value).toBe('выполнена');
     expect(september.getRow(2).getCell('clientRate').value).toBe(15000);
     expect(september.getRow(2).getCell('amountWithoutVat').value).toBeCloseTo(12295.08);

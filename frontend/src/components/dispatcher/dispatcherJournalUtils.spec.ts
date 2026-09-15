@@ -14,6 +14,8 @@ import {
   vatRateOf,
   formatFinance,
   sortWithinSlots,
+  applyPersonalOrder,
+  orderNumberSortKey,
   datesAreGrouped,
   rangeCellKeys,
   summarizeSelection,
@@ -144,6 +146,18 @@ describe('своя сортировка', () => {
     const full = [row('a', 'в', '2026-09-14'), row('b', 'новая'), row('c', 'за', '2026-09-16'), row('d', 'выполнена')];
     // фильтр по 15.09: видны b и d
     expect(sortWithinSlots(full, ['b', 'd'], byStatus)).toEqual(['a', 'd', 'c', 'b']);
+  });
+
+  it('своя сортировка: новые строки встают за предыдущим соседом из общего порядка', () => {
+    const rows = [{ id: 'a' }, { id: 'b' }, { id: 'new' }, { id: 'c' }];
+    expect(applyPersonalOrder(rows, ['c', 'b', 'a']).map((item) => item.id)).toEqual(['c', 'b', 'new', 'a']);
+    expect(applyPersonalOrder(rows, null).map((item) => item.id)).toEqual(['a', 'b', 'new', 'c']);
+  });
+
+  it('№ заказа сортируется по месяцу и номеру', () => {
+    expect(orderNumberSortKey('2609-012')).toBeLessThan(orderNumberSortKey('2609-1000') as number);
+    expect(orderNumberSortKey('2608-999')).toBeLessThan(orderNumberSortKey('2609-001') as number);
+    expect(orderNumberSortKey(null)).toBe('');
   });
 
   it('полосы дней только когда дни идут блоками', () => {

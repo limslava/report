@@ -19,6 +19,7 @@ import { ensureWarehouseServiceCatalog } from './services/warehouse-service-cata
 import { ensureDispatcherDictionaryCatalog, ensureDispatcherStatusCatalog } from './services/dispatcher-status-seed.service';
 import { ensureWarehousePhotoStorageReady, purgeExpiredIssuedWarehousePhotos } from './services/warehouse-photo-storage.service';
 import { startKtkVvoAutofill } from './services/ktk-vvo-registry-autofill.service';
+import { assignMissingDispatcherOrderNumbers } from './services/dispatcher-order-number.service';
 
 config();
 
@@ -44,6 +45,13 @@ async function startServer() {
     } catch (err) {
       // справочник реестра не критичен для запуска: без него ячейки остаются свободным вводом
       logger.error('Failed to bootstrap dispatcher dictionaries:', err);
+    }
+    try {
+      // «№ заказа» заявкам, заведённым до его появления (и пропущенным по сбою)
+      const numbered = await assignMissingDispatcherOrderNumbers();
+      if (numbered > 0) logger.info(`Реестр: выдано номеров заказа: ${numbered}`);
+    } catch (err) {
+      logger.error('Failed to assign dispatcher order numbers:', err);
     }
     await ensureWarehousePhotoStorageReady();
     logger.info('Warehouse service catalog bootstrapped');
