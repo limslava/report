@@ -104,6 +104,8 @@
 
 /* все ячейки однострочные (как в google): длинный текст обрезается «…», шире колонка — больше текста */
 .dj-cell-input { display: block; text-overflow: ellipsis; white-space: nowrap; }
+/* деньги (формат «Финансы») — по правому краю, как «Без НДС» */
+.dj-cell-input--num { text-align: right; font-variant-numeric: tabular-nums; }
 .dj-date-input { display: block; }
 /* правка многострочной ячейки — поле раскрывается поверх соседних строк */
 .dj-multi-edit { position: relative; display: block; height: 21px; }
