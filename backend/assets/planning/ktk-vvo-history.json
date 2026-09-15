@@ -1,0 +1,5625 @@
+{
+ "source": "Заявки 15 Сен 2026.xlsx (google-таблица отдела), перенесено 15.09.2026",
+ "note": "История «Контейнерные перевозки — Владивосток» до данных системы: используется только в Excel «Вариант 2»; значения системы (ежедневный отчёт, график работы, план на месяц) имеют приоритет.",
+ "days": [
+  {
+   "date": "2024-10-03",
+   "hired": 3
+  },
+  {
+   "date": "2024-10-04",
+   "hired": 6
+  },
+  {
+   "date": "2024-10-12",
+   "hired": 2
+  },
+  {
+   "date": "2024-10-19",
+   "hired": 2
+  },
+  {
+   "date": "2024-10-21",
+   "hired": 1
+  },
+  {
+   "date": "2024-10-22",
+   "hired": 1
+  },
+  {
+   "date": "2024-10-24",
+   "hired": 3
+  },
+  {
+   "date": "2024-10-25",
+   "hired": 2
+  },
+  {
+   "date": "2024-10-28",
+   "hired": 2
+  },
+  {
+   "date": "2024-10-30",
+   "hired": 2
+  },
+  {
+   "date": "2024-10-31",
+   "hired": 3
+  },
+  {
+   "date": "2024-11-01",
+   "plan": 55,
+   "own": 54,
+   "hired": 1
+  },
+  {
+   "date": "2024-11-02",
+   "plan": 50,
+   "own": 47,
+   "hired": 3
+  },
+  {
+   "date": "2024-11-03",
+   "plan": 48,
+   "own": 48,
+   "hired": 0
+  },
+  {
+   "date": "2024-11-04",
+   "plan": 9,
+   "own": 8,
+   "hired": 1
+  },
+  {
+   "date": "2024-11-05",
+   "plan": 27,
+   "own": 26,
+   "hired": 1
+  },
+  {
+   "date": "2024-11-06",
+   "plan": 46,
+   "own": 45,
+   "hired": 1
+  },
+  {
+   "date": "2024-11-07",
+   "plan": 65,
+   "own": 61,
+   "hired": 4
+  },
+  {
+   "date": "2024-11-08",
+   "plan": 54,
+   "own": 53,
+   "hired": 1
+  },
+  {
+   "date": "2024-11-09",
+   "plan": 66,
+   "own": 65,
+   "hired": 1
+  },
+  {
+   "date": "2024-11-10",
+   "plan": 24,
+   "own": 24,
+   "hired": 0
+  },
+  {
+   "date": "2024-11-11",
+   "plan": 26,
+   "own": 26,
+   "hired": 0
+  },
+  {
+   "date": "2024-11-12",
+   "plan": 69,
+   "own": 66,
+   "hired": 3
+  },
+  {
+   "date": "2024-11-13",
+   "plan": 128,
+   "own": 115,
+   "hired": 13
+  },
+  {
+   "date": "2024-11-14",
+   "plan": 124,
+   "own": 114,
+   "hired": 10
+  },
+  {
+   "date": "2024-11-15",
+   "plan": 62,
+   "own": 61,
+   "hired": 1
+  },
+  {
+   "date": "2024-11-16",
+   "plan": 9,
+   "own": 9,
+   "hired": 0
+  },
+  {
+   "date": "2024-11-17",
+   "plan": 6,
+   "own": 6,
+   "hired": 0
+  },
+  {
+   "date": "2024-11-18",
+   "plan": 17,
+   "own": 17,
+   "hired": 0
+  },
+  {
+   "date": "2024-11-19",
+   "plan": 38,
+   "own": 38,
+   "hired": 0
+  },
+  {
+   "date": "2024-11-20",
+   "plan": 93,
+   "own": 91,
+   "hired": 2
+  },
+  {
+   "date": "2024-11-21",
+   "plan": 61,
+   "own": 58,
+   "hired": 3
+  },
+  {
+   "date": "2024-11-22",
+   "plan": 55,
+   "own": 53,
+   "hired": 2
+  },
+  {
+   "date": "2024-11-23",
+   "plan": 36,
+   "own": 36,
+   "hired": 0
+  },
+  {
+   "date": "2024-11-24",
+   "plan": 49,
+   "own": 49,
+   "hired": 0
+  },
+  {
+   "date": "2024-11-25",
+   "plan": 73,
+   "own": 72,
+   "hired": 1
+  },
+  {
+   "date": "2024-11-26",
+   "plan": 71,
+   "own": 70,
+   "hired": 1
+  },
+  {
+   "date": "2024-11-27",
+   "plan": 58,
+   "own": 58,
+   "hired": 0
+  },
+  {
+   "date": "2024-11-28",
+   "plan": 17,
+   "own": 36,
+   "hired": 0
+  },
+  {
+   "date": "2024-11-29",
+   "plan": 32,
+   "own": 53,
+   "hired": 0
+  },
+  {
+   "date": "2024-11-30",
+   "plan": 16,
+   "own": 76,
+   "hired": 1
+  },
+  {
+   "date": "2024-12-01",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 83,
+   "own": 135,
+   "hired": 3
+  },
+  {
+   "date": "2024-12-02",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 18,
+   "own": 35,
+   "hired": 0
+  },
+  {
+   "date": "2024-12-03",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 30,
+   "own": 57,
+   "hired": 1
+  },
+  {
+   "date": "2024-12-04",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 17,
+   "own": 39,
+   "hired": 1
+  },
+  {
+   "date": "2024-12-05",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 27,
+   "own": 29,
+   "hired": 0
+  },
+  {
+   "date": "2024-12-06",
+   "fleet": 35,
+   "onLine": 19,
+   "plan": 44,
+   "own": 43,
+   "hired": 0
+  },
+  {
+   "date": "2024-12-07",
+   "fleet": 35,
+   "onLine": 20,
+   "plan": 59,
+   "own": 56,
+   "hired": 0
+  },
+  {
+   "date": "2024-12-08",
+   "fleet": 35,
+   "onLine": 21,
+   "plan": 13,
+   "own": 9,
+   "hired": 0
+  },
+  {
+   "date": "2024-12-09",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 31,
+   "own": 30,
+   "hired": 0
+  },
+  {
+   "date": "2024-12-10",
+   "fleet": 35,
+   "onLine": 27,
+   "plan": 21,
+   "own": 50,
+   "hired": 2
+  },
+  {
+   "date": "2024-12-11",
+   "fleet": 35,
+   "onLine": 27,
+   "plan": 38,
+   "own": 47,
+   "hired": 0
+  },
+  {
+   "date": "2024-12-12",
+   "fleet": 35,
+   "onLine": 29,
+   "plan": 47,
+   "own": 55,
+   "hired": 0
+  },
+  {
+   "date": "2024-12-13",
+   "fleet": 35,
+   "onLine": 28,
+   "plan": 62,
+   "own": 48,
+   "hired": 1
+  },
+  {
+   "date": "2024-12-14",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 48,
+   "own": 44,
+   "hired": 1
+  },
+  {
+   "date": "2024-12-15",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 8,
+   "own": 16,
+   "hired": 0
+  },
+  {
+   "date": "2024-12-16",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 61,
+   "own": 59,
+   "hired": 0
+  },
+  {
+   "date": "2024-12-17",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 57,
+   "own": 31,
+   "hired": 0
+  },
+  {
+   "date": "2024-12-18",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 60,
+   "own": 40,
+   "hired": 2
+  },
+  {
+   "date": "2024-12-19",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 44,
+   "own": 44,
+   "hired": 2
+  },
+  {
+   "date": "2024-12-20",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 58,
+   "own": 58,
+   "hired": 1
+  },
+  {
+   "date": "2024-12-21",
+   "fleet": 35,
+   "onLine": 20,
+   "plan": 104,
+   "own": 54,
+   "hired": 0
+  },
+  {
+   "date": "2024-12-22",
+   "fleet": 35,
+   "onLine": 23,
+   "plan": 71,
+   "own": 59,
+   "hired": 0
+  },
+  {
+   "date": "2024-12-23",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 29,
+   "own": 41,
+   "hired": 1
+  },
+  {
+   "date": "2024-12-24",
+   "fleet": 35,
+   "onLine": 28,
+   "plan": 66,
+   "own": 60,
+   "hired": 0
+  },
+  {
+   "date": "2024-12-25",
+   "fleet": 35,
+   "onLine": 27,
+   "plan": 60,
+   "own": 49,
+   "hired": 1
+  },
+  {
+   "date": "2024-12-26",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 24,
+   "own": 24,
+   "hired": 0
+  },
+  {
+   "date": "2024-12-27",
+   "fleet": 35,
+   "onLine": 27,
+   "plan": 11,
+   "own": 18,
+   "hired": 0
+  },
+  {
+   "date": "2024-12-28",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 25,
+   "own": 24,
+   "hired": 1
+  },
+  {
+   "date": "2024-12-29",
+   "fleet": 35,
+   "onLine": 23,
+   "plan": 10,
+   "own": 45,
+   "hired": 0
+  },
+  {
+   "date": "2024-12-30",
+   "fleet": 35,
+   "onLine": 16,
+   "plan": 22,
+   "own": 66,
+   "hired": 2
+  },
+  {
+   "date": "2024-12-31",
+   "fleet": 35,
+   "onLine": 12,
+   "plan": 16,
+   "own": 16,
+   "hired": 0
+  },
+  {
+   "date": "2025-01-01",
+   "fleet": 35,
+   "onLine": 4,
+   "plan": 13,
+   "own": 13,
+   "hired": 0
+  },
+  {
+   "date": "2025-01-02",
+   "fleet": 35,
+   "onLine": 15,
+   "plan": 65,
+   "own": 52,
+   "hired": 0
+  },
+  {
+   "date": "2025-01-03",
+   "fleet": 35,
+   "onLine": 20,
+   "plan": 188,
+   "own": 59,
+   "hired": 0
+  },
+  {
+   "date": "2025-01-04",
+   "fleet": 35,
+   "onLine": 21,
+   "plan": 137,
+   "own": 59,
+   "hired": 1
+  },
+  {
+   "date": "2025-01-05",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 80,
+   "own": 46,
+   "hired": 4
+  },
+  {
+   "date": "2025-01-06",
+   "fleet": 35,
+   "onLine": 20,
+   "plan": 84,
+   "own": 83,
+   "hired": 0
+  },
+  {
+   "date": "2025-01-07",
+   "fleet": 35,
+   "onLine": 20,
+   "plan": 30,
+   "own": 54,
+   "hired": 0
+  },
+  {
+   "date": "2025-01-08",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 39,
+   "own": 98,
+   "hired": 0
+  },
+  {
+   "date": "2025-01-09",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 79,
+   "own": 75,
+   "hired": 0
+  },
+  {
+   "date": "2025-01-10",
+   "fleet": 35,
+   "onLine": 28,
+   "plan": 10,
+   "own": 64,
+   "hired": 0
+  },
+  {
+   "date": "2025-01-11",
+   "fleet": 35,
+   "onLine": 29,
+   "plan": 106,
+   "own": 43,
+   "hired": 0
+  },
+  {
+   "date": "2025-01-12",
+   "fleet": 35,
+   "onLine": 27,
+   "plan": 84,
+   "own": 83,
+   "hired": 0
+  },
+  {
+   "date": "2025-01-13",
+   "fleet": 35,
+   "onLine": 27,
+   "plan": 43,
+   "own": 91,
+   "hired": 2
+  },
+  {
+   "date": "2025-01-14",
+   "fleet": 35,
+   "onLine": 29,
+   "plan": 96,
+   "own": 68,
+   "hired": 7
+  },
+  {
+   "date": "2025-01-15",
+   "fleet": 35,
+   "onLine": 28,
+   "plan": 74,
+   "own": 46,
+   "hired": 8
+  },
+  {
+   "date": "2025-01-16",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 62,
+   "own": 74,
+   "hired": 4
+  },
+  {
+   "date": "2025-01-17",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 22,
+   "own": 31,
+   "hired": 2
+  },
+  {
+   "date": "2025-01-18",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 45,
+   "own": 45,
+   "hired": 0
+  },
+  {
+   "date": "2025-01-19",
+   "fleet": 35,
+   "onLine": 28,
+   "plan": 45,
+   "own": 45,
+   "hired": 0
+  },
+  {
+   "date": "2025-01-20",
+   "fleet": 35,
+   "onLine": 27,
+   "plan": 44,
+   "own": 45,
+   "hired": 3
+  },
+  {
+   "date": "2025-01-21",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 66,
+   "own": 34,
+   "hired": 14
+  },
+  {
+   "date": "2025-01-22",
+   "fleet": 35,
+   "onLine": 27,
+   "plan": 41,
+   "own": 37,
+   "hired": 5
+  },
+  {
+   "date": "2025-01-23",
+   "fleet": 35,
+   "onLine": 28,
+   "plan": 33,
+   "own": 62,
+   "hired": 0
+  },
+  {
+   "date": "2025-01-24",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 21,
+   "own": 43,
+   "hired": 3
+  },
+  {
+   "date": "2025-01-25",
+   "fleet": 35,
+   "onLine": 23,
+   "plan": 32,
+   "own": 66,
+   "hired": 0
+  },
+  {
+   "date": "2025-01-26",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 1,
+   "own": 103,
+   "hired": 0
+  },
+  {
+   "date": "2025-01-27",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 20,
+   "own": 51,
+   "hired": 2
+  },
+  {
+   "date": "2025-01-28",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 15,
+   "own": 11,
+   "hired": 0
+  },
+  {
+   "date": "2025-01-29",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 33,
+   "own": 68,
+   "hired": 4
+  },
+  {
+   "date": "2025-01-30",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 20,
+   "own": 52,
+   "hired": 2
+  },
+  {
+   "date": "2025-01-31",
+   "fleet": 35,
+   "onLine": 27,
+   "plan": 103,
+   "own": 69,
+   "hired": 7
+  },
+  {
+   "date": "2025-02-01",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 37,
+   "own": 39,
+   "hired": 0
+  },
+  {
+   "date": "2025-02-02",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 2,
+   "own": 102,
+   "hired": 0
+  },
+  {
+   "date": "2025-02-03",
+   "fleet": 35,
+   "onLine": 20,
+   "plan": 17,
+   "own": 26,
+   "hired": 0
+  },
+  {
+   "date": "2025-02-04",
+   "fleet": 35,
+   "onLine": 20,
+   "plan": 43,
+   "own": 82,
+   "hired": 7
+  },
+  {
+   "date": "2025-02-05",
+   "fleet": 35,
+   "onLine": 27,
+   "plan": 44,
+   "own": 54,
+   "hired": 4
+  },
+  {
+   "date": "2025-02-06",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 23,
+   "own": 24,
+   "hired": 0
+  },
+  {
+   "date": "2025-02-07",
+   "fleet": 35,
+   "onLine": 21,
+   "plan": 24,
+   "own": 54,
+   "hired": 0
+  },
+  {
+   "date": "2025-02-08",
+   "fleet": 35,
+   "onLine": 19,
+   "plan": 86,
+   "own": 86,
+   "hired": 0
+  },
+  {
+   "date": "2025-02-09",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 41,
+   "own": 41,
+   "hired": 0
+  },
+  {
+   "date": "2025-02-10",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 21,
+   "own": 26,
+   "hired": 0
+  },
+  {
+   "date": "2025-02-11",
+   "fleet": 35,
+   "onLine": 23,
+   "plan": 18,
+   "own": 20,
+   "hired": 0
+  },
+  {
+   "date": "2025-02-12",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 15,
+   "own": 27,
+   "hired": 0
+  },
+  {
+   "date": "2025-02-13",
+   "fleet": 35,
+   "onLine": 28,
+   "plan": 34,
+   "own": 51,
+   "hired": 0
+  },
+  {
+   "date": "2025-02-14",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 63,
+   "own": 59,
+   "hired": 4
+  },
+  {
+   "date": "2025-02-15",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 81,
+   "own": 78,
+   "hired": 2
+  },
+  {
+   "date": "2025-02-16",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 19,
+   "own": 67,
+   "hired": 0
+  },
+  {
+   "date": "2025-02-17",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 32,
+   "own": 66,
+   "hired": 7
+  },
+  {
+   "date": "2025-02-18",
+   "fleet": 35,
+   "onLine": 28,
+   "plan": 67,
+   "own": 99,
+   "hired": 18
+  },
+  {
+   "date": "2025-02-19",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 71,
+   "own": 87,
+   "hired": 9
+  },
+  {
+   "date": "2025-02-20",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 30,
+   "own": 46,
+   "hired": 1
+  },
+  {
+   "date": "2025-02-21",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 36,
+   "own": 52,
+   "hired": 0
+  },
+  {
+   "date": "2025-02-22",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 3,
+   "own": 4,
+   "hired": 0
+  },
+  {
+   "date": "2025-02-23",
+   "fleet": 35,
+   "onLine": 20,
+   "plan": 3,
+   "own": 29,
+   "hired": 0
+  },
+  {
+   "date": "2025-02-24",
+   "fleet": 35,
+   "onLine": 21,
+   "plan": 49,
+   "own": 60,
+   "hired": 1
+  },
+  {
+   "date": "2025-02-25",
+   "fleet": 35,
+   "onLine": 27,
+   "plan": 62,
+   "own": 65,
+   "hired": 2
+  },
+  {
+   "date": "2025-02-26",
+   "fleet": 35,
+   "onLine": 28,
+   "plan": 43,
+   "own": 50,
+   "hired": 5
+  },
+  {
+   "date": "2025-02-27",
+   "fleet": 35,
+   "onLine": 28,
+   "plan": 14,
+   "own": 13,
+   "hired": 1
+  },
+  {
+   "date": "2025-02-28",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 13,
+   "own": 15,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-01",
+   "fleet": 35,
+   "onLine": 19,
+   "plan": 14,
+   "own": 15,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-02",
+   "fleet": 35,
+   "onLine": 16,
+   "plan": 11,
+   "own": 11,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-03",
+   "fleet": 35,
+   "onLine": 20,
+   "plan": 20,
+   "own": 23,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-04",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 21,
+   "own": 36,
+   "hired": 2
+  },
+  {
+   "date": "2025-03-05",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 26,
+   "own": 44,
+   "hired": 1
+  },
+  {
+   "date": "2025-03-06",
+   "fleet": 35,
+   "onLine": 21,
+   "plan": 23,
+   "own": 35,
+   "hired": 1
+  },
+  {
+   "date": "2025-03-07",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 8,
+   "own": 32,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-08",
+   "fleet": 35,
+   "onLine": 14,
+   "plan": 12,
+   "own": 12,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-09",
+   "fleet": 35,
+   "onLine": 16,
+   "plan": 11,
+   "own": 10,
+   "hired": 1
+  },
+  {
+   "date": "2025-03-10",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 22,
+   "own": 36,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-11",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 22,
+   "own": 21,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-12",
+   "fleet": 35,
+   "onLine": 20,
+   "plan": 21,
+   "own": 36,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-13",
+   "fleet": 35,
+   "onLine": 19,
+   "plan": 20,
+   "own": 41,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-14",
+   "fleet": 35,
+   "onLine": 20,
+   "plan": 21,
+   "own": 23,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-15",
+   "fleet": 35,
+   "onLine": 17,
+   "plan": 14,
+   "own": 18,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-16",
+   "fleet": 35,
+   "onLine": 17,
+   "plan": 9,
+   "own": 9,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-17",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 47,
+   "own": 43,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-18",
+   "fleet": 35,
+   "onLine": 28,
+   "plan": 24,
+   "own": 31,
+   "hired": 1
+  },
+  {
+   "date": "2025-03-19",
+   "fleet": 35,
+   "onLine": 28,
+   "plan": 23,
+   "own": 75,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-20",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 36,
+   "own": 61,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-21",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 17,
+   "own": 38,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-22",
+   "fleet": 35,
+   "onLine": 21,
+   "plan": 15,
+   "own": 15,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-23",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 4,
+   "own": 10,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-24",
+   "fleet": 35,
+   "onLine": 23,
+   "plan": 11,
+   "own": 54,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-25",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 11,
+   "own": 61,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-26",
+   "fleet": 35,
+   "onLine": 27,
+   "plan": 9,
+   "own": 24,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-27",
+   "fleet": 35,
+   "onLine": 23,
+   "plan": 13,
+   "own": 29,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-28",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 6,
+   "own": 48,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-29",
+   "fleet": 35,
+   "onLine": 19,
+   "plan": 8,
+   "own": 7,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-30",
+   "fleet": 35,
+   "onLine": 18,
+   "plan": 6,
+   "own": 3,
+   "hired": 0
+  },
+  {
+   "date": "2025-03-31",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 7,
+   "own": 20,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-01",
+   "fleet": 35,
+   "onLine": 27,
+   "plan": 31,
+   "own": 55,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-02",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 8,
+   "own": 23,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-03",
+   "fleet": 35,
+   "onLine": 27,
+   "plan": 10,
+   "own": 39,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-04",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 13,
+   "own": 40,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-05",
+   "fleet": 35,
+   "onLine": 18,
+   "plan": 2,
+   "own": 4,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-06",
+   "fleet": 35,
+   "onLine": 19,
+   "plan": 3,
+   "own": 9,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-07",
+   "fleet": 35,
+   "onLine": 21,
+   "plan": 48,
+   "own": 51,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-08",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 9,
+   "own": 27,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-09",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 16,
+   "own": 37,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-10",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 18,
+   "own": 50,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-11",
+   "fleet": 35,
+   "onLine": 21,
+   "plan": 14,
+   "own": 26,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-12",
+   "fleet": 35,
+   "onLine": 11,
+   "plan": 10,
+   "own": 10,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-13",
+   "fleet": 35,
+   "onLine": 13,
+   "plan": 1,
+   "own": 1,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-14",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 4,
+   "own": 28,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-15",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 27,
+   "own": 39,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-16",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 18,
+   "own": 42,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-17",
+   "fleet": 35,
+   "onLine": 28,
+   "plan": 25,
+   "own": 36,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-18",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 24,
+   "own": 44,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-19",
+   "fleet": 35,
+   "onLine": 16,
+   "plan": 13,
+   "own": 22,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-20",
+   "fleet": 35,
+   "onLine": 17,
+   "plan": 5,
+   "own": 5,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-21",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 26,
+   "own": 26,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-22",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 27,
+   "own": 46,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-23",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 21,
+   "own": 55,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-24",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 57,
+   "own": 43,
+   "hired": 1
+  },
+  {
+   "date": "2025-04-25",
+   "fleet": 35,
+   "onLine": 20,
+   "plan": 45,
+   "own": 45,
+   "hired": 2
+  },
+  {
+   "date": "2025-04-26",
+   "fleet": 35,
+   "onLine": 19,
+   "plan": 22,
+   "own": 20,
+   "hired": 2
+  },
+  {
+   "date": "2025-04-27",
+   "fleet": 35,
+   "onLine": 16,
+   "plan": 6,
+   "own": 6,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-28",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 15,
+   "own": 33,
+   "hired": 0
+  },
+  {
+   "date": "2025-04-29",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 89,
+   "own": 59,
+   "hired": 4
+  },
+  {
+   "date": "2025-04-30",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 62,
+   "own": 63,
+   "hired": 3
+  },
+  {
+   "date": "2025-05-01",
+   "fleet": 35,
+   "onLine": 20,
+   "plan": 18,
+   "own": 18,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-02",
+   "fleet": 35,
+   "onLine": 21,
+   "plan": 10,
+   "own": 11,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-03",
+   "fleet": 35,
+   "onLine": 17,
+   "plan": 3,
+   "own": 8,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-04",
+   "fleet": 35,
+   "onLine": 15,
+   "plan": 17,
+   "own": 17,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-05",
+   "fleet": 35,
+   "onLine": 20,
+   "plan": 15,
+   "own": 28,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-06",
+   "fleet": 35,
+   "onLine": 23,
+   "plan": 57,
+   "own": 52,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-07",
+   "fleet": 35,
+   "onLine": 19,
+   "plan": 37,
+   "own": 54,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-08",
+   "fleet": 35,
+   "onLine": 19,
+   "plan": 39,
+   "own": 63,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-09",
+   "fleet": 35,
+   "onLine": 12,
+   "plan": 23,
+   "own": 20,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-10",
+   "fleet": 35,
+   "onLine": 11,
+   "plan": 10,
+   "own": 25,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-11",
+   "fleet": 35,
+   "onLine": 11,
+   "plan": 11,
+   "own": 11,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-12",
+   "fleet": 35,
+   "onLine": 27,
+   "plan": 22,
+   "own": 36,
+   "hired": 1
+  },
+  {
+   "date": "2025-05-13",
+   "fleet": 35,
+   "onLine": 28,
+   "plan": 22,
+   "own": 29,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-14",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 31,
+   "own": 38,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-15",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 27,
+   "own": 41,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-16",
+   "fleet": 35,
+   "onLine": 23,
+   "plan": 26,
+   "own": 53,
+   "hired": 1
+  },
+  {
+   "date": "2025-05-17",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 11,
+   "own": 14,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-18",
+   "fleet": 35,
+   "onLine": 20,
+   "plan": 2,
+   "own": 21,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-19",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 29,
+   "own": 58,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-20",
+   "fleet": 35,
+   "onLine": 27,
+   "plan": 66,
+   "own": 74,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-21",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 24,
+   "own": 31,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-22",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 32,
+   "own": 35,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-23",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 28,
+   "own": 48,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-24",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 7,
+   "own": 7,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-25",
+   "fleet": 35,
+   "onLine": 15,
+   "plan": 7,
+   "own": 7,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-26",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 33,
+   "own": 80,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-27",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 44,
+   "own": 50,
+   "hired": 3
+  },
+  {
+   "date": "2025-05-28",
+   "fleet": 35,
+   "onLine": 28,
+   "plan": 22,
+   "own": 63,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-29",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 17,
+   "own": 23,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-30",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 27,
+   "own": 50,
+   "hired": 0
+  },
+  {
+   "date": "2025-05-31",
+   "fleet": 35,
+   "onLine": 21,
+   "plan": 10,
+   "own": 10,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-01",
+   "fleet": 35,
+   "onLine": 15,
+   "plan": 2,
+   "own": 2,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-02",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 20,
+   "own": 32,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-03",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 17,
+   "own": 35,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-04",
+   "fleet": 35,
+   "onLine": 25,
+   "plan": 27,
+   "own": 44,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-05",
+   "fleet": 35,
+   "onLine": 26,
+   "plan": 23,
+   "own": 39,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-06",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 25,
+   "own": 45,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-07",
+   "fleet": 35,
+   "onLine": 16,
+   "plan": 27,
+   "own": 42,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-08",
+   "fleet": 35,
+   "onLine": 13,
+   "plan": 14,
+   "own": 14,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-09",
+   "fleet": 35,
+   "onLine": 23,
+   "plan": 38,
+   "own": 51,
+   "hired": 6
+  },
+  {
+   "date": "2025-06-10",
+   "fleet": 35,
+   "onLine": 27,
+   "plan": 31,
+   "own": 60,
+   "hired": 1
+  },
+  {
+   "date": "2025-06-11",
+   "fleet": 35,
+   "onLine": 28,
+   "plan": 62,
+   "own": 62,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-12",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 12,
+   "own": 23,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-13",
+   "fleet": 35,
+   "onLine": 21,
+   "plan": 47,
+   "own": 51,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-14",
+   "fleet": 35,
+   "onLine": 16,
+   "plan": 13,
+   "own": 13,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-15",
+   "fleet": 35,
+   "onLine": 16,
+   "plan": 8,
+   "own": 27,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-16",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 61,
+   "own": 51,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-17",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 32,
+   "own": 65,
+   "hired": 1
+  },
+  {
+   "date": "2025-06-18",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 34,
+   "own": 43,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-19",
+   "fleet": 35,
+   "onLine": 21,
+   "plan": 42,
+   "own": 49,
+   "hired": 1
+  },
+  {
+   "date": "2025-06-20",
+   "fleet": 35,
+   "onLine": 23,
+   "plan": 29,
+   "own": 41,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-21",
+   "fleet": 35,
+   "onLine": 21,
+   "plan": 21,
+   "own": 21,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-22",
+   "fleet": 35,
+   "onLine": 19,
+   "plan": 3,
+   "own": 5,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-23",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 24,
+   "own": 59,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-24",
+   "fleet": 35,
+   "onLine": 24,
+   "plan": 36,
+   "own": 57,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-25",
+   "fleet": 35,
+   "onLine": 23,
+   "plan": 21,
+   "own": 40,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-26",
+   "fleet": 35,
+   "onLine": 22,
+   "plan": 22,
+   "own": 50,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-27",
+   "fleet": 35,
+   "onLine": 21,
+   "plan": 55,
+   "own": 53,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-28",
+   "fleet": 35,
+   "onLine": 17,
+   "plan": 43,
+   "own": 43,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-29",
+   "fleet": 35,
+   "onLine": 15,
+   "plan": 5,
+   "own": 2,
+   "hired": 0
+  },
+  {
+   "date": "2025-06-30",
+   "fleet": 35,
+   "onLine": 20,
+   "plan": 20,
+   "own": 34,
+   "hired": 2
+  },
+  {
+   "date": "2025-07-01",
+   "fleet": 33,
+   "onLine": 19,
+   "plan": 25,
+   "own": 52,
+   "hired": 1
+  },
+  {
+   "date": "2025-07-02",
+   "fleet": 33,
+   "onLine": 21,
+   "plan": 51,
+   "own": 62,
+   "hired": 1
+  },
+  {
+   "date": "2025-07-03",
+   "fleet": 33,
+   "onLine": 21,
+   "plan": 25,
+   "own": 58,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-04",
+   "fleet": 33,
+   "onLine": 19,
+   "plan": 54,
+   "own": 62,
+   "hired": 1
+  },
+  {
+   "date": "2025-07-05",
+   "fleet": 33,
+   "onLine": 10,
+   "plan": 7,
+   "own": 12,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-06",
+   "fleet": 33,
+   "onLine": 10,
+   "plan": 2,
+   "own": 4,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-07",
+   "fleet": 33,
+   "onLine": 20,
+   "plan": 18,
+   "own": 31,
+   "hired": 1
+  },
+  {
+   "date": "2025-07-08",
+   "fleet": 33,
+   "onLine": 23,
+   "plan": 29,
+   "own": 33,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-09",
+   "fleet": 33,
+   "onLine": 25,
+   "plan": 30,
+   "own": 47,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-10",
+   "fleet": 33,
+   "onLine": 24,
+   "plan": 35,
+   "own": 52,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-11",
+   "fleet": 33,
+   "onLine": 21,
+   "plan": 20,
+   "own": 32,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-12",
+   "fleet": 33,
+   "onLine": 19,
+   "plan": 208,
+   "own": 58,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-13",
+   "fleet": 33,
+   "onLine": 19,
+   "plan": 150,
+   "own": 69,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-14",
+   "fleet": 31,
+   "onLine": 19,
+   "plan": 13,
+   "own": 39,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-15",
+   "fleet": 31,
+   "onLine": 19,
+   "plan": 23,
+   "own": 27,
+   "hired": 1
+  },
+  {
+   "date": "2025-07-16",
+   "fleet": 31,
+   "onLine": 17,
+   "plan": 10,
+   "own": 23,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-17",
+   "fleet": 31,
+   "onLine": 20,
+   "plan": 16,
+   "own": 30,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-18",
+   "fleet": 31,
+   "onLine": 18,
+   "plan": 26,
+   "own": 46,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-19",
+   "fleet": 31,
+   "onLine": 14,
+   "plan": 34,
+   "own": 47,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-20",
+   "fleet": 31,
+   "onLine": 13,
+   "plan": 4,
+   "own": 18,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-21",
+   "fleet": 31,
+   "onLine": 18,
+   "plan": 24,
+   "own": 37,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-22",
+   "fleet": 31,
+   "onLine": 19,
+   "plan": 25,
+   "own": 35,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-23",
+   "fleet": 31,
+   "onLine": 19,
+   "plan": 35,
+   "own": 46,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-24",
+   "fleet": 31,
+   "onLine": 15,
+   "plan": 32,
+   "own": 44,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-25",
+   "fleet": 31,
+   "onLine": 17,
+   "plan": 56,
+   "own": 34,
+   "hired": 9
+  },
+  {
+   "date": "2025-07-26",
+   "fleet": 31,
+   "onLine": 16,
+   "plan": 57,
+   "own": 77,
+   "hired": 12
+  },
+  {
+   "date": "2025-07-27",
+   "fleet": 31,
+   "onLine": 14,
+   "plan": 25,
+   "own": 54,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-28",
+   "fleet": 31,
+   "onLine": 16,
+   "plan": 47,
+   "own": 49,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-29",
+   "fleet": 31,
+   "onLine": 19,
+   "plan": 28,
+   "own": 52,
+   "hired": 0
+  },
+  {
+   "date": "2025-07-30",
+   "fleet": 31,
+   "onLine": 20,
+   "plan": 31,
+   "own": 40,
+   "hired": 3
+  },
+  {
+   "date": "2025-07-31",
+   "fleet": 30,
+   "onLine": 20,
+   "plan": 32,
+   "own": 43,
+   "hired": 2
+  },
+  {
+   "date": "2025-08-01",
+   "fleet": 30,
+   "onLine": 18,
+   "plan": 28,
+   "own": 38,
+   "hired": 1
+  },
+  {
+   "date": "2025-08-02",
+   "fleet": 30,
+   "onLine": 15,
+   "plan": 4,
+   "own": 24,
+   "hired": 0
+  },
+  {
+   "date": "2025-08-03",
+   "fleet": 30,
+   "onLine": 15,
+   "plan": 9,
+   "own": 9,
+   "hired": 0
+  },
+  {
+   "date": "2025-08-04",
+   "fleet": 30,
+   "onLine": 20,
+   "plan": 24,
+   "own": 30,
+   "hired": 0
+  },
+  {
+   "date": "2025-08-05",
+   "fleet": 30,
+   "onLine": 20,
+   "plan": 21,
+   "own": 22,
+   "hired": 2
+  },
+  {
+   "date": "2025-08-06",
+   "fleet": 30,
+   "onLine": 19,
+   "plan": 27,
+   "own": 37,
+   "hired": 2
+  },
+  {
+   "date": "2025-08-07",
+   "fleet": 30,
+   "onLine": 18,
+   "plan": 35,
+   "own": 33,
+   "hired": 2
+  },
+  {
+   "date": "2025-08-08",
+   "fleet": 30,
+   "onLine": 16,
+   "plan": 41,
+   "own": 35,
+   "hired": 0
+  },
+  {
+   "date": "2025-08-09",
+   "fleet": 30,
+   "onLine": 12,
+   "plan": 25,
+   "own": 22,
+   "hired": 1
+  },
+  {
+   "date": "2025-08-10",
+   "fleet": 30,
+   "onLine": 8,
+   "plan": 6,
+   "own": 4,
+   "hired": 2
+  },
+  {
+   "date": "2025-08-11",
+   "fleet": 30,
+   "onLine": 13,
+   "plan": 17,
+   "own": 19,
+   "hired": 0
+  },
+  {
+   "date": "2025-08-12",
+   "fleet": 30,
+   "onLine": 15,
+   "plan": 21,
+   "own": 35,
+   "hired": 1
+  },
+  {
+   "date": "2025-08-13",
+   "fleet": 30,
+   "onLine": 16,
+   "plan": 30,
+   "own": 40,
+   "hired": 3
+  },
+  {
+   "date": "2025-08-14",
+   "fleet": 30,
+   "onLine": 17,
+   "plan": 65,
+   "own": 45,
+   "hired": 6
+  },
+  {
+   "date": "2025-08-15",
+   "fleet": 30,
+   "onLine": 17,
+   "plan": 54,
+   "own": 48,
+   "hired": 6
+  },
+  {
+   "date": "2025-08-16",
+   "fleet": 30,
+   "onLine": 10,
+   "plan": 27,
+   "own": 30,
+   "hired": 0
+  },
+  {
+   "date": "2025-08-17",
+   "fleet": 25,
+   "onLine": 9,
+   "plan": 1,
+   "own": 1,
+   "hired": 0
+  },
+  {
+   "date": "2025-08-18",
+   "fleet": 25,
+   "onLine": 10,
+   "plan": 13,
+   "own": 22,
+   "hired": 0
+  },
+  {
+   "date": "2025-08-19",
+   "fleet": 25,
+   "onLine": 16,
+   "plan": 44,
+   "own": 54,
+   "hired": 0
+  },
+  {
+   "date": "2025-08-20",
+   "fleet": 25,
+   "onLine": 16,
+   "plan": 66,
+   "own": 45,
+   "hired": 0
+  },
+  {
+   "date": "2025-08-21",
+   "fleet": 25,
+   "onLine": 20,
+   "plan": 35,
+   "own": 32,
+   "hired": 0
+  },
+  {
+   "date": "2025-08-22",
+   "fleet": 25,
+   "onLine": 19,
+   "plan": 35,
+   "own": 29,
+   "hired": 2
+  },
+  {
+   "date": "2025-08-23",
+   "fleet": 25,
+   "onLine": 15,
+   "plan": 35,
+   "own": 17,
+   "hired": 3
+  },
+  {
+   "date": "2025-08-24",
+   "fleet": 25,
+   "onLine": 15,
+   "plan": 21,
+   "own": 21,
+   "hired": 0
+  },
+  {
+   "date": "2025-08-25",
+   "fleet": 25,
+   "onLine": 17,
+   "plan": 20,
+   "own": 20,
+   "hired": 4
+  },
+  {
+   "date": "2025-08-26",
+   "fleet": 25,
+   "onLine": 17,
+   "plan": 26,
+   "own": 19,
+   "hired": 7
+  },
+  {
+   "date": "2025-08-27",
+   "fleet": 25,
+   "onLine": 18,
+   "plan": 32,
+   "own": 41,
+   "hired": 0
+  },
+  {
+   "date": "2025-08-28",
+   "fleet": 25,
+   "onLine": 13,
+   "plan": 10,
+   "own": 18,
+   "hired": 1
+  },
+  {
+   "date": "2025-08-29",
+   "fleet": 25,
+   "onLine": 14,
+   "plan": 23,
+   "own": 27,
+   "hired": 1
+  },
+  {
+   "date": "2025-08-30",
+   "fleet": 25,
+   "onLine": 13,
+   "plan": 27,
+   "own": 25,
+   "hired": 0
+  },
+  {
+   "date": "2025-08-31",
+   "fleet": 25,
+   "onLine": 11,
+   "plan": 7,
+   "own": 18,
+   "hired": 1
+  },
+  {
+   "date": "2025-09-01",
+   "fleet": 25,
+   "onLine": 10,
+   "plan": 76,
+   "own": 23,
+   "hired": 15
+  },
+  {
+   "date": "2025-09-02",
+   "fleet": 25,
+   "onLine": 11,
+   "plan": 49,
+   "own": 13,
+   "hired": 5
+  },
+  {
+   "date": "2025-09-03",
+   "fleet": 25,
+   "onLine": 11,
+   "plan": 50,
+   "own": 13,
+   "hired": 14
+  },
+  {
+   "date": "2025-09-04",
+   "fleet": 25,
+   "onLine": 12,
+   "plan": 46,
+   "own": 23,
+   "hired": 8
+  },
+  {
+   "date": "2025-09-05",
+   "fleet": 25,
+   "onLine": 12,
+   "plan": 14,
+   "own": 29,
+   "hired": 1
+  },
+  {
+   "date": "2025-09-06",
+   "fleet": 25,
+   "onLine": 8,
+   "plan": 20,
+   "own": 21,
+   "hired": 2
+  },
+  {
+   "date": "2025-09-07",
+   "fleet": 25,
+   "onLine": 9,
+   "plan": 2,
+   "own": 2,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-08",
+   "fleet": 25,
+   "onLine": 11,
+   "plan": 24,
+   "own": 24,
+   "hired": 3
+  },
+  {
+   "date": "2025-09-09",
+   "fleet": 25,
+   "onLine": 12,
+   "plan": 39,
+   "own": 33,
+   "hired": 3
+  },
+  {
+   "date": "2025-09-10",
+   "fleet": 25,
+   "onLine": 14,
+   "plan": 34,
+   "own": 31,
+   "hired": 2
+  },
+  {
+   "date": "2025-09-11",
+   "fleet": 25,
+   "onLine": 13,
+   "plan": 34,
+   "own": 43,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-12",
+   "fleet": 25,
+   "onLine": 12,
+   "plan": 18,
+   "own": 35,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-13",
+   "fleet": 25,
+   "onLine": 9,
+   "plan": 14,
+   "own": 8,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-14",
+   "fleet": 25,
+   "onLine": 9,
+   "plan": 8,
+   "own": 2,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-15",
+   "fleet": 19,
+   "onLine": 15,
+   "plan": 20,
+   "own": 26,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-16",
+   "fleet": 19,
+   "onLine": 13,
+   "plan": 34,
+   "own": 33,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-17",
+   "fleet": 19,
+   "onLine": 11,
+   "plan": 27,
+   "own": 35,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-18",
+   "fleet": 19,
+   "onLine": 12,
+   "plan": 52,
+   "own": 43,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-19",
+   "fleet": 19,
+   "onLine": 12,
+   "plan": 24,
+   "own": 44,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-20",
+   "fleet": 19,
+   "onLine": 9,
+   "plan": 33,
+   "own": 39,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-21",
+   "fleet": 19,
+   "onLine": 6,
+   "plan": 22,
+   "own": 22,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-22",
+   "fleet": 19,
+   "onLine": 11,
+   "plan": 47,
+   "own": 34,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-23",
+   "fleet": 19,
+   "onLine": 10,
+   "plan": 34,
+   "own": 44,
+   "hired": 3
+  },
+  {
+   "date": "2025-09-24",
+   "fleet": 19,
+   "onLine": 12,
+   "plan": 12,
+   "own": 20,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-25",
+   "fleet": 19,
+   "onLine": 12,
+   "plan": 27,
+   "own": 49,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-26",
+   "fleet": 19,
+   "onLine": 13,
+   "plan": 17,
+   "own": 20,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-27",
+   "fleet": 19,
+   "onLine": 8,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-28",
+   "fleet": 19,
+   "onLine": 7,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-29",
+   "fleet": 19,
+   "onLine": 12,
+   "plan": 13,
+   "own": 19,
+   "hired": 0
+  },
+  {
+   "date": "2025-09-30",
+   "fleet": 19,
+   "onLine": 11,
+   "plan": 15,
+   "own": 37,
+   "hired": 0
+  },
+  {
+   "date": "2025-10-01",
+   "fleet": 19,
+   "onLine": 12,
+   "plan": 19,
+   "own": 27,
+   "hired": 0
+  },
+  {
+   "date": "2025-10-02",
+   "fleet": 19,
+   "onLine": 10,
+   "plan": 20,
+   "own": 26,
+   "hired": 0
+  },
+  {
+   "date": "2025-10-03",
+   "fleet": 19,
+   "onLine": 9,
+   "plan": 14,
+   "own": 27,
+   "hired": 0
+  },
+  {
+   "date": "2025-10-04",
+   "fleet": 19,
+   "onLine": 9,
+   "plan": 16,
+   "own": 16,
+   "hired": 0
+  },
+  {
+   "date": "2025-10-05",
+   "fleet": 19,
+   "onLine": 7,
+   "plan": 7,
+   "own": 17,
+   "hired": 0
+  },
+  {
+   "date": "2025-10-06",
+   "fleet": 19,
+   "onLine": 8,
+   "plan": 13,
+   "own": 16,
+   "hired": 0
+  },
+  {
+   "date": "2025-10-07",
+   "fleet": 19,
+   "onLine": 10,
+   "plan": 21,
+   "own": 22,
+   "hired": 2
+  },
+  {
+   "date": "2025-10-08",
+   "fleet": 19,
+   "onLine": 9,
+   "plan": 8,
+   "own": 17,
+   "hired": 0
+  },
+  {
+   "date": "2025-10-09",
+   "fleet": 19,
+   "onLine": 10,
+   "plan": 10,
+   "own": 21,
+   "hired": 0
+  },
+  {
+   "date": "2025-10-10",
+   "fleet": 19,
+   "onLine": 5,
+   "plan": 6,
+   "own": 16,
+   "hired": 0
+  },
+  {
+   "date": "2025-10-11",
+   "fleet": 19,
+   "onLine": 4,
+   "plan": 6,
+   "own": 4,
+   "hired": 2
+  },
+  {
+   "date": "2025-10-12",
+   "fleet": 19,
+   "onLine": 6,
+   "plan": 4,
+   "own": 8,
+   "hired": 0
+  },
+  {
+   "date": "2025-10-13",
+   "fleet": 19,
+   "onLine": 9,
+   "plan": 27,
+   "own": 23,
+   "hired": 2
+  },
+  {
+   "date": "2025-10-14",
+   "fleet": 19,
+   "onLine": 10,
+   "plan": 29,
+   "own": 23,
+   "hired": 7
+  },
+  {
+   "date": "2025-10-15",
+   "fleet": 19,
+   "onLine": 12,
+   "plan": 45,
+   "own": 32,
+   "hired": 6
+  },
+  {
+   "date": "2025-10-16",
+   "fleet": 19,
+   "onLine": 11,
+   "plan": 29,
+   "own": 23,
+   "hired": 6
+  },
+  {
+   "date": "2025-10-17",
+   "fleet": 19,
+   "onLine": 7,
+   "plan": 46,
+   "own": 23,
+   "hired": 14
+  },
+  {
+   "date": "2025-10-18",
+   "fleet": 19,
+   "onLine": 7,
+   "plan": 50,
+   "own": 29,
+   "hired": 6
+  },
+  {
+   "date": "2025-10-19",
+   "fleet": 19,
+   "onLine": 6,
+   "plan": 31,
+   "own": 21,
+   "hired": 6
+  },
+  {
+   "date": "2025-10-20",
+   "fleet": 19,
+   "onLine": 11,
+   "plan": 23,
+   "own": 23,
+   "hired": 4
+  },
+  {
+   "date": "2025-10-21",
+   "fleet": 19,
+   "onLine": 10,
+   "plan": 17,
+   "own": 19,
+   "hired": 3
+  },
+  {
+   "date": "2025-10-22",
+   "fleet": 19,
+   "onLine": 12,
+   "plan": 33,
+   "own": 30,
+   "hired": 2
+  },
+  {
+   "date": "2025-10-23",
+   "fleet": 19,
+   "onLine": 12,
+   "plan": 18,
+   "own": 27,
+   "hired": 0
+  },
+  {
+   "date": "2025-10-24",
+   "fleet": 19,
+   "onLine": 11,
+   "plan": 29,
+   "own": 17,
+   "hired": 2
+  },
+  {
+   "date": "2025-10-25",
+   "fleet": 19,
+   "onLine": 7,
+   "plan": 16,
+   "own": 16,
+   "hired": 0
+  },
+  {
+   "date": "2025-10-26",
+   "fleet": 19,
+   "onLine": 6,
+   "plan": 1,
+   "own": 9,
+   "hired": 0
+  },
+  {
+   "date": "2025-10-27",
+   "fleet": 19,
+   "onLine": 10,
+   "plan": 6,
+   "own": 10,
+   "hired": 1
+  },
+  {
+   "date": "2025-10-28",
+   "fleet": 19,
+   "onLine": 12,
+   "plan": 34,
+   "own": 26,
+   "hired": 0
+  },
+  {
+   "date": "2025-10-29",
+   "fleet": 19,
+   "onLine": 12,
+   "plan": 19,
+   "own": 25,
+   "hired": 1
+  },
+  {
+   "date": "2025-10-30",
+   "fleet": 19,
+   "onLine": 11,
+   "plan": 10,
+   "own": 19,
+   "hired": 0
+  },
+  {
+   "date": "2025-10-31",
+   "fleet": 19,
+   "onLine": 9,
+   "plan": 13,
+   "own": 12,
+   "hired": 0
+  },
+  {
+   "date": "2025-11-01",
+   "fleet": 19,
+   "onLine": 8,
+   "plan": 25,
+   "own": 21,
+   "hired": 0
+  },
+  {
+   "date": "2025-11-02",
+   "fleet": 19,
+   "onLine": 7,
+   "plan": 14,
+   "own": 19,
+   "hired": 0
+  },
+  {
+   "date": "2025-11-03",
+   "fleet": 19,
+   "onLine": 7,
+   "plan": 38,
+   "own": 13,
+   "hired": 3
+  },
+  {
+   "date": "2025-11-04",
+   "fleet": 19,
+   "onLine": 8,
+   "plan": 31,
+   "own": 29,
+   "hired": 1
+  },
+  {
+   "date": "2025-11-05",
+   "fleet": 19,
+   "onLine": 7,
+   "plan": 21,
+   "own": 23,
+   "hired": 9
+  },
+  {
+   "date": "2025-11-06",
+   "fleet": 19,
+   "onLine": 9,
+   "plan": 30,
+   "own": 20,
+   "hired": 8
+  },
+  {
+   "date": "2025-11-07",
+   "fleet": 19,
+   "onLine": 10,
+   "plan": 30,
+   "own": 23,
+   "hired": 7
+  },
+  {
+   "date": "2025-11-08",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 54,
+   "own": 32,
+   "hired": 9
+  },
+  {
+   "date": "2025-11-09",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 32,
+   "own": 24,
+   "hired": 0
+  },
+  {
+   "date": "2025-11-10",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 30,
+   "own": 26,
+   "hired": 0
+  },
+  {
+   "date": "2025-11-11",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 38,
+   "own": 31,
+   "hired": 11
+  },
+  {
+   "date": "2025-11-12",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 28,
+   "own": 22,
+   "hired": 3
+  },
+  {
+   "date": "2025-11-13",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 26,
+   "own": 45,
+   "hired": 1
+  },
+  {
+   "date": "2025-11-14",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 17,
+   "own": 26,
+   "hired": 5
+  },
+  {
+   "date": "2025-11-15",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 39,
+   "own": 20,
+   "hired": 0
+  },
+  {
+   "date": "2025-11-16",
+   "fleet": 17,
+   "onLine": 7,
+   "plan": 21,
+   "own": 10,
+   "hired": 4
+  },
+  {
+   "date": "2025-11-17",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 24,
+   "own": 30,
+   "hired": 0
+  },
+  {
+   "date": "2025-11-18",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 17,
+   "own": 30,
+   "hired": 0
+  },
+  {
+   "date": "2025-11-19",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 46,
+   "own": 24,
+   "hired": 9
+  },
+  {
+   "date": "2025-11-20",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 36,
+   "own": 47,
+   "hired": 4
+  },
+  {
+   "date": "2025-11-21",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 22,
+   "own": 25,
+   "hired": 1
+  },
+  {
+   "date": "2025-11-22",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 20,
+   "own": 19,
+   "hired": 0
+  },
+  {
+   "date": "2025-11-23",
+   "fleet": 17,
+   "onLine": 7,
+   "plan": 8,
+   "own": 8,
+   "hired": 0
+  },
+  {
+   "date": "2025-11-24",
+   "fleet": 17,
+   "onLine": 8,
+   "plan": 19,
+   "own": 22,
+   "hired": 1
+  },
+  {
+   "date": "2025-11-25",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 14,
+   "own": 23,
+   "hired": 1
+  },
+  {
+   "date": "2025-11-26",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 19,
+   "own": 23,
+   "hired": 0
+  },
+  {
+   "date": "2025-11-27",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 20,
+   "own": 23,
+   "hired": 0
+  },
+  {
+   "date": "2025-11-28",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 24,
+   "own": 43,
+   "hired": 0
+  },
+  {
+   "date": "2025-11-29",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 15,
+   "own": 55,
+   "hired": 0
+  },
+  {
+   "date": "2025-11-30",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 5,
+   "own": 31,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-01",
+   "fleet": 17,
+   "onLine": 8,
+   "plan": 6,
+   "own": 14,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-02",
+   "fleet": 17,
+   "onLine": 8,
+   "plan": 42,
+   "own": 26,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-03",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 22,
+   "own": 33,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-04",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 29,
+   "own": 25,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-05",
+   "fleet": 17,
+   "onLine": 8,
+   "plan": 23,
+   "own": 30,
+   "hired": 2
+  },
+  {
+   "date": "2025-12-06",
+   "fleet": 17,
+   "onLine": 7,
+   "plan": 23,
+   "own": 21,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-07",
+   "fleet": 17,
+   "onLine": 7,
+   "plan": 27,
+   "own": 6,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-08",
+   "fleet": 17,
+   "onLine": 8,
+   "plan": 28,
+   "own": 16,
+   "hired": 1
+  },
+  {
+   "date": "2025-12-09",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 69,
+   "own": 17,
+   "hired": 8
+  },
+  {
+   "date": "2025-12-10",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 50,
+   "own": 24,
+   "hired": 3
+  },
+  {
+   "date": "2025-12-11",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 43,
+   "own": 22,
+   "hired": 8
+  },
+  {
+   "date": "2025-12-12",
+   "fleet": 17,
+   "onLine": 8,
+   "plan": 27,
+   "own": 23,
+   "hired": 4
+  },
+  {
+   "date": "2025-12-13",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 9,
+   "own": 38,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-14",
+   "fleet": 17,
+   "onLine": 6,
+   "plan": 6,
+   "own": 17,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-15",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 17,
+   "own": 21,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-16",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 11,
+   "own": 41,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-17",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 25,
+   "own": 25,
+   "hired": 2
+  },
+  {
+   "date": "2025-12-18",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 13,
+   "own": 37,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-19",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 86,
+   "own": 54,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-20",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 34,
+   "own": 34,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-21",
+   "fleet": 17,
+   "onLine": 8,
+   "plan": 1,
+   "own": 1,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-22",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 2,
+   "own": 27,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-23",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 11,
+   "own": 40,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-24",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 29,
+   "own": 34,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-25",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 20,
+   "own": 40,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-26",
+   "fleet": 17,
+   "onLine": 8,
+   "plan": 19,
+   "own": 33,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-27",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 26,
+   "own": 29,
+   "hired": 4
+  },
+  {
+   "date": "2025-12-28",
+   "fleet": 17,
+   "onLine": 8,
+   "plan": 14,
+   "own": 23,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-29",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 8,
+   "own": 23,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-30",
+   "fleet": 17,
+   "onLine": 7,
+   "plan": 18,
+   "own": 25,
+   "hired": 0
+  },
+  {
+   "date": "2025-12-31",
+   "fleet": 17,
+   "onLine": 6,
+   "plan": 19,
+   "own": 13,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-01",
+   "fleet": 17,
+   "onLine": 1,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-02",
+   "fleet": 17,
+   "onLine": 4,
+   "plan": 8,
+   "own": 18,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-03",
+   "fleet": 17,
+   "onLine": 5,
+   "plan": 4,
+   "own": 21,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-04",
+   "fleet": 17,
+   "onLine": 3,
+   "plan": 25,
+   "own": 22,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-05",
+   "fleet": 17,
+   "onLine": 6,
+   "plan": 31,
+   "own": 32,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-06",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 16,
+   "own": 25,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-07",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 11,
+   "own": 17,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-08",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 41,
+   "own": 33,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-09",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 39,
+   "own": 36,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-10",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 8,
+   "own": 11,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-11",
+   "fleet": 17,
+   "onLine": 7,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-12",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 14,
+   "own": 21,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-13",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 18,
+   "own": 26,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-14",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 35,
+   "own": 36,
+   "hired": 1
+  },
+  {
+   "date": "2026-01-15",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 24,
+   "own": 32,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-16",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 18,
+   "own": 43,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-17",
+   "fleet": 17,
+   "onLine": 8,
+   "plan": 34,
+   "own": 36,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-18",
+   "fleet": 17,
+   "onLine": 7,
+   "plan": 10,
+   "own": 7,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-19",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 10,
+   "own": 20,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-20",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 42,
+   "own": 33,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-21",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 47,
+   "own": 35,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-22",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 42,
+   "own": 28,
+   "hired": 0
+  },
+  {
+   "date": "2026-01-23",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 29,
+   "own": 36,
+   "hired": 2
+  },
+  {
+   "date": "2026-01-24",
+   "fleet": 17,
+   "onLine": 7,
+   "plan": 47,
+   "own": 31,
+   "hired": 2
+  },
+  {
+   "date": "2026-01-25",
+   "fleet": 17,
+   "onLine": 7,
+   "plan": 21,
+   "own": 11,
+   "hired": 1
+  },
+  {
+   "date": "2026-01-26",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 18,
+   "own": 17,
+   "hired": 5
+  },
+  {
+   "date": "2026-01-27",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 21,
+   "own": 27,
+   "hired": 16
+  },
+  {
+   "date": "2026-01-28",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 39,
+   "own": 34,
+   "hired": 6
+  },
+  {
+   "date": "2026-01-29",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 16,
+   "own": 28,
+   "hired": 1
+  },
+  {
+   "date": "2026-01-30",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 21,
+   "own": 36,
+   "hired": 3
+  },
+  {
+   "date": "2026-01-31",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 32,
+   "own": 47,
+   "hired": 3
+  },
+  {
+   "date": "2026-02-01",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 11,
+   "own": 31,
+   "hired": 2
+  },
+  {
+   "date": "2026-02-02",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 12,
+   "own": 41,
+   "hired": 3
+  },
+  {
+   "date": "2026-02-03",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 25,
+   "own": 41,
+   "hired": 5
+  },
+  {
+   "date": "2026-02-04",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 28,
+   "own": 37,
+   "hired": 3
+  },
+  {
+   "date": "2026-02-05",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 45,
+   "own": 21,
+   "hired": 1
+  },
+  {
+   "date": "2026-02-06",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 39,
+   "own": 39,
+   "hired": 7
+  },
+  {
+   "date": "2026-02-07",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 110,
+   "own": 35,
+   "hired": 6
+  },
+  {
+   "date": "2026-02-08",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 66,
+   "own": 39,
+   "hired": 0
+  },
+  {
+   "date": "2026-02-09",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 44,
+   "own": 41,
+   "hired": 3
+  },
+  {
+   "date": "2026-02-10",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 67,
+   "own": 39,
+   "hired": 10
+  },
+  {
+   "date": "2026-02-11",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 31,
+   "own": 35,
+   "hired": 10
+  },
+  {
+   "date": "2026-02-12",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 78,
+   "own": 35,
+   "hired": 7
+  },
+  {
+   "date": "2026-02-13",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 95,
+   "own": 35,
+   "hired": 20
+  },
+  {
+   "date": "2026-02-14",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 71,
+   "own": 35,
+   "hired": 9
+  },
+  {
+   "date": "2026-02-15",
+   "fleet": 17,
+   "onLine": 8,
+   "plan": 23,
+   "own": 22,
+   "hired": 0
+  },
+  {
+   "date": "2026-02-16",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 26,
+   "own": 25,
+   "hired": 3
+  },
+  {
+   "date": "2026-02-17",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 23,
+   "own": 29,
+   "hired": 6
+  },
+  {
+   "date": "2026-02-18",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 39,
+   "own": 31,
+   "hired": 10
+  },
+  {
+   "date": "2026-02-19",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 41,
+   "own": 23,
+   "hired": 7
+  },
+  {
+   "date": "2026-02-20",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 83,
+   "own": 49,
+   "hired": 31
+  },
+  {
+   "date": "2026-02-21",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 100,
+   "own": 47,
+   "hired": 6
+  },
+  {
+   "date": "2026-02-22",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 56,
+   "own": 33,
+   "hired": 0
+  },
+  {
+   "date": "2026-02-23",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 33,
+   "own": 28,
+   "hired": 0
+  },
+  {
+   "date": "2026-02-24",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 19,
+   "own": 40,
+   "hired": 6
+  },
+  {
+   "date": "2026-02-25",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 57,
+   "own": 40,
+   "hired": 16
+  },
+  {
+   "date": "2026-02-26",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 66,
+   "own": 41,
+   "hired": 17
+  },
+  {
+   "date": "2026-02-27",
+   "fleet": 17,
+   "onLine": 14,
+   "plan": 60,
+   "own": 46,
+   "hired": 14
+  },
+  {
+   "date": "2026-02-28",
+   "fleet": 17,
+   "onLine": 14,
+   "plan": 33,
+   "own": 44,
+   "hired": 5
+  },
+  {
+   "date": "2026-03-01",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 5,
+   "own": 21,
+   "hired": 0
+  },
+  {
+   "date": "2026-03-02",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 14,
+   "own": 35,
+   "hired": 6
+  },
+  {
+   "date": "2026-03-03",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 27,
+   "own": 47,
+   "hired": 16
+  },
+  {
+   "date": "2026-03-04",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 58,
+   "own": 41,
+   "hired": 6
+  },
+  {
+   "date": "2026-03-05",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 38,
+   "own": 41,
+   "hired": 20
+  },
+  {
+   "date": "2026-03-06",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 40,
+   "own": 21,
+   "hired": 33
+  },
+  {
+   "date": "2026-03-07",
+   "fleet": 17,
+   "onLine": 8,
+   "plan": 30,
+   "own": 30,
+   "hired": 5
+  },
+  {
+   "date": "2026-03-08",
+   "fleet": 17,
+   "onLine": 8,
+   "plan": 16,
+   "own": 29,
+   "hired": 0
+  },
+  {
+   "date": "2026-03-09",
+   "fleet": 17,
+   "onLine": 8,
+   "plan": 15,
+   "own": 22,
+   "hired": 0
+  },
+  {
+   "date": "2026-03-10",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 12,
+   "own": 18,
+   "hired": 2
+  },
+  {
+   "date": "2026-03-11",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 25,
+   "own": 25,
+   "hired": 10
+  },
+  {
+   "date": "2026-03-12",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 35,
+   "own": 28,
+   "hired": 12
+  },
+  {
+   "date": "2026-03-13",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 43,
+   "own": 25,
+   "hired": 14
+  },
+  {
+   "date": "2026-03-14",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 31,
+   "own": 38,
+   "hired": 10
+  },
+  {
+   "date": "2026-03-15",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 5,
+   "own": 28,
+   "hired": 0
+  },
+  {
+   "date": "2026-03-16",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 13,
+   "own": 25,
+   "hired": 11
+  },
+  {
+   "date": "2026-03-17",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 4,
+   "own": 38,
+   "hired": 7
+  },
+  {
+   "date": "2026-03-18",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 16,
+   "own": 42,
+   "hired": 8
+  },
+  {
+   "date": "2026-03-19",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 20,
+   "own": 24,
+   "hired": 10
+  },
+  {
+   "date": "2026-03-20",
+   "fleet": 17,
+   "onLine": 15,
+   "plan": 16,
+   "own": 30,
+   "hired": 5
+  },
+  {
+   "date": "2026-03-21",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 28,
+   "own": 15,
+   "hired": 3
+  },
+  {
+   "date": "2026-03-22",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 0,
+   "own": 0
+  },
+  {
+   "date": "2026-03-23",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 11,
+   "own": 19
+  },
+  {
+   "date": "2026-03-24",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 14,
+   "own": 31,
+   "hired": 2
+  },
+  {
+   "date": "2026-03-25",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 20,
+   "own": 35,
+   "hired": 0
+  },
+  {
+   "date": "2026-03-26",
+   "fleet": 17,
+   "onLine": 14,
+   "plan": 28,
+   "own": 38,
+   "hired": 3
+  },
+  {
+   "date": "2026-03-27",
+   "fleet": 17,
+   "onLine": 14,
+   "plan": 21,
+   "own": 34,
+   "hired": 1
+  },
+  {
+   "date": "2026-03-28",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 8,
+   "own": 21
+  },
+  {
+   "date": "2026-03-29",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2026-03-30",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 38,
+   "own": 30,
+   "hired": 3
+  },
+  {
+   "date": "2026-03-31",
+   "fleet": 17,
+   "onLine": 14,
+   "plan": 22,
+   "own": 26,
+   "hired": 4
+  },
+  {
+   "date": "2026-04-01",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 11,
+   "own": 22,
+   "hired": 0
+  },
+  {
+   "date": "2026-04-02",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 14,
+   "own": 25,
+   "hired": 4
+  },
+  {
+   "date": "2026-04-03",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 24,
+   "own": 27,
+   "hired": 8
+  },
+  {
+   "date": "2026-04-04",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 21,
+   "own": 32,
+   "hired": 3
+  },
+  {
+   "date": "2026-04-05",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 3,
+   "own": 9,
+   "hired": 0
+  },
+  {
+   "date": "2026-04-06",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 14,
+   "own": 19,
+   "hired": 2
+  },
+  {
+   "date": "2026-04-07",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 20,
+   "own": 34,
+   "hired": 0
+  },
+  {
+   "date": "2026-04-08",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 11,
+   "own": 30,
+   "hired": 5
+  },
+  {
+   "date": "2026-04-09",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 19,
+   "own": 35,
+   "hired": 4
+  },
+  {
+   "date": "2026-04-10",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 50,
+   "own": 34,
+   "hired": 6
+  },
+  {
+   "date": "2026-04-11",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 36,
+   "own": 38,
+   "hired": 0
+  },
+  {
+   "date": "2026-04-12",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 9,
+   "own": 29,
+   "hired": 0
+  },
+  {
+   "date": "2026-04-13",
+   "fleet": 17,
+   "onLine": 8,
+   "plan": 12,
+   "own": 31,
+   "hired": 7
+  },
+  {
+   "date": "2026-04-14",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 26,
+   "own": 13,
+   "hired": 15
+  },
+  {
+   "date": "2026-04-15",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 17,
+   "own": 21,
+   "hired": 15
+  },
+  {
+   "date": "2026-04-16",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 45,
+   "own": 29,
+   "hired": 23
+  },
+  {
+   "date": "2026-04-17",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 22,
+   "own": 20,
+   "hired": 13
+  },
+  {
+   "date": "2026-04-18",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 53,
+   "own": 32,
+   "hired": 3
+  },
+  {
+   "date": "2026-04-19",
+   "fleet": 17,
+   "onLine": 9,
+   "plan": 19,
+   "own": 24,
+   "hired": 3
+  },
+  {
+   "date": "2026-04-20",
+   "fleet": 17,
+   "onLine": 10,
+   "plan": 27,
+   "own": 28,
+   "hired": 6
+  },
+  {
+   "date": "2026-04-21",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 16,
+   "own": 41,
+   "hired": 1
+  },
+  {
+   "date": "2026-04-22",
+   "fleet": 17,
+   "onLine": 13,
+   "plan": 15,
+   "own": 23,
+   "hired": 0
+  },
+  {
+   "date": "2026-04-23",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 16,
+   "own": 52,
+   "hired": 9
+  },
+  {
+   "date": "2026-04-24",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 15,
+   "own": 47,
+   "hired": 2
+  },
+  {
+   "date": "2026-04-25",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 4,
+   "own": 57,
+   "hired": 0
+  },
+  {
+   "date": "2026-04-26",
+   "fleet": 17,
+   "onLine": 11,
+   "plan": 3,
+   "own": 23,
+   "hired": 1
+  },
+  {
+   "date": "2026-04-27",
+   "fleet": 17,
+   "onLine": 12,
+   "plan": 46,
+   "own": 20,
+   "hired": 13
+  },
+  {
+   "date": "2026-04-28",
+   "fleet": 17,
+   "onLine": 14,
+   "plan": 48,
+   "own": 46,
+   "hired": 19
+  },
+  {
+   "date": "2026-04-29",
+   "fleet": 17,
+   "onLine": 14,
+   "plan": 17,
+   "own": 53,
+   "hired": 7
+  },
+  {
+   "date": "2026-04-30",
+   "fleet": 17,
+   "onLine": 15,
+   "plan": 15,
+   "own": 44,
+   "hired": 12
+  },
+  {
+   "date": "2026-05-01",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 16,
+   "own": 31,
+   "hired": 0
+  },
+  {
+   "date": "2026-05-02",
+   "fleet": 16,
+   "onLine": 10,
+   "plan": 2,
+   "own": 32,
+   "hired": 0
+  },
+  {
+   "date": "2026-05-03",
+   "fleet": 16,
+   "onLine": 9,
+   "plan": 13,
+   "own": 18,
+   "hired": 0
+  },
+  {
+   "date": "2026-05-04",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 17,
+   "own": 32,
+   "hired": 4
+  },
+  {
+   "date": "2026-05-05",
+   "fleet": 16,
+   "onLine": 13,
+   "plan": 34,
+   "own": 42,
+   "hired": 9
+  },
+  {
+   "date": "2026-05-06",
+   "fleet": 16,
+   "onLine": 13,
+   "plan": 58,
+   "own": 39,
+   "hired": 15
+  },
+  {
+   "date": "2026-05-07",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 48,
+   "own": 36,
+   "hired": 14
+  },
+  {
+   "date": "2026-05-08",
+   "fleet": 16,
+   "onLine": 9,
+   "plan": 67,
+   "own": 25,
+   "hired": 12
+  },
+  {
+   "date": "2026-05-09",
+   "fleet": 16,
+   "onLine": 10,
+   "plan": 35,
+   "own": 35,
+   "hired": 0
+  },
+  {
+   "date": "2026-05-10",
+   "fleet": 16,
+   "onLine": 8,
+   "plan": 36,
+   "own": 34,
+   "hired": 0
+  },
+  {
+   "date": "2026-05-11",
+   "fleet": 16,
+   "onLine": 9,
+   "plan": 24,
+   "own": 22,
+   "hired": 6
+  },
+  {
+   "date": "2026-05-12",
+   "fleet": 16,
+   "onLine": 10,
+   "plan": 30,
+   "own": 17,
+   "hired": 21
+  },
+  {
+   "date": "2026-05-13",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 70,
+   "own": 23,
+   "hired": 21
+  },
+  {
+   "date": "2026-05-14",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 79,
+   "own": 14,
+   "hired": 46
+  },
+  {
+   "date": "2026-05-15",
+   "fleet": 16,
+   "onLine": 10,
+   "plan": 69,
+   "own": 24,
+   "hired": 36
+  },
+  {
+   "date": "2026-05-16",
+   "fleet": 16,
+   "onLine": 10,
+   "plan": 44,
+   "own": 26,
+   "hired": 9
+  },
+  {
+   "date": "2026-05-17",
+   "fleet": 16,
+   "onLine": 8,
+   "plan": 37,
+   "own": 21,
+   "hired": 0
+  },
+  {
+   "date": "2026-05-18",
+   "fleet": 16,
+   "onLine": 8,
+   "plan": 31,
+   "own": 18,
+   "hired": 4
+  },
+  {
+   "date": "2026-05-19",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 44,
+   "own": 20,
+   "hired": 13
+  },
+  {
+   "date": "2026-05-20",
+   "fleet": 16,
+   "onLine": 13,
+   "plan": 44,
+   "own": 33,
+   "hired": 11
+  },
+  {
+   "date": "2026-05-21",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 26,
+   "own": 35,
+   "hired": 10
+  },
+  {
+   "date": "2026-05-22",
+   "fleet": 16,
+   "onLine": 13,
+   "plan": 34,
+   "own": 43,
+   "hired": 12
+  },
+  {
+   "date": "2026-05-23",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 30,
+   "own": 42,
+   "hired": 2
+  },
+  {
+   "date": "2026-05-24",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 6,
+   "own": 39,
+   "hired": 0
+  },
+  {
+   "date": "2026-05-25",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 7,
+   "own": 29,
+   "hired": 18
+  },
+  {
+   "date": "2026-05-26",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 17,
+   "own": 36,
+   "hired": 11
+  },
+  {
+   "date": "2026-05-27",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 31,
+   "own": 46,
+   "hired": 9
+  },
+  {
+   "date": "2026-05-28",
+   "fleet": 16,
+   "onLine": 9,
+   "plan": 33,
+   "own": 44,
+   "hired": 8
+  },
+  {
+   "date": "2026-05-29",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 58,
+   "own": 35,
+   "hired": 12
+  },
+  {
+   "date": "2026-05-30",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 42,
+   "own": 45,
+   "hired": 1
+  },
+  {
+   "date": "2026-05-31",
+   "fleet": 16,
+   "onLine": 10,
+   "plan": 14,
+   "own": 24,
+   "hired": 1
+  },
+  {
+   "date": "2026-06-01",
+   "fleet": 15,
+   "onLine": 9,
+   "plan": 20,
+   "own": 21,
+   "hired": 9
+  },
+  {
+   "date": "2026-06-02",
+   "fleet": 15,
+   "onLine": 11,
+   "plan": 37,
+   "own": 32,
+   "hired": 18
+  },
+  {
+   "date": "2026-06-03",
+   "fleet": 15,
+   "onLine": 10,
+   "plan": 34,
+   "own": 33,
+   "hired": 10
+  },
+  {
+   "date": "2026-06-04",
+   "fleet": 15,
+   "onLine": 10,
+   "plan": 36,
+   "own": 33,
+   "hired": 10
+  },
+  {
+   "date": "2026-06-05",
+   "fleet": 15,
+   "onLine": 13,
+   "plan": 25,
+   "own": 37,
+   "hired": 10
+  },
+  {
+   "date": "2026-06-06",
+   "fleet": 15,
+   "onLine": 13,
+   "plan": 9,
+   "own": 34,
+   "hired": 5
+  },
+  {
+   "date": "2026-06-07",
+   "fleet": 15,
+   "onLine": 10,
+   "plan": 2,
+   "own": 15,
+   "hired": 1
+  },
+  {
+   "date": "2026-06-08",
+   "fleet": 15,
+   "onLine": 8,
+   "plan": 20,
+   "own": 23,
+   "hired": 10
+  },
+  {
+   "date": "2026-06-09",
+   "fleet": 15,
+   "onLine": 8,
+   "plan": 23,
+   "own": 28,
+   "hired": 7
+  },
+  {
+   "date": "2026-06-10",
+   "fleet": 16,
+   "onLine": 8,
+   "plan": 42,
+   "own": 26,
+   "hired": 9
+  },
+  {
+   "date": "2026-06-11",
+   "fleet": 16,
+   "onLine": 9,
+   "plan": 47,
+   "own": 29,
+   "hired": 11
+  },
+  {
+   "date": "2026-06-12",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 65,
+   "own": 39,
+   "hired": 8
+  },
+  {
+   "date": "2026-06-13",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 33,
+   "own": 38,
+   "hired": 4
+  },
+  {
+   "date": "2026-06-14",
+   "fleet": 16,
+   "onLine": 10,
+   "plan": 13,
+   "own": 20,
+   "hired": 0
+  },
+  {
+   "date": "2026-06-15",
+   "fleet": 16,
+   "onLine": 10,
+   "plan": 27,
+   "own": 34,
+   "hired": 7
+  },
+  {
+   "date": "2026-06-16",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 63,
+   "own": 37,
+   "hired": 7
+  },
+  {
+   "date": "2026-06-17",
+   "fleet": 16,
+   "onLine": 13,
+   "plan": 59,
+   "own": 33,
+   "hired": 9
+  },
+  {
+   "date": "2026-06-18",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 103,
+   "own": 36,
+   "hired": 10
+  },
+  {
+   "date": "2026-06-19",
+   "fleet": 16,
+   "onLine": 0,
+   "plan": 112,
+   "own": 37,
+   "hired": 11
+  },
+  {
+   "date": "2026-06-20",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 90,
+   "own": 44,
+   "hired": 0
+  },
+  {
+   "date": "2026-06-21",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 33,
+   "own": 45,
+   "hired": 0
+  },
+  {
+   "date": "2026-06-22",
+   "fleet": 16,
+   "onLine": 10,
+   "plan": 35,
+   "own": 29,
+   "hired": 10
+  },
+  {
+   "date": "2026-06-23",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 51,
+   "own": 28,
+   "hired": 15
+  },
+  {
+   "date": "2026-06-24",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 57,
+   "own": 29,
+   "hired": 10
+  },
+  {
+   "date": "2026-06-25",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 51,
+   "own": 34,
+   "hired": 8
+  },
+  {
+   "date": "2026-06-26",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 66,
+   "own": 37,
+   "hired": 11
+  },
+  {
+   "date": "2026-06-27",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 23,
+   "own": 46,
+   "hired": 6
+  },
+  {
+   "date": "2026-06-28",
+   "fleet": 16,
+   "onLine": 10,
+   "plan": 16,
+   "own": 38,
+   "hired": 0
+  },
+  {
+   "date": "2026-06-29",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 24,
+   "own": 33,
+   "hired": 5
+  },
+  {
+   "date": "2026-06-30",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 21,
+   "own": 49,
+   "hired": 6
+  },
+  {
+   "date": "2026-07-01",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 8,
+   "own": 35,
+   "hired": 6
+  },
+  {
+   "date": "2026-07-02",
+   "fleet": 16,
+   "onLine": 8,
+   "plan": 46,
+   "own": 37,
+   "hired": 2
+  },
+  {
+   "date": "2026-07-03",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 90,
+   "own": 41,
+   "hired": 4
+  },
+  {
+   "date": "2026-07-04",
+   "fleet": 16,
+   "onLine": 10,
+   "plan": 67,
+   "own": 52,
+   "hired": 6
+  },
+  {
+   "date": "2026-07-05",
+   "fleet": 16,
+   "onLine": 9,
+   "plan": 23,
+   "own": 33,
+   "hired": 0
+  },
+  {
+   "date": "2026-07-06",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 21,
+   "own": 37,
+   "hired": 7
+  },
+  {
+   "date": "2026-07-07",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 17,
+   "own": 36,
+   "hired": 6
+  },
+  {
+   "date": "2026-07-08",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 17,
+   "own": 33,
+   "hired": 6
+  },
+  {
+   "date": "2026-07-09",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 27,
+   "own": 49,
+   "hired": 11
+  },
+  {
+   "date": "2026-07-10",
+   "fleet": 16,
+   "onLine": 10,
+   "plan": 27,
+   "own": 39,
+   "hired": 6
+  },
+  {
+   "date": "2026-07-11",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 12,
+   "own": 50,
+   "hired": 6
+  },
+  {
+   "date": "2026-07-12",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 11,
+   "own": 37,
+   "hired": 0
+  },
+  {
+   "date": "2026-07-13",
+   "fleet": 16,
+   "onLine": 9,
+   "plan": 10,
+   "own": 25,
+   "hired": 9
+  },
+  {
+   "date": "2026-07-14",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 26,
+   "own": 41,
+   "hired": 9
+  },
+  {
+   "date": "2026-07-15",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 17,
+   "own": 45,
+   "hired": 18
+  },
+  {
+   "date": "2026-07-16",
+   "fleet": 16,
+   "onLine": 13,
+   "plan": 45,
+   "own": 42,
+   "hired": 9
+  },
+  {
+   "date": "2026-07-17",
+   "fleet": 16,
+   "onLine": 13,
+   "plan": 51,
+   "own": 43,
+   "hired": 13
+  },
+  {
+   "date": "2026-07-18",
+   "fleet": 16,
+   "onLine": 13,
+   "plan": 21,
+   "own": 64,
+   "hired": 8
+  },
+  {
+   "date": "2026-07-19",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 22,
+   "own": 49,
+   "hired": 3
+  },
+  {
+   "date": "2026-07-20",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 41,
+   "own": 32,
+   "hired": 11
+  },
+  {
+   "date": "2026-07-21",
+   "fleet": 16,
+   "onLine": 21,
+   "plan": 65,
+   "own": 44,
+   "hired": 4
+  },
+  {
+   "date": "2026-07-22",
+   "fleet": 16,
+   "onLine": 13,
+   "plan": 86,
+   "own": 52,
+   "hired": 10
+  },
+  {
+   "date": "2026-07-23",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 64,
+   "own": 53,
+   "hired": 10
+  },
+  {
+   "date": "2026-07-24",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 46,
+   "own": 35,
+   "hired": 12
+  },
+  {
+   "date": "2026-07-25",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 41,
+   "own": 44,
+   "hired": 1
+  },
+  {
+   "date": "2026-07-26",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 25,
+   "own": 27,
+   "hired": 0
+  },
+  {
+   "date": "2026-07-27",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 21,
+   "own": 40,
+   "hired": 6
+  },
+  {
+   "date": "2026-07-28",
+   "fleet": 16,
+   "onLine": 14,
+   "plan": 47,
+   "own": 45,
+   "hired": 17
+  },
+  {
+   "date": "2026-07-29",
+   "fleet": 16,
+   "onLine": 15,
+   "plan": 79,
+   "own": 42,
+   "hired": 4
+  },
+  {
+   "date": "2026-07-30",
+   "fleet": 16,
+   "onLine": 15,
+   "plan": 78,
+   "own": 28,
+   "hired": 11
+  },
+  {
+   "date": "2026-07-31",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 54,
+   "own": 24,
+   "hired": 5
+  },
+  {
+   "date": "2026-08-01",
+   "fleet": 16,
+   "onLine": 10,
+   "plan": 41,
+   "own": 31,
+   "hired": 1
+  },
+  {
+   "date": "2026-08-02",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 27,
+   "own": 33,
+   "hired": 1
+  },
+  {
+   "date": "2026-08-03",
+   "fleet": 16,
+   "onLine": 10,
+   "plan": 30,
+   "own": 33,
+   "hired": 0
+  },
+  {
+   "date": "2026-08-04",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 44,
+   "own": 29,
+   "hired": 6
+  },
+  {
+   "date": "2026-08-05",
+   "fleet": 16,
+   "onLine": 10,
+   "plan": 59,
+   "own": 34,
+   "hired": 6
+  },
+  {
+   "date": "2026-08-06",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 81,
+   "own": 34,
+   "hired": 23
+  },
+  {
+   "date": "2026-08-07",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 53,
+   "own": 32,
+   "hired": 9
+  },
+  {
+   "date": "2026-08-08",
+   "fleet": 16,
+   "onLine": 9,
+   "plan": 34,
+   "own": 35,
+   "hired": 3
+  },
+  {
+   "date": "2026-08-09",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 30,
+   "own": 28,
+   "hired": 3
+  },
+  {
+   "date": "2026-08-10",
+   "fleet": 16,
+   "onLine": 10,
+   "plan": 69,
+   "own": 28,
+   "hired": 15
+  },
+  {
+   "date": "2026-08-11",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 56,
+   "own": 28,
+   "hired": 23
+  },
+  {
+   "date": "2026-08-12",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 40,
+   "own": 31,
+   "hired": 8
+  },
+  {
+   "date": "2026-08-13",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 26,
+   "own": 32,
+   "hired": 6
+  },
+  {
+   "date": "2026-08-14",
+   "fleet": 16,
+   "onLine": 9,
+   "plan": 29,
+   "own": 22,
+   "hired": 8
+  },
+  {
+   "date": "2026-08-15",
+   "fleet": 16,
+   "onLine": 9,
+   "plan": 38,
+   "own": 21,
+   "hired": 0
+  },
+  {
+   "date": "2026-08-16",
+   "fleet": 16,
+   "onLine": 10,
+   "plan": 16,
+   "own": 26,
+   "hired": 0
+  },
+  {
+   "date": "2026-08-17",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 18,
+   "own": 29,
+   "hired": 3
+  },
+  {
+   "date": "2026-08-18",
+   "fleet": 16,
+   "onLine": 13,
+   "plan": 11,
+   "own": 27,
+   "hired": 2
+  },
+  {
+   "date": "2026-08-19",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 32,
+   "own": 32,
+   "hired": 4
+  },
+  {
+   "date": "2026-08-20",
+   "fleet": 16,
+   "onLine": 14,
+   "plan": 65,
+   "own": 38,
+   "hired": 7
+  },
+  {
+   "date": "2026-08-21",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 53,
+   "own": 35,
+   "hired": 3
+  },
+  {
+   "date": "2026-08-22",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 52,
+   "own": 61,
+   "hired": 0
+  },
+  {
+   "date": "2026-08-23",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 35,
+   "own": 48,
+   "hired": 0
+  },
+  {
+   "date": "2026-08-24",
+   "fleet": 16,
+   "onLine": 8,
+   "plan": 44,
+   "own": 33,
+   "hired": 7
+  },
+  {
+   "date": "2026-08-25",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 58,
+   "own": 31,
+   "hired": 11
+  },
+  {
+   "date": "2026-08-26",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 31,
+   "own": 38,
+   "hired": 2
+  },
+  {
+   "date": "2026-08-27",
+   "fleet": 16,
+   "onLine": 11,
+   "plan": 20,
+   "own": 32,
+   "hired": 1
+  },
+  {
+   "date": "2026-08-28",
+   "fleet": 16,
+   "onLine": 8,
+   "plan": 21,
+   "own": 23,
+   "hired": 9
+  },
+  {
+   "date": "2026-08-29",
+   "fleet": 16,
+   "onLine": 10,
+   "plan": 43,
+   "own": 62,
+   "hired": 0
+  },
+  {
+   "date": "2026-08-30",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 49,
+   "own": 52,
+   "hired": 4
+  },
+  {
+   "date": "2026-08-31",
+   "fleet": 16,
+   "onLine": 12,
+   "plan": 17,
+   "own": 29,
+   "hired": 2
+  },
+  {
+   "date": "2026-09-01",
+   "fleet": 19,
+   "onLine": 11,
+   "plan": 17,
+   "own": 35,
+   "hired": 2
+  },
+  {
+   "date": "2026-09-02",
+   "fleet": 19,
+   "onLine": 10,
+   "plan": 8,
+   "own": 15,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-03",
+   "fleet": 19,
+   "onLine": 10,
+   "plan": 46,
+   "own": 19,
+   "hired": 2
+  },
+  {
+   "date": "2026-09-04",
+   "fleet": 19,
+   "onLine": 8,
+   "plan": 55,
+   "own": 21,
+   "hired": 2
+  },
+  {
+   "date": "2026-09-05",
+   "fleet": 19,
+   "onLine": 10,
+   "plan": 61,
+   "own": 33,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-06",
+   "fleet": 19,
+   "onLine": 8,
+   "plan": 45,
+   "own": 27,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-07",
+   "fleet": 19,
+   "onLine": 8,
+   "plan": 59,
+   "own": 32,
+   "hired": 6
+  },
+  {
+   "date": "2026-09-08",
+   "fleet": 19,
+   "onLine": 9,
+   "plan": 70,
+   "own": 25,
+   "hired": 10
+  },
+  {
+   "date": "2026-09-09",
+   "fleet": 19,
+   "onLine": 8,
+   "plan": 23,
+   "own": 33,
+   "hired": 11
+  },
+  {
+   "date": "2026-09-10",
+   "fleet": 19,
+   "onLine": 18,
+   "plan": 12,
+   "own": 25,
+   "hired": 9
+  },
+  {
+   "date": "2026-09-11",
+   "fleet": 19,
+   "onLine": 10,
+   "plan": 39,
+   "own": 36,
+   "hired": 4
+  },
+  {
+   "date": "2026-09-12",
+   "fleet": 19,
+   "onLine": 9,
+   "plan": 30,
+   "own": 25,
+   "hired": 8
+  },
+  {
+   "date": "2026-09-13",
+   "fleet": 19,
+   "onLine": 8,
+   "plan": 16,
+   "own": 23,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-14",
+   "fleet": 19,
+   "onLine": 8,
+   "plan": 28,
+   "own": 28,
+   "hired": 5
+  },
+  {
+   "date": "2026-09-15",
+   "fleet": 19,
+   "onLine": 11,
+   "plan": 8,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-16",
+   "fleet": 19,
+   "onLine": 0,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-17",
+   "fleet": 19,
+   "onLine": 0,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-18",
+   "fleet": 19,
+   "onLine": 0,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-19",
+   "fleet": 19,
+   "onLine": 0,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-20",
+   "fleet": 19,
+   "onLine": 0,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-21",
+   "fleet": 19,
+   "onLine": 0,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-22",
+   "fleet": 19,
+   "onLine": 0,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-23",
+   "fleet": 19,
+   "onLine": 0,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-24",
+   "fleet": 19,
+   "onLine": 0,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-25",
+   "fleet": 19,
+   "onLine": 0,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-26",
+   "fleet": 19,
+   "onLine": 0,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-27",
+   "fleet": 19,
+   "onLine": 0,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-28",
+   "fleet": 19,
+   "onLine": 0,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-29",
+   "fleet": 19,
+   "onLine": 0,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  },
+  {
+   "date": "2026-09-30",
+   "fleet": 19,
+   "onLine": 0,
+   "plan": 0,
+   "own": 0,
+   "hired": 0
+  }
+ ],
+ "months": [
+  {
+   "month": "2024-11",
+   "basePlan": 1484
+  },
+  {
+   "month": "2024-12",
+   "basePlan": 1264
+  },
+  {
+   "month": "2025-01",
+   "basePlan": 1731
+  },
+  {
+   "month": "2025-02",
+   "basePlan": 991
+  },
+  {
+   "month": "2025-03",
+   "basePlan": 512
+  },
+  {
+   "month": "2025-04",
+   "basePlan": 669
+  },
+  {
+   "month": "2025-05",
+   "basePlan": 727
+  },
+  {
+   "month": "2025-06",
+   "basePlan": 814
+  },
+  {
+   "month": "2025-07",
+   "basePlan": 1172
+  },
+  {
+   "month": "2026-01",
+   "basePlan": 800
+  },
+  {
+   "month": "2026-02",
+   "basePlan": 850
+  }
+ ]
+}

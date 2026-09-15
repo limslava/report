@@ -108,6 +108,18 @@ export const planningV2Api = {
     };
   },
 
+  /** Excel «Вариант 2» контейнерных перевозок Владивосток (сводная, месяцы по дням, машины на дату). */
+  downloadKtkVvoSummaryExcel: async (params: { asOfDate: string }): Promise<ExcelDownload> => {
+    const response = await api.get('/v2/planning/exports/ktk-vvo-summary', {
+      params,
+      responseType: 'blob',
+    });
+    return {
+      blob: response.data as Blob,
+      filename: extractFilename(response.headers['content-disposition']),
+    };
+  },
+
   downloadTotalsExcel: async (params: { year: number }): Promise<ExcelDownload> => {
     const response = await api.get('/v2/planning/exports/totals', {
       params,

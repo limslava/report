@@ -16,6 +16,8 @@ import {
   TableHead,
   TableRow,
   TextField,
+  ListItemText,
+  Menu,
   MenuItem,
   Typography,
 } from '@mui/material';
@@ -234,6 +236,8 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   const [draft, setDraft] = useState<DraftState>({});
   const [loading, setLoading] = useState<boolean>(true);
   const [downloading, setDownloading] = useState<boolean>(false);
+  // контейнерные перевозки Владивосток: у Excel два варианта — выбор в меню кнопки
+  const [excelMenuAnchor, setExcelMenuAnchor] = useState<HTMLElement | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell>(null);
@@ -300,6 +304,19 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
       setLoading(false);
     }
   }, []);
+
+  const handleDownloadKtkVvoSummary = async () => {
+    try {
+      setDownloading(true);
+      setError(null);
+      const { blob, filename } = await planningV2Api.downloadKtkVvoSummaryExcel({ asOfDate: currentContext.asOfDate });
+      await downloadBlob(blob, filename ?? `Заявки КТК Владивосток — ${formatDateForFilename(currentContext.asOfDate)}.xlsx`);
+    } catch (err: any) {
+      setError(err?.message || 'Ошибка выгрузки Excel');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const handleDownloadExcel = async () => {
     try {
@@ -756,9 +773,34 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
               )}
             </Box>
             <Box display="flex" gap={1} alignItems="center" flexWrap="wrap" sx={{ ml: 'auto' }}>
-              <Button variant="outlined" onClick={handleDownloadExcel} disabled={loading || downloading}>
+              <Button
+                variant="outlined"
+                onClick={(event) => {
+                  if (currentContext.segmentCode === 'KTK_VVO') setExcelMenuAnchor(event.currentTarget);
+                  else void handleDownloadExcel();
+                }}
+                disabled={loading || downloading}
+              >
                 {downloading ? 'Скачивание...' : 'Скачать Excel'}
               </Button>
+              <Menu anchorEl={excelMenuAnchor} open={Boolean(excelMenuAnchor)} onClose={() => setExcelMenuAnchor(null)}>
+                <MenuItem
+                  onClick={() => {
+                    setExcelMenuAnchor(null);
+                    void handleDownloadExcel();
+                  }}
+                >
+                  <ListItemText primary="Вариант 1" secondary="Ежедневный отчёт за месяц — как сейчас" />
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    setExcelMenuAnchor(null);
+                    void handleDownloadKtkVvoSummary();
+                  }}
+                >
+                  <ListItemText primary="Вариант 2" secondary="Сводная по месяцам, месяцы по дням, ТС на дату" />
+                </MenuItem>
+              </Menu>
               <Button
                 variant={showDashboard ? 'contained' : 'outlined'}
                 onClick={() => setShowDashboard((prev) => !prev)}
