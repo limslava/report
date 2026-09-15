@@ -65,6 +65,10 @@ export const createDispatcherOrder = (orderDate: string, initial?: DispatcherOrd
 export const createDispatcherOrdersBatch = (orderDate: string, count: number) =>
   api.post<DispatcherOrderRow[]>('/dispatcher-journal/orders/batch', { orderDate, count });
 
+/** Порядок строк пачкой: общая сортировка и её отмена. label — что отсортировали, для истории. */
+export const updateDispatcherOrderPositions = (items: Array<{ id: string; position: number }>, label?: string) =>
+  api.post<{ updated: number }>('/dispatcher-journal/orders/positions', { items, label });
+
 export const updateDispatcherOrder = (id: string, patch: DispatcherOrderPatch) =>
   api.patch<DispatcherOrderRow>(`/dispatcher-journal/orders/${id}`, patch);
 
@@ -169,7 +173,7 @@ export const importDispatcherOrders = (fileBase64: string, dryRun: boolean) =>
 export type DispatcherHistoryItem = {
   id: string;
   orderId: string | null;
-  action: 'create' | 'update' | 'delete' | 'move' | 'import';
+  action: 'create' | 'update' | 'delete' | 'move' | 'import' | 'sort';
   field: string | null;
   oldValue: string | null;
   newValue: string | null;

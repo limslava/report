@@ -11,7 +11,8 @@ export const canViewDispatcherHistory = (role: string | undefined): boolean =>
 
 type ChangeInput = {
   action: DispatcherOrderChangeAction;
-  order?: Pick<DispatcherOrder, 'id' | 'orderDate' | 'ktkNumber' | 'client'> | null;
+  /** заявка; для сортировки (действие над многими строками) id нет — только дата */
+  order?: (Omit<Pick<DispatcherOrder, 'id' | 'orderDate' | 'ktkNumber' | 'client'>, 'id'> & { id: string | null }) | null;
   field?: string | null;
   oldValue?: unknown;
   newValue?: unknown;

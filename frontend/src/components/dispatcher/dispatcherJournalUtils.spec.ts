@@ -13,7 +13,6 @@ import {
   shortPersonName,
   vatRateOf,
   formatFinance,
-  applyPersonalOrder,
   sortWithinSlots,
   datesAreGrouped,
   rangeCellKeys,
@@ -145,12 +144,6 @@ describe('своя сортировка', () => {
     const full = [row('a', 'в', '2026-09-14'), row('b', 'новая'), row('c', 'за', '2026-09-16'), row('d', 'выполнена')];
     // фильтр по 15.09: видны b и d
     expect(sortWithinSlots(full, ['b', 'd'], byStatus)).toEqual(['a', 'd', 'c', 'b']);
-  });
-
-  it('применяет сохранённый порядок, новые строки ставит за предыдущим соседом', () => {
-    const rows = [row('a', ''), row('b', ''), row('new', ''), row('c', '')];
-    expect(applyPersonalOrder(rows, ['c', 'b', 'a']).map((item) => item.id)).toEqual(['c', 'b', 'new', 'a']);
-    expect(applyPersonalOrder(rows, null).map((item) => item.id)).toEqual(['a', 'b', 'new', 'c']);
   });
 
   it('полосы дней только когда дни идут блоками', () => {

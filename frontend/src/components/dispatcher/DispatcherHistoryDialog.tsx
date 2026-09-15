@@ -116,6 +116,7 @@ export default function DispatcherHistoryDialog({ open, onClose, orderId, orderL
       case 'create': return { what: 'Создана заявка', before: '', after: '' };
       case 'delete': return { what: 'Удалена заявка', before: '', after: '' };
       case 'move': return { what: 'Строка перемещена', before: '', after: '' };
+      case 'sort': return { what: 'Сортировка строк (у всех)', before: '', after: item.newValue ?? '' };
       case 'import': return { what: 'Импорт из Google-таблицы', before: item.oldValue ?? '', after: item.newValue ?? '' };
       default: {
         const title = item.field ? fieldTitles[item.field] ?? item.field : 'Поле';

@@ -38,6 +38,7 @@ import {
   getDispatcherOrders,
   getDispatcherStatuses,
   updateDispatcherOrder,
+  updateDispatcherOrderPositions,
   type DispatcherCrewEntry,
   type DispatcherDictionaryColors,
   type DispatcherDictionaryOptions,
@@ -48,11 +49,8 @@ import {
 import { findEmployeeCardByName, getDirectoryOptions } from '../services/directories.api';
 import { subscribePlansRealtime } from '../services/plans-realtime';
 import { useAuthStore } from '../store/auth-store';
-import {
-  loadSortState,
-  saveSortState,
-  sortRows,
-} from '../utils/tableSort';
+import { useAccountPreference } from '../hooks/useAccountPreference';
+import { sortRows } from '../utils/tableSort';
 import {
   applyColumnPrefs,
   isHidden,
@@ -83,7 +81,6 @@ import DispatcherHistoryDialog from '../components/dispatcher/DispatcherHistoryD
 import {
   addDaysYmd,
   amountWithoutVat,
-  applyPersonalOrder,
   buildOrderText,
   cellKey,
   colorKeyOf,
@@ -385,7 +382,6 @@ function DateCell({ value, title, onPick }: { value: string; title?: string; onP
 }
 
 /** Своя сортировка: порядок id строк и по какой колонке сортировали последний раз (значок в заголовке). */
-type PersonalOrder = { ids: string[]; by: { field: string; direction: 'asc' | 'desc' } | null };
 
 type CellRef = { rowId: string; field: string };
 type CellSelection = { anchor: CellRef | null; focus: CellRef | null; extra: string[] };
@@ -464,14 +460,12 @@ export default function DispatcherJournalPage() {
   const cellSelectionRef = useRef(cellSelection);
   cellSelectionRef.current = cellSelection;
 
-  const userKey = user?.id ?? 'anonymous';
-
   // настройка колонок (видимость + порядок), на пользователя — как в справочниках
-  const columnsStorageKey = `dj-columns-v1:${userKey}`;
-  const [columnPrefs, setColumnPrefs] = useState<ColumnPrefs | undefined>(() =>
-    withNewColumnDefaults(loadSortState<ColumnPrefs | undefined>(columnsStorageKey, undefined))
+  // личные настройки — в учётной записи (одинаковы на любом компьютере и телефоне)
+  const [columnPrefs, setColumnPrefs] = useAccountPreference<ColumnPrefs | undefined>(
+    'dj-columns-v1', user?.id, undefined,
+    (value) => withNewColumnDefaults(value && typeof value === 'object' ? value as ColumnPrefs : undefined),
   );
-  useEffect(() => saveSortState(columnsStorageKey, columnPrefs), [columnsStorageKey, columnPrefs]);
   const [columnsAnchor, setColumnsAnchor] = useState<HTMLElement | null>(null);
   const [settingsAnchor, setSettingsAnchor] = useState<HTMLElement | null>(null);
   const dragColumnKey = useRef<string | null>(null);
@@ -485,47 +479,26 @@ export default function DispatcherJournalPage() {
   visibleColumnsRef.current = visibleColumns;
 
   // ширина колонок — у каждого сотрудника своя (перетаскивание края заголовка)
-  const widthsStorageKey = `dj-widths-v1:${userKey}`;
-  const [customWidths, setCustomWidths] = useState<Record<string, number>>(() =>
-    loadSortState<Record<string, number>>(widthsStorageKey, {})
+  const [customWidths, setCustomWidths] = useAccountPreference<Record<string, number>>(
+    'dj-widths-v1', user?.id, {}, (value) => (value && typeof value === 'object' ? value as Record<string, number> : {}),
   );
-  useEffect(() => saveSortState(widthsStorageKey, customWidths), [widthsStorageKey, customWidths]);
 
   // закреплённые слева колонки: № и дата + всё до выбранной колонки включительно
-  const pinStorageKey = `dj-pin-v1:${userKey}`;
-  const [pinnedUntil, setPinnedUntil] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem(pinStorageKey) || null;
-    } catch {
-      return null;
-    }
-  });
-  useEffect(() => {
-    try {
-      if (pinnedUntil) localStorage.setItem(pinStorageKey, pinnedUntil);
-      else localStorage.removeItem(pinStorageKey);
-    } catch {
-      // приватный режим — закрепление живёт до перезагрузки
-    }
-  }, [pinStorageKey, pinnedUntil]);
+  const [pinnedUntil, setPinnedUntil] = useAccountPreference<string | null>(
+    'dj-pin-v1', user?.id, null, (value) => (typeof value === 'string' && value ? value : null),
+  );
 
   // фильтры по значениям (как в google-таблицах): храним скрытые значения
-  const filtersStorageKey = `dj-filters-v1:${userKey}`;
-  const [filters, setFilters] = useState<Record<string, string[]>>(() =>
-    loadSortState<Record<string, string[]>>(filtersStorageKey, {})
+  const [filters, setFilters] = useAccountPreference<Record<string, string[]>>(
+    'dj-filters-v1', user?.id, {}, (value) => (value && typeof value === 'object' ? value as Record<string, string[]> : {}),
   );
-  useEffect(() => saveSortState(filtersStorageKey, filters), [filtersStorageKey, filters]);
   // фильтры по условию (пусто / содержит / дата с … по …) и по цвету — тоже у каждого свои
-  const conditionsStorageKey = `dj-conditions-v1:${userKey}`;
-  const [conditions, setConditions] = useState<Record<string, ColumnCondition>>(() =>
-    loadSortState<Record<string, ColumnCondition>>(conditionsStorageKey, {})
+  const [conditions, setConditions] = useAccountPreference<Record<string, ColumnCondition>>(
+    'dj-conditions-v1', user?.id, {}, (value) => (value && typeof value === 'object' ? value as Record<string, ColumnCondition> : {}),
   );
-  useEffect(() => saveSortState(conditionsStorageKey, conditions), [conditionsStorageKey, conditions]);
-  const colorFiltersStorageKey = `dj-color-filters-v1:${userKey}`;
-  const [colorFilters, setColorFilters] = useState<Record<string, string>>(() =>
-    loadSortState<Record<string, string>>(colorFiltersStorageKey, {})
+  const [colorFilters, setColorFilters] = useAccountPreference<Record<string, string>>(
+    'dj-color-filters-v1', user?.id, {}, (value) => (value && typeof value === 'object' ? value as Record<string, string> : {}),
   );
-  useEffect(() => saveSortState(colorFiltersStorageKey, colorFilters), [colorFiltersStorageKey, colorFilters]);
   /** Колонки, где стоит хоть какой-то фильтр (воронка в заголовке подсвечена). */
   const filteredFields = useMemo(() => new Set<string>([
     ...Object.entries(filters).filter(([, hidden]) => hidden.length > 0).map(([field]) => field),
@@ -598,26 +571,16 @@ export default function DispatcherJournalPage() {
   };
 
   // масштаб таблицы (как в операционном отчёте) — у каждого сотрудника свой
-  const zoomStorageKey = `dj-zoom-v1:${userKey}`;
-  const [zoom, setZoom] = useState<number>(() => {
-    try {
-      const stored = Number(localStorage.getItem(zoomStorageKey));
-      return Number.isFinite(stored) && stored >= MIN_ZOOM && stored <= MAX_ZOOM ? stored : 1;
-    } catch {
-      return 1;
-    }
+  const [zoom, setZoom] = useAccountPreference<number>('dj-zoom-v1', user?.id, 1, (value) => {
+    const stored = Number(value);
+    return Number.isFinite(stored) && stored >= MIN_ZOOM && stored <= MAX_ZOOM ? stored : 1;
   });
   const [zoomInput, setZoomInput] = useState(`${Math.round(zoom * 100)}%`);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
   useEffect(() => {
     setZoomInput(`${Math.round(zoom * 100)}%`);
-    try {
-      localStorage.setItem(zoomStorageKey, String(zoom));
-    } catch {
-      // приватный режим — масштаб живёт до перезагрузки
-    }
-  }, [zoom, zoomStorageKey]);
+  }, [zoom]);
   const applyZoomFromInput = (raw: string) => {
     const normalized = raw.trim().replace(',', '.');
     if (!normalized) return;
@@ -832,34 +795,7 @@ export default function DispatcherJournalPage() {
   const statusesRef = useRef(statuses);
   statusesRef.current = statuses;
 
-  // своя сортировка (как в google, но у каждого сотрудника своя): сортировка один раз
-  // переставляет строки и запоминает порядок — после снятия фильтра отсортированный
-  // кусок остаётся на месте. Общий порядок коллег не меняется.
-  const orderStorageKey = `dj-order-v1:${userKey}:${viewMonth}`;
-  const loadPersonalOrder = (key: string): PersonalOrder | null => {
-    const saved = loadSortState<unknown>(key, null) as { ids?: unknown; by?: PersonalOrder['by'] } | unknown[] | null;
-    const rawIds = Array.isArray(saved) ? saved : saved?.ids;
-    const ids = Array.isArray(rawIds) ? rawIds.filter((id): id is string => typeof id === 'string') : [];
-    if (!ids.length) return null;
-    const by = !Array.isArray(saved) && saved?.by?.field ? saved.by : null;
-    return { ids, by };
-  };
-  const [personalOrderState, setPersonalOrderState] = useState(() => ({ key: orderStorageKey, value: loadPersonalOrder(orderStorageKey) }));
-  if (personalOrderState.key !== orderStorageKey) {
-    setPersonalOrderState({ key: orderStorageKey, value: loadPersonalOrder(orderStorageKey) });
-  }
-  const personalSort = personalOrderState.key === orderStorageKey ? personalOrderState.value : null;
-  const personalOrder = personalSort?.ids ?? null;
-  const personalSortRef = useRef(personalSort);
-  personalSortRef.current = personalSort;
-  const orderStorageKeyRef = useRef(orderStorageKey);
-  orderStorageKeyRef.current = orderStorageKey;
-  const setPersonalSort = useCallback((value: PersonalOrder | null) => {
-    const key = orderStorageKeyRef.current;
-    setPersonalOrderState({ key, value });
-    saveSortState(key, value);
-  }, []);
-  // перетаскивание — без фильтров и поиска; при своей сортировке строка переезжает в своём порядке
+  // перетаскивание — без фильтров и поиска (при фильтре место строки среди скрытых неоднозначно)
   const canDragRows = activeFilterCount === 0 && !searchQuery;
   const sortValue = useCallback((row: DispatcherOrderRow, field: string): unknown => {
     if (field === DATE_KEY) return row.orderDate;
@@ -882,9 +818,8 @@ export default function DispatcherJournalPage() {
     return text || EMPTY_FILTER_VALUE;
   }, []);
 
-  const orderedRows = useMemo(() => applyPersonalOrder(rows, personalOrder), [rows, personalOrder]);
-  const orderedRowsRef = useRef(orderedRows);
-  orderedRowsRef.current = orderedRows;
+  /** «№» строки — место в общем порядке месяца; при фильтре и поиске не пересчитывается (как в google). */
+  const rowNumberById = useMemo(() => new Map(rows.map((row, index) => [row.id, index + 1])), [rows]);
   /** Фильтры и поиск — одинаково для своего и общего порядка строк. */
   /** Цвет ячейки для фильтра по цвету: заливка статуса / значения справочника или «без цвета». */
   const cellColorKey = useCallback((row: DispatcherOrderRow, field: string): string => {
@@ -919,18 +854,19 @@ export default function DispatcherJournalPage() {
         || ALL_COLUMNS.some((column) => columnText(row, column).toLocaleLowerCase('ru').includes(searchQuery)))
       : filtered;
   }, [cellColorKey, colorFilters, conditionText, conditions, filterText, filteredFields, filters, searchQuery]);
-  const displayRows = useMemo(() => visibleRowsOf(orderedRows), [orderedRows, visibleRowsOf]);
+  const displayRows = useMemo(() => visibleRowsOf(rows), [rows, visibleRowsOf]);
 
   // полоса дня перед каждой сменой даты. Прячем полосы только когда своя сортировка
   // по другой колонке перемешала дни (например, по статусу на весь месяц); в общем
   // порядке полосы есть всегда — даже если строке поменяли дату и день встречается дважды
   const showDayBands = useMemo(() => {
-    if (!personalSort || personalSort.by?.field === DATE_KEY || datesAreGrouped(displayRows)) return true;
-    // сортировали внутри одного дня (фильтр по дате → сортировка → фильтр снят): дни перемешаны
-    // не больше, чем в общем порядке — полосы остаются
-    const dayBreaks = (list: DispatcherOrderRow[]) => list.filter((row, index) => index > 0 && row.orderDate !== list[index - 1].orderDate).length;
-    return dayBreaks(displayRows) <= dayBreaks(visibleRowsOf(rows));
-  }, [displayRows, personalSort, rows, visibleRowsOf]);
+    if (datesAreGrouped(displayRows)) return true;
+    // весь месяц отсортировали по другой колонке — дни перемешаны, полос было бы почти на каждой
+    // строке; одиночная строка с другой датой (поменяли дату) полос не отключает
+    const dayBreaks = displayRows.filter((row, index) => index > 0 && row.orderDate !== displayRows[index - 1].orderDate).length;
+    const days = new Set(displayRows.map((row) => row.orderDate)).size;
+    return !(dayBreaks > 20 && dayBreaks > days * 2);
+  }, [displayRows]);
   const displayItems = useMemo(() => {
     const items: DisplayItem[] = [];
     let band: Extract<DisplayItem, { kind: 'band' }> | null = null;
@@ -1311,7 +1247,7 @@ export default function DispatcherJournalPage() {
     /** массовое действие (вставка столбиком, протягивание) — отменяется целиком */
     | { kind: 'multi'; patches: Array<{ id: string; before: DispatcherOrderPatch }>; created: string[] }
     /** своя сортировка — возвращается прежний порядок */
-    | { kind: 'order'; before: PersonalOrder | null };
+    | { kind: 'positions'; before: Array<{ id: string; position: number }> };
   const undoStackRef = useRef<UndoEntry[]>([]);
   const pushUndo = (entry: UndoEntry) => {
     undoStackRef.current.push(entry);
@@ -1333,6 +1269,16 @@ export default function DispatcherJournalPage() {
       .filter((row) => row.orderDate >= rangeRef.current.from && row.orderDate <= rangeRef.current.to)));
     updateDispatcherOrder(id, patch).catch(() => {
       setMessage({ severity: 'error', text: 'Не удалось сохранить изменение' });
+      void loadRows();
+    });
+  }, [loadRows]);
+
+  /** Новые места строк (сортировка / её отмена): сразу у себя, пачкой на сервер, коллеги подтянут. */
+  const applyPositions = useCallback((items: Array<{ id: string; position: number }>, label?: string) => {
+    const byId = new Map(items.map((item) => [item.id, item.position]));
+    setRows((prev) => sortByDate(prev.map((row) => (byId.has(row.id) ? { ...row, position: byId.get(row.id)! } : row))));
+    updateDispatcherOrderPositions(items, label).catch(() => {
+      setMessage({ severity: 'error', text: 'Не удалось сохранить порядок строк' });
       void loadRows();
     });
   }, [loadRows]);
@@ -1377,17 +1323,6 @@ export default function DispatcherJournalPage() {
 
   const moveRow = useCallback((draggedId: string, targetId: string, after: boolean) => {
     if (draggedId === targetId) return;
-    // своя сортировка: строка переезжает только в своём порядке — общий порядок коллег не меняется
-    const personal = personalSortRef.current;
-    if (personal) {
-      const ids = orderedRowsRef.current.map((row) => row.id).filter((id) => id !== draggedId);
-      const at = ids.indexOf(targetId);
-      if (at < 0) return;
-      ids.splice(at + (after ? 1 : 0), 0, draggedId);
-      pushUndo({ kind: 'order', before: personal });
-      setPersonalSort({ ...personal, ids });
-      return;
-    }
     const ordered = sortByDate(rowsRef.current);
     const dragged = ordered.find((row) => row.id === draggedId);
     const target = ordered.find((row) => row.id === targetId);
@@ -1402,7 +1337,7 @@ export default function DispatcherJournalPage() {
     else if (next) position = next.position - 1000;
     else position = Date.now();
     patchRow(draggedId, { position });
-  }, [patchRow, setPersonalSort]);
+  }, [patchRow]);
 
   const deleteRow = useCallback(async (row: DispatcherOrderRow, options?: { silent?: boolean; skipUndo?: boolean }) => {
     if (!options?.silent) {
@@ -1435,8 +1370,8 @@ export default function DispatcherJournalPage() {
         if (row) void deleteRow(row, { silent: true, skipUndo: true });
       });
       setMessage({ severity: 'success', text: 'Вставка / протягивание отменены' });
-    } else if (entry.kind === 'order') {
-      setPersonalSort(entry.before);
+    } else if (entry.kind === 'positions') {
+      applyPositions(entry.before, 'Отмена сортировки');
       setMessage({ severity: 'success', text: 'Сортировка отменена' });
     } else if (entry.kind === 'create') {
       const row = rowsRef.current.find((item) => item.id === entry.id);
@@ -1447,27 +1382,38 @@ export default function DispatcherJournalPage() {
       void createRow(orderDate, fields, { skipUndo: true });
       setMessage({ severity: 'success', text: 'Строка восстановлена' });
     }
-  }, [createRow, deleteRow, patchRow, setPersonalSort]);
+  }, [applyPositions, createRow, deleteRow, patchRow]);
 
-  /** Сортировка из меню колонки: один раз, у этого сотрудника, в пределах видимых (отфильтрованных) строк. */
+  /**
+   * Сортировка из меню колонки — как в google: один раз переставляет строки в ОБЩЕМ порядке
+   * (у всех), только видимые (после фильтра) и на их же местах. Отметки на столбце нет:
+   * это просто новый порядок. Ctrl+Z возвращает прежние места.
+   */
   const sortOnce = (field: string, direction: 'asc' | 'desc') => {
     rememberViewAnchor();
-    const before = personalSortRef.current;
+    const full = sortByDate(rowsRef.current);
     const ids = sortWithinSlots(
-      orderedRowsRef.current,
+      full,
       displayRowsRef.current.map((row) => row.id),
       (list) => sortRows(list, { field, direction }, sortValue),
     );
-    pushUndo({ kind: 'order', before });
-    setPersonalSort({ ids, by: { field, direction } });
-  };
-
-  /** Общий порядок строк вместо своей сортировки (из меню колонки или «Настроек»). */
-  const resetPersonalSort = () => {
-    if (!personalSortRef.current) return;
-    rememberViewAnchor();
-    pushUndo({ kind: 'order', before: personalSortRef.current });
-    setPersonalSort(null);
+    // места — позиции строк по порядку; одинаковые позиции разводим, чтобы порядок был однозначным
+    const slots: number[] = [];
+    full.forEach((row, index) => {
+      slots.push(index > 0 && row.position <= slots[index - 1] ? slots[index - 1] + 0.001 : row.position);
+    });
+    const oldById = new Map(full.map((row) => [row.id, row.position]));
+    const changes = ids
+      .map((id, index) => ({ id, position: slots[index] }))
+      .filter((item) => oldById.get(item.id) !== item.position);
+    if (!changes.length) {
+      setMessage({ severity: 'success', text: 'Строки уже в таком порядке' });
+      return;
+    }
+    pushUndo({ kind: 'positions', before: changes.map((item) => ({ id: item.id, position: oldById.get(item.id) ?? 0 })) });
+    const title = field === DATE_KEY ? 'Дата' : COLUMN_BY_KEY.get(field)?.title ?? field;
+    applyPositions(changes, `${title} ${direction === 'asc' ? 'А → Я' : 'Я → А'}`);
+    setMessage({ severity: 'success', text: `Отсортировано для всех: ${title} (Ctrl+Z — отменить)` });
   };
 
   /** Delete / вырезание при нескольких выделенных ячейках — очищаются все (одно действие для Ctrl+Z). */
@@ -1499,15 +1445,6 @@ export default function DispatcherJournalPage() {
       : row.position + (after ? 1 : -1);
     const created = await createRow(row.orderDate, { position, status: null });
     if (!created) return;
-    const current = personalSortRef.current;
-    if (current) {
-      const without = current.ids.filter((id) => id !== created.id);
-      const at = without.indexOf(row.id);
-      if (at >= 0) {
-        without.splice(at + (after ? 1 : 0), 0, created.id);
-        setPersonalSort({ ...current, ids: without });
-      }
-    }
     pendingFocusRef.current = { rowId: created.id };
   };
 
@@ -2307,9 +2244,6 @@ export default function DispatcherJournalPage() {
             onClick={(event) => setFilterMenu({ field: key, anchor: event.currentTarget })}
           >
             <span>{title}</span>
-            {personalSort?.by?.field === key && (
-              <span className={`dj-sort-ind is-${personalSort.by.direction}`} title="Своя сортировка по этой колонке" aria-hidden="true" />
-            )}
           </button>
           <button
             type="button"
@@ -2447,7 +2381,7 @@ export default function DispatcherJournalPage() {
             <div className="dj-formula__box">
               <span className="dj-formula__label" title={activeTitle}>
                 {activeCell
-                  ? `${activeTitle}${activeCell.rowId ? ` · стр. ${(displayRows.findIndex((row) => row.id === activeCell.rowId) + 1) || '—'}` : ' · новая заявка'}`
+                  ? `${activeTitle}${activeCell.rowId ? ` · стр. ${rowNumberById.get(activeCell.rowId) ?? '—'}` : ' · новая заявка'}`
                   : 'Значение ячейки'}
               </span>
               <textarea
@@ -2665,7 +2599,7 @@ export default function DispatcherJournalPage() {
                     }}
                     onClick={() => setSelectedRowId((prev) => (prev === row.id ? null : row.id))}
                   >
-                    <span className="dj-rownum__num">{index + 1}</span>
+                    <span className="dj-rownum__num">{rowNumberById.get(row.id) ?? index + 1}</span>
                     {canDragRows && <DragIndicator className="dj-rownum__grip" sx={{ fontSize: 16 }} />}
                   </td>
                   <td
@@ -2728,7 +2662,7 @@ export default function DispatcherJournalPage() {
         )}
         {rows.length > 0 && !displayRows.length && (
           <div className="dj-empty">
-            {searchQuery ? `По запросу «${search.trim()}» в этом месяце ничего не найдено` : 'Все заявки скрыты фильтрами — «Настройки» → «Сбросить фильтры и сортировку»'}
+            {searchQuery ? `По запросу «${search.trim()}» в этом месяце ничего не найдено` : 'Все заявки скрыты фильтрами — «Настройки» → «Сбросить фильтры»'}
           </div>
         )}
       </div>
@@ -2857,8 +2791,6 @@ export default function DispatcherJournalPage() {
           color={colorFilters[filterMenu.field] ?? null}
           isPinnedUntilHere={pinnedUntil === filterMenu.field}
           onSort={(direction) => sortOnce(filterMenu.field, direction)}
-          sortedDirection={personalSort?.by?.field === filterMenu.field ? personalSort.by.direction : null}
-          onResetSort={personalSort ? resetPersonalSort : undefined}
           onApply={(value) => applyColumnFilter(filterMenu.field, value)}
           onTogglePin={() => setPinnedUntil((prev) => (prev === filterMenu.field ? null : filterMenu.field))}
           onClose={() => setFilterMenu(null)}
@@ -2892,15 +2824,14 @@ export default function DispatcherJournalPage() {
           <ListItemText primary="Справочники" />
         </MenuItem>
         <MenuItem
-          disabled={!personalSort && activeFilterCount === 0}
+          disabled={activeFilterCount === 0}
           onClick={() => {
-            resetPersonalSort();
             resetAllFilters();
             setSettingsAnchor(null);
           }}
         >
           <ListItemIcon><FilterListOff fontSize="small" /></ListItemIcon>
-          <ListItemText primary="Сбросить фильтры и сортировку" />
+          <ListItemText primary="Сбросить фильтры" />
         </MenuItem>
         {canViewHistory && (
           <MenuItem

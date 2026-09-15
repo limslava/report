@@ -243,6 +243,55 @@ export const createDispatcherOrdersBatch = async (req: Request, res: Response, n
   }
 };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Порядок строк пачкой — общая сортировка «как в google» и её отмена (Ctrl+Z).
+ * body: { items: [{ id, position }], label?: «Статус ↑» }. Меняется только позиция
+ * (дата правки не трогается), в историю — одна запись «сортировка».
+ */
+export const updateDispatcherOrderPositions = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const rawItems: unknown[] = Array.isArray(req.body?.items) ? req.body.items : [];
+    const items = rawItems
+      .map((item) => item as { id?: unknown; position?: unknown })
+      .filter((item): item is { id: string; position: number } =>
+        typeof item.id === 'string' && UUID_PATTERN.test(item.id) && typeof item.position === 'number' && Number.isFinite(item.position));
+    if (!items.length || items.length > 5000 || items.length !== rawItems.length) {
+      const error: any = new Error('Некорректный список позиций');
+      error.statusCode = 400;
+      throw error;
+    }
+    const orders = await orderRepository.find({ where: { id: In(items.map((item) => item.id)) }, select: ['id', 'orderDate', 'position'] });
+    const currentById = new Map(orders.map((order) => [order.id, order]));
+    const changed = items.filter((item) => currentById.has(item.id) && currentById.get(item.id)!.position !== item.position);
+    if (changed.length) {
+      const params: unknown[] = [];
+      const values = changed.map((item) => {
+        params.push(item.id, item.position);
+        return `($${params.length - 1}::uuid, $${params.length}::double precision)`;
+      });
+      await AppDataSource.query(
+        `UPDATE dispatcher_orders AS o SET position = v.position FROM (VALUES ${values.join(', ')}) AS v(id, position) WHERE o.id = v.id`,
+        params,
+      );
+      const dates = [...new Set(changed.map((item) => currentById.get(item.id)!.orderDate))].sort();
+      const dmy = (date: string) => date.split('-').reverse().join('.');
+      const label = typeof req.body?.label === 'string' ? req.body.label.slice(0, 200) : '';
+      await recordDispatcherChanges([{
+        action: 'sort',
+        order: { id: null, orderDate: dates[0], ktkNumber: null, client: null },
+        newValue: `${label ? `${label} · ` : ''}строк: ${changed.length}${dates.length > 1 ? ` (${dmy(dates[0])} — ${dmy(dates[dates.length - 1])})` : ''}`,
+        userId: req.user?.id,
+      }]);
+      dates.forEach((date) => planWebSocketService.notifyDispatcherJournalUpdated({ date, userId: req.user?.id }));
+    }
+    res.json({ updated: changed.length });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const updateDispatcherOrder = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
