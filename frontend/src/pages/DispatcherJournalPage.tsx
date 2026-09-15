@@ -513,15 +513,44 @@ export default function DispatcherJournalPage() {
   // фильтр, применённый пользователем, действует на ВСЕ строки: исключение для
   // только что созданных живёт лишь до следующего изменения фильтров
   // (иначе строка, добавленная раньше, «торчала» среди отфильтрованных — 14.09)
+  // смена фильтра / поиска / сортировки: строка, в которой работали (или верхняя на экране),
+  // остаётся на том же месте экрана — таблицу не отбрасывает в начало
+  const restoreAnchorRef = useRef<{ rowId: string | null; delta: number; top: number; left: number; until: number } | null>(null);
+  const rememberViewAnchor = useCallback(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const { items, offsets } = layoutRef.current;
+    const scrollTop = wrap.scrollTop / zoomRef.current;
+    const activeRowId = activeCellRef.current?.rowId ?? null;
+    let itemIndex = activeRowId ? items.findIndex((item) => item.kind === 'row' && item.row.id === activeRowId) : -1;
+    const visibleTop = scrollTop;
+    const visibleBottom = scrollTop + wrap.clientHeight / zoomRef.current;
+    if (itemIndex < 0 || offsets[itemIndex] < visibleTop || offsets[itemIndex] > visibleBottom) {
+      itemIndex = itemAtOffset(offsets, scrollTop);
+      while (items[itemIndex] && items[itemIndex].kind !== 'row') itemIndex += 1;
+    }
+    const item = items[itemIndex];
+    if (!item || item.kind !== 'row') return;
+    restoreAnchorRef.current = {
+      rowId: item.row.id,
+      delta: scrollTop - offsets[itemIndex],
+      top: wrap.scrollTop,
+      left: wrap.scrollLeft,
+      until: Date.now() + 800,
+    };
+  }, []);
+
   const applyFilters = useCallback((updater: (prev: Record<string, string[]>) => Record<string, string[]>) => {
+    rememberViewAnchor();
     sessionCreatedIdsRef.current = new Set();
     setFilters(updater);
-  }, []);
+  }, [rememberViewAnchor]);
   // поиск по всем колонкам текущего месяца: прячет строки без совпадения
   const [search, setSearch] = useState('');
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const searchQuery = search.trim().toLocaleLowerCase('ru');
   const changeSearch = (value: string) => {
+    rememberViewAnchor();
     sessionCreatedIdsRef.current = new Set();
     setSearch(value);
   };
@@ -814,27 +843,31 @@ export default function DispatcherJournalPage() {
   const orderedRows = useMemo(() => applyPersonalOrder(rows, personalOrder), [rows, personalOrder]);
   const orderedRowsRef = useRef(orderedRows);
   orderedRowsRef.current = orderedRows;
-  const displayRows = useMemo(() => {
+  /** Фильтры и поиск — одинаково для своего и общего порядка строк. */
+  const visibleRowsOf = useCallback((list: DispatcherOrderRow[]): DispatcherOrderRow[] => {
     const activeFilters = Object.entries(filters).filter(([, hidden]) => hidden.length > 0);
     const filtered = activeFilters.length
-      ? orderedRows.filter((row) => sessionCreatedIdsRef.current.has(row.id)
+      ? list.filter((row) => sessionCreatedIdsRef.current.has(row.id)
         || activeFilters.every(([field, hidden]) => !hidden.includes(filterText(row, field))))
-      : orderedRows;
-    const found = searchQuery
+      : list;
+    return searchQuery
       ? filtered.filter((row) => sessionCreatedIdsRef.current.has(row.id)
         || formatDateFull(row.orderDate).includes(searchQuery)
         || ALL_COLUMNS.some((column) => columnText(row, column).toLocaleLowerCase('ru').includes(searchQuery)))
       : filtered;
-    return found;
-  }, [filterText, filters, orderedRows, searchQuery]);
+  }, [filterText, filters, searchQuery]);
+  const displayRows = useMemo(() => visibleRowsOf(orderedRows), [orderedRows, visibleRowsOf]);
 
   // полоса дня перед каждой сменой даты. Прячем полосы только когда своя сортировка
   // по другой колонке перемешала дни (например, по статусу на весь месяц); в общем
   // порядке полосы есть всегда — даже если строке поменяли дату и день встречается дважды
-  const showDayBands = useMemo(
-    () => !personalSort || personalSort.by?.field === DATE_KEY || datesAreGrouped(displayRows),
-    [displayRows, personalSort],
-  );
+  const showDayBands = useMemo(() => {
+    if (!personalSort || personalSort.by?.field === DATE_KEY || datesAreGrouped(displayRows)) return true;
+    // сортировали внутри одного дня (фильтр по дате → сортировка → фильтр снят): дни перемешаны
+    // не больше, чем в общем порядке — полосы остаются
+    const dayBreaks = (list: DispatcherOrderRow[]) => list.filter((row, index) => index > 0 && row.orderDate !== list[index - 1].orderDate).length;
+    return dayBreaks(displayRows) <= dayBreaks(visibleRowsOf(rows));
+  }, [displayRows, personalSort, rows, visibleRowsOf]);
   const displayItems = useMemo(() => {
     const items: DisplayItem[] = [];
     let band: Extract<DisplayItem, { kind: 'band' }> | null = null;
@@ -952,7 +985,6 @@ export default function DispatcherJournalPage() {
   // возврат в реестр: прокручиваем к строке, на которой остановились (один раз после загрузки месяца)
   // высота строк уточняется замером уже после первой прокрутки — поэтому ещё ~1,5 с
   // подправляем прокрутку к той же строке, пока раскладка не устоится
-  const restoreAnchorRef = useRef<{ rowId: string | null; delta: number; top: number; left: number; until: number } | null>(null);
   useLayoutEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap || loadedMonth !== viewMonth) return;
@@ -1345,6 +1377,7 @@ export default function DispatcherJournalPage() {
 
   /** Сортировка из меню колонки: один раз, у этого сотрудника, в пределах видимых (отфильтрованных) строк. */
   const sortOnce = (field: string, direction: 'asc' | 'desc') => {
+    rememberViewAnchor();
     const before = personalSortRef.current;
     const ids = sortWithinSlots(
       orderedRowsRef.current,
@@ -1358,6 +1391,7 @@ export default function DispatcherJournalPage() {
   /** Общий порядок строк вместо своей сортировки (из меню колонки или «Настроек»). */
   const resetPersonalSort = () => {
     if (!personalSortRef.current) return;
+    rememberViewAnchor();
     pushUndo({ kind: 'order', before: personalSortRef.current });
     setPersonalSort(null);
   };
