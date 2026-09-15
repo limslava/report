@@ -13,6 +13,10 @@ type ColumnFilterPopoverProps = {
   hidden: string[];
   isPinnedUntilHere: boolean;
   onSort: (direction: 'asc' | 'desc') => void;
+  /** своя сортировка по этой колонке — отмечается галочкой */
+  sortedDirection?: 'asc' | 'desc' | null;
+  /** есть своя сортировка — пункт «вернуть общий порядок» */
+  onResetSort?: () => void;
   onApply: (hidden: string[]) => void;
   onTogglePin: () => void;
   onClose: () => void;
@@ -29,6 +33,8 @@ export default function ColumnFilterPopover({
   hidden,
   isPinnedUntilHere,
   onSort,
+  sortedDirection = null,
+  onResetSort,
   onApply,
   onTogglePin,
   onClose,
@@ -69,11 +75,16 @@ export default function ColumnFilterPopover({
       <Box sx={{ width: 270, p: 1, fontSize: 13 }}>
         <Typography sx={{ fontSize: 12, fontWeight: 650, color: '#3d4757', px: 0.5, pb: 0.5 }}>{title}</Typography>
         <button type="button" className="dj-menu-item" onClick={() => { onSort('asc'); onClose(); }}>
-          Сортировать А → Я
+          Сортировать А → Я{sortedDirection === 'asc' && <span className="dj-menu-check">✓</span>}
         </button>
         <button type="button" className="dj-menu-item" onClick={() => { onSort('desc'); onClose(); }}>
-          Сортировать Я → А
+          Сортировать Я → А{sortedDirection === 'desc' && <span className="dj-menu-check">✓</span>}
         </button>
+        {onResetSort && (
+          <button type="button" className="dj-menu-item" onClick={() => { onResetSort(); onClose(); }}>
+            Сбросить сортировку (общий порядок)
+          </button>
+        )}
         <button type="button" className="dj-menu-item" onClick={() => { onTogglePin(); onClose(); }}>
           {isPinnedUntilHere ? <PushPin sx={{ fontSize: 15 }} /> : <PushPinOutlined sx={{ fontSize: 15 }} />}
           {isPinnedUntilHere ? 'Открепить столбцы' : 'Закрепить столбцы до этого'}
