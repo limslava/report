@@ -241,7 +241,8 @@ const pluralOrders = (count: number): string => {
 
 /** Элемент виртуального списка: полоса дня или строка заявки. */
 type DisplayItem =
-  | { kind: 'band'; date: string; key: string }
+  /** count / done — заявки этого блока дня (до следующей полосы), а не всего дня: день может встречаться дважды */
+  | { kind: 'band'; date: string; key: string; count: number; done: number }
   | { kind: 'row'; row: DispatcherOrderRow; index: number };
 
 /** Индекс последнего элемента, начало которого ≤ px (offsets — префиксные суммы высот). */
@@ -573,7 +574,7 @@ export default function DispatcherJournalPage() {
   const [bandHeight, setBandHeight] = useState(DEFAULT_BAND_HEIGHT);
   const [headerHeight, setHeaderHeight] = useState(40);
   // день, чья полоса «прилипла» под шапкой при прокрутке
-  const [stickyDate, setStickyDate] = useState<string | null>(null);
+  const [stickyBandKey, setStickyBandKey] = useState<string | null>(null);
   const layoutRef = useRef<{ items: DisplayItem[]; offsets: number[]; itemByRowIndex: Map<number, number> }>({
     items: [],
     offsets: [0],
@@ -625,12 +626,21 @@ export default function DispatcherJournalPage() {
     // прилипшая полоса: день первой строки под шапкой, если его собственная полоса уже ушла вверх
     const topItemIndex = itemAtOffset(offsets, scrollTop);
     const topItem = items[topItemIndex];
-    let date: string | null = null;
+    let bandKey: string | null = null;
     if (topItem && scrollTop > 1) {
       const bandAtTop = topItem.kind === 'band' && scrollTop - offsets[topItemIndex] < 2;
-      if (!bandAtTop) date = topItem.kind === 'band' ? topItem.date : topItem.row.orderDate;
+      if (!bandAtTop) {
+        // полоса блока, в котором сейчас верхняя строка
+        for (let index = topItemIndex; index >= 0; index -= 1) {
+          const item = items[index];
+          if (item.kind === 'band') {
+            bandKey = item.key;
+            break;
+          }
+        }
+      }
     }
-    setStickyDate((prev) => (prev === date ? prev : date));
+    setStickyBandKey((prev) => (prev === bandKey ? prev : bandKey));
     // запоминаем место в таблице: первая строка на экране + сдвиг (и горизонтальная прокрутка)
     if (restorePendingRef.current) return;
     if (scrollSaveTimerRef.current) window.clearTimeout(scrollSaveTimerRef.current);
@@ -810,18 +820,6 @@ export default function DispatcherJournalPage() {
     return found;
   }, [filterText, filters, orderedRows, searchQuery]);
 
-  // итоги дня для жёлтых полос: сколько заявок и сколько выполнено (по видимым строкам)
-  const dayStats = useMemo(() => {
-    const stats = new Map<string, { count: number; done: number }>();
-    displayRows.forEach((row) => {
-      const entry = stats.get(row.orderDate) ?? { count: 0, done: 0 };
-      entry.count += 1;
-      if (isCompletedStatus(row.status)) entry.done += 1;
-      stats.set(row.orderDate, entry);
-    });
-    return stats;
-  }, [displayRows]);
-
   // полоса дня перед каждой сменой даты. Прячем полосы только когда своя сортировка
   // по другой колонке перемешала дни (например, по статусу на весь месяц); в общем
   // порядке полосы есть всегда — даже если строке поменяли дату и день встречается дважды
@@ -831,14 +829,25 @@ export default function DispatcherJournalPage() {
   );
   const displayItems = useMemo(() => {
     const items: DisplayItem[] = [];
+    let band: Extract<DisplayItem, { kind: 'band' }> | null = null;
     displayRows.forEach((row, index) => {
       if (showDayBands && (index === 0 || row.orderDate !== displayRows[index - 1].orderDate)) {
-        items.push({ kind: 'band', date: row.orderDate, key: `band-${index}-${row.orderDate}` });
+        band = { kind: 'band', date: row.orderDate, key: `band-${index}-${row.orderDate}`, count: 0, done: 0 };
+        items.push(band);
+      }
+      // итоги полосы — по видимым строкам её блока
+      if (band) {
+        band.count += 1;
+        if (isCompletedStatus(row.status)) band.done += 1;
       }
       items.push({ kind: 'row', row, index });
     });
     return items;
   }, [displayRows, showDayBands]);
+  const stickyBand = useMemo(
+    () => (stickyBandKey ? displayItems.find((item) => item.kind === 'band' && item.key === stickyBandKey) ?? null : null),
+    [displayItems, stickyBandKey],
+  ) as Extract<DisplayItem, { kind: 'band' }> | null;
 
   const itemOffsets = useMemo(() => {
     const offsets = new Array<number>(displayItems.length + 1);
@@ -964,7 +973,7 @@ export default function DispatcherJournalPage() {
 
   // ── переходы по ячейкам стрелками / Tab / Enter (как в google-таблицах) ──
   const navLayoutRef = useRef({ headerHeight, bandHeight, rowHeight, sticky: false });
-  navLayoutRef.current = { headerHeight, bandHeight, rowHeight, sticky: Boolean(stickyDate && showDayBands) };
+  navLayoutRef.current = { headerHeight, bandHeight, rowHeight, sticky: Boolean(stickyBand && showDayBands) };
 
   const keepCellVisible = useCallback((td: HTMLElement) => {
     const wrap = wrapRef.current;
@@ -2191,10 +2200,11 @@ export default function DispatcherJournalPage() {
   const totalItemsHeight = itemOffsets[itemOffsets.length - 1] ?? 0;
 
   const todayDate = todayYmd();
-  const renderBandLabel = (date: string) => {
+  const renderBandLabel = (band: Extract<DisplayItem, { kind: 'band' }>) => {
+    const { date } = band;
     const [year, month, day] = date.split('-').map(Number);
     const weekday = WEEKDAYS[new Date(year, month - 1, day).getDay()];
-    const stats = dayStats.get(date) ?? { count: 0, done: 0 };
+    const stats = { count: band.count, done: band.done };
     return (
       <>
         <b>{weekday}, {pad2(day)}.{pad2(month)}.{year}</b>
@@ -2343,10 +2353,10 @@ export default function DispatcherJournalPage() {
             onMouseDown={startFill}
           />
         )}
-        {stickyDate && showDayBands && (
+        {stickyBand && showDayBands && (
           <div className="dj-sticky-band" style={{ top: headerHeight * zoom }} aria-hidden="true">
             <div className="dj-band__label dj-sticky-band__inner" style={{ width: wrapWidth / zoom, zoom }}>
-              {renderBandLabel(stickyDate)}
+              {renderBandLabel(stickyBand)}
             </div>
           </div>
         )}
@@ -2430,7 +2440,7 @@ export default function DispatcherJournalPage() {
                 return (
                   <tr key={item.key} className="dj-band">
                     <td colSpan={visibleColumns.length + 3}>
-                      <div className="dj-band__label">{renderBandLabel(item.date)}</div>
+                      <div className="dj-band__label">{renderBandLabel(item)}</div>
                     </td>
                   </tr>
                 );
