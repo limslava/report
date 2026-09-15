@@ -72,7 +72,11 @@ import {
   type CellNavDirection,
 } from '../components/dispatcher/cellKeys';
 import TimeCell from '../components/dispatcher/TimeCell';
-import ColumnFilterPopover, { EMPTY_FILTER_VALUE } from '../components/dispatcher/ColumnFilterPopover';
+import ColumnFilterPopover, {
+  EMPTY_FILTER_VALUE,
+  type ColumnColorOption,
+  type ColumnFilterValue,
+} from '../components/dispatcher/ColumnFilterPopover';
 import DispatcherDictionariesDialog from '../components/dispatcher/DispatcherDictionariesDialog';
 import DispatcherImportDialog from '../components/dispatcher/DispatcherImportDialog';
 import DispatcherHistoryDialog from '../components/dispatcher/DispatcherHistoryDialog';
@@ -82,10 +86,14 @@ import {
   applyPersonalOrder,
   buildOrderText,
   cellKey,
+  colorKeyOf,
   datesAreGrouped,
   formatFinance,
   formatMoney,
   isCompletedStatus,
+  isConditionActive,
+  matchesCondition,
+  NO_COLOR_KEY,
   normalizeTimeInput,
   parseClipboardGrid,
   planBlockFill,
@@ -98,6 +106,7 @@ import {
   sortWithinSlots,
   summarizeSelection,
   textColorFor,
+  type ColumnCondition,
   type GridRect,
 } from '../components/dispatcher/dispatcherJournalUtils';
 import '../styles/dispatcher-journal.css';
@@ -506,7 +515,24 @@ export default function DispatcherJournalPage() {
     loadSortState<Record<string, string[]>>(filtersStorageKey, {})
   );
   useEffect(() => saveSortState(filtersStorageKey, filters), [filtersStorageKey, filters]);
-  const activeFilterCount = Object.values(filters).filter((hidden) => hidden.length > 0).length;
+  // фильтры по условию (пусто / содержит / дата с … по …) и по цвету — тоже у каждого свои
+  const conditionsStorageKey = `dj-conditions-v1:${userKey}`;
+  const [conditions, setConditions] = useState<Record<string, ColumnCondition>>(() =>
+    loadSortState<Record<string, ColumnCondition>>(conditionsStorageKey, {})
+  );
+  useEffect(() => saveSortState(conditionsStorageKey, conditions), [conditionsStorageKey, conditions]);
+  const colorFiltersStorageKey = `dj-color-filters-v1:${userKey}`;
+  const [colorFilters, setColorFilters] = useState<Record<string, string>>(() =>
+    loadSortState<Record<string, string>>(colorFiltersStorageKey, {})
+  );
+  useEffect(() => saveSortState(colorFiltersStorageKey, colorFilters), [colorFiltersStorageKey, colorFilters]);
+  /** Колонки, где стоит хоть какой-то фильтр (воронка в заголовке подсвечена). */
+  const filteredFields = useMemo(() => new Set<string>([
+    ...Object.entries(filters).filter(([, hidden]) => hidden.length > 0).map(([field]) => field),
+    ...Object.entries(conditions).filter(([, condition]) => isConditionActive(condition)).map(([field]) => field),
+    ...Object.entries(colorFilters).filter(([, color]) => Boolean(color)).map(([field]) => field),
+  ]), [colorFilters, conditions, filters]);
+  const activeFilterCount = filteredFields.size;
   const [filterMenu, setFilterMenu] = useState<{ field: string; anchor: HTMLElement } | null>(null);
   // строки, созданные в этой сессии, не прячутся фильтром — иначе новая заявка «исчезает» при вводе
   const sessionCreatedIdsRef = useRef<Set<string>>(new Set());
@@ -540,10 +566,26 @@ export default function DispatcherJournalPage() {
     };
   }, []);
 
-  const applyFilters = useCallback((updater: (prev: Record<string, string[]>) => Record<string, string[]>) => {
+  /** Фильтр одной колонки из её меню: значения, условие и цвет разом. */
+  const applyColumnFilter = useCallback((field: string, value: ColumnFilterValue) => {
     rememberViewAnchor();
     sessionCreatedIdsRef.current = new Set();
-    setFilters(updater);
+    const without = <T,>(prev: Record<string, T>): Record<string, T> => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    };
+    setFilters((prev) => (value.hidden.length ? { ...prev, [field]: value.hidden } : without(prev)));
+    setConditions((prev) => (isConditionActive(value.condition) ? { ...prev, [field]: value.condition } : without(prev)));
+    setColorFilters((prev) => (value.color ? { ...prev, [field]: value.color } : without(prev)));
+  }, [rememberViewAnchor]);
+
+  const resetAllFilters = useCallback(() => {
+    rememberViewAnchor();
+    sessionCreatedIdsRef.current = new Set();
+    setFilters({});
+    setConditions({});
+    setColorFilters({});
   }, [rememberViewAnchor]);
   // поиск по всем колонкам текущего месяца: прячет строки без совпадения
   const [search, setSearch] = useState('');
@@ -817,8 +859,8 @@ export default function DispatcherJournalPage() {
     setPersonalOrderState({ key, value });
     saveSortState(key, value);
   }, []);
-  // ручной порядок меняется только на «чистой» таблице: при своей сортировке, фильтре или поиске место строки неоднозначно
-  const canDragRows = !personalOrder && activeFilterCount === 0 && !searchQuery;
+  // перетаскивание — без фильтров и поиска; при своей сортировке строка переезжает в своём порядке
+  const canDragRows = activeFilterCount === 0 && !searchQuery;
   const sortValue = useCallback((row: DispatcherOrderRow, field: string): unknown => {
     if (field === DATE_KEY) return row.orderDate;
     const column = COLUMN_BY_KEY.get(field);
@@ -844,18 +886,39 @@ export default function DispatcherJournalPage() {
   const orderedRowsRef = useRef(orderedRows);
   orderedRowsRef.current = orderedRows;
   /** Фильтры и поиск — одинаково для своего и общего порядка строк. */
+  /** Цвет ячейки для фильтра по цвету: заливка статуса / значения справочника или «без цвета». */
+  const cellColorKey = useCallback((row: DispatcherOrderRow, field: string): string => {
+    if (field === 'status') return colorKeyOf(statusByName.get(row.status ?? '')?.color);
+    const column = COLUMN_BY_KEY.get(field);
+    if (column?.kind !== 'text' || !column.list || column.list === 'drivers' || column.list === 'vehicles') return NO_COLOR_KEY;
+    return colorKeyOf(dictionaryColors[column.list]?.[row[column.field] ?? '']?.color);
+  }, [dictionaryColors, statusByName]);
+
+  /** Текст ячейки для условия: у даты — YYYY-MM-DD. */
+  const conditionText = useCallback((row: DispatcherOrderRow, field: string): string => {
+    if (field === DATE_KEY) return row.orderDate;
+    const column = COLUMN_BY_KEY.get(field);
+    return column ? columnText(row, column) : '';
+  }, []);
+
   const visibleRowsOf = useCallback((list: DispatcherOrderRow[]): DispatcherOrderRow[] => {
-    const activeFilters = Object.entries(filters).filter(([, hidden]) => hidden.length > 0);
-    const filtered = activeFilters.length
+    const fields = [...filteredFields];
+    const filtered = fields.length
       ? list.filter((row) => sessionCreatedIdsRef.current.has(row.id)
-        || activeFilters.every(([field, hidden]) => !hidden.includes(filterText(row, field))))
+        || fields.every((field) => {
+          const hidden = filters[field];
+          if (hidden?.length && hidden.includes(filterText(row, field))) return false;
+          if (!matchesCondition(conditionText(row, field), conditions[field])) return false;
+          const color = colorFilters[field];
+          return !color || cellColorKey(row, field) === color;
+        }))
       : list;
     return searchQuery
       ? filtered.filter((row) => sessionCreatedIdsRef.current.has(row.id)
         || formatDateFull(row.orderDate).includes(searchQuery)
         || ALL_COLUMNS.some((column) => columnText(row, column).toLocaleLowerCase('ru').includes(searchQuery)))
       : filtered;
-  }, [filterText, filters, searchQuery]);
+  }, [cellColorKey, colorFilters, conditionText, conditions, filterText, filteredFields, filters, searchQuery]);
   const displayRows = useMemo(() => visibleRowsOf(orderedRows), [orderedRows, visibleRowsOf]);
 
   // полоса дня перед каждой сменой даты. Прячем полосы только когда своя сортировка
@@ -1314,6 +1377,17 @@ export default function DispatcherJournalPage() {
 
   const moveRow = useCallback((draggedId: string, targetId: string, after: boolean) => {
     if (draggedId === targetId) return;
+    // своя сортировка: строка переезжает только в своём порядке — общий порядок коллег не меняется
+    const personal = personalSortRef.current;
+    if (personal) {
+      const ids = orderedRowsRef.current.map((row) => row.id).filter((id) => id !== draggedId);
+      const at = ids.indexOf(targetId);
+      if (at < 0) return;
+      ids.splice(at + (after ? 1 : 0), 0, draggedId);
+      pushUndo({ kind: 'order', before: personal });
+      setPersonalSort({ ...personal, ids });
+      return;
+    }
     const ordered = sortByDate(rowsRef.current);
     const dragged = ordered.find((row) => row.id === draggedId);
     const target = ordered.find((row) => row.id === targetId);
@@ -1328,7 +1402,7 @@ export default function DispatcherJournalPage() {
     else if (next) position = next.position - 1000;
     else position = Date.now();
     patchRow(draggedId, { position });
-  }, [patchRow]);
+  }, [patchRow, setPersonalSort]);
 
   const deleteRow = useCallback(async (row: DispatcherOrderRow, options?: { silent?: boolean; skipUndo?: boolean }) => {
     if (!options?.silent) {
@@ -2182,8 +2256,43 @@ export default function DispatcherJournalPage() {
     );
   };
 
+  /** Цвета, которые встречаются в колонке за месяц (для «Фильтровать по цвету»); без цветов — пусто. */
+  const columnColorOptions = (field: string): ColumnColorOption[] => {
+    const byKey = new Map<string, ColumnColorOption>();
+    const labelsByKey = new Map<string, Set<string>>();
+    rows.forEach((row) => {
+      const key = cellColorKey(row, field);
+      const raw = conditionText(row, field);
+      if (raw) labelsByKey.set(key, (labelsByKey.get(key) ?? new Set()).add(raw));
+      const entry = byKey.get(key);
+      if (entry) {
+        entry.count += 1;
+        return;
+      }
+      const colors = key === NO_COLOR_KEY
+        ? null
+        : field === 'status' ? statusColorOf(row.status ?? '') : listColorOf((COLUMN_BY_KEY.get(field) as { list: ListSource }).list)?.(raw);
+      byKey.set(key, {
+        key,
+        background: colors?.background ?? null,
+        color: colors?.color ?? '#5f6368',
+        label: key === NO_COLOR_KEY ? 'Без цвета' : raw,
+        count: 1,
+      });
+    });
+    // одним цветом могут быть отмечены несколько значений — подписываем их вместе
+    byKey.forEach((option) => {
+      if (option.key === NO_COLOR_KEY) return;
+      const labels = [...(labelsByKey.get(option.key) ?? [])];
+      option.label = labels.slice(0, 3).join(', ') + (labels.length > 3 ? '…' : '');
+    });
+    const options = [...byKey.values()];
+    if (!options.some((option) => option.key !== NO_COLOR_KEY)) return [];
+    return options.sort((a, b) => (a.key === NO_COLOR_KEY ? 1 : 0) - (b.key === NO_COLOR_KEY ? 1 : 0) || b.count - a.count);
+  };
+
   const headerCell = (key: string, title: string, width: number, resizable: boolean) => {
-    const filtered = (filters[key]?.length ?? 0) > 0;
+    const filtered = filteredFields.has(key);
     return (
       <th
         key={key}
@@ -2539,7 +2648,7 @@ export default function DispatcherJournalPage() {
                     title={[
                       canDragRows
                         ? 'Зажмите и тяните вверх/вниз — переместить строку. Клик — выделить строку'
-                        : 'Клик — выделить строку. Чтобы перетаскивать строки, сбросьте свою сортировку, фильтры и поиск',
+                        : 'Клик — выделить строку. Чтобы перетаскивать строки, сбросьте фильтры и поиск',
                       row.lastEditorName ? `Изменено: ${row.lastEditorName}, ${formatEditedAt(row.updatedAt)}` : '',
                     ].filter(Boolean).join('\n')}
                     draggable={canDragRows}
@@ -2740,16 +2849,17 @@ export default function DispatcherJournalPage() {
           title={filterMenuTitle}
           values={rows.map((row) => filterText(row, filterMenu.field))}
           hidden={filters[filterMenu.field] ?? []}
+          conditionKind={filterMenu.field === DATE_KEY
+            ? 'date'
+            : COLUMN_BY_KEY.get(filterMenu.field)?.kind === 'checkbox' ? 'none' : 'text'}
+          condition={conditions[filterMenu.field] ?? null}
+          colorOptions={columnColorOptions(filterMenu.field)}
+          color={colorFilters[filterMenu.field] ?? null}
           isPinnedUntilHere={pinnedUntil === filterMenu.field}
           onSort={(direction) => sortOnce(filterMenu.field, direction)}
           sortedDirection={personalSort?.by?.field === filterMenu.field ? personalSort.by.direction : null}
           onResetSort={personalSort ? resetPersonalSort : undefined}
-          onApply={(hidden) => applyFilters((prev) => {
-            const next = { ...prev };
-            if (hidden.length) next[filterMenu.field] = hidden;
-            else delete next[filterMenu.field];
-            return next;
-          })}
+          onApply={(value) => applyColumnFilter(filterMenu.field, value)}
           onTogglePin={() => setPinnedUntil((prev) => (prev === filterMenu.field ? null : filterMenu.field))}
           onClose={() => setFilterMenu(null)}
         />
@@ -2785,7 +2895,7 @@ export default function DispatcherJournalPage() {
           disabled={!personalSort && activeFilterCount === 0}
           onClick={() => {
             resetPersonalSort();
-            applyFilters(() => ({}));
+            resetAllFilters();
             setSettingsAnchor(null);
           }}
         >
