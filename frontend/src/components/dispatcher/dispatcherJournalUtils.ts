@@ -365,3 +365,68 @@ export function summarizeSelection(texts: string[]): { filled: number; numbers: 
   });
   return { filled, numbers, sum, average: numbers ? sum / numbers : null };
 }
+
+export type GridRect = { minRow: number; maxRow: number; minCol: number; maxCol: number };
+export type GridCellText = { row: number; col: number; text: string };
+
+/**
+ * Протягивание блока ячеек (как в google): тянем за угол вниз/вверх до строки
+ * endRow — блок повторяется по кругу; для колонок, где разрешён ряд (series),
+ * значение продолжает крайнюю ячейку блока с шагом 1 на строку.
+ */
+export function planBlockFill(
+  rect: GridRect,
+  endRow: number,
+  textAt: (row: number, col: number) => string,
+  /** значение ряда для колонки; null — в этой колонке ряда нет, блок просто повторяется */
+  continueSeries: ((col: number, base: string, delta: number) => string | null) | null,
+): GridCellText[] {
+  const height = rect.maxRow - rect.minRow + 1;
+  const down = endRow > rect.maxRow;
+  const up = endRow < rect.minRow;
+  if (!down && !up) return [];
+  const result: GridCellText[] = [];
+  const first = down ? rect.maxRow + 1 : endRow;
+  const last = down ? endRow : rect.minRow - 1;
+  for (let row = first; row <= last; row += 1) {
+    const distance = down ? row - rect.maxRow : rect.minRow - row;
+    const sourceRow = down
+      ? rect.minRow + ((row - rect.minRow) % height)
+      : rect.maxRow - ((rect.maxRow - row) % height);
+    for (let col = rect.minCol; col <= rect.maxCol; col += 1) {
+      let text = textAt(sourceRow, col);
+      if (continueSeries) {
+        const base = textAt(down ? rect.maxRow : rect.minRow, col);
+        const next = base ? continueSeries(col, base, down ? distance : -distance) : null;
+        if (next !== null) text = next;
+      }
+      result.push({ row, col, text });
+    }
+  }
+  return result;
+}
+
+/**
+ * Вставка из буфера в выделенные ячейки (как в google): одно значение — во все
+ * выделенные; таблица, размеры которой укладываются в прямоугольник выделения
+ * целое число раз, — повторяется по нему. Иначе null — вставка от левого верхнего угла.
+ */
+export function planPasteIntoSelection(cells: Array<{ row: number; col: number }>, grid: string[][]): GridCellText[] | null {
+  if (!cells.length || !grid.length) return null;
+  const gridRows = grid.length;
+  const gridCols = Math.max(...grid.map((line) => line.length));
+  if (gridRows === 1 && gridCols === 1) return cells.map(({ row, col }) => ({ row, col, text: grid[0][0] ?? '' }));
+  const minRow = Math.min(...cells.map((cell) => cell.row));
+  const maxRow = Math.max(...cells.map((cell) => cell.row));
+  const minCol = Math.min(...cells.map((cell) => cell.col));
+  const maxCol = Math.max(...cells.map((cell) => cell.col));
+  const height = maxRow - minRow + 1;
+  const width = maxCol - minCol + 1;
+  const fullRect = cells.length === height * width;
+  if (!fullRect || height % gridRows !== 0 || width % gridCols !== 0) return null;
+  return cells.map(({ row, col }) => ({
+    row,
+    col,
+    text: grid[(row - minRow) % gridRows]?.[(col - minCol) % gridCols] ?? '',
+  }));
+}
