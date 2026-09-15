@@ -7,6 +7,7 @@ import { isPrintableKey, navDirectionOf, requestCellNav } from './cellKeys';
 type TimeCellProps = {
   value: string | null;
   onSave: (value: string) => void;
+  readOnly?: boolean;
 };
 
 const HOURS = Array.from({ length: 24 }, (_item, index) => String(index).padStart(2, '0'));
@@ -17,7 +18,7 @@ const MINUTES = ['00', '10', '15', '20', '30', '40', '45', '50'];
  * выбор часов и минут по кнопке-часикам. Нестандартный текст («к 10») не
  * ломается — остаётся как написан и подсвечивается, что это не время.
  */
-export default function TimeCell({ value, onSave }: TimeCellProps) {
+export default function TimeCell({ value, onSave, readOnly }: TimeCellProps) {
   const [draft, setDraft] = useState(value ?? '');
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [hour, setHour] = useState<string | null>(null);
@@ -30,6 +31,7 @@ export default function TimeCell({ value, onSave }: TimeCellProps) {
   }, [value]);
 
   const startEdit = (initial?: string) => {
+    if (readOnly) return;
     if (initial !== undefined) setDraft(initial);
     editingRef.current = true;
     setEditing(true);
@@ -77,7 +79,7 @@ export default function TimeCell({ value, onSave }: TimeCellProps) {
               startEdit();
             } else if (event.key === 'Backspace' || event.key === 'Delete') {
               event.preventDefault();
-              commit('');
+              if (!readOnly) commit('');
             } else {
               const direction = navDirectionOf(event);
               if (direction) {

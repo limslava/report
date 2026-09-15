@@ -194,7 +194,8 @@ const DashboardLayout = () => {
   const isAdmin = canAccessAdmin(user?.role);
   const canUseWorkSchedule = canAccessOperationsPreview(user?.role);
   const canViewPlansMenu = canViewPlans(user?.role) && !isHrScheduleRole && !isGarageHead;
-  const canViewVvoSchedule = isAdmin || isHrScheduleRole || isKtkVvoManager;
+  // начальник гаража — контейнеровозы и автовозы (факт, просмотр)
+  const canViewVvoSchedule = isAdmin || isHrScheduleRole || isKtkVvoManager || isGarageHead;
   const canViewMoscowSchedule = isAdmin || isHrScheduleRole || isKtkMowManager;
   const canViewVvoGarageSchedule = isAdmin || isHrScheduleRole || isGarageHead || isWarehouseStaffScheduleOperator;
   const canViewVvoSecuritySchedule = isAdmin || isHrScheduleRole || isSecurityHead;
@@ -307,7 +308,8 @@ const DashboardLayout = () => {
     const shouldOpen = !isAdminWorkSubmenuOpen;
     setIsAdminWorkSubmenuOpen(shouldOpen);
     if (shouldOpen) {
-      if (canViewVvoSchedule) {
+      // начальник гаража открывает свой график (автослесари); контейнеровозы и автовозы — из подменю
+      if (canViewVvoSchedule && !isGarageHead) {
         setIsAdminWorkDeptSubmenuOpen(true);
         setIsVvoDispatchSubmenuOpen(true);
         if (location.pathname !== '/operations-preview' || currentSection !== 'containers' || currentPreviewLocation !== 'ktk_vvo') {
@@ -1046,7 +1048,7 @@ const DashboardLayout = () => {
                         selected={location.pathname === '/operations-preview' && !location.search.includes('location=ktk_mow') && !location.search.includes('location=garage_mow')}
                         onClick={() => {
                           setIsAdminWorkDeptSubmenuOpen((prev) => !prev);
-                          if (canViewVvoSchedule && location.pathname !== '/operations-preview') {
+                          if (canViewVvoSchedule && !isGarageHead && location.pathname !== '/operations-preview') {
                             handleNavigate('/operations-preview?location=ktk_vvo&section=containers');
                           }
                         }}
@@ -1091,6 +1093,8 @@ const DashboardLayout = () => {
                                     <ListItemText primary="Автовозы" primaryTypographyProps={{ fontSize: 13 }} />
                                   </ListItemButton>
                                 </ListItem>
+                                {!isGarageHead && (
+                                <>
                                 <ListItem disablePadding sx={{ pl: 8 }}>
                                   <ListItemButton
                                     selected={location.pathname === '/operations-preview' && location.search.includes('location=ktk_vvo') && location.search.includes('section=dispatchers')}
@@ -1109,6 +1113,8 @@ const DashboardLayout = () => {
                                     <ListItemText primary="Оперативники" primaryTypographyProps={{ fontSize: 13 }} />
                                   </ListItemButton>
                                 </ListItem>
+                                </>
+                                )}
                                 {isAdmin && (
                                   <ListItem disablePadding sx={{ pl: 8 }}>
                                     <ListItemButton

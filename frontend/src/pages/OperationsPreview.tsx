@@ -238,10 +238,16 @@ export default function OperationsPreview() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeLocation = getLocationFromQuery(searchParams.get('location'));
   const activeEfficiencyLocation: EfficiencyLocation = activeLocation === 'ktk_mow' ? 'ktk_mow' : 'ktk_vvo';
-  const allowedDepartments = useMemo(() => getDepartmentsForLocation(activeLocation), [activeLocation]);
-  const allowedDepartmentSet = useMemo(() => new Set<Department>(allowedDepartments), [allowedDepartments]);
   const userId = useAuthStore((state) => state.user?.id);
   const userRole = useAuthStore((state) => state.user?.role);
+  // начальник гаража смотрит факт контейнеровозов и автовозов Владивостока — только просмотр
+  const isFactOnlyViewer = userRole === 'garage_head_vvo' && activeLocation === 'ktk_vvo';
+  const allowedDepartments = useMemo(
+    () => getDepartmentsForLocation(activeLocation)
+      .filter((department) => !isFactOnlyViewer || department === 'Контейнеры' || department === 'Авто'),
+    [activeLocation, isFactOnlyViewer],
+  );
+  const allowedDepartmentSet = useMemo(() => new Set<Department>(allowedDepartments), [allowedDepartments]);
   const isHrScheduleRole = userRole === 'head_hr' || userRole === 'hr_specialist';
   const isWarehouseStaffScheduleOperator = userRole === 'warehouse_manager_vvo';
   const canManagePlanFact = (
@@ -595,8 +601,8 @@ export default function OperationsPreview() {
   const canManageVvoWarehouseStaff = isHrScheduleRole && activeLocation === 'garage_vvo' && filter === 'Сотрудники склада';
   const canManageVvoGuards = isHrScheduleRole && activeLocation === 'security_vvo' && filter === 'Сторожа';
   const canEditWarehouseStaffAsManager = isWarehouseStaffScheduleOperator && activeLocation === 'garage_vvo' && filter === 'Сотрудники склада';
-  const canEditCurrentSchedule = !isHrScheduleRole || canManageVvoMechanics || canManageVvoWarehouseStaff || canManageVvoGuards || canEditWarehouseStaffAsManager || (effectiveMode === 'plan' && (filter === 'Контейнеры' || filter === 'Автослесари' || filter === 'Сотрудники склада' || filter === 'Сторожа'));
-  const canEditRows = !isHrScheduleRole || canManageVvoMechanics || canManageVvoWarehouseStaff || canManageVvoGuards || canEditWarehouseStaffAsManager;
+  const canEditCurrentSchedule = !isFactOnlyViewer && (!isHrScheduleRole || canManageVvoMechanics || canManageVvoWarehouseStaff || canManageVvoGuards || canEditWarehouseStaffAsManager || (effectiveMode === 'plan' && (filter === 'Контейнеры' || filter === 'Автослесари' || filter === 'Сотрудники склада' || filter === 'Сторожа')));
+  const canEditRows = !isFactOnlyViewer && (!isHrScheduleRole || canManageVvoMechanics || canManageVvoWarehouseStaff || canManageVvoGuards || canEditWarehouseStaffAsManager);
   const canFillFactFromPreviousMonth = filter !== 'Все' && CAN_FILL_FACT_FROM_PREVIOUS_MONTH.has(filter) && canEditRows;
   const canAddRows = canEditRows
     || (isHrScheduleRole && activeLocation === 'garage_vvo' && (addDepartment === 'Автослесари' || addDepartment === 'Сотрудники склада'))
@@ -2378,16 +2384,18 @@ export default function OperationsPreview() {
                       Добавить
                     </button>
                   )}
-                  <button
-                    type="button"
-                    className="ops-btn ops-btn--save"
-                    disabled={!hasUnsavedChanges || saving}
-                    onClick={() => {
-                      void saveDraft();
-                    }}
-                  >
-                    {saving ? 'СОХРАНЕНИЕ...' : 'СОХРАНИТЬ'}
-                  </button>
+                  {!isFactOnlyViewer && (
+                    <button
+                      type="button"
+                      className="ops-btn ops-btn--save"
+                      disabled={!hasUnsavedChanges || saving}
+                      onClick={() => {
+                        void saveDraft();
+                      }}
+                    >
+                      {saving ? 'СОХРАНЕНИЕ...' : 'СОХРАНИТЬ'}
+                    </button>
+                  )}
                 </>
               )}
             </Box>

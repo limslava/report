@@ -5,6 +5,11 @@ import { authorizeRole } from '../middleware/authorize';
 import { handleValidationErrors } from '../middleware/express-validator.middleware';
 import { DISPATCHER_HISTORY_ROLES } from '../services/dispatcher-history.service';
 import {
+  DISPATCHER_JOURNAL_FIELD_EDITOR_ROLES,
+  DISPATCHER_JOURNAL_READ_ROLES,
+  DISPATCHER_JOURNAL_ROLES,
+} from '../constants/dispatcher-journal-access';
+import {
   createDispatcherDictionaryItem,
   createDispatcherOrder,
   createDispatcherOrdersBatch,
@@ -29,8 +34,9 @@ import {
 
 const router = Router();
 
-/** Журнал диспетчерского отдела КТК Владивосток. */
-export const DISPATCHER_JOURNAL_ROLES = ['manager_ktk_vvo', 'head_ktk_vvo'] as const;
+export { DISPATCHER_JOURNAL_ROLES };
+/** Строки (добавление, удаление, порядок) — только те, кто ведёт реестр целиком. */
+const ROW_EDITOR_ROLES = ['admin', ...DISPATCHER_JOURNAL_ROLES] as const;
 /** Ведение справочников реестра (статусы, типы КТК, НДС, операции): руководитель КТК и админ. */
 export const DISPATCHER_DICTIONARY_EDIT_ROLES = ['admin', 'head_ktk_vvo'] as const;
 /** Цвета значений справочников выбирают и диспетчеры КТК (решение 15.09.2026). */
@@ -46,7 +52,7 @@ const onlyColorsUnlessEditor = (req: Request, res: Response, next: NextFunction)
   return res.status(403).json({ message: 'Диспетчер может менять только цвета справочников' });
 };
 
-router.use(authenticate, authorizeRole('admin', ...DISPATCHER_JOURNAL_ROLES));
+router.use(authenticate, authorizeRole(...DISPATCHER_JOURNAL_READ_ROLES));
 
 router.get('/statuses', listDispatcherStatuses);
 router.get('/dictionary-options', listDispatcherDictionaryOptions);
@@ -97,18 +103,20 @@ router.get(
 );
 router.post(
   '/orders',
+  authorizeRole(...ROW_EDITOR_ROLES),
   [body('orderDate').matches(/^\d{4}-\d{2}-\d{2}$/)],
   handleValidationErrors,
   createDispatcherOrder,
 );
 router.post(
   '/orders/batch',
+  authorizeRole(...ROW_EDITOR_ROLES),
   [body('orderDate').matches(/^\d{4}-\d{2}-\d{2}$/), body('count').isInt({ min: 1, max: 100 })],
   handleValidationErrors,
   createDispatcherOrdersBatch,
 );
-router.post('/orders/positions', updateDispatcherOrderPositions);
-router.patch('/orders/:id', [param('id').isUUID()], handleValidationErrors, updateDispatcherOrder);
-router.delete('/orders/:id', [param('id').isUUID()], handleValidationErrors, deleteDispatcherOrder);
+router.post('/orders/positions', authorizeRole(...ROW_EDITOR_ROLES), updateDispatcherOrderPositions);
+router.patch('/orders/:id', authorizeRole(...ROW_EDITOR_ROLES, ...DISPATCHER_JOURNAL_FIELD_EDITOR_ROLES), [param('id').isUUID()], handleValidationErrors, updateDispatcherOrder);
+router.delete('/orders/:id', authorizeRole(...ROW_EDITOR_ROLES), [param('id').isUUID()], handleValidationErrors, deleteDispatcherOrder);
 
 export { router as dispatcherJournalRouter };

@@ -13,6 +13,8 @@ type ListCellProps = {
   /** только значения из списка (статус): чужой текст не сохраняется, регистр подправляется */
   strict?: boolean;
   onSave: (value: string) => void;
+  /** только просмотр: без списка и без стрелки */
+  readOnly?: boolean;
 };
 
 const MAX_VISIBLE = 60;
@@ -26,7 +28,7 @@ const MAX_VISIBLE = 60;
  * стрелки переходят к соседним). Список открывают стрелка ▾, двойной клик, Enter,
  * F2, Alt+↓ или начало ввода; Delete/Backspace очищают ячейку.
  */
-export default function ListCell({ value, options, colorOf, normalize, placeholder, strict, onSave }: ListCellProps) {
+export default function ListCell({ value, options, colorOf, normalize, placeholder, strict, onSave, readOnly }: ListCellProps) {
   const [draft, setDraft] = useState(value ?? '');
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState(false);
@@ -68,6 +70,7 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
   }, [open, typed]);
 
   const openList = (initial?: string) => {
+    if (readOnly) return;
     openRef.current = true;
     setOpen(true);
     setNavigated(false);
@@ -124,7 +127,7 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
         value={draft}
         readOnly={!open}
         title={!open && draft.length > 14 ? draft : undefined}
-        placeholder={placeholder}
+        placeholder={readOnly ? undefined : placeholder}
         onChange={(event) => {
           if (!openRef.current) return;
           setDraft(event.target.value);
@@ -150,7 +153,7 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
             }
             if (event.key === 'Backspace' || event.key === 'Delete') {
               event.preventDefault();
-              if (value) {
+              if (value && !readOnly) {
                 setDraft('');
                 onSave('');
               }
@@ -189,7 +192,7 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
           }
         }}
       />
-      <span
+      {!readOnly && <span
         className="dj-list-caret"
         aria-hidden="true"
         // стрелка того же цвета, что текст значения: на тёмной заливке она светлая
@@ -204,7 +207,7 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
         <svg width="9" height="6" viewBox="0 0 9 6" focusable="false">
           <path d="M1 1.2 4.5 4.7 8 1.2" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-      </span>
+      </span>}
       {open && rect && filtered.length > 0 && createPortal(
         <div
           className="dj-list-popup"

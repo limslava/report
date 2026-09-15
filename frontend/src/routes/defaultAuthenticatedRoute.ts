@@ -10,6 +10,7 @@ export function getDefaultAuthenticatedRoute(role?: string | null): string {
   if (role === 'warehouse_keeper' && isModuleEnabled('warehouse')) return '/warehouse/operations';
   if (role === 'counterparty_user' && isModuleEnabled('warehouse')) return '/warehouse';
   if (canViewTechDashboard(role)) return '/sw-tech-dashboard';
+  if (role === 'doc_manager_vvo') return '/dispatcher-journal';
   if (role === 'garage_head_vvo') {
     return '/operations-preview?location=garage_vvo&section=mechanics';
   }

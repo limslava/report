@@ -6,6 +6,7 @@ import { MonthlyPlan, PlanCategory } from '../models/monthly-plans.model';
 import { AppDataSource } from '../config/data-source';
 import { User } from '../models/user.model';
 import { getJwtSecret } from '../config/env';
+import { dispatcherJournalAccess } from '../constants/dispatcher-journal-access';
 
 export interface PlanUpdateEvent {
   type: 'plan:updated' | 'plan:recalculated' | 'plan:admin-override';
@@ -238,9 +239,7 @@ export class PlanWebSocketService {
   }
 
   private canReceiveDispatcherJournalEvents(role: string): boolean {
-    return role === 'admin'
-      || role === 'manager_ktk_vvo'
-      || role === 'head_ktk_vvo';
+    return dispatcherJournalAccess(role) !== null;
   }
 
   private canReceiveContractEvents(role: string): boolean {

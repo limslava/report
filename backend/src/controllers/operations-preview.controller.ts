@@ -226,13 +226,45 @@ const canAccessLocationSection = (role: unknown, location: PreviewLocation, sect
   if (!isAllowedSectionForLocation(location, section)) return false;
   if (role === 'admin') return true;
   if ((role === 'head_hr' || role === 'hr_specialist') && section !== 'efficiency') return true;
-  if (role === 'garage_head_vvo') return location === 'garage_vvo' && section === 'mechanics';
+  if (role === 'garage_head_vvo') {
+    return (location === 'garage_vvo' && section === 'mechanics')
+      || (location === 'ktk_vvo' && (section === 'containers' || section === 'auto'));
+  }
   if (role === 'warehouse_manager_vvo') return location === 'garage_vvo' && section === 'warehouse_staff';
   if (role === 'security') return location === 'security_vvo' && section === 'guards';
   if (role === 'manager_ktk_vvo' || role === 'head_ktk_vvo') return location === 'ktk_vvo';
   if (role === 'manager_ktk_mow' || role === 'head_ktk_mow') return location === 'ktk_mow';
   if (isEfficiencyOnlyViewer(role)) return (location === 'ktk_vvo' || location === 'ktk_mow') && section === 'efficiency';
   return false;
+};
+
+/**
+ * Начальник гаража смотрит факт контейнеровозов и автовозов Владивостока (решение 15.09.2026):
+ * только просмотр, план ему не отдаётся.
+ */
+const isFactOnlyViewer = (role: unknown, location: PreviewLocation): boolean =>
+  role === 'garage_head_vvo' && location === 'ktk_vvo';
+
+const FACT_ONLY_DEPARTMENTS = new Set<string>(['Контейнеры', 'Авто']);
+
+/** Для начальника гаража: без плана и без людей других графиков (диспетчеры, оперативники). */
+const factOnlyState = (payload: unknown): unknown => {
+  if (!payload || typeof payload !== 'object') return payload;
+  const state = payload as PreviewPersistedState;
+  const onlyVehicles = (people: PersonRow[] | undefined) =>
+    Array.isArray(people) ? people.filter((person) => FACT_ONLY_DEPARTMENTS.has(person.department)) : people;
+  return {
+    ...state,
+    mode: 'fact',
+    filter: state.filter && FACT_ONLY_DEPARTMENTS.has(state.filter) ? state.filter : 'Все',
+    overrides: state.overrides
+      ? Object.fromEntries(Object.entries(state.overrides).filter(([key]) => !key.startsWith('plan|')))
+      : state.overrides,
+    peopleByMonth: state.peopleByMonth
+      ? Object.fromEntries(Object.entries(state.peopleByMonth).map(([month, people]) => [month, onlyVehicles(people) ?? []]))
+      : state.peopleByMonth,
+    peopleState: onlyVehicles(state.peopleState),
+  };
 };
 
 const assertPreviewAccess = (role: unknown, location: PreviewLocation, section: PreviewSection) => {
@@ -342,7 +374,7 @@ export const getOperationsPreviewState = async (req: Request, res: Response) => 
   });
 
   res.json({
-    state: row?.payload ?? null,
+    state: isFactOnlyViewer(req.user?.role, location) ? factOnlyState(row?.payload ?? null) : row?.payload ?? null,
     updatedAt: row?.updatedAt ?? null,
   });
 };
@@ -437,6 +469,11 @@ export const saveOperationsPreviewState = async (req: Request, res: Response) =>
   const sectionRaw = req.query.section ?? req.body?.section;
   const section: PreviewSection = isValidSection(sectionRaw) ? sectionRaw : 'containers';
   assertPreviewAccess(req.user?.role, location, section);
+  if (isFactOnlyViewer(req.user?.role, location)) {
+    const error: any = new Error('График доступен только для просмотра');
+    error.statusCode = 403;
+    throw error;
+  }
 
   const sanitized = sanitizePayload(req.body);
   const clientVersions = (req.body?.clientVersions ?? {}) as SaveClientVersions;
@@ -625,7 +662,7 @@ export const downloadOperationsPreviewExcel = async (req: Request, res: Response
       || req.user?.role === 'security'
     ))
   );
-  const mode: PreviewMode = section === 'containers' || canUsePersonnelPlan ? requestedMode : 'fact';
+  const mode: PreviewMode = !isFactOnlyViewer(req.user?.role, location) && (section === 'containers' || canUsePersonnelPlan) ? requestedMode : 'fact';
 
   const sortField: SortField = isValidSortField(req.query.sortField) ? req.query.sortField : 'manual';
   const sortDirection: SortDirection = isValidSortDirection(req.query.sortDirection) ? req.query.sortDirection : 'asc';

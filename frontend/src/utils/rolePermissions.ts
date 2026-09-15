@@ -1,6 +1,7 @@
 import { PlanningSegment } from '../types/planning-v2.types';
 import { isModuleEnabled } from './appModules';
 import { SUMMARY_ROLES, SEGMENT_BY_ROLE } from './roles';
+import { dispatcherJournalAccess } from './dispatcherJournalAccess';
 
 const CONTRACT_APPROVAL_ACCESS_ROLES = new Set([
   'admin',
@@ -59,7 +60,8 @@ export function canViewTotalsInPlans(role?: string | null): boolean {
     && role !== 'warehouse_keeper'
     && role !== 'counterparty_user'
     && role !== 'bdd_specialist_vvo'
-    && role !== 'bdd_specialist_mow';
+    && role !== 'bdd_specialist_mow'
+    && role !== 'doc_manager_vvo';
 }
 
 export function canViewPlans(role?: string | null): boolean {
@@ -76,7 +78,8 @@ export function canViewPlans(role?: string | null): boolean {
     && role !== 'warehouse_keeper'
     && role !== 'counterparty_user'
     && role !== 'bdd_specialist_vvo'
-    && role !== 'bdd_specialist_mow';
+    && role !== 'bdd_specialist_mow'
+    && role !== 'doc_manager_vvo';
 }
 
 export type FuelLocation = 'vvo' | 'mow';
@@ -153,9 +156,7 @@ export function canViewCalendar(role?: string | null): boolean {
 }
 
 export function canAccessDispatcherJournal(role?: string | null): boolean {
-  return role === 'admin'
-    || role === 'manager_ktk_vvo'
-    || role === 'head_ktk_vvo';
+  return dispatcherJournalAccess(role) !== null;
 }
 
 export function canAccessContractApproval(role?: string | null): boolean {
