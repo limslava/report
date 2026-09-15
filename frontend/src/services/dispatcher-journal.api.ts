@@ -1,5 +1,21 @@
 import api from './api';
 
+/** Excel всего реестра (лист на месяц). Имя файла — из ответа сервера. */
+export const downloadDispatcherJournalExcel = async (): Promise<{ blob: Blob; filename: string }> => {
+  const response = await api.get('/dispatcher-journal/export', { responseType: 'blob', timeout: 120_000 });
+  const disposition = String(response.headers['content-disposition'] ?? '');
+  const match = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  let filename = 'Реестр КТК Владивосток.xlsx';
+  if (match?.[1]) {
+    try {
+      filename = decodeURIComponent(match[1]);
+    } catch {
+      filename = match[1];
+    }
+  }
+  return { blob: response.data as Blob, filename };
+};
+
 export type DispatcherStatusOption = {
   id: string;
   name: string;

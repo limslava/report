@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 import {
   DragIndicator,
+  FileDownload,
   FilterList,
   History,
   KeyboardArrowDown,
@@ -39,6 +40,7 @@ import {
   getDispatcherStatuses,
   updateDispatcherOrder,
   updateDispatcherOrderPositions,
+  downloadDispatcherJournalExcel,
   type DispatcherCrewEntry,
   type DispatcherDictionaryColors,
   type DispatcherDictionaryOptions,
@@ -56,6 +58,7 @@ import {
   dispatcherJournalAccess,
 } from '../utils/dispatcherJournalAccess';
 import { sortRows } from '../utils/tableSort';
+import { downloadBlob } from '../utils/download';
 import {
   applyColumnPrefs,
   isHidden,
@@ -434,6 +437,7 @@ export default function DispatcherJournalPage() {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: DispatcherOrderRow } | null>(null);
   const [dictionariesOpen, setDictionariesOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   // история: весь реестр (orderId = null) или одна строка
   const [history, setHistory] = useState<{ orderId: string | null; label?: string } | null>(null);
   const reloadTimerRef = useRef<number | null>(null);
@@ -2884,6 +2888,22 @@ export default function DispatcherJournalPage() {
         >
           <ListItemIcon><FilterListOff fontSize="small" /></ListItemIcon>
           <ListItemText primary="Сбросить фильтры" />
+        </MenuItem>
+        <MenuItem
+          disabled={exporting}
+          onClick={() => {
+            setSettingsAnchor(null);
+            setExporting(true);
+            setMessage({ severity: 'success', text: 'Готовим Excel со всеми месяцами…' });
+            downloadDispatcherJournalExcel()
+              .then(({ blob, filename }) => downloadBlob(blob, filename))
+              .then(() => setMessage({ severity: 'success', text: 'Excel скачан: лист на каждый месяц' }))
+              .catch(() => setMessage({ severity: 'error', text: 'Не удалось скачать Excel' }))
+              .finally(() => setExporting(false));
+          }}
+        >
+          <ListItemIcon><FileDownload fontSize="small" /></ListItemIcon>
+          <ListItemText primary="Скачать Excel (все месяцы)" />
         </MenuItem>
         {canViewHistory && (
           <MenuItem
