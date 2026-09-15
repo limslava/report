@@ -2203,7 +2203,7 @@ export default function DispatcherJournalPage() {
 
   return (
     <Box className="dj-page">
-      <Paper sx={{ px: 1.5, py: 1 }}>
+      <Paper sx={{ px: 1.25, pt: 1, pb: 0.75 }}>
         <Box className="dj-toolbar">
           <TextField
             label="Год"
