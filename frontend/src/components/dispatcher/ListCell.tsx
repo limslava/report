@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { isPrintableKey, navDirectionOf, requestCellNav } from './cellKeys';
 
 type ListCellProps = {
   value: string | null;
@@ -18,25 +19,26 @@ const MAX_VISIBLE = 60;
 
 /**
  * Лёгкая ячейка «ввод + подсказки из справочника». В отличие от MUI Autocomplete
- * не держит поппер на каждую строку: список рисуется порталом только у ячейки
- * в фокусе, поэтому таблица на тысячи строк не тормозит. Свободный ввод разрешён.
+ * не держит поппер на каждую строку: список рисуется порталом только у открытой
+ * ячейки, поэтому таблица на тысячи строк не тормозит. Свободный ввод разрешён.
  *
- * Как в google-таблицах: клик только выделяет ячейку (видна «ручка» протягивания),
- * список открывают стрелка ▾, повторный клик, Enter, ↓ или начало ввода.
+ * Как в google-таблицах: клик только выделяет ячейку (видна «ручка» протягивания,
+ * стрелки переходят к соседним). Список открывают стрелка ▾, двойной клик, Enter,
+ * F2, Alt+↓ или начало ввода; Delete/Backspace очищают ячейку.
  */
 export default function ListCell({ value, options, colorOf, normalize, placeholder, strict, onSave }: ListCellProps) {
   const [draft, setDraft] = useState(value ?? '');
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState(false);
   const [highlight, setHighlight] = useState(0);
+  const [navigated, setNavigated] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const focusedRef = useRef(false);
-  // выбор из списка уже сохранил значение — blur не должен повторно сохранять старый черновик
-  const skipBlurCommitRef = useRef(false);
+  // открыт ли список (правка) — в ref, чтобы blur после выбора не сохранял второй раз
+  const openRef = useRef(false);
 
   useEffect(() => {
-    if (!focusedRef.current) setDraft(value ?? '');
+    if (!openRef.current) setDraft(value ?? '');
   }, [value]);
 
   // пока пользователь не начал печатать — показываем весь справочник
@@ -58,10 +60,31 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
     };
   }, [open]);
 
-  const toggleList = () => {
+  useLayoutEffect(() => {
+    const input = inputRef.current;
+    if (!open || !input || document.activeElement !== input) return;
+    const end = input.value.length;
+    input.setSelectionRange(end, end);
+  }, [open, typed]);
+
+  const openList = (initial?: string) => {
+    openRef.current = true;
+    setOpen(true);
+    setNavigated(false);
+    if (initial !== undefined) {
+      setDraft(initial);
+      setTyped(true);
+      setHighlight(0);
+    } else {
+      setTyped(false);
+      setHighlight(Math.max(0, options.indexOf(draft)));
+    }
+  };
+
+  const closeList = () => {
+    openRef.current = false;
+    setOpen(false);
     setTyped(false);
-    setHighlight(Math.max(0, options.indexOf(draft)));
-    setOpen((prev) => !prev);
   };
 
   const commit = (next: string) => {
@@ -80,65 +103,89 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
 
   const choose = (option: string) => {
     commit(option);
-    skipBlurCommitRef.current = true;
-    setOpen(false);
-    inputRef.current?.blur();
+    closeList();
   };
 
-  const cellStyle = colorOf && draft ? colorOf(draft) : undefined;
+  const finishTyping = () => {
+    if (!openRef.current) return;
+    if (typed) commit(draft);
+    else setDraft(value ?? '');
+    closeList();
+  };
+
+  const cellStyle = colorOf && draft && !open ? colorOf(draft) : undefined;
 
   return (
     <span className="dj-list-cell">
       <input
         ref={inputRef}
-        className={`dj-cell-input${cellStyle?.background ? ' dj-cell-input--chip' : ''}`}
+        className={`dj-cell-input${cellStyle?.background ? ' dj-cell-input--chip' : ''}${open ? ' is-editing' : ''}`}
         style={cellStyle}
         value={draft}
-        title={draft.length > 14 ? draft : undefined}
+        readOnly={!open}
+        title={!open && draft.length > 14 ? draft : undefined}
         placeholder={placeholder}
         onChange={(event) => {
+          if (!openRef.current) return;
           setDraft(event.target.value);
           setTyped(true);
           setHighlight(0);
-          setOpen(true);
         }}
-        onMouseDown={() => {
-          // повторный клик по уже выделенной ячейке — открыть/закрыть список
-          if (focusedRef.current) toggleList();
+        onDoubleClick={() => {
+          if (!openRef.current) openList();
         }}
-        onFocus={() => {
-          focusedRef.current = true;
-          setTyped(false);
-          setHighlight(Math.max(0, options.indexOf(draft)));
-        }}
-        onBlur={() => {
-          focusedRef.current = false;
-          setOpen(false);
-          if (skipBlurCommitRef.current) {
-            skipBlurCommitRef.current = false;
-            return;
-          }
-          commit(draft);
-        }}
+        onBlur={finishTyping}
         onKeyDown={(event) => {
-          if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            if (!open) {
-              toggleList();
+          const element = event.currentTarget;
+          if (!openRef.current) {
+            if (isPrintableKey(event)) {
+              event.preventDefault();
+              openList(event.key);
               return;
             }
+            if (event.key === 'Enter' || event.key === 'F2' || (event.key === 'ArrowDown' && event.altKey)) {
+              event.preventDefault();
+              openList();
+              return;
+            }
+            if (event.key === 'Backspace' || event.key === 'Delete') {
+              event.preventDefault();
+              if (value) {
+                setDraft('');
+                onSave('');
+              }
+              return;
+            }
+            const direction = navDirectionOf(event);
+            if (direction) {
+              event.preventDefault();
+              requestCellNav(element, direction);
+            }
+            return;
+          }
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            setNavigated(true);
             setHighlight((prev) => Math.min(prev + 1, filtered.length - 1));
           } else if (event.key === 'ArrowUp') {
             event.preventDefault();
+            setNavigated(true);
             setHighlight((prev) => Math.max(prev - 1, 0));
           } else if (event.key === 'Enter') {
             event.preventDefault();
-            if (!open && !typed) toggleList();
-            else if (open && filtered[highlight]) choose(filtered[highlight]);
-            else inputRef.current?.blur();
+            if ((typed || navigated) && filtered[highlight]) choose(filtered[highlight]);
+            else if (typed) {
+              commit(draft);
+              closeList();
+            } else closeList();
           } else if (event.key === 'Escape') {
+            event.preventDefault();
             setDraft(value ?? '');
-            setOpen(false);
+            closeList();
+          } else if (event.key === 'Tab') {
+            event.preventDefault();
+            finishTyping();
+            requestCellNav(element, event.shiftKey ? 'prev' : 'next');
           }
         }}
       />
@@ -147,13 +194,13 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
         aria-hidden="true"
         onMouseDown={(event) => {
           event.preventDefault();
-          if (!focusedRef.current) inputRef.current?.focus();
-          toggleList();
+          if (document.activeElement !== inputRef.current) inputRef.current?.focus();
+          if (openRef.current) finishTyping();
+          else openList();
         }}
       >
         ▾
       </span>
-
       {open && rect && filtered.length > 0 && createPortal(
         <div
           className="dj-list-popup"

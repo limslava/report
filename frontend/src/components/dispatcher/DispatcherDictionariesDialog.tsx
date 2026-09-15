@@ -54,13 +54,15 @@ const errorText = (error: unknown): string =>
 type Props = {
   open: boolean;
   canEdit: boolean;
+  /** цвета значений может выбирать и диспетчер — без права менять сами справочники */
+  canEditColors?: boolean;
   onClose: () => void;
   /** справочники изменились — реестр перечитывает подсказки и статусы */
   onChanged: () => void;
 };
 
 /** Ведение справочников реестра: статусы, типы КТК, варианты НДС, операции. */
-export default function DispatcherDictionariesDialog({ open, canEdit, onClose, onChanged }: Props) {
+export default function DispatcherDictionariesDialog({ open, canEdit, canEditColors = canEdit, onClose, onChanged }: Props) {
   const [tab, setTab] = useState<TabKey>('status');
   const [statuses, setStatuses] = useState<DispatcherStatusEntry[]>([]);
   const [items, setItems] = useState<DispatcherDictionaryEntry[]>([]);
@@ -154,7 +156,9 @@ export default function DispatcherDictionariesDialog({ open, canEdit, onClose, o
           {TABS.map((item) => <Tab key={item.key} value={item.key} label={item.label} />)}
         </Tabs>
         <Typography sx={{ fontSize: 12, color: '#6b7280', my: 1 }}>
-          {activeTab.hint}{!canEdit && ' Изменять справочники может руководитель КТК.'}
+          {activeTab.hint}{!canEdit && (canEditColors
+            ? ' Цвет значения можно выбрать кружком слева; добавлять и переименовывать значения может руководитель КТК.'
+            : ' Изменять справочники может руководитель КТК.')}
         </Typography>
         {error && <Alert severity="error" sx={{ mb: 1, py: 0 }} onClose={() => setError(null)}>{error}</Alert>}
         <Box sx={{ maxHeight: 420, overflowY: 'auto', border: '1px solid #eceff3', borderRadius: 1 }}>
@@ -169,7 +173,7 @@ export default function DispatcherDictionariesDialog({ open, canEdit, onClose, o
               <ColorPickerButton
                 value={{ color: row.color, textColor: row.textColor }}
                 previewLabel={row.name}
-                disabled={!canEdit}
+                disabled={!canEditColors}
                 requireBackground={tab === 'status'}
                 onChange={(next) => {
                   if (next.color === row.color && next.textColor === row.textColor) return;

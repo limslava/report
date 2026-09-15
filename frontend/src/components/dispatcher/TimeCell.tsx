@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Popover } from '@mui/material';
 import { AccessTime } from '@mui/icons-material';
 import { isStrictTime, normalizeTimeInput } from './dispatcherJournalUtils';
+import { isPrintableKey, navDirectionOf, requestCellNav } from './cellKeys';
 
 type TimeCellProps = {
   value: string | null;
@@ -20,11 +21,23 @@ export default function TimeCell({ value, onSave }: TimeCellProps) {
   const [draft, setDraft] = useState(value ?? '');
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [hour, setHour] = useState<string | null>(null);
-  const focusedRef = useRef(false);
+  // как в google: клик выделяет, двойной клик / Enter / ввод цифры — правка
+  const [editing, setEditing] = useState(false);
+  const editingRef = useRef(false);
 
   useEffect(() => {
-    if (!focusedRef.current) setDraft(value ?? '');
+    if (!editingRef.current) setDraft(value ?? '');
   }, [value]);
+
+  const startEdit = (initial?: string) => {
+    if (initial !== undefined) setDraft(initial);
+    editingRef.current = true;
+    setEditing(true);
+  };
+  const stopEdit = () => {
+    editingRef.current = false;
+    setEditing(false);
+  };
 
   const commit = (next: string) => {
     const normalized = normalizeTimeInput(next);
@@ -37,18 +50,53 @@ export default function TimeCell({ value, onSave }: TimeCellProps) {
   return (
     <div className="dj-time-cell">
       <input
-        className={`dj-cell-input${notTime ? ' dj-cell-input--warn' : ''}`}
+        className={`dj-cell-input${notTime ? ' dj-cell-input--warn' : ''}${editing ? ' is-editing' : ''}`}
         value={draft}
+        readOnly={!editing}
         placeholder="чч:мм"
         title={notTime ? 'Не похоже на время — проверьте' : undefined}
-        onChange={(event) => setDraft(event.target.value)}
-        onFocus={() => { focusedRef.current = true; }}
+        onChange={(event) => {
+          if (editingRef.current) setDraft(event.target.value);
+        }}
+        onDoubleClick={() => {
+          if (!editingRef.current) startEdit();
+        }}
         onBlur={() => {
-          focusedRef.current = false;
+          if (!editingRef.current) return;
+          stopEdit();
           commit(draft);
         }}
         onKeyDown={(event) => {
-          if (event.key === 'Enter') (event.target as HTMLInputElement).blur();
+          const element = event.currentTarget;
+          if (!editingRef.current) {
+            if (isPrintableKey(event)) {
+              event.preventDefault();
+              startEdit(event.key);
+            } else if (event.key === 'Enter' || event.key === 'F2') {
+              event.preventDefault();
+              startEdit();
+            } else if (event.key === 'Backspace' || event.key === 'Delete') {
+              event.preventDefault();
+              commit('');
+            } else {
+              const direction = navDirectionOf(event);
+              if (direction) {
+                event.preventDefault();
+                requestCellNav(element, direction);
+              }
+            }
+            return;
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            stopEdit();
+            setDraft(value ?? '');
+          } else if (event.key === 'Enter' || event.key === 'Tab') {
+            event.preventDefault();
+            stopEdit();
+            commit(draft);
+            requestCellNav(element, event.key === 'Enter' ? 'down' : event.shiftKey ? 'prev' : 'next');
+          }
         }}
       />
       <button

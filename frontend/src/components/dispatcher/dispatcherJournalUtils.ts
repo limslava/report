@@ -91,6 +91,20 @@ export function amountWithoutVat(clientRate: string | null, passes: string | nul
 export const formatMoney = (value: number | null): string =>
   value === null ? '' : value.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 
+/**
+ * Формат «Финансы» (как в google): «41000» → «41 000,00 ₽». Только для чистого
+ * числа; запись вроде «12000+3800», «2x2500» или «уточнить» показывается как есть.
+ */
+export function formatFinance(raw: string | number | null | undefined): string {
+  if (raw === null || raw === undefined) return '';
+  const text = String(raw).trim();
+  if (!text) return '';
+  if (!/^-?\d[\d\s\u00a0\u202f]*([.,]\d+)?$/.test(text)) return text;
+  const value = Number(text.replace(/[\s\u00a0\u202f]/g, '').replace(',', '.'));
+  if (!Number.isFinite(value)) return text;
+  return `${value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽`;
+}
+
 const pad2 = (value: number): string => String(value).padStart(2, '0');
 
 /**
@@ -251,4 +265,60 @@ export function addDaysYmd(value: string, days: number): string {
   const [year, month, day] = value.split('-').map(Number);
   const date = new Date(year, month - 1, day + days);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Своя сортировка сотрудника (как в google, но у каждого своя): порядок id строк.
+ * Строки, которых в сохранённом порядке нет (добавлены позже, в том числе
+ * коллегами), встают сразу за своим предыдущим соседом из общего порядка.
+ */
+export function applyPersonalOrder<T extends { id: string }>(rows: T[], order: string[] | null): T[] {
+  if (!order?.length) return rows;
+  const rank = new Map(order.map((id, index) => [id, index]));
+  let lastRank = -1;
+  const ranked = rows.map((row, index) => {
+    const known = rank.get(row.id);
+    if (known !== undefined) lastRank = known;
+    // неизвестная строка — сразу за предыдущей известной, сохраняя общий порядок между собой
+    return { row, key: known !== undefined ? known : lastRank + 0.5 + index / (rows.length * 4 + 4) };
+  });
+  return ranked.sort((a, b) => a.key - b.key).map((item) => item.row);
+}
+
+/**
+ * Сортировка «как в google» один раз: видимые строки (после фильтра) сортируются
+ * между собой и встают на места, которые они занимали; скрытые остаются на своих.
+ * Возвращает новый порядок id всей таблицы.
+ */
+export function sortWithinSlots<T extends { id: string }>(
+  full: T[],
+  visibleIds: string[],
+  sortVisible: (rows: T[]) => T[],
+): string[] {
+  const visibleSet = new Set(visibleIds);
+  const slots: number[] = [];
+  const visibleRows: T[] = [];
+  full.forEach((row, index) => {
+    if (!visibleSet.has(row.id)) return;
+    slots.push(index);
+    visibleRows.push(row);
+  });
+  const sorted = sortVisible(visibleRows);
+  const next = full.map((row) => row.id);
+  slots.forEach((slot, index) => {
+    next[slot] = sorted[index].id;
+  });
+  return next;
+}
+
+/** Дни идут сплошными блоками (нужно для жёлтых полос дней): одна дата не встречается дважды вразброс. */
+export function datesAreGrouped(rows: Array<{ orderDate: string }>): boolean {
+  const seen = new Set<string>();
+  for (let index = 0; index < rows.length; index += 1) {
+    const date = rows[index].orderDate;
+    if (index > 0 && date === rows[index - 1].orderDate) continue;
+    if (seen.has(date)) return false;
+    seen.add(date);
+  }
+  return true;
 }

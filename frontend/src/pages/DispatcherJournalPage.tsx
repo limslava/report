@@ -25,6 +25,7 @@ import {
   MenuBook,
   PushPin,
   Search,
+  SwapVert,
   Settings,
   UploadFile,
   ViewColumn,
@@ -49,12 +50,9 @@ import { findEmployeeCardByName, getDirectoryOptions } from '../services/directo
 import { subscribePlansRealtime } from '../services/plans-realtime';
 import { useAuthStore } from '../store/auth-store';
 import {
-  cycleSort,
   loadSortState,
   saveSortState,
-  sortIndicator,
-  sortRows as applySort,
-  type TableSortState,
+  sortRows,
 } from '../utils/tableSort';
 import {
   applyColumnPrefs,
@@ -65,6 +63,8 @@ import {
   type ColumnPrefs,
 } from '../utils/tableColumns';
 import ListCell from '../components/dispatcher/ListCell';
+import EditableCell from '../components/dispatcher/EditableCell';
+import { CELL_NAV_EVENT, navDirectionOf, requestCellNav, type CellNavDirection } from '../components/dispatcher/cellKeys';
 import TimeCell from '../components/dispatcher/TimeCell';
 import ColumnFilterPopover, { EMPTY_FILTER_VALUE } from '../components/dispatcher/ColumnFilterPopover';
 import DispatcherDictionariesDialog from '../components/dispatcher/DispatcherDictionariesDialog';
@@ -73,7 +73,10 @@ import DispatcherHistoryDialog from '../components/dispatcher/DispatcherHistoryD
 import {
   addDaysYmd,
   amountWithoutVat,
+  applyPersonalOrder,
   buildOrderText,
+  datesAreGrouped,
+  formatFinance,
   formatMoney,
   isCompletedStatus,
   normalizeTimeInput,
@@ -82,11 +85,30 @@ import {
   personKey,
   plateKey,
   shortPersonName,
+  sortWithinSlots,
   textColorFor,
 } from '../components/dispatcher/dispatcherJournalUtils';
 import '../styles/dispatcher-journal.css';
 
 const pad2 = (value: number): string => String(value).padStart(2, '0');
+
+/** sessionStorage переживает перезагрузку вкладки (Chrome выгружает фоновые) и уход в другой раздел. */
+const readSession = <T,>(key: string): T | null => {
+  try {
+    const raw = sessionStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+};
+const writeSession = (key: string, value: unknown): void => {
+  try {
+    if (value === null) sessionStorage.removeItem(key);
+    else sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // приватный режим — позиция живёт до перезагрузки
+  }
+};
 
 const todayYmd = (): string => {
   const now = new Date();
@@ -161,13 +183,13 @@ const ALL_COLUMNS: ColumnDef[] = [
   { kind: 'text', field: 'terminalTo', title: 'Терминал снятия', width: 150, list: 'terminal_to' },
   { kind: 'text', field: 'slotTo', title: 'Слот снятия', width: 60 },
   { kind: 'text', field: 'pinTo', title: 'Пин снятия', width: 58 },
-  { kind: 'text', field: 'driverRate', title: 'Ставка водителя', width: 70 },
+  { kind: 'text', field: 'driverRate', title: 'Ставка водителя', width: 86 },
   { kind: 'text', field: 'vat', title: 'НДС', width: 74, list: 'vat' },
-  { kind: 'text', field: 'clientRate', title: 'Ставка', width: 70 },
-  { kind: 'text', field: 'passes', title: 'Пропуска', width: 70 },
-  { kind: 'computed', field: 'amountWithoutVat', title: 'Без НДС', width: 76 },
+  { kind: 'text', field: 'clientRate', title: 'Ставка', width: 86 },
+  { kind: 'text', field: 'passes', title: 'Пропуска', width: 80 },
+  { kind: 'computed', field: 'amountWithoutVat', title: 'Без НДС', width: 90 },
   { kind: 'text', field: 'extraAddress', title: 'Доп адрес', width: 120, multiline: true },
-  { kind: 'text', field: 'demurrage', title: 'Простой/руб', width: 75 },
+  { kind: 'text', field: 'demurrage', title: 'Простой/руб', width: 84 },
   { kind: 'checkbox', field: 'orderOnVehicle', title: 'Заказ на ТС', width: 52 },
   { kind: 'checkbox', field: 'invoiceSent', title: 'Отправка счета', width: 52 },
   { kind: 'text', field: 'extraTon', title: 'Доп тонна', width: 70 },
@@ -261,6 +283,8 @@ const EMPTY_DICTIONARY_COLORS: DispatcherDictionaryColors = {
 
 /** Кто ведёт справочники реестра (проверка дублируется на сервере). */
 const DICTIONARY_EDIT_ROLES = new Set(['admin', 'head_ktk_vvo']);
+/** Цвета значений справочников выбирают и диспетчеры (проверка дублируется на сервере). */
+const DICTIONARY_COLOR_ROLES = new Set(['admin', 'head_ktk_vvo', 'manager_ktk_vvo']);
 /** История изменений реестра видна администратору и руководителю КТК (проверка и на сервере). */
 const HISTORY_ROLES = new Set(['admin', 'head_ktk_vvo']);
 
@@ -276,48 +300,63 @@ const formatEditedAt = (iso: string | null): string => {
   return `${pad2(date.getDate())}.${pad2(date.getMonth() + 1)} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 };
 
-type EditableCellProps = {
-  value: string | null;
-  multiline?: boolean;
-  onSave: (value: string) => void;
+/** Фокус в поле, которое сейчас правится (не выделенная ячейка только для чтения и не галочка). */
+const editingField = (target: EventTarget | null): boolean => {
+  const element = (target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]') as HTMLInputElement | null;
+  if (!element) return false;
+  if (element instanceof HTMLInputElement && (element.type === 'checkbox' || element.readOnly)) return false;
+  if (element instanceof HTMLTextAreaElement && element.readOnly) return false;
+  return true;
 };
 
-function EditableCell({ value, multiline, onSave }: EditableCellProps) {
-  const [draft, setDraft] = useState(value ?? '');
-  const focusedRef = useRef(false);
+/** Денежные колонки в формате «Финансы» (41 000,00 ₽) — как в google-таблице. */
+const FINANCE_FIELDS = new Set<string>(['driverRate', 'clientRate', 'passes', 'demurrage']);
 
+/** Дата строки: как и остальные ячейки — клик выделяет, двойной клик / Enter открывают календарь. */
+function DateCell({ value, title, onPick }: { value: string; title?: string; onPick: (next: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (!focusedRef.current) setDraft(value ?? '');
-  }, [value]);
-
-  const commit = () => {
-    focusedRef.current = false;
-    if (draft !== (value ?? '')) onSave(draft);
-  };
-
-  if (multiline) {
-    return (
-      <textarea
-        className="dj-cell-textarea"
-        rows={2}
-        value={draft}
-        title={draft.length > 40 ? draft : undefined}
-        onChange={(event) => setDraft(event.target.value)}
-        onFocus={() => { focusedRef.current = true; }}
-        onBlur={commit}
-      />
-    );
-  }
+    if (!editing) return;
+    try {
+      inputRef.current?.showPicker?.();
+    } catch {
+      // браузер без showPicker — дату можно набрать с клавиатуры
+    }
+  }, [editing]);
   return (
     <input
-      className="dj-cell-input"
-      value={draft}
-      title={draft.length > 14 ? draft : undefined}
-      onChange={(event) => setDraft(event.target.value)}
-      onFocus={() => { focusedRef.current = true; }}
-      onBlur={commit}
+      ref={inputRef}
+      type="date"
+      className={`dj-date-input${editing ? ' is-editing' : ''}`}
+      value={value}
+      readOnly={!editing}
+      title={title}
+      onDoubleClick={() => setEditing(true)}
+      onChange={(event) => {
+        if (editing && event.target.value) onPick(event.target.value);
+      }}
+      onBlur={() => setEditing(false)}
       onKeyDown={(event) => {
-        if (event.key === 'Enter') (event.target as HTMLInputElement).blur();
+        const element = event.currentTarget;
+        if (!editing) {
+          if (event.key === 'Enter' || event.key === 'F2' || /^\d$/.test(event.key)) {
+            event.preventDefault();
+            setEditing(true);
+            return;
+          }
+          const direction = navDirectionOf(event);
+          if (direction) {
+            event.preventDefault();
+            requestCellNav(element, direction);
+          }
+          return;
+        }
+        if (event.key === 'Escape' || event.key === 'Enter') {
+          event.preventDefault();
+          setEditing(false);
+          if (event.key === 'Enter') requestCellNav(element, 'down');
+        }
       }}
     />
   );
@@ -336,8 +375,15 @@ const columnText = (row: DispatcherOrderRow, column: ColumnDef): string => {
 export default function DispatcherJournalPage() {
   const { user } = useAuthStore();
   const canEditDictionaries = DICTIONARY_EDIT_ROLES.has(user?.role ?? '');
+  const canEditDictionaryColors = DICTIONARY_COLOR_ROLES.has(user?.role ?? '');
   const canViewHistory = HISTORY_ROLES.has(user?.role ?? '');
-  const [viewMonth, setViewMonth] = useState<string>(currentMonth());
+  // выбранный месяц помнится в пределах вкладки: вернулись в реестр — тот же месяц
+  const monthSessionKey = `dj-month-v1:${user?.id ?? 'anonymous'}`;
+  const [viewMonth, setViewMonth] = useState<string>(() => {
+    const saved = readSession<string>(monthSessionKey);
+    return saved && /^\d{4}-\d{2}$/.test(saved) ? saved : currentMonth();
+  });
+  useEffect(() => writeSession(monthSessionKey, viewMonth), [monthSessionKey, viewMonth]);
   const [rows, setRows] = useState<DispatcherOrderRow[]>([]);
   const [statuses, setStatuses] = useState<DispatcherStatusOption[]>([]);
   const [dictionaryOptions, setDictionaryOptions] = useState<DispatcherDictionaryOptions>(EMPTY_DICTIONARY_OPTIONS);
@@ -517,6 +563,18 @@ export default function DispatcherJournalPage() {
     return () => observer.disconnect();
   }, []);
 
+  // позиция в таблице переживает уход в другой раздел и перезагрузку вкладки (sessionStorage)
+  const scrollSessionKey = `dj-scroll-v1:${user?.id ?? 'anonymous'}:${viewMonth}`;
+  const scrollSessionKeyRef = useRef(scrollSessionKey);
+  scrollSessionKeyRef.current = scrollSessionKey;
+  const scrollSaveTimerRef = useRef<number | null>(null);
+  // пока месяц не загружен и позиция не восстановлена — не перезаписываем сохранённое место
+  const restorePendingRef = useRef(true);
+  const [loadedMonth, setLoadedMonth] = useState<string | null>(null);
+  useEffect(() => {
+    restorePendingRef.current = true;
+  }, [viewMonth]);
+
   const handleWrapScroll = useCallback(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
@@ -549,6 +607,21 @@ export default function DispatcherJournalPage() {
       if (!bandAtTop) date = topItem.kind === 'band' ? topItem.date : topItem.row.orderDate;
     }
     setStickyDate((prev) => (prev === date ? prev : date));
+    // запоминаем место в таблице: первая строка на экране + сдвиг (и горизонтальная прокрутка)
+    if (restorePendingRef.current) return;
+    if (scrollSaveTimerRef.current) window.clearTimeout(scrollSaveTimerRef.current);
+    const key = scrollSessionKeyRef.current;
+    scrollSaveTimerRef.current = window.setTimeout(() => {
+      let anchorIndex = topItemIndex;
+      while (items[anchorIndex] && items[anchorIndex].kind !== 'row') anchorIndex += 1;
+      const anchor = items[anchorIndex];
+      writeSession(key, {
+        rowId: anchor && anchor.kind === 'row' ? anchor.row.id : null,
+        delta: anchor ? scrollTop - offsets[anchorIndex] : 0,
+        top: wrap.scrollTop,
+        left: wrap.scrollLeft,
+      });
+    }, 200);
   }, [headerHeight, rowHeight]);
 
   useEffect(() => {
@@ -646,17 +719,30 @@ export default function DispatcherJournalPage() {
   const statusesRef = useRef(statuses);
   statusesRef.current = statuses;
 
-  // сортировка по заголовкам: asc -> desc -> исходный порядок (по датам)
-  const sortStorageKey = `dj-sort-v1:${userKey}`;
-  const [sort, setSort] = useState<TableSortState>(() => {
-    // loadSortState склеивает объект с fallback: сохранённый null читается как {} —
-    // такую «пустую» сортировку считаем выключенной (иначе гаснут перетаскивание и разделители дней)
-    const saved = loadSortState<TableSortState>(sortStorageKey, null);
-    return saved?.field && saved.direction ? saved : null;
-  });
-  // ручной порядок меняется только на «чистой» таблице: при сортировке или фильтре позиция неоднозначна
-  const canDragRows = !sort && activeFilterCount === 0 && !searchQuery;
-  useEffect(() => saveSortState(sortStorageKey, sort), [sortStorageKey, sort]);
+  // своя сортировка (как в google, но у каждого сотрудника своя): сортировка один раз
+  // переставляет строки и запоминает порядок — после снятия фильтра отсортированный
+  // кусок остаётся на месте. Общий порядок коллег не меняется.
+  const orderStorageKey = `dj-order-v1:${userKey}:${viewMonth}`;
+  const loadPersonalOrder = (key: string): string[] | null => {
+    const saved = loadSortState<unknown>(key, null);
+    return Array.isArray(saved) && saved.length ? saved.filter((id): id is string => typeof id === 'string') : null;
+  };
+  const [personalOrderState, setPersonalOrderState] = useState(() => ({ key: orderStorageKey, order: loadPersonalOrder(orderStorageKey) }));
+  if (personalOrderState.key !== orderStorageKey) {
+    setPersonalOrderState({ key: orderStorageKey, order: loadPersonalOrder(orderStorageKey) });
+  }
+  const personalOrder = personalOrderState.key === orderStorageKey ? personalOrderState.order : null;
+  const personalOrderRef = useRef(personalOrder);
+  personalOrderRef.current = personalOrder;
+  const orderStorageKeyRef = useRef(orderStorageKey);
+  orderStorageKeyRef.current = orderStorageKey;
+  const setPersonalOrder = useCallback((order: string[] | null) => {
+    const key = orderStorageKeyRef.current;
+    setPersonalOrderState({ key, order });
+    saveSortState(key, order);
+  }, []);
+  // ручной порядок меняется только на «чистой» таблице: при своей сортировке, фильтре или поиске место строки неоднозначно
+  const canDragRows = !personalOrder && activeFilterCount === 0 && !searchQuery;
   const sortValue = useCallback((row: DispatcherOrderRow, field: string): unknown => {
     if (field === DATE_KEY) return row.orderDate;
     const column = COLUMN_BY_KEY.get(field);
@@ -678,19 +764,22 @@ export default function DispatcherJournalPage() {
     return text || EMPTY_FILTER_VALUE;
   }, []);
 
+  const orderedRows = useMemo(() => applyPersonalOrder(rows, personalOrder), [rows, personalOrder]);
+  const orderedRowsRef = useRef(orderedRows);
+  orderedRowsRef.current = orderedRows;
   const displayRows = useMemo(() => {
     const activeFilters = Object.entries(filters).filter(([, hidden]) => hidden.length > 0);
     const filtered = activeFilters.length
-      ? rows.filter((row) => sessionCreatedIdsRef.current.has(row.id)
+      ? orderedRows.filter((row) => sessionCreatedIdsRef.current.has(row.id)
         || activeFilters.every(([field, hidden]) => !hidden.includes(filterText(row, field))))
-      : rows;
+      : orderedRows;
     const found = searchQuery
       ? filtered.filter((row) => sessionCreatedIdsRef.current.has(row.id)
         || formatDateFull(row.orderDate).includes(searchQuery)
         || ALL_COLUMNS.some((column) => columnText(row, column).toLocaleLowerCase('ru').includes(searchQuery)))
       : filtered;
-    return applySort(found, sort, sortValue);
-  }, [filterText, filters, rows, searchQuery, sort, sortValue]);
+    return found;
+  }, [filterText, filters, orderedRows, searchQuery]);
 
   // итоги дня для жёлтых полос: сколько заявок и сколько выполнено (по видимым строкам)
   const dayStats = useMemo(() => {
@@ -704,9 +793,9 @@ export default function DispatcherJournalPage() {
     return stats;
   }, [displayRows]);
 
-  // полоса дня перед каждой сменой даты. При сортировке по дате (↑/↓) дни идут подряд —
-  // полосы остаются; при сортировке по другой колонке дни перемешаны — полос нет
-  const showDayBands = !sort || sort.field === DATE_KEY;
+  // полоса дня перед каждой сменой даты — пока дни идут сплошными блоками; если своя
+  // сортировка перемешала дни (например, по статусу на весь месяц) — полос нет
+  const showDayBands = useMemo(() => datesAreGrouped(displayRows), [displayRows]);
   const displayItems = useMemo(() => {
     const items: DisplayItem[] = [];
     displayRows.forEach((row, index) => {
@@ -735,20 +824,134 @@ export default function DispatcherJournalPage() {
     return map;
   }, [displayItems]);
   layoutRef.current = { items: displayItems, offsets: itemOffsets, itemByRowIndex };
+  // новая строка из меню «Добавить строку выше/ниже» — курсор в её первую ячейку
+  const pendingFocusRef = useRef<{ rowId: string } | null>(null);
   const displayRowsRef = useRef(displayRows);
   displayRowsRef.current = displayRows;
+
+  // возврат в реестр: прокручиваем к строке, на которой остановились (один раз после загрузки месяца)
+  // высота строк уточняется замером уже после первой прокрутки — поэтому ещё ~1,5 с
+  // подправляем прокрутку к той же строке, пока раскладка не устоится
+  const restoreAnchorRef = useRef<{ rowId: string | null; delta: number; top: number; left: number; until: number } | null>(null);
+  useLayoutEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap || loadedMonth !== viewMonth) return;
+    if (restorePendingRef.current) {
+      restorePendingRef.current = false;
+      const saved = readSession<{ rowId: string | null; delta: number; top: number; left: number }>(scrollSessionKey);
+      restoreAnchorRef.current = saved ? { ...saved, until: Date.now() + 1500 } : null;
+      if (saved) wrap.scrollLeft = saved.left ?? 0;
+    }
+    const anchor = restoreAnchorRef.current;
+    if (!anchor) return;
+    if (Date.now() > anchor.until) {
+      restoreAnchorRef.current = null;
+      return;
+    }
+    const rowIndex = anchor.rowId ? displayRows.findIndex((row) => row.id === anchor.rowId) : -1;
+    const itemIndex = rowIndex >= 0 ? itemByRowIndex.get(rowIndex) : undefined;
+    const target = itemIndex !== undefined ? Math.round((itemOffsets[itemIndex] + anchor.delta) * zoom) : anchor.top;
+    if (Math.abs(wrap.scrollTop - target) > 1) wrap.scrollTop = target;
+  }, [displayRows, itemByRowIndex, itemOffsets, loadedMonth, scrollSessionKey, viewMonth, zoom]);
 
   // список или масштаб поменялись — пересчитать окно и прилипшую полосу
   useEffect(() => {
     handleWrapScroll();
   }, [displayItems, handleWrapScroll, zoom]);
 
+  // ── переходы по ячейкам стрелками / Tab / Enter (как в google-таблицах) ──
+  const navLayoutRef = useRef({ headerHeight, bandHeight, rowHeight, sticky: false });
+  navLayoutRef.current = { headerHeight, bandHeight, rowHeight, sticky: Boolean(stickyDate && showDayBands) };
+
+  const keepCellVisible = useCallback((td: HTMLElement) => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const layout = navLayoutRef.current;
+    const scale = zoomRef.current;
+    const wrapRect = wrap.getBoundingClientRect();
+    const rect = td.getBoundingClientRect();
+    const topLimit = wrapRect.top + (layout.headerHeight + (layout.sticky ? layout.bandHeight : 0)) * scale;
+    if (rect.top < topLimit) wrap.scrollTop -= topLimit - rect.top;
+    else if (rect.bottom > wrapRect.bottom - 4) wrap.scrollTop += rect.bottom - wrapRect.bottom + 4;
+    if (!td.classList.contains('dj-pinned')) {
+      const lastPinned = td.parentElement?.querySelector('.dj-pinned--last') as HTMLElement | null;
+      const leftLimit = lastPinned ? lastPinned.getBoundingClientRect().right : wrapRect.left;
+      if (rect.left < leftLimit) wrap.scrollLeft -= leftLimit - rect.left;
+      else if (rect.right > wrapRect.right - 4) wrap.scrollLeft += rect.right - wrapRect.right + 4;
+    }
+  }, []);
+
+  const focusCell = useCallback((td: HTMLElement) => {
+    const target = (td.querySelector('input, textarea') as HTMLElement | null) ?? td;
+    target.focus({ preventScroll: true });
+    keepCellVisible(td);
+  }, [keepCellVisible]);
+
+  const moveSelection = useCallback((tr: HTMLElement, field: string, direction: CellNavDirection, attempt = 0) => {
+    if (direction !== 'up' && direction !== 'down') {
+      const cells = Array.from(tr.querySelectorAll(':scope > td[data-field]')) as HTMLElement[];
+      const index = cells.findIndex((cell) => cell.dataset.field === field);
+      const next = cells[index + (direction === 'left' || direction === 'prev' ? -1 : 1)];
+      if (next) focusCell(next);
+      return;
+    }
+    const isDataRow = (element: Element | null): element is HTMLElement =>
+      element instanceof HTMLElement && (element.dataset.rowId !== undefined || element.classList.contains('dj-row--ghost'));
+    let sibling = direction === 'up' ? tr.previousElementSibling : tr.nextElementSibling;
+    while (sibling && !isDataRow(sibling) && !sibling.classList.contains('dj-spacer')) {
+      sibling = direction === 'up' ? sibling.previousElementSibling : sibling.nextElementSibling;
+    }
+    if (isDataRow(sibling)) {
+      const td = sibling.querySelector(`td[data-field="${field}"]`) as HTMLElement | null;
+      if (td) focusCell(td);
+      return;
+    }
+    // соседняя строка ещё не нарисована (виртуализация) — прокручиваем и пробуем снова
+    const wrap = wrapRef.current;
+    if (!sibling || !wrap || attempt >= 6) return;
+    wrap.scrollTop += (direction === 'up' ? -3 : 3) * navLayoutRef.current.rowHeight * zoomRef.current;
+    const rowId = tr.dataset.rowId;
+    window.setTimeout(() => {
+      const fresh = rowId ? wrap.querySelector(`tr[data-row-id="${rowId}"]`) as HTMLElement | null : tr;
+      if (fresh) moveSelection(fresh, field, direction, attempt + 1);
+    }, 80);
+  }, [focusCell]);
+
+  useEffect(() => {
+    const tbody = tbodyRef.current;
+    if (!tbody) return undefined;
+    const onNav = (event: Event) => {
+      const { direction } = (event as CustomEvent<{ direction: CellNavDirection }>).detail;
+      const td = (event.target as HTMLElement).closest('td[data-field]') as HTMLElement | null;
+      const tr = td?.closest('tr') as HTMLElement | null;
+      if (!td || !tr) return;
+      moveSelection(tr, td.dataset.field ?? '', direction);
+    };
+    tbody.addEventListener(CELL_NAV_EVENT, onNav);
+    return () => tbody.removeEventListener(CELL_NAV_EVENT, onNav);
+  }, [moveSelection]);
+
+  // новая строка из меню появилась в таблице — курсор в её первую ячейку
+  useEffect(() => {
+    const pending = pendingFocusRef.current;
+    if (!pending) return;
+    const tr = wrapRef.current?.querySelector(`tr[data-row-id="${pending.rowId}"]`) as HTMLElement | null;
+    if (!tr) return;
+    pendingFocusRef.current = null;
+    const target = tr.querySelector('td[data-field]:not([data-field="orderDate"]) input, td[data-field]:not([data-field="orderDate"]) textarea') as HTMLElement | null;
+    target?.focus({ preventScroll: true });
+    tr.scrollIntoView({ block: 'nearest' });
+  }, [displayItems, scrollWindow]);
+
   const loadRows = useCallback(async (withSpinner = false) => {
     const target = rangeRef.current;
     if (withSpinner) setLoading(true);
     try {
       const { data } = await getDispatcherOrders(target.from, target.to);
-      if (rangeRef.current.from === target.from && rangeRef.current.to === target.to) setRows(data);
+      if (rangeRef.current.from === target.from && rangeRef.current.to === target.to) {
+        setRows(data);
+        setLoadedMonth(target.from.slice(0, 7));
+      }
     } catch {
       setMessage({ severity: 'error', text: 'Не удалось загрузить журнал' });
     } finally {
@@ -865,7 +1068,9 @@ export default function DispatcherJournalPage() {
     | { kind: 'create'; id: string }
     | { kind: 'delete'; row: DispatcherOrderRow }
     /** массовое действие (вставка столбиком, протягивание) — отменяется целиком */
-    | { kind: 'multi'; patches: Array<{ id: string; before: DispatcherOrderPatch }>; created: string[] };
+    | { kind: 'multi'; patches: Array<{ id: string; before: DispatcherOrderPatch }>; created: string[] }
+    /** своя сортировка — возвращается прежний порядок */
+    | { kind: 'order'; before: string[] | null };
   const undoStackRef = useRef<UndoEntry[]>([]);
   const pushUndo = (entry: UndoEntry) => {
     undoStackRef.current.push(entry);
@@ -978,6 +1183,9 @@ export default function DispatcherJournalPage() {
         if (row) void deleteRow(row, { silent: true, skipUndo: true });
       });
       setMessage({ severity: 'success', text: 'Вставка / протягивание отменены' });
+    } else if (entry.kind === 'order') {
+      setPersonalOrder(entry.before);
+      setMessage({ severity: 'success', text: 'Сортировка отменена' });
     } else if (entry.kind === 'create') {
       const row = rowsRef.current.find((item) => item.id === entry.id);
       if (row) void deleteRow(row, { silent: true, skipUndo: true });
@@ -987,7 +1195,42 @@ export default function DispatcherJournalPage() {
       void createRow(orderDate, fields, { skipUndo: true });
       setMessage({ severity: 'success', text: 'Строка восстановлена' });
     }
-  }, [createRow, deleteRow, patchRow]);
+  }, [createRow, deleteRow, patchRow, setPersonalOrder]);
+
+  /** Сортировка из меню колонки: один раз, у этого сотрудника, в пределах видимых (отфильтрованных) строк. */
+  const sortOnce = (field: string, direction: 'asc' | 'desc') => {
+    const before = personalOrderRef.current;
+    const next = sortWithinSlots(
+      orderedRowsRef.current,
+      displayRowsRef.current.map((row) => row.id),
+      (list) => sortRows(list, { field, direction }, sortValue),
+    );
+    pushUndo({ kind: 'order', before });
+    setPersonalOrder(next);
+    setMessage({ severity: 'success', text: 'Отсортировано — только у вас. Вернуть общий порядок: плашка сверху или Ctrl+Z' });
+  };
+
+  /** «Добавить строку выше/ниже» из меню строки: пустая строка той же даты рядом. */
+  const insertRowNear = async (row: DispatcherOrderRow, after: boolean) => {
+    const ordered = sortByDate(rowsRef.current);
+    const index = ordered.findIndex((item) => item.id === row.id);
+    const neighbor = index < 0 ? undefined : ordered[index + (after ? 1 : -1)];
+    const position = neighbor
+      ? (row.position + neighbor.position) / 2
+      : row.position + (after ? 1 : -1);
+    const created = await createRow(row.orderDate, { position, status: null });
+    if (!created) return;
+    const order = personalOrderRef.current;
+    if (order) {
+      const without = order.filter((id) => id !== created.id);
+      const at = without.indexOf(row.id);
+      if (at >= 0) {
+        without.splice(at + (after ? 1 : 0), 0, created.id);
+        setPersonalOrder(without);
+      }
+    }
+    pendingFocusRef.current = { rowId: created.id };
+  };
 
   const saveCrewField = useCallback(async (row: DispatcherOrderRow, field: 'driverName' | 'vehiclePlate', value: string) => {
     const current = rowsRef.current.find((item) => item.id === row.id) ?? row;
@@ -1124,17 +1367,37 @@ export default function DispatcherJournalPage() {
       if ((event.ctrlKey || event.metaKey) && !event.shiftKey) {
         const key = event.key.toLowerCase();
         if (key !== 'z' && key !== 'я') return;
-        const target = event.target as HTMLElement | null;
-        if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+        // в правке ячейки — обычная отмена ввода; в выделенной (не правящейся) ячейке — отмена действия
+        if (editingField(event.target)) return;
         event.preventDefault();
         undoLast();
       }
     };
-    const inField = (target: EventTarget | null): boolean =>
-      Boolean((target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]'));
+    const inField = (target: EventTarget | null): boolean => editingField(target);
+
+    /** Выделенная ячейка таблицы (без правки): её значение копируется / заменяется вставкой, как в google. */
+    const selectedCell = (target: EventTarget | null) => {
+      const td = (target as HTMLElement | null)?.closest?.('td[data-field]') as HTMLElement | null;
+      const tr = td?.closest('tr') as HTMLElement | null;
+      if (!td || !tr || !tbodyRef.current?.contains(td)) return null;
+      return { td, tr, field: td.dataset.field ?? '', rowId: tr.dataset.rowId ?? null };
+    };
+    const cellRawText = (rowId: string | null, field: string): string => {
+      const row = rowId ? rowsRef.current.find((item) => item.id === rowId) : null;
+      if (!row) return '';
+      if (field === DATE_KEY) return formatDateFull(row.orderDate);
+      const column = COLUMN_BY_KEY.get(field);
+      return column ? columnText(row, column) : '';
+    };
 
     const copyHandler = (event: ClipboardEvent) => {
       if (inField(event.target)) return;
+      const cell = selectedCell(event.target);
+      if (cell && event.clipboardData) {
+        event.preventDefault();
+        event.clipboardData.setData('text/plain', cellRawText(cell.rowId, cell.field));
+        return;
+      }
       const selected = rowsRef.current.find((row) => row.id === selectedRowIdRef.current);
       if (!selected || !event.clipboardData) return;
       event.preventDefault();
@@ -1144,6 +1407,14 @@ export default function DispatcherJournalPage() {
 
     const cutHandler = (event: ClipboardEvent) => {
       if (inField(event.target)) return;
+      const cell = selectedCell(event.target);
+      if (cell && event.clipboardData) {
+        event.preventDefault();
+        event.clipboardData.setData('text/plain', cellRawText(cell.rowId, cell.field));
+        const patch = cell.rowId && cell.field !== DATE_KEY ? cellPatchFromText(cell.field, '') : null;
+        if (patch && cell.rowId) patchRow(cell.rowId, patch);
+        return;
+      }
       const selected = rowsRef.current.find((row) => row.id === selectedRowIdRef.current);
       if (!selected || !event.clipboardData) return;
       event.preventDefault();
@@ -1153,16 +1424,20 @@ export default function DispatcherJournalPage() {
     };
 
     const pasteHandler = (event: ClipboardEvent) => {
-      if (inField(event.target)) {
+      const editing = inField(event.target);
+      const cell = selectedCell(event.target);
+      if (editing || cell) {
         // вставка в ячейку: несколько строк/колонок из Excel или google — раскладываем
-        // вниз и вправо от ячейки (как в таблицах); одно значение — обычная вставка в поле
-        const cellElement = (event.target as HTMLElement).closest('td[data-field]') as HTMLElement | null;
-        const rowElement = cellElement?.closest('tr') as HTMLElement | null;
+        // вниз и вправо от ячейки (как в таблицах); одно значение в правке — обычная
+        // вставка в поле, в выделенную ячейку — замена значения
+        const cellElement = cell?.td ?? null;
+        const rowElement = cell?.tr ?? null;
         const grid = parseClipboardGrid(event.clipboardData?.getData('text/plain') ?? '');
-        if (!cellElement || !rowElement || (grid.length <= 1 && (grid[0]?.length ?? 0) <= 1)) return;
+        if (!cellElement || !rowElement || !grid.length) return;
+        if (editing && grid.length <= 1 && (grid[0]?.length ?? 0) <= 1) return;
         event.preventDefault();
-        // черновик текущей ячейки сохраняется до вставки, иначе blur позже затёр бы вставленное
-        (document.activeElement as HTMLElement | null)?.blur();
+        // черновик правящейся ячейки сохраняется до вставки, иначе blur позже затёр бы вставленное
+        if (editing) (document.activeElement as HTMLElement | null)?.blur();
         const fieldOrder = [DATE_KEY, ...visibleColumnsRef.current.map((column) => column.field as string)];
         const startColumn = fieldOrder.indexOf(cellElement.dataset.field ?? '');
         const isGhost = !rowElement.dataset.rowId;
@@ -1303,7 +1578,7 @@ export default function DispatcherJournalPage() {
       ? row.orderDate
       : checkbox
         ? (checkbox.checked ? 'да' : '')
-        : editor
+        : editor && !editor.readOnly
           ? editor.value
           : (column ? columnText(row, column) : '');
     (document.activeElement as HTMLElement | null)?.blur();
@@ -1439,6 +1714,13 @@ export default function DispatcherJournalPage() {
     return status ? { background: status.color, color: status.textColor ?? textColorFor(status.color) } : undefined;
   }, [statusByName]);
 
+  const checkboxNav = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    const direction = navDirectionOf(event);
+    if (!direction) return;
+    event.preventDefault();
+    requestCellNav(event.currentTarget, direction);
+  };
+
   const renderColumnCell = (row: DispatcherOrderRow, column: ColumnDef) => {
     const key = column.field;
     const pin = pinStyle(key);
@@ -1465,6 +1747,7 @@ export default function DispatcherJournalPage() {
             className="dj-check"
             checked={row[column.field]}
             onChange={(event) => patchRow(row.id, { [column.field]: event.target.checked })}
+            onKeyDown={checkboxNav}
           />
         </td>
       );
@@ -1472,8 +1755,21 @@ export default function DispatcherJournalPage() {
     if (column.kind === 'computed') {
       const amount = amountWithoutVat(row.clientRate, row.passes, row.vat);
       return (
-        <td key={key} data-field={key} className={`dj-computed-cell${pinCls}`} style={pin} title="(Ставка + Пропуска) без НДС">
-          {formatMoney(amount)}
+        <td
+          key={key}
+          data-field={key}
+          className={`dj-computed-cell${pinCls}`}
+          style={pin}
+          title="(Ставка + Пропуска) без НДС"
+          tabIndex={-1}
+          onKeyDown={(event) => {
+            const direction = navDirectionOf(event);
+            if (!direction) return;
+            event.preventDefault();
+            requestCellNav(event.currentTarget, direction);
+          }}
+        >
+          {formatFinance(amount)}
         </td>
       );
     }
@@ -1506,6 +1802,7 @@ export default function DispatcherJournalPage() {
         <EditableCell
           value={row[column.field]}
           multiline={column.multiline}
+          format={FINANCE_FIELDS.has(column.field) ? formatFinance : undefined}
           onSave={(value) => patchRow(row.id, { [column.field]: value || null })}
         />
       </td>
@@ -1539,6 +1836,7 @@ export default function DispatcherJournalPage() {
             className="dj-check"
             checked={false}
             onChange={(event) => { if (event.target.checked) void createRow(defaultNewDate, { [column.field]: true }); }}
+            onKeyDown={checkboxNav}
           />
         </td>
       );
@@ -1595,9 +1893,13 @@ export default function DispatcherJournalPage() {
         style={{ width, ...pinStyle(key) }}
       >
         <div className="dj-th">
-          <button type="button" className="dj-sort-btn" onClick={() => setSort((prev) => cycleSort(prev, key))}>
+          <button
+            type="button"
+            className="dj-sort-btn"
+            title="Сортировка, фильтр, закрепление"
+            onClick={(event) => setFilterMenu({ field: key, anchor: event.currentTarget })}
+          >
             <span>{title}</span>
-            <span className={`dj-sort-ind is-${sortIndicator(sort, key)}`} aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -1734,6 +2036,20 @@ export default function DispatcherJournalPage() {
             <button type="button" className="dj-filter-chip" onClick={() => applyFilters(() => ({}))}>
               <FilterList sx={{ fontSize: 14 }} />
               Фильтры: {activeFilterCount} · показано {displayRows.length} из {rows.length} · сбросить
+            </button>
+          )}
+          {personalOrder && (
+            <button
+              type="button"
+              className="dj-filter-chip"
+              title="Сортировка видна только вам. Сбросить — вернуть общий порядок строк"
+              onClick={() => {
+                pushUndo({ kind: 'order', before: personalOrderRef.current });
+                setPersonalOrder(null);
+              }}
+            >
+              <SwapVert sx={{ fontSize: 14 }} />
+              Своя сортировка · сбросить
             </button>
           )}
           {pinnedUntil && (
@@ -1889,7 +2205,7 @@ export default function DispatcherJournalPage() {
                     title={[
                       canDragRows
                         ? 'Зажмите и тяните вверх/вниз — переместить строку. Клик — выделить строку'
-                        : 'Клик — выделить строку. Чтобы перетаскивать строки, выключите сортировку и фильтры',
+                        : 'Клик — выделить строку. Чтобы перетаскивать строки, сбросьте свою сортировку, фильтры и поиск',
                       row.lastEditorName ? `Изменено: ${row.lastEditorName}, ${formatEditedAt(row.updatedAt)}` : '',
                     ].filter(Boolean).join('\n')}
                     draggable={canDragRows}
@@ -1914,13 +2230,9 @@ export default function DispatcherJournalPage() {
                     className={`dj-date-cell${pinClass(DATE_KEY)}${fillRange?.field === DATE_KEY && fillRange.ids.has(row.id) ? ' dj-fill-target' : ''}${activeCell?.rowId === row.id && activeCell.field === DATE_KEY ? ' dj-cell--active' : ''}`}
                     style={pinStyle(DATE_KEY)}
                   >
-                    <input
-                      type="date"
-                      className="dj-date-input"
+                    <DateCell
                       value={row.orderDate}
-                      onChange={(event) => {
-                        const next = event.target.value;
-                        if (!next) return;
+                      onPick={(next) => {
                         patchRow(row.id, { orderDate: next });
                         if (next < rangeRef.current.from || next > rangeRef.current.to) {
                           setMessage({ severity: 'success', text: `Заявка перенесена на ${formatDateShort(next)}` });
@@ -1957,14 +2269,10 @@ export default function DispatcherJournalPage() {
                 ＋
               </td>
               <td data-field={DATE_KEY} className={`dj-date-cell${pinClass(DATE_KEY)}`} style={pinStyle(DATE_KEY)}>
-                <input
-                  type="date"
-                  className="dj-date-input"
+                <DateCell
                   value={defaultNewDate}
-                  title="Выберите дату — заявка создастся сразу"
-                  onChange={(event) => {
-                    if (event.target.value) void createRow(event.target.value);
-                  }}
+                  title="Двойной клик — выбрать дату, заявка создастся сразу"
+                  onPick={(next) => void createRow(next)}
                 />
               </td>
               {visibleColumns.map((column) => renderGhostCell(column))}
@@ -1996,7 +2304,7 @@ export default function DispatcherJournalPage() {
             className="dj-context-menu"
             style={{
               left: Math.min(contextMenu.x, window.innerWidth - 220),
-              top: Math.min(contextMenu.y, window.innerHeight - 140),
+              top: Math.min(contextMenu.y, window.innerHeight - 250),
             }}
             onClick={(event) => event.stopPropagation()}
           >
@@ -2036,6 +2344,30 @@ export default function DispatcherJournalPage() {
             >
               Копировать строку
             </button>
+            <div className="dj-context-sep" />
+            <button
+              type="button"
+              className="dj-context-item"
+              onClick={() => {
+                const current = rowsRef.current.find((item) => item.id === contextMenu.row.id) ?? contextMenu.row;
+                setContextMenu(null);
+                void insertRowNear(current, false);
+              }}
+            >
+              Добавить строку выше
+            </button>
+            <button
+              type="button"
+              className="dj-context-item"
+              onClick={() => {
+                const current = rowsRef.current.find((item) => item.id === contextMenu.row.id) ?? contextMenu.row;
+                setContextMenu(null);
+                void insertRowNear(current, true);
+              }}
+            >
+              Добавить строку ниже
+            </button>
+            <div className="dj-context-sep" />
             {canViewHistory && (
               <button
                 type="button"
@@ -2074,7 +2406,7 @@ export default function DispatcherJournalPage() {
           values={rows.map((row) => filterText(row, filterMenu.field))}
           hidden={filters[filterMenu.field] ?? []}
           isPinnedUntilHere={pinnedUntil === filterMenu.field}
-          onSort={(direction) => setSort({ field: filterMenu.field, direction })}
+          onSort={(direction) => sortOnce(filterMenu.field, direction)}
           onApply={(hidden) => applyFilters((prev) => {
             const next = { ...prev };
             if (hidden.length) next[filterMenu.field] = hidden;
@@ -2158,6 +2490,7 @@ export default function DispatcherJournalPage() {
       <DispatcherDictionariesDialog
         open={dictionariesOpen}
         canEdit={canEditDictionaries}
+        canEditColors={canEditDictionaryColors}
         onClose={() => setDictionariesOpen(false)}
         onChanged={loadDictionaries}
       />
