@@ -16,6 +16,8 @@ import {
   applyPersonalOrder,
   sortWithinSlots,
   datesAreGrouped,
+  rangeCellKeys,
+  summarizeSelection,
 } from './dispatcherJournalUtils';
 
 describe('dispatcherJournalUtils', () => {
@@ -149,5 +151,22 @@ describe('своя сортировка', () => {
   it('полосы дней только когда дни идут блоками', () => {
     expect(datesAreGrouped([row('a', '', '1'), row('b', '', '1'), row('c', '', '2')])).toBe(true);
     expect(datesAreGrouped([row('a', '', '1'), row('b', '', '2'), row('c', '', '1')])).toBe(false);
+  });
+});
+
+describe('выделение ячеек', () => {
+  it('диапазон между двумя ячейками в любом направлении', () => {
+    const rows = ['r1', 'r2', 'r3'];
+    const fields = ['a', 'b', 'c'];
+    expect(rangeCellKeys({ rowId: 'r3', field: 'b' }, { rowId: 'r2', field: 'a' }, rows, fields))
+      .toEqual(['r2|a', 'r2|b', 'r3|a', 'r3|b']);
+    expect(rangeCellKeys({ rowId: 'x', field: 'a' }, { rowId: 'r1', field: 'a' }, rows, fields)).toEqual([]);
+  });
+
+  it('итоги: заполнено, сумма и среднее чисел', () => {
+    expect(summarizeSelection(['41000', '12000+3800', 'SKLU1582588', '', '2x2500'])).toEqual({
+      filled: 4, numbers: 3, sum: 61800, average: 20600,
+    });
+    expect(summarizeSelection(['текст', ''])).toEqual({ filled: 1, numbers: 0, sum: 0, average: null });
   });
 });

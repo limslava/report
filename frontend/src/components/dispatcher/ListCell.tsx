@@ -159,7 +159,7 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
             const direction = navDirectionOf(event);
             if (direction) {
               event.preventDefault();
-              requestCellNav(element, direction);
+              requestCellNav(element, direction, event.shiftKey);
             }
             return;
           }

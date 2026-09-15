@@ -851,3 +851,26 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
   cursor: crosshair;
 }
 body.dj-filling, body.dj-filling * { cursor: crosshair !important; user-select: none; }
+
+/* ── выделение нескольких ячеек (Shift / Ctrl) и итоги в углу, как в google ── */
+.dj-table td.dj-cell--selected { background: #e1ebfb !important; }
+.dj-table td.dj-cell--selected .dj-cell-input:not(.dj-cell-input--chip) { background: transparent; }
+.dj-table-area { position: relative; }
+.dj-selection-stats {
+  position: absolute;
+  right: 18px;
+  bottom: 14px;
+  z-index: 9;
+  display: flex;
+  gap: 14px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: #3c4043;
+  background: #fff;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.dj-selection-stats b { font-weight: 600; color: #1f2733; }

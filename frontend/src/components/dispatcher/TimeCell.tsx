@@ -82,7 +82,7 @@ export default function TimeCell({ value, onSave }: TimeCellProps) {
               const direction = navDirectionOf(event);
               if (direction) {
                 event.preventDefault();
-                requestCellNav(element, direction);
+                requestCellNav(element, direction, event.shiftKey);
               }
             }
             return;
