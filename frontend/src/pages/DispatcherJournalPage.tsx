@@ -822,9 +822,13 @@ export default function DispatcherJournalPage() {
     return stats;
   }, [displayRows]);
 
-  // полоса дня перед каждой сменой даты — пока дни идут сплошными блоками; если своя
-  // сортировка перемешала дни (например, по статусу на весь месяц) — полос нет
-  const showDayBands = useMemo(() => datesAreGrouped(displayRows), [displayRows]);
+  // полоса дня перед каждой сменой даты. Прячем полосы только когда своя сортировка
+  // по другой колонке перемешала дни (например, по статусу на весь месяц); в общем
+  // порядке полосы есть всегда — даже если строке поменяли дату и день встречается дважды
+  const showDayBands = useMemo(
+    () => !personalSort || personalSort.by?.field === DATE_KEY || datesAreGrouped(displayRows),
+    [displayRows, personalSort],
+  );
   const displayItems = useMemo(() => {
     const items: DisplayItem[] = [];
     displayRows.forEach((row, index) => {
