@@ -105,11 +105,13 @@ export async function loadKtkVvoSummary(asOfDate: string): Promise<KtkVvoSummary
 // ── оформление книги ──
 const HEADER_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCE6F1' } };
 const TOTAL_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+// сетка таблиц — тонкие серые линии, заметные и на экране, и при печати
+const GRID_COLOR = { argb: 'FF7F7F7F' };
 const THIN: Partial<ExcelJS.Borders> = {
-  top: { style: 'thin', color: { argb: 'FFBFBFBF' } },
-  left: { style: 'thin', color: { argb: 'FFBFBFBF' } },
-  bottom: { style: 'thin', color: { argb: 'FFBFBFBF' } },
-  right: { style: 'thin', color: { argb: 'FFBFBFBF' } },
+  top: { style: 'thin', color: GRID_COLOR },
+  left: { style: 'thin', color: GRID_COLOR },
+  bottom: { style: 'thin', color: GRID_COLOR },
+  right: { style: 'thin', color: GRID_COLOR },
 };
 
 function styleRange(sheet: ExcelJS.Worksheet, fromRow: number, toRow: number, columns: number, style: (cell: ExcelJS.Cell) => void) {
@@ -253,6 +255,7 @@ function writeVehiclesSheet(workbook: ExcelJS.Workbook, summary: KtkVvoSummary) 
   });
   const totalRow = 3 + summary.vehicles.length;
   const onLine = summary.vehicles.filter((vehicle) => vehicle.onLine).length;
+  for (let col = 1; col <= 4; col += 1) sheet.getCell(totalRow, col).border = THIN;
   sheet.getCell(totalRow, 3).value = 'Итого на линии';
   sheet.getCell(totalRow, 4).value = formula(`SUBTOTAL(9,D3:D${Math.max(3, totalRow - 1)})`, onLine);
   sheet.getRow(totalRow).font = { bold: true };
