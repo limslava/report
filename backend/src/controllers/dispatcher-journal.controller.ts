@@ -21,6 +21,11 @@ import { DispatcherOrderChange } from '../models/dispatcher-order-change.model';
 import { User } from '../models/user.model';
 import { ensureDispatcherDictionaryCatalog } from '../services/dispatcher-status-seed.service';
 import { planWebSocketService } from '../services/websocket.service';
+import {
+  DISPATCHER_FINANCE_FIELDS,
+  canSeeDispatcherFinance,
+  forbiddenDispatcherPatchFields,
+} from '../constants/dispatcher-journal-access';
 
 const orderRepository = AppDataSource.getRepository(DispatcherOrder);
 const statusRepository = AppDataSource.getRepository(DispatcherStatus);
@@ -144,6 +149,13 @@ export const listDispatcherStatuses = async (_req: Request, res: Response, next:
  * Режим «Актуальное» на фронте запрашивает хвост прошлого + всё ближайшее
  * будущее, поэтому заявка от 29.09 на вывоз 01.10 видна уже 30.09.
  */
+/** Роли просмотра (офис-менеджер, отдел кадров) денег строки не получают. */
+const withoutFinance = <T extends Record<string, unknown>>(row: T): T => {
+  const copy: Record<string, unknown> = { ...row };
+  DISPATCHER_FINANCE_FIELDS.forEach((field) => { copy[field] = null; });
+  return copy as T;
+};
+
 export const listDispatcherOrders = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const from = requireDate(req.query.from);
@@ -173,7 +185,8 @@ export const listDispatcherOrders = async (req: Request, res: Response, next: Ne
       })));
       return;
     }
-    res.json(orders.map(serializeOrder));
+    const serialized = orders.map(serializeOrder);
+    res.json(canSeeDispatcherFinance(req.user?.role) ? serialized : serialized.map(withoutFinance));
   } catch (error) {
     next(error);
   }
@@ -303,6 +316,9 @@ export const updateDispatcherOrder = async (req: Request, res: Response, next: N
     }
 
     const patch = (req.body ?? {}) as Record<string, unknown>;
+    // менеджер документационного отдела правит только свои поля (дату и порядок строк — нет)
+    const forbidden = forbiddenDispatcherPatchFields(req.user?.role, Object.keys(patch));
+    if (forbidden.length) httpError(403, 'Нет прав на изменение этих полей реестра');
     let changed = false;
     const previousDate = order.orderDate;
     const before = { ...order };

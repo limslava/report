@@ -9,6 +9,8 @@ type EditableCellProps = {
   /** денежная/числовая ячейка — по правому краю, цифры одинаковой ширины */
   numeric?: boolean;
   onSave: (value: string) => void;
+  /** только просмотр: ячейка выделяется и копируется, но не правится */
+  readOnly?: boolean;
 };
 
 /**
@@ -18,7 +20,7 @@ type EditableCellProps = {
  */
 type Mode = 'view' | 'caret' | 'typed';
 
-export default function EditableCell({ value, multiline, format, numeric, onSave }: EditableCellProps) {
+export default function EditableCell({ value, multiline, format, numeric, onSave, readOnly }: EditableCellProps) {
   const [draft, setDraft] = useState(value ?? '');
   const [mode, setMode] = useState<Mode>('view');
   // режим в ref — blur, пришедший сразу после Enter/Tab, не должен сохранять второй раз
@@ -48,6 +50,7 @@ export default function EditableCell({ value, multiline, format, numeric, onSave
   }, [editing, mode, multiline]);
 
   const startEdit = (next: Exclude<Mode, 'view'>, initial?: string) => {
+    if (readOnly) return;
     if (initial !== undefined) setDraft(initial);
     caretToEndRef.current = true;
     modeRef.current = next;
@@ -80,6 +83,7 @@ export default function EditableCell({ value, multiline, format, numeric, onSave
       }
       if (event.key === 'Backspace' || event.key === 'Delete') {
         event.preventDefault();
+        if (readOnly) return;
         setDraft('');
         if (value) onSave('');
         return;

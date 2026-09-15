@@ -1,5 +1,6 @@
 import { PlanningSegment } from '../types/planning-v2.types';
 import { SUMMARY_ROLES, SEGMENT_BY_ROLE } from './roles';
+import { dispatcherJournalAccess } from './dispatcherJournalAccess';
 
 export function canViewSummary(role?: string | null): boolean {
   if (!role) {
@@ -18,7 +19,9 @@ export function canViewTotalsInPlans(role?: string | null): boolean {
     && role !== 'hr_specialist'
     && role !== 'garage_head_vvo'
     && role !== 'bdd_specialist_vvo'
-    && role !== 'bdd_specialist_mow';
+    && role !== 'bdd_specialist_mow'
+    && role !== 'secretary'
+    && role !== 'doc_manager_vvo';
 }
 
 export type FuelLocation = 'vvo' | 'mow';
@@ -46,11 +49,9 @@ export function canAccessDirectories(role?: string | null): boolean {
 }
 
 /** Печатные формы: пока только Владивосток (шаблоны под контрагентов ВВО) + админ. */
-/** Реестр диспетчеров КТК Владивосток (диспетчер = менеджер КТК). */
+/** Реестр диспетчеров КТК Владивосток: полный доступ, правка своих полей или просмотр (dispatcherJournalAccess). */
 export function canAccessDispatcherJournal(role?: string | null): boolean {
-  return role === 'admin'
-    || role === 'manager_ktk_vvo'
-    || role === 'head_ktk_vvo';
+  return dispatcherJournalAccess(role) !== null;
 }
 
 export function canAccessPrintForms(role?: string | null): boolean {

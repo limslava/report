@@ -186,6 +186,8 @@ const AdminPage = () => {
     warehouse_manager_vvo: 'Заведующий складом Владивосток',
     bdd_specialist_vvo: 'Специалист по БДД Владивосток',
     bdd_specialist_mow: 'Специалист по БДД Москва',
+    doc_manager_vvo: 'Менеджер документационного отдела',
+    secretary: 'Офис-менеджер',
     manager_sales: 'Менеджер по продажам',
     head_sales: 'Руководитель отдела продаж',
     security: 'Руководитель СБ',

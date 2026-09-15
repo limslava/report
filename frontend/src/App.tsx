@@ -57,6 +57,7 @@ function App() {
     if (user?.role === 'bdd_specialist_vvo' || user?.role === 'bdd_specialist_mow') {
       return '/fuel';
     }
+    if (user?.role === 'doc_manager_vvo' || user?.role === 'secretary') return '/dispatcher-journal';
     return '/plans';
   })();
 

@@ -50,6 +50,11 @@ import { findEmployeeCardByName, getDirectoryOptions } from '../services/directo
 import { subscribePlansRealtime } from '../services/plans-realtime';
 import { useAuthStore } from '../store/auth-store';
 import { useAccountPreference } from '../hooks/useAccountPreference';
+import {
+  DISPATCHER_FINANCE_COLUMNS,
+  canEditDispatcherField,
+  dispatcherJournalAccess,
+} from '../utils/dispatcherJournalAccess';
 import { sortRows } from '../utils/tableSort';
 import {
   applyColumnPrefs,
@@ -174,7 +179,8 @@ type ColumnDef =
   | { kind: 'status'; field: 'status'; title: string; width: number }
   | { kind: 'text'; field: TextFieldName; title: string; width: number; multiline?: boolean; list?: ListSource }
   | { kind: 'time'; field: 'submitTime'; title: string; width: number }
-  | { kind: 'checkbox'; field: BooleanFieldName; title: string; width: number }
+  /** accent — цвет галочки и заголовка, как «свой цвет» флажка в google-таблице */
+  | { kind: 'checkbox'; field: BooleanFieldName; title: string; width: number; accent?: string }
   | { kind: 'computed'; field: 'amountWithoutVat'; title: string; width: number };
 
 /**
@@ -208,8 +214,8 @@ const ALL_COLUMNS: ColumnDef[] = [
   { kind: 'computed', field: 'amountWithoutVat', title: 'Без НДС', width: 90 },
   { kind: 'text', field: 'extraAddress', title: 'Доп адрес', width: 120, multiline: true },
   { kind: 'text', field: 'demurrage', title: 'Простой/руб', width: 84 },
-  { kind: 'checkbox', field: 'orderOnVehicle', title: 'Заказ на ТС', width: 52 },
-  { kind: 'checkbox', field: 'invoiceSent', title: 'Отправка счета', width: 52 },
+  { kind: 'checkbox', field: 'orderOnVehicle', title: 'Заказ на ТС', width: 52, accent: '#1a73e8' },
+  { kind: 'checkbox', field: 'invoiceSent', title: 'Отправка счета', width: 52, accent: '#d93025' },
   { kind: 'text', field: 'extraTon', title: 'Доп тонна', width: 70 },
   { kind: 'text', field: 'seal', title: 'Пломба', width: 70 },
   { kind: 'checkbox', field: 'recoupling', title: 'Перецеп', width: 50 },
@@ -332,7 +338,7 @@ const editingField = (target: EventTarget | null): boolean => {
 const FINANCE_FIELDS = new Set<string>(['driverRate', 'clientRate', 'passes', 'demurrage']);
 
 /** Дата строки: как и остальные ячейки — клик выделяет, двойной клик / Enter открывают календарь. */
-function DateCell({ value, title, onPick }: { value: string; title?: string; onPick: (next: string) => void }) {
+function DateCell({ value, title, onPick, readOnly }: { value: string; title?: string; onPick: (next: string) => void; readOnly?: boolean }) {
   const [editing, setEditing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -351,7 +357,7 @@ function DateCell({ value, title, onPick }: { value: string; title?: string; onP
       value={value}
       readOnly={!editing}
       title={title}
-      onDoubleClick={() => setEditing(true)}
+      onDoubleClick={() => { if (!readOnly) setEditing(true); }}
       onChange={(event) => {
         if (editing && event.target.value) onPick(event.target.value);
       }}
@@ -359,7 +365,7 @@ function DateCell({ value, title, onPick }: { value: string; title?: string; onP
       onKeyDown={(event) => {
         const element = event.currentTarget;
         if (!editing) {
-          if (event.key === 'Enter' || event.key === 'F2' || /^\d$/.test(event.key)) {
+          if (!readOnly && (event.key === 'Enter' || event.key === 'F2' || /^\d$/.test(event.key))) {
             event.preventDefault();
             setEditing(true);
             return;
@@ -399,6 +405,12 @@ const columnText = (row: DispatcherOrderRow, column: ColumnDef): string => {
 
 export default function DispatcherJournalPage() {
   const { user } = useAuthStore();
+  // полный доступ — диспетчеры КТК; менеджер док. отдела правит свои поля; офис-менеджер и отдел кадров смотрят без денег
+  const journalAccess = dispatcherJournalAccess(user?.role);
+  const canManageRows = journalAccess === 'full';
+  const canEditField = (field: string) => canEditDispatcherField(journalAccess, field);
+  const accessRef = useRef(journalAccess);
+  accessRef.current = journalAccess;
   const canEditDictionaries = DICTIONARY_EDIT_ROLES.has(user?.role ?? '');
   const canEditDictionaryColors = DICTIONARY_COLOR_ROLES.has(user?.role ?? '');
   const canViewHistory = HISTORY_ROLES.has(user?.role ?? '');
@@ -469,11 +481,12 @@ export default function DispatcherJournalPage() {
   const [columnsAnchor, setColumnsAnchor] = useState<HTMLElement | null>(null);
   const [settingsAnchor, setSettingsAnchor] = useState<HTMLElement | null>(null);
   const dragColumnKey = useRef<string | null>(null);
+  const hideFinance = journalAccess === 'view';
   const visibleColumns = useMemo(
     () => applyColumnPrefs(ALL_COLUMN_KEYS, NO_DEFAULT_HIDDEN, columnPrefs)
       .map((key) => COLUMN_BY_KEY.get(key))
-      .filter((column): column is ColumnDef => Boolean(column)),
-    [columnPrefs],
+      .filter((column): column is ColumnDef => Boolean(column) && !(hideFinance && DISPATCHER_FINANCE_COLUMNS.has(column!.field))),
+    [columnPrefs, hideFinance],
   );
   const visibleColumnsRef = useRef(visibleColumns);
   visibleColumnsRef.current = visibleColumns;
@@ -796,7 +809,7 @@ export default function DispatcherJournalPage() {
   statusesRef.current = statuses;
 
   // перетаскивание — без фильтров и поиска (при фильтре место строки среди скрытых неоднозначно)
-  const canDragRows = activeFilterCount === 0 && !searchQuery;
+  const canDragRows = canManageRows && activeFilterCount === 0 && !searchQuery;
   const sortValue = useCallback((row: DispatcherOrderRow, field: string): unknown => {
     if (field === DATE_KEY) return row.orderDate;
     const column = COLUMN_BY_KEY.get(field);
@@ -1154,6 +1167,8 @@ export default function DispatcherJournalPage() {
 
   useEffect(() => {
     loadDictionaries();
+    // подсказки водителей и техники нужны только тем, кто их вводит (справочники остальным закрыты)
+    if (accessRef.current !== 'full') return;
     getDirectoryOptions('vvo')
       .then((response) => {
         const drivers = response.data.employees
@@ -1249,12 +1264,25 @@ export default function DispatcherJournalPage() {
     /** своя сортировка — возвращается прежний порядок */
     | { kind: 'positions'; before: Array<{ id: string; position: number }> };
   const undoStackRef = useRef<UndoEntry[]>([]);
+  /** Только поля, которые роли можно менять (дата и порядок строк — у тех, кто ведёт реестр целиком). */
+  const allowedPatch = (patch: DispatcherOrderPatch): DispatcherOrderPatch => {
+    if (accessRef.current === 'full') return patch;
+    return Object.fromEntries(
+      Object.entries(patch).filter(([field]) => canEditDispatcherField(accessRef.current, field)),
+    ) as DispatcherOrderPatch;
+  };
+
   const pushUndo = (entry: UndoEntry) => {
     undoStackRef.current.push(entry);
     if (undoStackRef.current.length > 50) undoStackRef.current.shift();
   };
 
-  const patchRow = useCallback((id: string, patch: DispatcherOrderPatch, options?: { skipUndo?: boolean }) => {
+  const patchRow = useCallback((id: string, rawPatch: DispatcherOrderPatch, options?: { skipUndo?: boolean }) => {
+    const patch = allowedPatch(rawPatch);
+    if (!Object.keys(patch).length) {
+      if (Object.keys(rawPatch).length) setMessage({ severity: 'error', text: 'Это поле доступно только для просмотра' });
+      return;
+    }
     if (!options?.skipUndo) {
       const current = rowsRef.current.find((row) => row.id === id);
       if (current) {
@@ -1275,6 +1303,7 @@ export default function DispatcherJournalPage() {
 
   /** Новые места строк (сортировка / её отмена): сразу у себя, пачкой на сервер, коллеги подтянут. */
   const applyPositions = useCallback((items: Array<{ id: string; position: number }>, label?: string) => {
+    if (accessRef.current !== 'full') return;
     const byId = new Map(items.map((item) => [item.id, item.position]));
     setRows((prev) => sortByDate(prev.map((row) => (byId.has(row.id) ? { ...row, position: byId.get(row.id)! } : row))));
     updateDispatcherOrderPositions(items, label).catch(() => {
@@ -1284,6 +1313,7 @@ export default function DispatcherJournalPage() {
   }, [loadRows]);
 
   const createRow = useCallback(async (orderDate: string, initial?: DispatcherOrderPatch, options?: { skipUndo?: boolean }) => {
+    if (accessRef.current !== 'full') return null;
     try {
       const { data } = await createDispatcherOrder(orderDate, initial);
       sessionCreatedIdsRef.current.add(data.id);
@@ -1301,6 +1331,7 @@ export default function DispatcherJournalPage() {
 
   /** «+»: одна пустая строка (без статуса) на дату нижней строки. */
   const addBlankRow = useCallback(async (orderDate: string) => {
+    if (accessRef.current !== 'full') return;
     try {
       const { data } = await createDispatcherOrdersBatch(orderDate, 1);
       data.forEach((row) => {
@@ -1340,6 +1371,7 @@ export default function DispatcherJournalPage() {
   }, [patchRow]);
 
   const deleteRow = useCallback(async (row: DispatcherOrderRow, options?: { silent?: boolean; skipUndo?: boolean }) => {
+    if (accessRef.current !== 'full') return;
     if (!options?.silent) {
       const label = [row.ktkNumber, row.client].filter(Boolean).join(', ');
       if (!window.confirm(`Удалить строку${label ? ` (${label})` : ''}?`)) return;
@@ -1493,7 +1525,8 @@ export default function DispatcherJournalPage() {
     creations: Array<{ date: string; patch: DispatcherOrderPatch }>,
   ) => {
     const undoPatches: Array<{ id: string; before: DispatcherOrderPatch }> = [];
-    patches.forEach(({ id, patch }) => {
+    patches.forEach(({ id, patch: rawPatch }) => {
+      const patch = allowedPatch(rawPatch);
       const current = rowsRef.current.find((row) => row.id === id);
       if (!current || !Object.keys(patch).length) return;
       const before: DispatcherOrderPatch = {};
@@ -1504,7 +1537,7 @@ export default function DispatcherJournalPage() {
       patchRow(id, patch, { skipUndo: true });
     });
     const created: string[] = [];
-    for (const { date, patch } of creations) {
+    for (const { date, patch } of accessRef.current === 'full' ? creations : []) {
       // последовательно — сохраняется порядок строк из буфера
       // eslint-disable-next-line no-await-in-loop
       const row = await createRow(date, patch, { skipUndo: true });
@@ -1959,6 +1992,7 @@ export default function DispatcherJournalPage() {
         ? (activeColumn.field === 'driverName' ? (activeRow.driverName ?? '') : columnText(activeRow, activeColumn))
         : '';
   const formulaReadOnly = !activeCell
+    || (activeCell.rowId ? !canEditField(activeCell.field) : !canManageRows)
     || activeCell.field === DATE_KEY
     || !activeColumn
     || activeColumn.kind === 'computed'
@@ -2041,6 +2075,7 @@ export default function DispatcherJournalPage() {
             colorOf={statusColorOf}
             placeholder="статус…"
             strict
+            readOnly={!canEditField('status')}
             onSave={(value) => patchRow(row.id, { status: value || null })}
           />
         </td>
@@ -2051,9 +2086,13 @@ export default function DispatcherJournalPage() {
         <td key={key} data-field={key} className={`dj-checkbox-cell${pinCls}`} style={pin}>
           <input
             type="checkbox"
-            className="dj-check"
+            className={`dj-check${column.accent ? ' dj-check--accent' : ''}${canEditField(column.field) ? '' : ' is-readonly'}`}
+            style={column.accent ? { '--dj-check-accent': column.accent } as React.CSSProperties : undefined}
             checked={row[column.field]}
-            onChange={(event) => patchRow(row.id, { [column.field]: event.target.checked })}
+            aria-readonly={!canEditField(column.field) || undefined}
+            onChange={(event) => {
+              if (canEditField(column.field)) patchRow(row.id, { [column.field]: event.target.checked });
+            }}
             onKeyDown={checkboxNav}
           />
         </td>
@@ -2083,7 +2122,7 @@ export default function DispatcherJournalPage() {
     if (column.kind === 'time') {
       return (
         <td key={key} data-field={key} className={pinCls.trim()} style={pin}>
-          <TimeCell value={row.submitTime} onSave={(value) => patchRow(row.id, { submitTime: value || null })} />
+          <TimeCell value={row.submitTime} readOnly={!canEditField('submitTime')} onSave={(value) => patchRow(row.id, { submitTime: value || null })} />
         </td>
       );
     }
@@ -2096,6 +2135,7 @@ export default function DispatcherJournalPage() {
             options={listOptions(column.list)}
             colorOf={listColorOf(column.list)}
             normalize={column.field === 'driverName' ? shortPersonName : undefined}
+            readOnly={!canEditField(column.field)}
             onSave={(value) => {
               if (isCrewField) void saveCrewField(row, column.field as 'driverName' | 'vehiclePlate', value);
               else patchRow(row.id, { [column.field]: value || null });
@@ -2111,6 +2151,7 @@ export default function DispatcherJournalPage() {
           multiline={column.multiline}
           format={FINANCE_FIELDS.has(column.field) ? formatFinance : undefined}
           numeric={FINANCE_FIELDS.has(column.field)}
+          readOnly={!canEditField(column.field)}
           onSave={(value) => patchRow(row.id, { [column.field]: value || null })}
         />
       </td>
@@ -2228,6 +2269,11 @@ export default function DispatcherJournalPage() {
     return options.sort((a, b) => (a.key === NO_COLOR_KEY ? 1 : 0) - (b.key === NO_COLOR_KEY ? 1 : 0) || b.count - a.count);
   };
 
+  const accentOf = (key: string): string | undefined => {
+    const column = COLUMN_BY_KEY.get(key);
+    return column?.kind === 'checkbox' ? column.accent : undefined;
+  };
+
   const headerCell = (key: string, title: string, width: number, resizable: boolean) => {
     const filtered = filteredFields.has(key);
     return (
@@ -2241,6 +2287,7 @@ export default function DispatcherJournalPage() {
             type="button"
             className="dj-sort-btn"
             title="Сортировка, фильтр, закрепление"
+            style={accentOf(key) ? { color: accentOf(key) } : undefined}
             onClick={(event) => setFilterMenu({ field: key, anchor: event.currentTarget })}
           >
             <span>{title}</span>
@@ -2432,7 +2479,7 @@ export default function DispatcherJournalPage() {
         </div>
       )}
       <div className="dj-table-wrap" ref={wrapRef} onScroll={handleWrapScroll}>
-        {fillHandlePos && (
+        {fillHandlePos && journalAccess !== 'view' && (
           <div
             className="dj-fill-handle"
             style={{ left: fillHandlePos.left, top: fillHandlePos.top }}
@@ -2609,6 +2656,7 @@ export default function DispatcherJournalPage() {
                   >
                     <DateCell
                       value={row.orderDate}
+                      readOnly={!canManageRows}
                       onPick={(next) => {
                         patchRow(row.id, { orderDate: next });
                         if (next < rangeRef.current.from || next > rangeRef.current.to) {
@@ -2619,14 +2667,16 @@ export default function DispatcherJournalPage() {
                   </td>
                   {visibleColumns.map((column) => renderColumnCell(row, column))}
                   <td className="dj-checkbox-cell">
-                    <button
-                      type="button"
-                      className="dj-delete-btn"
-                      title="Удалить строку"
-                      onClick={() => void deleteRow(row)}
-                    >
-                      ✕
-                    </button>
+                    {canManageRows && (
+                      <button
+                        type="button"
+                        className="dj-delete-btn"
+                        title="Удалить строку"
+                        onClick={() => void deleteRow(row)}
+                      >
+                        ✕
+                      </button>
+                    )}
                   </td>
                 </tr>
               );
@@ -2636,7 +2686,7 @@ export default function DispatcherJournalPage() {
                 <td colSpan={visibleColumns.length + 3} style={{ height: totalItemsHeight - itemOffsets[windowEnd] }} />
               </tr>
             )}
-            <tr key={`ghost-${ghostKey}`} className="dj-row--ghost dj-row--day-start">
+            {canManageRows && <tr key={`ghost-${ghostKey}`} className="dj-row--ghost dj-row--day-start">
               <td
                 className={`dj-rownum dj-rownum--add${pinClass('__rownum')}`}
                 style={pinStyle('__rownum')}
@@ -2654,11 +2704,11 @@ export default function DispatcherJournalPage() {
               </td>
               {visibleColumns.map((column) => renderGhostCell(column))}
               <td />
-            </tr>
+            </tr>}
           </tbody>
         </table>
         {!rows.length && !loading && (
-          <div className="dj-empty">В этом месяце заявок нет — начните заполнять нижнюю строку, она создастся сама</div>
+          <div className="dj-empty">{canManageRows ? 'В этом месяце заявок нет — начните заполнять нижнюю строку, она создастся сама' : 'В этом месяце заявок нет'}</div>
         )}
         {rows.length > 0 && !displayRows.length && (
           <div className="dj-empty">
@@ -2700,17 +2750,19 @@ export default function DispatcherJournalPage() {
             >
               Заказ
             </button>
-            <button
-              type="button"
-              className="dj-context-item"
-              onClick={() => {
-                const current = rowsRef.current.find((item) => item.id === contextMenu.row.id) ?? contextMenu.row;
-                setContextMenu(null);
-                void copyDriverData(current);
-              }}
-            >
-              Скопировать данные
-            </button>
+            {canManageRows && (
+              <button
+                type="button"
+                className="dj-context-item"
+                onClick={() => {
+                  const current = rowsRef.current.find((item) => item.id === contextMenu.row.id) ?? contextMenu.row;
+                  setContextMenu(null);
+                  void copyDriverData(current);
+                }}
+              >
+                Скопировать данные
+              </button>
+            )}
             <button
               type="button"
               className="dj-context-item"
@@ -2722,8 +2774,8 @@ export default function DispatcherJournalPage() {
             >
               Копировать строку
             </button>
-            <div className="dj-context-sep" />
-            <button
+            {canManageRows && <div className="dj-context-sep" />}
+            {canManageRows && <button
               type="button"
               className="dj-context-item"
               onClick={() => {
@@ -2733,8 +2785,8 @@ export default function DispatcherJournalPage() {
               }}
             >
               Добавить строку выше
-            </button>
-            <button
+            </button>}
+            {canManageRows && <button
               type="button"
               className="dj-context-item"
               onClick={() => {
@@ -2744,8 +2796,8 @@ export default function DispatcherJournalPage() {
               }}
             >
               Добавить строку ниже
-            </button>
-            <div className="dj-context-sep" />
+            </button>}
+            {(canManageRows || canViewHistory) && <div className="dj-context-sep" />}
             {canViewHistory && (
               <button
                 type="button"
@@ -2762,7 +2814,7 @@ export default function DispatcherJournalPage() {
                 История строки
               </button>
             )}
-            <button
+            {canManageRows && <button
               type="button"
               className="dj-context-item danger"
               onClick={() => {
@@ -2772,7 +2824,7 @@ export default function DispatcherJournalPage() {
               }}
             >
               Удалить
-            </button>
+            </button>}
           </div>
         </div>
       )}
@@ -2790,7 +2842,7 @@ export default function DispatcherJournalPage() {
           colorOptions={columnColorOptions(filterMenu.field)}
           color={colorFilters[filterMenu.field] ?? null}
           isPinnedUntilHere={pinnedUntil === filterMenu.field}
-          onSort={(direction) => sortOnce(filterMenu.field, direction)}
+          onSort={canManageRows ? (direction) => sortOnce(filterMenu.field, direction) : undefined}
           onApply={(value) => applyColumnFilter(filterMenu.field, value)}
           onTogglePin={() => setPinnedUntil((prev) => (prev === filterMenu.field ? null : filterMenu.field))}
           onClose={() => setFilterMenu(null)}
@@ -2899,7 +2951,7 @@ export default function DispatcherJournalPage() {
           </Typography>
           {orderedKeys(ALL_COLUMN_KEYS, columnPrefs).map((key, index) => {
             const column = COLUMN_BY_KEY.get(key);
-            if (!column) return null;
+            if (!column || (hideFinance && DISPATCHER_FINANCE_COLUMNS.has(key))) return null;
             return (
               <Box
                 key={key}

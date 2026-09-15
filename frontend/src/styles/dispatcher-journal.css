@@ -731,6 +731,29 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
 
 /* лёгкая галочка вместо MUI Checkbox (сотни строк) */
 .dj-check { width: 14px; height: 14px; margin: 0; cursor: pointer; accent-color: #2a78d6; vertical-align: middle; }
+/* флажок со своим цветом, как в google: цветная рамка, отмечен — заливка цветом и белая галочка */
+.dj-check--accent {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  border: 2px solid var(--dj-check-accent);
+  border-radius: 2px;
+  background: #fff;
+  display: inline-grid;
+  place-content: center;
+}
+.dj-check--accent:checked { background: var(--dj-check-accent); }
+.dj-check--accent:checked::after {
+  content: '';
+  width: 3px;
+  height: 7px;
+  margin-top: -2px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.dj-check--accent:focus-visible { outline: 2px solid var(--dj-check-accent); outline-offset: 1px; }
+.dj-check.is-readonly { cursor: default; }
 
 /* статус — та же ячейка-список, что у справочников, в виде чипа */
 .dj-status-cell .dj-cell-input { border-radius: 6px; margin: 1px 2px; width: calc(100% - 4px); height: 20px; font-weight: 600; }
