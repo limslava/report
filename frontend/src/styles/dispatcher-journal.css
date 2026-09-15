@@ -229,7 +229,7 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
 .dj-computed-cell {
   font-size: 11px;
   text-align: right;
-  padding: 4px 6px !important;
+  padding: 2px 6px !important;
   color: #1f2733;
   font-variant-numeric: tabular-nums;
   background: #f8fafc;
@@ -455,7 +455,9 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
   border-radius: 6px;
   font-weight: 600;
   margin: 1px 0;
+  /* чип не выше обычного поля (22 px с отступами): все строки одной высоты — на этом держится прокрутка */
   padding: 2px 6px;
+  height: 20px;
 }
 .dj-list-chip { white-space: normal; }
 
@@ -687,7 +689,7 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
 .dj-check { width: 14px; height: 14px; margin: 0; cursor: pointer; accent-color: #2a78d6; vertical-align: middle; }
 
 /* статус — та же ячейка-список, что у справочников, в виде чипа */
-.dj-status-cell .dj-cell-input { border-radius: 6px; margin: 1px 2px; width: calc(100% - 4px); font-weight: 600; }
+.dj-status-cell .dj-cell-input { border-radius: 6px; margin: 1px 2px; width: calc(100% - 4px); height: 20px; font-weight: 600; }
 
 /* ── жёлтые полосы дней (мягкий жёлтый, решение 2026-09-14) ── */
 .dj-table tr.dj-band td {
