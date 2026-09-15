@@ -10,6 +10,10 @@ export interface PlanningGridRow {
   aggregation: 'SUM' | 'AVG' | 'LAST' | 'FORMULA';
   dayValues: Array<number | null>;
   monthTotal: number;
+  /** КТК Владивосток: с этого дня месяца (1…) строка считается из реестра */
+  autoFromDay?: number | null;
+  /** дни (1…), где расчёт перекрыт ручной правкой */
+  manualDays?: number[];
 }
 
 export interface PlanningSegmentReport {

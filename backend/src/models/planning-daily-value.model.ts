@@ -39,6 +39,13 @@ export class PlanningDailyValue {
   @Column({ type: 'decimal', precision: 14, scale: 2, nullable: true })
   value!: string | null;
 
+  /**
+   * Откуда значение: 'auto' — посчитано системой (КТК Владивосток из реестра), 'manual' — правка
+   * поверх расчёта (важнее расчёта), null — обычный ручной ввод.
+   */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  source!: string | null;
+
   @Column({ name: 'updated_by_id', type: 'uuid', nullable: true })
   updatedById!: string | null;
 

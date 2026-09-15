@@ -6,6 +6,7 @@ import { PlanningMonthlyPlan } from '../models/planning-monthly-plan.model';
 import { PlanningMonthlyPlanMetric } from '../models/planning-monthly-plan-metric.model';
 import { PlanningSegment } from '../models/planning-segment.model';
 import { OperationsPreviewState } from '../models/operations-preview-state.model';
+import { KTK_VVO_AUTOFILL_FROM, KTK_VVO_AUTOFILL_METRICS } from './ktk-vvo-registry-autofill.model';
 
 interface SegmentReportParams {
   segmentCode: PlanningSegmentCode;
@@ -51,6 +52,10 @@ export interface PlanningGridRow {
   aggregation: PlanningMetricAggregation;
   dayValues: Array<number | null>;
   monthTotal: number;
+  /** КТК Владивосток: с этого дня месяца (1…) строка считается из реестра; null — вводится вручную */
+  autoFromDay?: number | null;
+  /** дни (1…), где расчёт перекрыт ручной правкой */
+  manualDays?: number[];
 }
 
 export type SegmentDashboard = DashboardBase & Record<string, unknown>;
@@ -389,6 +394,7 @@ export class PlanningV2ReportService {
 
     const metricById = new Map(metrics.map((metric) => [metric.id, metric]));
     const metricIdByCode = new Map(metrics.map((metric) => [metric.code, metric.id]));
+    const manualDaysByMetric = new Map<string, number[]>();
 
     for (const row of dailyRows) {
       const metric = metricById.get(row.metricId);
@@ -403,7 +409,15 @@ export class PlanningV2ReportService {
       }
 
       metricValues[day - 1] = row.value === null ? null : Number(row.value);
+      if (row.source === 'manual') manualDaysByMetric.set(metric.code, [...(manualDaysByMetric.get(metric.code) ?? []), day]);
     }
+
+    // с какого дня месяца строки КТК Владивосток считаются из реестра
+    const monthKey = `${params.year}-${String(params.month).padStart(2, '0')}`;
+    const autoFromDay = segment.code !== PlanningSegmentCode.KTK_VVO || monthKey < KTK_VVO_AUTOFILL_FROM.slice(0, 7)
+      ? null
+      : monthKey === KTK_VVO_AUTOFILL_FROM.slice(0, 7) ? Number(KTK_VVO_AUTOFILL_FROM.slice(8, 10)) : 1;
+    const autofillMetrics = new Set<string>(KTK_VVO_AUTOFILL_METRICS);
 
     if (this.isKtkTrucksOnLineAutoFromPreview(segment.code, params.year, params.month)) {
       const prefix = segment.code === PlanningSegmentCode.KTK_MOW ? 'ktk_mow' : 'ktk_vvo';
@@ -477,6 +491,9 @@ export class PlanningV2ReportService {
         aggregation: metric.aggregation,
         dayValues,
         monthTotal,
+        ...(autoFromDay !== null && autofillMetrics.has(metric.code)
+          ? { autoFromDay, manualDays: manualDaysByMetric.get(metric.code) ?? [] }
+          : {}),
       };
     });
 

@@ -21,6 +21,7 @@ import { DispatcherOrderChange } from '../models/dispatcher-order-change.model';
 import { User } from '../models/user.model';
 import { ensureDispatcherDictionaryCatalog } from '../services/dispatcher-status-seed.service';
 import { planWebSocketService } from '../services/websocket.service';
+import { requestKtkVvoAutofill } from '../services/ktk-vvo-registry-autofill.service';
 import {
   DISPATCHER_FINANCE_FIELDS,
   canSeeDispatcherFinance,
@@ -28,6 +29,12 @@ import {
 } from '../constants/dispatcher-journal-access';
 
 const orderRepository = AppDataSource.getRepository(DispatcherOrder);
+
+/** Реестр изменился: коллегам — обновить таблицу, ежедневному отчёту КТК Владивосток — пересчитаться. */
+const notifyJournalChanged = (params: { date: string; userId?: string }) => {
+  planWebSocketService.notifyDispatcherJournalUpdated(params);
+  requestKtkVvoAutofill([params.date]);
+};
 const statusRepository = AppDataSource.getRepository(DispatcherStatus);
 const dictionaryRepository = AppDataSource.getRepository(DispatcherDictionaryItem);
 const previewStateRepository = AppDataSource.getRepository(OperationsPreviewState);
@@ -226,7 +233,7 @@ export const createDispatcherOrder = async (req: Request, res: Response, next: N
     });
     const saved = await orderRepository.save(order);
     await recordDispatcherChanges([{ action: 'create', order: saved, userId: req.user?.id }]);
-    planWebSocketService.notifyDispatcherJournalUpdated({ date, userId: req.user?.id });
+    notifyJournalChanged({ date, userId: req.user?.id });
     res.status(201).json(serializeOrder(saved));
   } catch (error) {
     next(error);
@@ -249,7 +256,7 @@ export const createDispatcherOrdersBatch = async (req: Request, res: Response, n
     }));
     const saved = await orderRepository.save(orders);
     await recordDispatcherChanges(saved.map((item) => ({ action: 'create' as const, order: item, userId: req.user?.id })));
-    planWebSocketService.notifyDispatcherJournalUpdated({ date, userId: req.user?.id });
+    notifyJournalChanged({ date, userId: req.user?.id });
     res.status(201).json(saved.map(serializeOrder));
   } catch (error) {
     next(error);
@@ -297,7 +304,7 @@ export const updateDispatcherOrderPositions = async (req: Request, res: Response
         newValue: `${label ? `${label} · ` : ''}строк: ${changed.length}${dates.length > 1 ? ` (${dmy(dates[0])} — ${dmy(dates[dates.length - 1])})` : ''}`,
         userId: req.user?.id,
       }]);
-      dates.forEach((date) => planWebSocketService.notifyDispatcherJournalUpdated({ date, userId: req.user?.id }));
+      dates.forEach((date) => notifyJournalChanged({ date, userId: req.user?.id }));
     }
     res.json({ updated: changed.length });
   } catch (error) {
@@ -365,9 +372,9 @@ export const updateDispatcherOrder = async (req: Request, res: Response, next: N
         fieldChanges.push({ action: 'move', order: before, userId: req.user?.id });
       }
       await recordDispatcherChanges(fieldChanges);
-      planWebSocketService.notifyDispatcherJournalUpdated({ date: order.orderDate, userId: req.user?.id });
+      notifyJournalChanged({ date: order.orderDate, userId: req.user?.id });
       if (previousDate !== order.orderDate) {
-        planWebSocketService.notifyDispatcherJournalUpdated({ date: previousDate, userId: req.user?.id });
+        notifyJournalChanged({ date: previousDate, userId: req.user?.id });
       }
     }
     res.json(serializeOrder(order));
@@ -388,7 +395,7 @@ export const deleteDispatcherOrder = async (req: Request, res: Response, next: N
     const snapshot = { id: order.id, orderDate: order.orderDate, ktkNumber: order.ktkNumber, client: order.client };
     await orderRepository.remove(order);
     await recordDispatcherChanges([{ action: 'delete', order: snapshot, userId: req.user?.id }]);
-    planWebSocketService.notifyDispatcherJournalUpdated({ date: snapshot.orderDate, userId: req.user?.id });
+    notifyJournalChanged({ date: snapshot.orderDate, userId: req.user?.id });
     res.json({ message: 'Строка удалена' });
   } catch (error) {
     next(error);
@@ -739,7 +746,7 @@ export const importDispatcherOrders = async (req: Request, res: Response, next: 
       ...dates.map((date) => `${date.slice(0, 7)}-01`),
       ...previousMonths.map((item) => `${item.month}-01`),
     ]);
-    months.forEach((date) => planWebSocketService.notifyDispatcherJournalUpdated({ date, userId: req.user?.id }));
+    months.forEach((date) => notifyJournalChanged({ date, userId: req.user?.id }));
     res.json({ ...summary, imported: orders.length, deleted: existingTotal });
   } catch (error) {
     next(error);

@@ -18,6 +18,7 @@ import { createApp } from './app';
 import { ensureWarehouseServiceCatalog } from './services/warehouse-service-catalog.service';
 import { ensureDispatcherDictionaryCatalog, ensureDispatcherStatusCatalog } from './services/dispatcher-status-seed.service';
 import { ensureWarehousePhotoStorageReady, purgeExpiredIssuedWarehousePhotos } from './services/warehouse-photo-storage.service';
+import { startKtkVvoAutofill } from './services/ktk-vvo-registry-autofill.service';
 
 config();
 
@@ -47,6 +48,7 @@ async function startServer() {
     await ensureWarehousePhotoStorageReady();
     logger.info('Warehouse service catalog bootstrapped');
     startHhBackgroundJobs();
+    startKtkVvoAutofill();
 
     const app = createApp();
 
