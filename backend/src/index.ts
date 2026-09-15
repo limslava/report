@@ -14,6 +14,7 @@ import {
 import { planningV2Service } from './services/planning-v2.service';
 import { withRetry } from './utils/db-retry';
 import { createApp } from './app';
+import { startKtkVvoAutofill } from './services/ktk-vvo-registry-autofill.service';
 
 config();
 
@@ -39,6 +40,8 @@ async function startServer() {
     } catch (err) {
       logger.error('Failed to bootstrap dispatcher journal catalogs:', err);
     }
+    // ежедневный отчёт КТК Владивосток: автозаполнение из реестра
+    startKtkVvoAutofill();
 
     const app = createApp();
 

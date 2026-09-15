@@ -6,6 +6,7 @@ import { planningV2ReportService } from './planning-v2-report.service';
 import { PlanningPlanMetricCode, PlanningSegmentCode } from '../models/planning.enums';
 import { sendEmailWithAttachment } from './email.service';
 import { planningV2TotalsService } from './planning-v2-totals.service';
+import { runKtkVvoAutofill } from './ktk-vvo-registry-autofill.service';
 
 const emailScheduleRepo = AppDataSource.getRepository(EmailSchedule);
 
@@ -275,6 +276,8 @@ export const sendScheduledEmailNow = async (schedule: EmailSchedule) => {
   const date = formatTzDate(now, timezone);
   const ddmmyyyy = `${String(nowTz.day).padStart(2, '0')}.${String(nowTz.month).padStart(2, '0')}.${nowTz.year}`;
   const reportType = normalizeReportType(schedule.schedule?.reportType);
+  // перед отправкой — свежий факт КТК Владивосток из реестра (план дня к этому времени уже зафиксирован)
+  await runKtkVvoAutofill();
 
   try {
     if (reportType === 'monthly_final') {

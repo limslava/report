@@ -7,6 +7,14 @@ import { PlanningMonthlyPlanMetric } from '../models/planning-monthly-plan-metri
 import { PlanningSegment } from '../models/planning-segment.model';
 import { PLANNING_FULL_ACCESS_ROLES } from '../constants/roles';
 import {
+  KTK_VVO_AUTOFILL_FROM,
+  KTK_VVO_AUTOFILL_METRICS,
+  KTK_VVO_AUTOFILL_OVERRIDE_ROLES,
+} from './ktk-vvo-registry-autofill.model';
+import { requestKtkVvoAutofill } from './ktk-vvo-registry-autofill.service';
+
+const AUTOFILL_METRIC_SET = new Set<string>(KTK_VVO_AUTOFILL_METRICS);
+import {
   PlanningMetricAggregation,
   PlanningMetricValueType,
   PlanningPlanMetricCode,
@@ -325,9 +333,15 @@ export class PlanningV2Service {
     const metrics = await this.metricRepo.find({ where: { segmentId: segment.id } });
     const metricByCode = new Map(metrics.map((metric) => [metric.code, metric]));
 
+    // КТК Владивосток с даты автозаполнения: строки из реестра правят только админ и руководитель КТК
+    const isAutofillCell = (update: { date: string; metricCode: string }) =>
+      payload.segmentCode === PlanningSegmentCode.KTK_VVO
+      && AUTOFILL_METRIC_SET.has(update.metricCode)
+      && update.date >= KTK_VVO_AUTOFILL_FROM;
     const filteredUpdates = payload.updates.filter((update) => {
       const metric = metricByCode.get(update.metricCode);
       if (!metric?.isEditable) return false;
+      if (isAutofillCell(update) && !KTK_VVO_AUTOFILL_OVERRIDE_ROLES.has(user.role)) return false;
       if (
         isKtkTrucksOnLineAutoFromPreviewPeriod(payload.segmentCode, payload.year, payload.month)
         && isKtkTrucksOnLineMetric(update.metricCode)
@@ -368,12 +382,17 @@ export class PlanningV2Service {
             segmentId: segment.id,
             metricId: metric.id,
             value: update.value.toFixed(2),
+            // правка поверх расчёта из реестра — важнее расчёта; очистка ячейки возвращает расчёт
+            source: isAutofillCell(update) ? 'manual' : null,
             updatedById: user.id,
           },
           ['date', 'metricId']
         );
       }
     });
+
+    const clearedAutofill = filteredUpdates.filter((update) => update.value === null && isAutofillCell(update));
+    if (clearedAutofill.length) requestKtkVvoAutofill(clearedAutofill.map((update) => update.date));
 
     return { updated: filteredUpdates.length };
   }

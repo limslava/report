@@ -227,6 +227,8 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   const { user } = useAuthStore();
   const isKtkVvoManager = user?.role === 'manager_ktk_vvo' || user?.role === 'head_ktk_vvo';
   const isAdmin = user?.role === 'admin';
+  // строки из реестра (КТК Владивосток) правят поверх расчёта только админ и руководитель КТК
+  const canOverrideAuto = isAdmin || user?.role === 'head_ktk_vvo';
   const desiredContext = useMemo<ReportContext>(
     () => ({ segmentCode, year, month, asOfDate }),
     [segmentCode, year, month, asOfDate]
@@ -545,7 +547,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
 
         rowValues.forEach((rawValue, colOffset) => {
           const dayIndex = start.dayIndex + colOffset;
-          if (dayIndex < 0 || dayIndex >= dayHeaders.length) {
+          if (dayIndex < 0 || dayIndex >= dayHeaders.length || isLockedCell(metricCode, dayIndex)) {
             return;
           }
 
@@ -567,6 +569,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
   };
 
   const updateCell = (metricCode: string, dayIndex: number, nextValue: string) => {
+    if (isLockedCell(metricCode, dayIndex)) return;
     const parsed = nextValue.trim() === '' ? null : Number(nextValue);
     if (nextValue.trim() !== '' && Number.isNaN(parsed)) {
       return;
@@ -584,6 +587,11 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
       return next;
     });
   };
+
+  const isAutoCell = (row: PlanningGridRow | undefined, dayIndex: number): boolean =>
+    Boolean(row?.autoFromDay && dayIndex + 1 >= row.autoFromDay);
+  const isLockedCell = (metricCode: string, dayIndex: number): boolean =>
+    !canOverrideAuto && isAutoCell(rowByMetric.get(metricCode), dayIndex);
 
   const getCellValue = (row: PlanningGridRow, dayIndex: number): number | null => {
     const draftValue = draft[keyFor(row.metricCode, dayIndex)];
@@ -822,6 +830,23 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
         </Box>
       </Paper>
 
+      {rows.some((row) => row.autoFromDay) && (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center', mb: 1, fontSize: 12.5, color: 'text.secondary' }}>
+          <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
+            <Box component="span" sx={{ width: 14, height: 14, borderRadius: '3px', bgcolor: '#eef5ff', border: '1px solid #c9dcf5' }} />
+            из реестра автоматически{(() => {
+              const fromDay = rows.find((row) => row.autoFromDay)?.autoFromDay ?? 1;
+              return fromDay > 1 ? ` (с ${String(fromDay).padStart(2, '0')}.${String(month).padStart(2, '0')})` : '';
+            })()}
+          </Box>
+          <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
+            <Box component="span" sx={{ width: 14, height: 14, borderRadius: '3px', bgcolor: '#fff1d6', border: '1px solid #f0d49a' }} />
+            исправлено вручную
+          </Box>
+          {!canOverrideAuto && <span>Исправить значение из реестра может руководитель КТК</span>}
+        </Box>
+      )}
+
       <TableContainer ref={tableContainerRef} component={Paper} variant="outlined" sx={{ mb: 2, minHeight: 420, maxHeight: 'clamp(420px, calc(100dvh - 240px), 82dvh)' }}>
         <Table
           size="small"
@@ -903,7 +928,14 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
                 {dayHeaders.map((header) => {
                   const dayIndex = header.day - 1;
                   const value = getCellValue(row, dayIndex);
-                  const canEditCell = isEditable && row.isEditable;
+                  const autoCell = isAutoCell(row, dayIndex);
+                  const manualOverride = autoCell && Boolean(row.manualDays?.includes(header.day));
+                  const canEditCell = isEditable && row.isEditable && !(autoCell && !canOverrideAuto);
+                  const autoTitle = !autoCell
+                    ? undefined
+                    : manualOverride
+                      ? 'Исправлено вручную — расчёт из реестра не применяется. Очистите ячейку, чтобы вернуть расчёт'
+                      : 'Считается из реестра автоматически';
                   const isEditing =
                     editingCell?.metricCode === row.metricCode &&
                     editingCell?.dayIndex === dayIndex;
@@ -916,6 +948,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
                         }
                       }}
                       tabIndex={canEditCell ? 0 : -1}
+                      title={autoTitle}
                       align="center"
                       onClick={() => canEditCell && setSelectedCell({ metricCode: row.metricCode, dayIndex })}
                       onKeyDown={(e) => {
@@ -977,9 +1010,13 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
                         applyPaste({ metricCode: row.metricCode, dayIndex }, e.clipboardData.getData('text'));
                       }}
                       sx={{
-                        backgroundColor: row.isEditable
-                          ? (header.isWeekend ? 'action.hover' : undefined)
-                          : rowBg,
+                        backgroundColor: !row.isEditable
+                          ? rowBg
+                          : manualOverride
+                            ? '#fff1d6'
+                            : autoCell
+                              ? '#eef5ff'
+                              : (header.isWeekend ? 'action.hover' : undefined),
                         outline:
                           selectedCell?.metricCode === row.metricCode &&
                           selectedCell?.dayIndex === dayIndex &&
