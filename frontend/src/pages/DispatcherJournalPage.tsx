@@ -23,9 +23,8 @@ import {
   KeyboardArrowDown,
   KeyboardArrowUp,
   MenuBook,
-  PushPin,
+  FilterListOff,
   Search,
-  SwapVert,
   Settings,
   UploadFile,
   ViewColumn,
@@ -208,7 +207,7 @@ const DATE_WIDTH = 96;
 const DELETE_WIDTH = 28;
 const MIN_COLUMN_WIDTH = 40;
 /** Виртуализация строк: стартовая высота строки (уточняется замером) и запас строк за краем окна. */
-const DEFAULT_ROW_HEIGHT = 37;
+const DEFAULT_ROW_HEIGHT = 26;
 /** Высота жёлтой полосы дня (уточняется замером) и запас отрисовки за краем окна, px. */
 const DEFAULT_BAND_HEIGHT = 28;
 const OVERSCAN_PX = 720;
@@ -361,6 +360,9 @@ function DateCell({ value, title, onPick }: { value: string; title?: string; onP
     />
   );
 }
+
+/** Своя сортировка: порядок id строк и по какой колонке сортировали последний раз (значок в заголовке). */
+type PersonalOrder = { ids: string[]; by: { field: string; direction: 'asc' | 'desc' } | null };
 
 type Message = { severity: 'error' | 'success'; text: string } | null;
 
@@ -723,23 +725,28 @@ export default function DispatcherJournalPage() {
   // переставляет строки и запоминает порядок — после снятия фильтра отсортированный
   // кусок остаётся на месте. Общий порядок коллег не меняется.
   const orderStorageKey = `dj-order-v1:${userKey}:${viewMonth}`;
-  const loadPersonalOrder = (key: string): string[] | null => {
-    const saved = loadSortState<unknown>(key, null);
-    return Array.isArray(saved) && saved.length ? saved.filter((id): id is string => typeof id === 'string') : null;
+  const loadPersonalOrder = (key: string): PersonalOrder | null => {
+    const saved = loadSortState<unknown>(key, null) as { ids?: unknown; by?: PersonalOrder['by'] } | unknown[] | null;
+    const rawIds = Array.isArray(saved) ? saved : saved?.ids;
+    const ids = Array.isArray(rawIds) ? rawIds.filter((id): id is string => typeof id === 'string') : [];
+    if (!ids.length) return null;
+    const by = !Array.isArray(saved) && saved?.by?.field ? saved.by : null;
+    return { ids, by };
   };
-  const [personalOrderState, setPersonalOrderState] = useState(() => ({ key: orderStorageKey, order: loadPersonalOrder(orderStorageKey) }));
+  const [personalOrderState, setPersonalOrderState] = useState(() => ({ key: orderStorageKey, value: loadPersonalOrder(orderStorageKey) }));
   if (personalOrderState.key !== orderStorageKey) {
-    setPersonalOrderState({ key: orderStorageKey, order: loadPersonalOrder(orderStorageKey) });
+    setPersonalOrderState({ key: orderStorageKey, value: loadPersonalOrder(orderStorageKey) });
   }
-  const personalOrder = personalOrderState.key === orderStorageKey ? personalOrderState.order : null;
-  const personalOrderRef = useRef(personalOrder);
-  personalOrderRef.current = personalOrder;
+  const personalSort = personalOrderState.key === orderStorageKey ? personalOrderState.value : null;
+  const personalOrder = personalSort?.ids ?? null;
+  const personalSortRef = useRef(personalSort);
+  personalSortRef.current = personalSort;
   const orderStorageKeyRef = useRef(orderStorageKey);
   orderStorageKeyRef.current = orderStorageKey;
-  const setPersonalOrder = useCallback((order: string[] | null) => {
+  const setPersonalSort = useCallback((value: PersonalOrder | null) => {
     const key = orderStorageKeyRef.current;
-    setPersonalOrderState({ key, order });
-    saveSortState(key, order);
+    setPersonalOrderState({ key, value });
+    saveSortState(key, value);
   }, []);
   // ручной порядок меняется только на «чистой» таблице: при своей сортировке, фильтре или поиске место строки неоднозначно
   const canDragRows = !personalOrder && activeFilterCount === 0 && !searchQuery;
@@ -1070,7 +1077,7 @@ export default function DispatcherJournalPage() {
     /** массовое действие (вставка столбиком, протягивание) — отменяется целиком */
     | { kind: 'multi'; patches: Array<{ id: string; before: DispatcherOrderPatch }>; created: string[] }
     /** своя сортировка — возвращается прежний порядок */
-    | { kind: 'order'; before: string[] | null };
+    | { kind: 'order'; before: PersonalOrder | null };
   const undoStackRef = useRef<UndoEntry[]>([]);
   const pushUndo = (entry: UndoEntry) => {
     undoStackRef.current.push(entry);
@@ -1184,7 +1191,7 @@ export default function DispatcherJournalPage() {
       });
       setMessage({ severity: 'success', text: 'Вставка / протягивание отменены' });
     } else if (entry.kind === 'order') {
-      setPersonalOrder(entry.before);
+      setPersonalSort(entry.before);
       setMessage({ severity: 'success', text: 'Сортировка отменена' });
     } else if (entry.kind === 'create') {
       const row = rowsRef.current.find((item) => item.id === entry.id);
@@ -1195,19 +1202,25 @@ export default function DispatcherJournalPage() {
       void createRow(orderDate, fields, { skipUndo: true });
       setMessage({ severity: 'success', text: 'Строка восстановлена' });
     }
-  }, [createRow, deleteRow, patchRow, setPersonalOrder]);
+  }, [createRow, deleteRow, patchRow, setPersonalSort]);
 
   /** Сортировка из меню колонки: один раз, у этого сотрудника, в пределах видимых (отфильтрованных) строк. */
   const sortOnce = (field: string, direction: 'asc' | 'desc') => {
-    const before = personalOrderRef.current;
-    const next = sortWithinSlots(
+    const before = personalSortRef.current;
+    const ids = sortWithinSlots(
       orderedRowsRef.current,
       displayRowsRef.current.map((row) => row.id),
       (list) => sortRows(list, { field, direction }, sortValue),
     );
     pushUndo({ kind: 'order', before });
-    setPersonalOrder(next);
-    setMessage({ severity: 'success', text: 'Отсортировано — только у вас. Вернуть общий порядок: плашка сверху или Ctrl+Z' });
+    setPersonalSort({ ids, by: { field, direction } });
+  };
+
+  /** Общий порядок строк вместо своей сортировки (из меню колонки или «Настроек»). */
+  const resetPersonalSort = () => {
+    if (!personalSortRef.current) return;
+    pushUndo({ kind: 'order', before: personalSortRef.current });
+    setPersonalSort(null);
   };
 
   /** «Добавить строку выше/ниже» из меню строки: пустая строка той же даты рядом. */
@@ -1220,13 +1233,13 @@ export default function DispatcherJournalPage() {
       : row.position + (after ? 1 : -1);
     const created = await createRow(row.orderDate, { position, status: null });
     if (!created) return;
-    const order = personalOrderRef.current;
-    if (order) {
-      const without = order.filter((id) => id !== created.id);
+    const current = personalSortRef.current;
+    if (current) {
+      const without = current.ids.filter((id) => id !== created.id);
       const at = without.indexOf(row.id);
       if (at >= 0) {
         without.splice(at + (after ? 1 : 0), 0, created.id);
-        setPersonalOrder(without);
+        setPersonalSort({ ...current, ids: without });
       }
     }
     pendingFocusRef.current = { rowId: created.id };
@@ -1900,6 +1913,9 @@ export default function DispatcherJournalPage() {
             onClick={(event) => setFilterMenu({ field: key, anchor: event.currentTarget })}
           >
             <span>{title}</span>
+            {personalSort?.by?.field === key && (
+              <span className={`dj-sort-ind is-${personalSort.by.direction}`} title="Своя сортировка по этой колонке" aria-hidden="true" />
+            )}
           </button>
           <button
             type="button"
@@ -2032,32 +2048,6 @@ export default function DispatcherJournalPage() {
             }}
             sx={{ width: 230 }}
           />
-          {activeFilterCount > 0 && (
-            <button type="button" className="dj-filter-chip" onClick={() => applyFilters(() => ({}))}>
-              <FilterList sx={{ fontSize: 14 }} />
-              Фильтры: {activeFilterCount} · показано {displayRows.length} из {rows.length} · сбросить
-            </button>
-          )}
-          {personalOrder && (
-            <button
-              type="button"
-              className="dj-filter-chip"
-              title="Сортировка видна только вам. Сбросить — вернуть общий порядок строк"
-              onClick={() => {
-                pushUndo({ kind: 'order', before: personalOrderRef.current });
-                setPersonalOrder(null);
-              }}
-            >
-              <SwapVert sx={{ fontSize: 14 }} />
-              Своя сортировка · сбросить
-            </button>
-          )}
-          {pinnedUntil && (
-            <button type="button" className="dj-filter-chip dj-filter-chip--pin" onClick={() => setPinnedUntil(null)}>
-              <PushPin sx={{ fontSize: 14 }} />
-              Закреплены столбцы · открепить
-            </button>
-          )}
           <div className={`dj-formula${activeCell ? '' : ' dj-formula--idle'}`}>
             <div className="dj-formula__box">
               <span className="dj-formula__label" title={activeTitle}>
@@ -2285,7 +2275,7 @@ export default function DispatcherJournalPage() {
         )}
         {rows.length > 0 && !displayRows.length && (
           <div className="dj-empty">
-            {searchQuery ? `По запросу «${search.trim()}» в этом месяце ничего не найдено` : 'Все заявки скрыты фильтрами — сбросьте фильтры в панели сверху'}
+            {searchQuery ? `По запросу «${search.trim()}» в этом месяце ничего не найдено` : 'Все заявки скрыты фильтрами — «Настройки» → «Сбросить фильтры и сортировку»'}
           </div>
         )}
       </div>
@@ -2407,6 +2397,8 @@ export default function DispatcherJournalPage() {
           hidden={filters[filterMenu.field] ?? []}
           isPinnedUntilHere={pinnedUntil === filterMenu.field}
           onSort={(direction) => sortOnce(filterMenu.field, direction)}
+          sortedDirection={personalSort?.by?.field === filterMenu.field ? personalSort.by.direction : null}
+          onResetSort={personalSort ? resetPersonalSort : undefined}
           onApply={(hidden) => applyFilters((prev) => {
             const next = { ...prev };
             if (hidden.length) next[filterMenu.field] = hidden;
@@ -2443,6 +2435,17 @@ export default function DispatcherJournalPage() {
         >
           <ListItemIcon><MenuBook fontSize="small" /></ListItemIcon>
           <ListItemText primary="Справочники" />
+        </MenuItem>
+        <MenuItem
+          disabled={!personalSort && activeFilterCount === 0}
+          onClick={() => {
+            resetPersonalSort();
+            applyFilters(() => ({}));
+            setSettingsAnchor(null);
+          }}
+        >
+          <ListItemIcon><FilterListOff fontSize="small" /></ListItemIcon>
+          <ListItemText primary="Сбросить фильтры и сортировку" />
         </MenuItem>
         {canViewHistory && (
           <MenuItem

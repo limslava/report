@@ -22,6 +22,9 @@ export default function EditableCell({ value, multiline, format, onSave }: Edita
   // режим в ref — blur, пришедший сразу после Enter/Tab, не должен сохранять второй раз
   const modeRef = useRef<Mode>('view');
   const caretToEndRef = useRef(false);
+  // многострочная ячейка: вне правки — однострочное поле с «…», в правке — раскрытое поле поверх таблицы.
+  // Поле меняется на лету, поэтому фокус переносим сами
+  const refocusRef = useRef(false);
   const fieldRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
   const editing = mode !== 'view';
 
@@ -31,11 +34,16 @@ export default function EditableCell({ value, multiline, format, onSave }: Edita
 
   useLayoutEffect(() => {
     const field = fieldRef.current;
-    if (!field || !editing || !caretToEndRef.current) return;
+    if (!field) return;
+    if (multiline && (editing || refocusRef.current) && document.activeElement !== field) {
+      refocusRef.current = false;
+      field.focus({ preventScroll: true });
+    }
+    if (!editing || !caretToEndRef.current) return;
     caretToEndRef.current = false;
     const end = field.value.length;
     field.setSelectionRange(end, end);
-  }, [editing, mode]);
+  }, [editing, mode, multiline]);
 
   const startEdit = (next: Exclude<Mode, 'view'>, initial?: string) => {
     if (initial !== undefined) setDraft(initial);
@@ -83,6 +91,7 @@ export default function EditableCell({ value, multiline, format, onSave }: Edita
     }
     if (event.key === 'Escape') {
       event.preventDefault();
+      refocusRef.current = true;
       finish(false);
       return;
     }
@@ -109,11 +118,12 @@ export default function EditableCell({ value, multiline, format, onSave }: Edita
     }
   };
 
-  const shown = editing ? draft : (format ? format(draft) : draft);
+  // вне правки переносы строк показываем пробелом: ячейка однострочная, полный текст — в строке значения
+  const shown = editing ? draft : (format ? format(draft) : draft.replace(/\s*\n\s*/g, ' '));
   const common = {
     value: shown,
     readOnly: !editing,
-    title: !editing && draft.length > (multiline ? 40 : 14) ? draft : undefined,
+    title: !editing && draft.length > 14 ? draft : undefined,
     onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       if (modeRef.current !== 'view') setDraft(event.target.value);
     },
@@ -124,14 +134,16 @@ export default function EditableCell({ value, multiline, format, onSave }: Edita
     onKeyDown,
   };
 
-  if (multiline) {
+  if (multiline && editing) {
     return (
-      <textarea
-        ref={fieldRef}
-        className={`dj-cell-textarea${editing ? ' is-editing' : ''}`}
-        rows={2}
-        {...common}
-      />
+      <span className="dj-multi-edit">
+        <textarea
+          ref={fieldRef}
+          className="dj-cell-textarea is-editing"
+          rows={3}
+          {...common}
+        />
+      </span>
     );
   }
   return <input ref={fieldRef} className={`dj-cell-input${editing ? ' is-editing' : ''}`} {...common} />;
