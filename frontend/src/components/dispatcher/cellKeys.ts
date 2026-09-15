@@ -9,9 +9,15 @@ export type CellNavDirection = 'up' | 'down' | 'left' | 'right' | 'next' | 'prev
 
 export const CELL_NAV_EVENT = 'dj-cell-nav';
 
-/** Попросить таблицу перевести выделение из этой ячейки в соседнюю. */
-export const requestCellNav = (from: HTMLElement, direction: CellNavDirection): void => {
-  from.dispatchEvent(new CustomEvent<{ direction: CellNavDirection }>(CELL_NAV_EVENT, { bubbles: true, detail: { direction } }));
+export type CellNavDetail = { direction: CellNavDirection; extend: boolean };
+
+/**
+ * Попросить таблицу перевести выделение из этой ячейки в соседнюю.
+ * extend (Shift+стрелка) — не переходить, а расширить выделенный диапазон.
+ */
+export const requestCellNav = (from: HTMLElement, direction: CellNavDirection, extend = false): void => {
+  const detail: CellNavDetail = { direction, extend: extend && direction !== 'next' && direction !== 'prev' };
+  from.dispatchEvent(new CustomEvent<CellNavDetail>(CELL_NAV_EVENT, { bubbles: true, detail }));
 };
 
 /** Символ, с которого начинается ввод в выделенную ячейку (буква, цифра, знак). */

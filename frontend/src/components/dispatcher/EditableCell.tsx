@@ -85,7 +85,7 @@ export default function EditableCell({ value, multiline, format, onSave }: Edita
       const direction = navDirectionOf(event);
       if (direction) {
         event.preventDefault();
-        requestCellNav(element, direction);
+        requestCellNav(element, direction, event.shiftKey);
       }
       return;
     }

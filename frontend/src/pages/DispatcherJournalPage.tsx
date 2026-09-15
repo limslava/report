@@ -63,7 +63,14 @@ import {
 } from '../utils/tableColumns';
 import ListCell from '../components/dispatcher/ListCell';
 import EditableCell from '../components/dispatcher/EditableCell';
-import { CELL_NAV_EVENT, navDirectionOf, requestCellNav, type CellNavDirection } from '../components/dispatcher/cellKeys';
+import {
+  CELL_NAV_EVENT,
+  isPrintableKey,
+  navDirectionOf,
+  requestCellNav,
+  type CellNavDetail,
+  type CellNavDirection,
+} from '../components/dispatcher/cellKeys';
 import TimeCell from '../components/dispatcher/TimeCell';
 import ColumnFilterPopover, { EMPTY_FILTER_VALUE } from '../components/dispatcher/ColumnFilterPopover';
 import DispatcherDictionariesDialog from '../components/dispatcher/DispatcherDictionariesDialog';
@@ -74,17 +81,20 @@ import {
   amountWithoutVat,
   applyPersonalOrder,
   buildOrderText,
+  cellKey,
   datesAreGrouped,
   formatFinance,
   formatMoney,
   isCompletedStatus,
   normalizeTimeInput,
   parseClipboardGrid,
+  rangeCellKeys,
   seriesValue,
   personKey,
   plateKey,
   shortPersonName,
   sortWithinSlots,
+  summarizeSelection,
   textColorFor,
 } from '../components/dispatcher/dispatcherJournalUtils';
 import '../styles/dispatcher-journal.css';
@@ -347,7 +357,7 @@ function DateCell({ value, title, onPick }: { value: string; title?: string; onP
           const direction = navDirectionOf(event);
           if (direction) {
             event.preventDefault();
-            requestCellNav(element, direction);
+            requestCellNav(element, direction, event.shiftKey);
           }
           return;
         }
@@ -363,6 +373,10 @@ function DateCell({ value, title, onPick }: { value: string; title?: string; onP
 
 /** Своя сортировка: порядок id строк и по какой колонке сортировали последний раз (значок в заголовке). */
 type PersonalOrder = { ids: string[]; by: { field: string; direction: 'asc' | 'desc' } | null };
+
+type CellRef = { rowId: string; field: string };
+type CellSelection = { anchor: CellRef | null; focus: CellRef | null; extra: string[] };
+const EMPTY_SELECTION: CellSelection = { anchor: null, focus: null, extra: [] };
 
 type Message = { severity: 'error' | 'success'; text: string } | null;
 
@@ -431,6 +445,11 @@ export default function DispatcherJournalPage() {
   // rowId = null — нижняя строка новой заявки
   const [activeCell, setActiveCell] = useState<{ rowId: string | null; field: string } | null>(null);
   const [fillRange, setFillRange] = useState<{ field: string; ids: Set<string> } | null>(null);
+  // выделение нескольких ячеек, как в google: Shift+клик / Shift+стрелки — диапазон от активной
+  // ячейки (anchor) до focus, Ctrl/⌘+клик — отдельные ячейки (extra)
+  const [cellSelection, setCellSelection] = useState<CellSelection>(EMPTY_SELECTION);
+  const cellSelectionRef = useRef(cellSelection);
+  cellSelectionRef.current = cellSelection;
 
   const userKey = user?.id ?? 'anonymous';
 
@@ -836,6 +855,76 @@ export default function DispatcherJournalPage() {
   const displayRowsRef = useRef(displayRows);
   displayRowsRef.current = displayRows;
 
+  const selectedKeys = useMemo(() => {
+    const { anchor, focus, extra } = cellSelection;
+    const keys = new Set(extra);
+    if (anchor && focus) {
+      rangeCellKeys(anchor, focus, displayRows.map((row) => row.id), [DATE_KEY, ...visibleColumns.map((column) => column.field)])
+        .forEach((key) => keys.add(key));
+    }
+    return keys;
+  }, [cellSelection, displayRows, visibleColumns]);
+  const selectedKeysRef = useRef(selectedKeys);
+  selectedKeysRef.current = selectedKeys;
+  const multiSelected = selectedKeys.size > 1;
+
+  /** Текст ячейки как в таблице (для копирования и итогов выделения). */
+  const cellText = useCallback((rowId: string | null, field: string): string => {
+    const row = rowId ? rowsRef.current.find((item) => item.id === rowId) : null;
+    if (!row) return '';
+    if (field === DATE_KEY) return formatDateFull(row.orderDate);
+    const column = COLUMN_BY_KEY.get(field);
+    return column ? columnText(row, column) : '';
+  }, []);
+
+  // итоги выделения в углу таблицы: сколько ячеек, сколько заполнено, сумма и среднее чисел
+  const selectionSummary = useMemo(() => {
+    if (!multiSelected) return null;
+    const keys = [...selectedKeys];
+    const texts = keys.map((key) => {
+      const [rowId, field] = key.split('|');
+      return field === DATE_KEY ? '' : cellText(rowId, field);
+    });
+    const summary = summarizeSelection(texts);
+    const numericFields = keys
+      .map((key) => key.split('|')[1])
+      .filter((field, index) => field !== DATE_KEY && summarizeSelection([texts[index]]).numbers > 0);
+    const money = numericFields.length > 0
+      && numericFields.every((field) => FINANCE_FIELDS.has(field) || field === 'amountWithoutVat');
+    const format = (value: number) => (money
+      ? formatFinance(value.toFixed(2))
+      : value.toLocaleString('ru-RU', { maximumFractionDigits: 2 }));
+    return {
+      count: keys.length,
+      filled: summary.filled,
+      sum: summary.numbers ? format(summary.sum) : null,
+      average: summary.average !== null ? format(summary.average) : null,
+    };
+    // rows: пересчёт итогов после правок значений
+  }, [cellText, multiSelected, rows, selectedKeys]);
+
+  /** Прямоугольник выделенных ячеек текстом для Excel/google (невыделенные внутри — пустые). */
+  const selectionAsTsv = useCallback((): string => {
+    const rowIds = displayRowsRef.current.map((row) => row.id);
+    const fields = [DATE_KEY, ...visibleColumnsRef.current.map((column) => column.field as string)];
+    const cells = [...selectedKeysRef.current].map((key) => {
+      const [rowId, field] = key.split('|');
+      return { rowId, field, row: rowIds.indexOf(rowId), col: fields.indexOf(field) };
+    }).filter((cell) => cell.row >= 0 && cell.col >= 0);
+    if (!cells.length) return '';
+    const rowNumbers = [...new Set(cells.map((cell) => cell.row))].sort((a, b) => a - b);
+    const minCol = Math.min(...cells.map((cell) => cell.col));
+    const maxCol = Math.max(...cells.map((cell) => cell.col));
+    return rowNumbers.map((rowNumber) => {
+      const line: string[] = [];
+      for (let col = minCol; col <= maxCol; col += 1) {
+        const selected = selectedKeysRef.current.has(cellKey(rowIds[rowNumber], fields[col]));
+        line.push(selected ? cellText(rowIds[rowNumber], fields[col]).replace(/\t/g, ' ').replace(/\r?\n/g, ' ') : '');
+      }
+      return line.join('\t');
+    }).join('\n');
+  }, [cellText]);
+
   // возврат в реестр: прокручиваем к строке, на которой остановились (один раз после загрузки месяца)
   // высота строк уточняется замером уже после первой прокрутки — поэтому ещё ~1,5 с
   // подправляем прокрутку к той же строке, пока раскладка не устоится
@@ -924,19 +1013,45 @@ export default function DispatcherJournalPage() {
     }, 80);
   }, [focusCell]);
 
+  /** Shift+стрелка: край диапазона сдвигается на ячейку, активная ячейка остаётся на месте. */
+  const extendSelection = useCallback((origin: CellRef, direction: CellNavDirection) => {
+    const rowIds = displayRowsRef.current.map((row) => row.id);
+    const fields = [DATE_KEY, ...visibleColumnsRef.current.map((column) => column.field as string)];
+    const current = cellSelectionRef.current;
+    const anchor = current.anchor ?? origin;
+    const from = current.focus ?? anchor;
+    let row = rowIds.indexOf(from.rowId);
+    let col = fields.indexOf(from.field);
+    if (row < 0 || col < 0) return;
+    if (direction === 'up') row = Math.max(0, row - 1);
+    if (direction === 'down') row = Math.min(rowIds.length - 1, row + 1);
+    if (direction === 'left') col = Math.max(0, col - 1);
+    if (direction === 'right') col = Math.min(fields.length - 1, col + 1);
+    const focus = { rowId: rowIds[row], field: fields[col] };
+    setCellSelection({ anchor, focus, extra: [] });
+    const wrap = wrapRef.current;
+    const target = wrap?.querySelector(`tr[data-row-id="${focus.rowId}"] td[data-field="${focus.field}"]`) as HTMLElement | null;
+    if (target) keepCellVisible(target);
+    else if (wrap) wrap.scrollTop += (direction === 'up' ? -1 : 1) * navLayoutRef.current.rowHeight * zoomRef.current;
+  }, [keepCellVisible]);
+
   useEffect(() => {
     const tbody = tbodyRef.current;
     if (!tbody) return undefined;
     const onNav = (event: Event) => {
-      const { direction } = (event as CustomEvent<{ direction: CellNavDirection }>).detail;
+      const { direction, extend } = (event as CustomEvent<CellNavDetail>).detail;
       const td = (event.target as HTMLElement).closest('td[data-field]') as HTMLElement | null;
       const tr = td?.closest('tr') as HTMLElement | null;
       if (!td || !tr) return;
+      if (extend && tr.dataset.rowId) {
+        extendSelection({ rowId: tr.dataset.rowId, field: td.dataset.field ?? '' }, direction);
+        return;
+      }
       moveSelection(tr, td.dataset.field ?? '', direction);
     };
     tbody.addEventListener(CELL_NAV_EVENT, onNav);
     return () => tbody.removeEventListener(CELL_NAV_EVENT, onNav);
-  }, [moveSelection]);
+  }, [extendSelection, moveSelection]);
 
   // новая строка из меню появилась в таблице — курсор в её первую ячейку
   useEffect(() => {
@@ -1223,6 +1338,25 @@ export default function DispatcherJournalPage() {
     setPersonalSort(null);
   };
 
+  /** Delete / вырезание при нескольких выделенных ячейках — очищаются все (одно действие для Ctrl+Z). */
+  const clearSelectedCellsRef = useRef<() => void>(() => undefined);
+  const clearSelectedCells = () => {
+    const byRow = new Map<string, DispatcherOrderPatch>();
+    selectedKeysRef.current.forEach((key) => {
+      const [rowId, field] = key.split('|');
+      if (field === DATE_KEY) return;
+      const column = COLUMN_BY_KEY.get(field);
+      if (!column || column.kind === 'computed') return;
+      const patch = cellPatchFromText(field, '');
+      if (patch) byRow.set(rowId, { ...(byRow.get(rowId) ?? {}), ...patch });
+    });
+    const total = selectedKeysRef.current.size;
+    void applyBulkChanges([...byRow].map(([id, patch]) => ({ id, patch })), []).then(({ patched }) => {
+      if (patched) setMessage({ severity: 'success', text: `Очищено ячеек: ${total} (Ctrl+Z — отменить)` });
+    });
+  };
+  clearSelectedCellsRef.current = clearSelectedCells;
+
   /** «Добавить строку выше/ниже» из меню строки: пустая строка той же даты рядом. */
   const insertRowNear = async (row: DispatcherOrderRow, after: boolean) => {
     const ordered = sortByDate(rowsRef.current);
@@ -1375,6 +1509,7 @@ export default function DispatcherJournalPage() {
     const escHandler = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setSelectedRowId(null);
+        setCellSelection((prev) => (prev.focus || prev.extra.length ? { anchor: prev.anchor, focus: null, extra: [] } : prev));
         return;
       }
       if ((event.ctrlKey || event.metaKey) && !event.shiftKey) {
@@ -1405,6 +1540,12 @@ export default function DispatcherJournalPage() {
 
     const copyHandler = (event: ClipboardEvent) => {
       if (inField(event.target)) return;
+      if (selectedKeysRef.current.size > 1 && event.clipboardData) {
+        event.preventDefault();
+        event.clipboardData.setData('text/plain', selectionAsTsv());
+        setMessage({ severity: 'success', text: `Скопировано ячеек: ${selectedKeysRef.current.size}` });
+        return;
+      }
       const cell = selectedCell(event.target);
       if (cell && event.clipboardData) {
         event.preventDefault();
@@ -1420,6 +1561,12 @@ export default function DispatcherJournalPage() {
 
     const cutHandler = (event: ClipboardEvent) => {
       if (inField(event.target)) return;
+      if (selectedKeysRef.current.size > 1 && event.clipboardData) {
+        event.preventDefault();
+        event.clipboardData.setData('text/plain', selectionAsTsv());
+        clearSelectedCellsRef.current();
+        return;
+      }
       const cell = selectedCell(event.target);
       if (cell && event.clipboardData) {
         event.preventDefault();
@@ -1524,7 +1671,7 @@ export default function DispatcherJournalPage() {
       document.removeEventListener('cut', cutHandler);
       document.removeEventListener('paste', pasteHandler);
     };
-  }, [applyBulkChanges, applyTsvLine, cellPatchFromText, createRow, deleteRow, patchRow, rowToTsv, undoLast]);
+  }, [applyBulkChanges, applyTsvLine, cellPatchFromText, createRow, deleteRow, patchRow, rowToTsv, selectionAsTsv, undoLast]);
 
   // ── «ручка» протягивания у активной ячейки (правый нижний угол) ──
   const [fillHandlePos, setFillHandlePos] = useState<{ left: number; top: number } | null>(null);
@@ -1731,13 +1878,13 @@ export default function DispatcherJournalPage() {
     const direction = navDirectionOf(event);
     if (!direction) return;
     event.preventDefault();
-    requestCellNav(event.currentTarget, direction);
+    requestCellNav(event.currentTarget, direction, event.shiftKey);
   };
 
   const renderColumnCell = (row: DispatcherOrderRow, column: ColumnDef) => {
     const key = column.field;
     const pin = pinStyle(key);
-    const pinCls = `${pinClass(key)}${fillRange?.field === key && fillRange.ids.has(row.id) ? ' dj-fill-target' : ''}${activeCell?.rowId === row.id && activeCell.field === key ? ' dj-cell--active' : ''}`;
+    const pinCls = `${pinClass(key)}${fillRange?.field === key && fillRange.ids.has(row.id) ? ' dj-fill-target' : ''}${activeCell?.rowId === row.id && activeCell.field === key ? ' dj-cell--active' : ''}${multiSelected && selectedKeys.has(cellKey(row.id, key)) ? ' dj-cell--selected' : ''}`;
     if (column.kind === 'status') {
       return (
         <td key={key} data-field={key} className={`dj-status-cell${pinCls}`} style={pin}>
@@ -1779,7 +1926,7 @@ export default function DispatcherJournalPage() {
             const direction = navDirectionOf(event);
             if (!direction) return;
             event.preventDefault();
-            requestCellNav(event.currentTarget, direction);
+            requestCellNav(event.currentTarget, direction, event.shiftKey);
           }}
         >
           {formatFinance(amount)}
@@ -2093,6 +2240,15 @@ export default function DispatcherJournalPage() {
         </Box>
       </Paper>
 
+      <div className="dj-table-area">
+      {selectionSummary && (
+        <div className="dj-selection-stats" aria-live="polite">
+          <span>Выделено: <b>{selectionSummary.count}</b></span>
+          {selectionSummary.filled !== selectionSummary.count && <span>Заполнено: <b>{selectionSummary.filled}</b></span>}
+          {selectionSummary.sum !== null && <span>Сумма: <b>{selectionSummary.sum}</b></span>}
+          {selectionSummary.average !== null && <span>Среднее: <b>{selectionSummary.average}</b></span>}
+        </div>
+      )}
       <div className="dj-table-wrap" ref={wrapRef} onScroll={handleWrapScroll}>
         {fillHandlePos && (
           <div
@@ -2132,6 +2288,53 @@ export default function DispatcherJournalPage() {
               if (!cell || !rowElement) return;
               const next = { rowId: rowElement.dataset.rowId ?? null, field: cell.dataset.field ?? '' };
               setActiveCell((prev) => (prev?.rowId === next.rowId && prev?.field === next.field ? prev : next));
+              // перешли в другую ячейку — выделение начинается с неё заново
+              setCellSelection((prev) => (
+                prev.anchor?.rowId === next.rowId && prev.anchor?.field === next.field && !prev.focus && !prev.extra.length
+                  ? prev
+                  : { anchor: next.rowId ? { rowId: next.rowId, field: next.field } : null, focus: null, extra: [] }
+              ));
+            }}
+            onMouseDownCapture={(event) => {
+              if (event.button !== 0) return;
+              const cell = (event.target as HTMLElement).closest('td[data-field]') as HTMLElement | null;
+              const rowElement = cell?.closest('tr') as HTMLElement | null;
+              const rowId = rowElement?.dataset.rowId;
+              if (!cell || !rowId) return;
+              const ref = { rowId, field: cell.dataset.field ?? '' };
+              const withMeta = event.ctrlKey || event.metaKey;
+              if (!event.shiftKey && !withMeta) {
+                const current = cellSelectionRef.current;
+                if (current.focus || current.extra.length) setCellSelection({ anchor: ref, focus: null, extra: [] });
+                return;
+              }
+              if ((event.target as HTMLElement).closest('.is-editing')) return;
+              // фокус остаётся на активной ячейке — от неё и строится выделение
+              event.preventDefault();
+              const active = activeCellRef.current;
+              const base = active?.rowId ? { rowId: active.rowId, field: active.field } : ref;
+              if (event.shiftKey) {
+                setCellSelection((prev) => ({ anchor: prev.anchor ?? base, focus: ref, extra: withMeta ? prev.extra : [] }));
+                return;
+              }
+              const keys = new Set(selectedKeysRef.current.size ? selectedKeysRef.current : [cellKey(base.rowId, base.field)]);
+              const key = cellKey(ref.rowId, ref.field);
+              if (keys.has(key)) keys.delete(key);
+              else keys.add(key);
+              setCellSelection((prev) => ({ anchor: prev.anchor ?? base, focus: null, extra: [...keys] }));
+            }}
+            onKeyDownCapture={(event) => {
+              if (selectedKeysRef.current.size <= 1 || editingField(event.target)) return;
+              if (event.key === 'Delete' || event.key === 'Backspace') {
+                event.preventDefault();
+                event.stopPropagation();
+                clearSelectedCells();
+                return;
+              }
+              // начали править активную ячейку — выделение снимается (как в google)
+              if (event.key === 'Escape' || event.key === 'Enter' || event.key === 'F2' || isPrintableKey(event)) {
+                setCellSelection((prev) => ({ anchor: prev.anchor, focus: null, extra: [] }));
+              }
             }}
           >
             {windowStart > 0 && (
@@ -2170,6 +2373,8 @@ export default function DispatcherJournalPage() {
                   }}
                   onContextMenu={(event) => {
                     event.preventDefault();
+                    // на Mac Ctrl+клик — это выделение ячейки, а не меню строки
+                    if (event.ctrlKey && /Mac/i.test(navigator.platform)) return;
                     setSelectedRowId(row.id);
                     setContextMenu({ x: event.clientX, y: event.clientY, row });
                   }}
@@ -2217,7 +2422,7 @@ export default function DispatcherJournalPage() {
                   </td>
                   <td
                     data-field={DATE_KEY}
-                    className={`dj-date-cell${pinClass(DATE_KEY)}${fillRange?.field === DATE_KEY && fillRange.ids.has(row.id) ? ' dj-fill-target' : ''}${activeCell?.rowId === row.id && activeCell.field === DATE_KEY ? ' dj-cell--active' : ''}`}
+                    className={`dj-date-cell${pinClass(DATE_KEY)}${fillRange?.field === DATE_KEY && fillRange.ids.has(row.id) ? ' dj-fill-target' : ''}${activeCell?.rowId === row.id && activeCell.field === DATE_KEY ? ' dj-cell--active' : ''}${multiSelected && selectedKeys.has(cellKey(row.id, DATE_KEY)) ? ' dj-cell--selected' : ''}`}
                     style={pinStyle(DATE_KEY)}
                   >
                     <DateCell
@@ -2278,6 +2483,7 @@ export default function DispatcherJournalPage() {
             {searchQuery ? `По запросу «${search.trim()}» в этом месяце ничего не найдено` : 'Все заявки скрыты фильтрами — «Настройки» → «Сбросить фильтры и сортировку»'}
           </div>
         )}
+      </div>
       </div>
 
       {/* меню строки по правому клику */}

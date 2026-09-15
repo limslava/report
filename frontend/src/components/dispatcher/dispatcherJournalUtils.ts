@@ -322,3 +322,46 @@ export function datesAreGrouped(rows: Array<{ orderDate: string }>): boolean {
   }
   return true;
 }
+
+/** Ключ ячейки в выделении: «id строки|поле». */
+export const cellKey = (rowId: string, field: string): string => `${rowId}|${field}`;
+
+/**
+ * Ячейки прямоугольного диапазона (Shift+клик / Shift+стрелки) между двумя
+ * ячейками — по текущему порядку строк и колонок на экране.
+ */
+export function rangeCellKeys(
+  anchor: { rowId: string; field: string },
+  focus: { rowId: string; field: string },
+  rowIds: string[],
+  fields: string[],
+): string[] {
+  const rowA = rowIds.indexOf(anchor.rowId);
+  const rowB = rowIds.indexOf(focus.rowId);
+  const colA = fields.indexOf(anchor.field);
+  const colB = fields.indexOf(focus.field);
+  if (rowA < 0 || rowB < 0 || colA < 0 || colB < 0) return [];
+  const keys: string[] = [];
+  for (let row = Math.min(rowA, rowB); row <= Math.max(rowA, rowB); row += 1) {
+    for (let col = Math.min(colA, colB); col <= Math.max(colA, colB); col += 1) {
+      keys.push(cellKey(rowIds[row], fields[col]));
+    }
+  }
+  return keys;
+}
+
+/** Итоги выделения, как в строке состояния google: сколько заполнено, сумма и среднее чисел. */
+export function summarizeSelection(texts: string[]): { filled: number; numbers: number; sum: number; average: number | null } {
+  let filled = 0;
+  let numbers = 0;
+  let sum = 0;
+  texts.forEach((text) => {
+    if (!text.trim()) return;
+    filled += 1;
+    const value = parseAmount(text);
+    if (value === null) return;
+    numbers += 1;
+    sum += value;
+  });
+  return { filled, numbers, sum, average: numbers ? sum / numbers : null };
+}
