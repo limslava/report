@@ -17,6 +17,7 @@ import {
   deleteDispatcherDictionaryItem,
   deleteDispatcherOrder,
   deleteDispatcherStatus,
+  exportDispatcherJournalExcel,
   importDispatcherOrders,
   listDispatcherCrew,
   listDispatcherDictionaries,
@@ -95,6 +96,7 @@ router.post('/import', authorizeRole('admin'), importDispatcherOrders);
 router.get('/history', authorizeRole(...DISPATCHER_HISTORY_ROLES), listDispatcherHistory);
 router.get('/history/users', authorizeRole(...DISPATCHER_HISTORY_ROLES), listDispatcherHistoryUsers);
 router.post('/dictionaries/reorder', authorizeRole(...DISPATCHER_DICTIONARY_EDIT_ROLES), reorderDispatcherDictionary);
+router.get('/export', exportDispatcherJournalExcel);
 router.get(
   '/orders',
   [query('from').matches(/^\d{4}-\d{2}-\d{2}$/), query('to').matches(/^\d{4}-\d{2}-\d{2}$/)],

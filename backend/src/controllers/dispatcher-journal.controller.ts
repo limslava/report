@@ -22,6 +22,8 @@ import { User } from '../models/user.model';
 import { ensureDispatcherDictionaryCatalog } from '../services/dispatcher-status-seed.service';
 import { planWebSocketService } from '../services/websocket.service';
 import { requestKtkVvoAutofill } from '../services/ktk-vvo-registry-autofill.service';
+import { buildDispatcherJournalWorkbook, type ExportColor } from '../services/dispatcher-journal-export.service';
+import { buildContentDisposition } from '../utils/content-disposition';
 import {
   DISPATCHER_FINANCE_FIELDS,
   canSeeDispatcherFinance,
@@ -161,6 +163,36 @@ const withoutFinance = <T extends Record<string, unknown>>(row: T): T => {
   const copy: Record<string, unknown> = { ...row };
   DISPATCHER_FINANCE_FIELDS.forEach((field) => { copy[field] = null; });
   return copy as T;
+};
+
+/** Excel всего реестра: лист на каждый месяц; роли просмотра — без денег. */
+export const exportDispatcherJournalExcel = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const [orders, statuses, items] = await Promise.all([
+      orderRepository.find({ order: { position: 'ASC', createdAt: 'ASC' } }),
+      statusRepository.find(),
+      dictionaryRepository.find(),
+    ]);
+    const palettes: Record<string, Map<string, ExportColor>> = {
+      status: new Map(statuses.map((status) => [status.name, { color: status.color, textColor: status.textColor }])),
+    };
+    items.forEach((item) => {
+      palettes[item.kind] = palettes[item.kind] ?? new Map();
+      palettes[item.kind].set(item.name, { color: item.color, textColor: item.textColor });
+    });
+    const workbook = buildDispatcherJournalWorkbook({
+      orders: orders.map(serializeOrder),
+      palettes,
+      hideFinance: !canSeeDispatcherFinance(req.user?.role),
+    });
+    const buffer = await workbook.xlsx.writeBuffer();
+    const now = new Date(Date.now() + 10 * 3600_000).toISOString().slice(0, 10).split('-').reverse().join('.');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', buildContentDisposition(`Реестр КТК Владивосток — ${now}.xlsx`));
+    res.status(200).send(Buffer.from(buffer as ArrayBuffer));
+  } catch (error) {
+    next(error);
+  }
 };
 
 export const listDispatcherOrders = async (req: Request, res: Response, next: NextFunction) => {
