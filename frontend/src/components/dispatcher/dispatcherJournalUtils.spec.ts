@@ -18,6 +18,8 @@ import {
   datesAreGrouped,
   rangeCellKeys,
   summarizeSelection,
+  planBlockFill,
+  planPasteIntoSelection,
 } from './dispatcherJournalUtils';
 
 describe('dispatcherJournalUtils', () => {
@@ -168,5 +170,32 @@ describe('выделение ячеек', () => {
       filled: 4, numbers: 3, sum: 61800, average: 20600,
     });
     expect(summarizeSelection(['текст', ''])).toEqual({ filled: 1, numbers: 0, sum: 0, average: null });
+  });
+});
+
+describe('протягивание и вставка в выделение', () => {
+  const block = [['A1', '1'], ['A2', '2']];
+  const textAt = (row: number, col: number) => block[row]?.[col] ?? '';
+
+  it('блок из двух строк повторяется вниз', () => {
+    const plan = planBlockFill({ minRow: 0, maxRow: 1, minCol: 0, maxCol: 1 }, 4, textAt, null);
+    expect(plan.filter((cell) => cell.col === 0).map((cell) => `${cell.row}:${cell.text}`)).toEqual(['2:A1', '3:A2', '4:A1']);
+  });
+
+  it('с рядом — продолжает крайнее значение блока', () => {
+    const plan = planBlockFill({ minRow: 0, maxRow: 1, minCol: 1, maxCol: 1 }, 3, textAt, (_col, base, delta) => String(Number(base) + delta));
+    expect(plan.map((cell) => cell.text)).toEqual(['3', '4']);
+  });
+
+  it('вверх — от первой строки блока', () => {
+    const plan = planBlockFill({ minRow: 5, maxRow: 5, minCol: 0, maxCol: 0 }, 3, () => 'x', null);
+    expect(plan.map((cell) => cell.row)).toEqual([3, 4]);
+  });
+
+  it('одно значение — во все выделенные; кратная таблица — повторяется', () => {
+    const cells = [{ row: 0, col: 0 }, { row: 1, col: 0 }, { row: 2, col: 0 }, { row: 3, col: 0 }];
+    expect(planPasteIntoSelection(cells, [['v']])?.map((cell) => cell.text)).toEqual(['v', 'v', 'v', 'v']);
+    expect(planPasteIntoSelection(cells, [['a'], ['b']])?.map((cell) => cell.text)).toEqual(['a', 'b', 'a', 'b']);
+    expect(planPasteIntoSelection(cells, [['a'], ['b'], ['c']])).toBeNull();
   });
 });

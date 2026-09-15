@@ -88,6 +88,8 @@ import {
   isCompletedStatus,
   normalizeTimeInput,
   parseClipboardGrid,
+  planBlockFill,
+  planPasteIntoSelection,
   rangeCellKeys,
   seriesValue,
   personKey,
@@ -96,6 +98,7 @@ import {
   sortWithinSlots,
   summarizeSelection,
   textColorFor,
+  type GridRect,
 } from '../components/dispatcher/dispatcherJournalUtils';
 import '../styles/dispatcher-journal.css';
 
@@ -444,7 +447,7 @@ export default function DispatcherJournalPage() {
   // активная ячейка (последняя, где был курсор): строка значения сверху и «ручка» протягивания.
   // rowId = null — нижняя строка новой заявки
   const [activeCell, setActiveCell] = useState<{ rowId: string | null; field: string } | null>(null);
-  const [fillRange, setFillRange] = useState<{ field: string; ids: Set<string> } | null>(null);
+  const [fillRange, setFillRange] = useState<{ fields: Set<string>; ids: Set<string> } | null>(null);
   // выделение нескольких ячеек, как в google: Shift+клик / Shift+стрелки — диапазон от активной
   // ячейки (anchor) до focus, Ctrl/⌘+клик — отдельные ячейки (extra)
   const [cellSelection, setCellSelection] = useState<CellSelection>(EMPTY_SELECTION);
@@ -1599,10 +1602,36 @@ export default function DispatcherJournalPage() {
         // черновик правящейся ячейки сохраняется до вставки, иначе blur позже затёр бы вставленное
         if (editing) (document.activeElement as HTMLElement | null)?.blur();
         const fieldOrder = [DATE_KEY, ...visibleColumnsRef.current.map((column) => column.field as string)];
-        const startColumn = fieldOrder.indexOf(cellElement.dataset.field ?? '');
-        const isGhost = !rowElement.dataset.rowId;
         const list = displayRowsRef.current;
-        const startIndex = isGhost ? list.length : Number(rowElement.dataset.rowIndex);
+        let startColumn = fieldOrder.indexOf(cellElement.dataset.field ?? '');
+        let isGhost = !rowElement.dataset.rowId;
+        let startIndex = isGhost ? list.length : Number(rowElement.dataset.rowIndex);
+        // выделено несколько ячеек — вставка в выделение, как в google
+        if (!editing && selectedKeysRef.current.size > 1) {
+          const rowIds = list.map((item) => item.id);
+          const selected = [...selectedKeysRef.current].map((key) => {
+            const [rowId, field] = key.split('|');
+            return { row: rowIds.indexOf(rowId), col: fieldOrder.indexOf(field) };
+          }).filter((item) => item.row >= 0 && item.col >= 0);
+          const plan = planPasteIntoSelection(selected, grid);
+          if (plan) {
+            const byRow = new Map<string, DispatcherOrderPatch>();
+            plan.forEach(({ row, col, text }) => {
+              const patch = cellPatchFromText(fieldOrder[col], text);
+              if (patch) byRow.set(rowIds[row], { ...(byRow.get(rowIds[row]) ?? {}), ...patch });
+            });
+            void applyBulkChanges([...byRow].map(([id, patch]) => ({ id, patch })), []).then(({ patched }) => {
+              if (patched) setMessage({ severity: 'success', text: `Вставлено в ${plan.length} яч. (Ctrl+Z — отменить)` });
+            });
+            return;
+          }
+          // размеры не укладываются в выделение — вставляем от его левого верхнего угла
+          if (selected.length) {
+            startIndex = Math.min(...selected.map((item) => item.row));
+            startColumn = Math.min(...selected.map((item) => item.col));
+            isGhost = false;
+          }
+        }
         let lastDate = isGhost ? defaultNewDateRef.current : list[startIndex]?.orderDate ?? defaultNewDateRef.current;
         const patches: Array<{ id: string; patch: DispatcherOrderPatch }> = [];
         const creations: Array<{ date: string; patch: DispatcherOrderPatch }> = [];
@@ -1678,15 +1707,45 @@ export default function DispatcherJournalPage() {
   const activeCellRef = useRef(activeCell);
   activeCellRef.current = activeCell;
 
+  /** Что протягивается: прямоугольник выделения (Shift) или одна активная ячейка. */
+  const fillSource = useCallback((): { rect: GridRect; rowIds: string[]; fields: string[] } | null => {
+    const rowIds = displayRowsRef.current.map((row) => row.id);
+    const fields = [DATE_KEY, ...visibleColumnsRef.current.map((column) => column.field as string)];
+    const selection = cellSelectionRef.current;
+    if (selection.extra.length) return null; // разрозненные ячейки (Ctrl) не протягиваются
+    if (selection.anchor && selection.focus) {
+      const rowA = rowIds.indexOf(selection.anchor.rowId);
+      const rowB = rowIds.indexOf(selection.focus.rowId);
+      const colA = fields.indexOf(selection.anchor.field);
+      const colB = fields.indexOf(selection.focus.field);
+      if (rowA >= 0 && rowB >= 0 && colA >= 0 && colB >= 0) {
+        return {
+          rect: { minRow: Math.min(rowA, rowB), maxRow: Math.max(rowA, rowB), minCol: Math.min(colA, colB), maxCol: Math.max(colA, colB) },
+          rowIds,
+          fields,
+        };
+      }
+    }
+    const cell = activeCellRef.current;
+    if (!cell?.rowId) return null;
+    const column = cell.field !== DATE_KEY ? COLUMN_BY_KEY.get(cell.field) : null;
+    if (column && column.kind === 'computed') return null;
+    const row = rowIds.indexOf(cell.rowId);
+    const col = fields.indexOf(cell.field);
+    if (row < 0 || col < 0) return null;
+    return { rect: { minRow: row, maxRow: row, minCol: col, maxCol: col }, rowIds, fields };
+  }, []);
+
   const updateFillHandle = useCallback(() => {
     const wrap = wrapRef.current;
-    const cell = activeCellRef.current;
-    const column = cell && cell.field !== DATE_KEY ? COLUMN_BY_KEY.get(cell.field) : null;
-    if (!wrap || !cell?.rowId || (column && column.kind === 'computed')) {
+    const source = fillSource();
+    if (!wrap || !source) {
       setFillHandlePos((prev) => (prev ? null : prev));
       return;
     }
-    const td = wrap.querySelector(`tr[data-row-id="${cell.rowId}"] td[data-field="${cell.field}"]`) as HTMLElement | null;
+    const { rect, rowIds, fields } = source;
+    // квадратик — в правом нижнем углу выделения
+    const td = wrap.querySelector(`tr[data-row-id="${rowIds[rect.maxRow]}"] td[data-field="${fields[rect.maxCol]}"]`) as HTMLElement | null;
     if (!td) {
       setFillHandlePos((prev) => (prev ? null : prev));
       return;
@@ -1694,12 +1753,11 @@ export default function DispatcherJournalPage() {
     const cellRect = td.getBoundingClientRect();
     const wrapRect = wrap.getBoundingClientRect();
     const next = {
-      // квадратик садится на угол рамки активной ячейки
       left: Math.round(cellRect.right - wrapRect.left + wrap.scrollLeft - 6),
       top: Math.round(cellRect.bottom - wrapRect.top + wrap.scrollTop - 6),
     };
     setFillHandlePos((prev) => (prev && prev.left === next.left && prev.top === next.top ? prev : next));
-  }, []);
+  }, [fillSource]);
 
   useLayoutEffect(() => {
     updateFillHandle();
@@ -1718,51 +1776,58 @@ export default function DispatcherJournalPage() {
 
   /**
    * Протягивание как в Excel/google: тянем квадратик вниз (или вверх) — значение
-   * копируется в строки; с зажатым Ctrl — ряд (число в конце +1, дата +1 день).
+   * (или весь выделенный блок) повторяется в строках; с зажатым Ctrl — ряд
+   * (число в конце +1, дата +1 день) в колонках, где ряд имеет смысл.
    */
   const startFill = (event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
-    const cell = activeCellRef.current;
-    if (!cell?.rowId) return;
-    const { field } = cell;
-    const startIndex = displayRowsRef.current.findIndex((row) => row.id === cell.rowId);
-    if (startIndex < 0) return;
-    const td = wrapRef.current?.querySelector(`tr[data-row-id="${cell.rowId}"] td[data-field="${field}"]`) as HTMLElement | null;
-    const checkbox = td?.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
-    const editor = td?.querySelector('input:not([type="checkbox"]), textarea') as HTMLInputElement | HTMLTextAreaElement | null;
-    const row = displayRowsRef.current[startIndex];
-    const column = COLUMN_BY_KEY.get(field);
-    // значение берём из самой ячейки: там может быть ещё не сохранённый ввод
-    const sourceText = field === DATE_KEY
-      ? row.orderDate
-      : checkbox
-        ? (checkbox.checked ? 'да' : '')
-        : editor && !editor.readOnly
-          ? editor.value
-          : (column ? columnText(row, column) : '');
+    const source = fillSource();
+    if (!source) return;
+    const { rect, rowIds, fields } = source;
+    const rowsSnapshot = displayRowsRef.current;
+    const single = rect.minRow === rect.maxRow && rect.minCol === rect.maxCol;
+    // одна ячейка в правке: берём ещё не сохранённый ввод прямо из поля
+    let pending: string | null = null;
+    if (single) {
+      const td = wrapRef.current?.querySelector(`tr[data-row-id="${rowIds[rect.minRow]}"] td[data-field="${fields[rect.minCol]}"]`) as HTMLElement | null;
+      const editor = td?.querySelector('input:not([type="checkbox"]), textarea') as HTMLInputElement | HTMLTextAreaElement | null;
+      if (editor && !editor.readOnly && fields[rect.minCol] !== DATE_KEY) pending = editor.value;
+    }
+    const textAt = (rowIndex: number, col: number): string => {
+      if (pending !== null) return pending;
+      const item = rowsSnapshot[rowIndex];
+      const field = fields[col];
+      if (!item) return '';
+      if (field === DATE_KEY) return item.orderDate;
+      const column = COLUMN_BY_KEY.get(field);
+      if (!column) return '';
+      if (column.kind === 'checkbox') return item[column.field] ? 'да' : '';
+      return columnText(item, column);
+    };
     (document.activeElement as HTMLElement | null)?.blur();
-    let endIndex = startIndex;
+    let endIndex = rect.maxRow;
     let ctrlHeld = event.ctrlKey || event.metaKey;
+    const filledFields = new Set(fields.slice(rect.minCol, rect.maxCol + 1));
     document.body.classList.add('dj-filling');
 
     const onMove = (moveEvent: MouseEvent) => {
       const wrap = wrapRef.current;
       if (!wrap) return;
       ctrlHeld = ctrlHeld || moveEvent.ctrlKey || moveEvent.metaKey;
-      const rect = wrap.getBoundingClientRect();
-      if (moveEvent.clientY > rect.bottom - 28) wrap.scrollTop += 24;
-      else if (moveEvent.clientY < rect.top + 60) wrap.scrollTop -= 24;
-      const probeY = Math.min(Math.max(moveEvent.clientY, rect.top + 2), rect.bottom - 2);
+      const bounds = wrap.getBoundingClientRect();
+      if (moveEvent.clientY > bounds.bottom - 28) wrap.scrollTop += 24;
+      else if (moveEvent.clientY < bounds.top + 60) wrap.scrollTop -= 24;
+      const probeY = Math.min(Math.max(moveEvent.clientY, bounds.top + 2), bounds.bottom - 2);
       // elementsFromPoint: строку находим и под всплывающим сообщением/подсказкой
       const tr = document.elementsFromPoint(moveEvent.clientX, probeY)
         .map((element) => (element as HTMLElement).closest?.('tr[data-row-index]') as HTMLElement | null)
         .find(Boolean) ?? null;
       if (!tr) return;
       endIndex = Number(tr.dataset.rowIndex);
-      const from = Math.min(startIndex, endIndex);
-      const to = Math.max(startIndex, endIndex);
-      setFillRange({ field, ids: new Set(displayRowsRef.current.slice(from, to + 1).map((item) => item.id)) });
+      const from = Math.min(rect.minRow, endIndex);
+      const to = Math.max(rect.maxRow, endIndex);
+      setFillRange({ fields: filledFields, ids: new Set(rowsSnapshot.slice(from, to + 1).map((item) => item.id)) });
     };
 
     const onUp = (upEvent: MouseEvent) => {
@@ -1770,24 +1835,30 @@ export default function DispatcherJournalPage() {
       window.removeEventListener('mouseup', onUp);
       document.body.classList.remove('dj-filling');
       setFillRange(null);
-      if (endIndex === startIndex) return;
+      if (endIndex >= rect.minRow && endIndex <= rect.maxRow) return;
       // ряд (+1) — только дата и свободные колонки (№ КТК, вес, пин…); значения из
       // справочников (тип КТК, НДС, терминал), статус, водитель и время всегда копируются
-      const seriesAllowed = field === DATE_KEY || (column?.kind === 'text' && !column.list);
-      const series = seriesAllowed && (ctrlHeld || upEvent.ctrlKey || upEvent.metaKey);
-      const direction = endIndex > startIndex ? 1 : -1;
-      const patches: Array<{ id: string; patch: DispatcherOrderPatch }> = [];
-      for (let index = startIndex + direction, step = 1; direction > 0 ? index <= endIndex : index >= endIndex; index += direction, step += 1) {
-        const target = displayRowsRef.current[index];
-        if (!target) continue;
-        let text = sourceText;
-        if (series && sourceText) {
-          text = field === DATE_KEY ? addDaysYmd(sourceText, step * direction) : seriesValue(sourceText, step * direction);
+      const seriesAllowed = (col: number) => {
+        const field = fields[col];
+        if (field === DATE_KEY) return true;
+        const column = COLUMN_BY_KEY.get(field);
+        return column?.kind === 'text' && !column.list;
+      };
+      const series = ctrlHeld || upEvent.ctrlKey || upEvent.metaKey;
+      const plan = planBlockFill(rect, endIndex, textAt, series
+        ? (col, base, delta) => {
+          if (!seriesAllowed(col)) return null;
+          return fields[col] === DATE_KEY ? addDaysYmd(base, delta) : seriesValue(base, delta);
         }
-        const patch = cellPatchFromText(field, text);
-        if (patch) patches.push({ id: target.id, patch });
-      }
-      void applyBulkChanges(patches, []).then(({ patched }) => {
+        : null);
+      const byRow = new Map<string, DispatcherOrderPatch>();
+      plan.forEach(({ row, col, text }) => {
+        const target = rowsSnapshot[row];
+        if (!target) return;
+        const patch = cellPatchFromText(fields[col], text);
+        if (patch) byRow.set(target.id, { ...(byRow.get(target.id) ?? {}), ...patch });
+      });
+      void applyBulkChanges([...byRow].map(([id, patch]) => ({ id, patch })), []).then(({ patched }) => {
         if (patched) {
           setMessage({
             severity: 'success',
@@ -1795,6 +1866,16 @@ export default function DispatcherJournalPage() {
           });
         }
       });
+      // как в google: после протягивания выделена вся заполненная область
+      const top = Math.min(rect.minRow, endIndex);
+      const bottom = Math.max(rect.maxRow, endIndex);
+      if (rowIds[top] && rowIds[bottom]) {
+        setCellSelection({
+          anchor: { rowId: rowIds[top], field: fields[rect.minCol] },
+          focus: { rowId: rowIds[bottom], field: fields[rect.maxCol] },
+          extra: [],
+        });
+      }
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -1884,7 +1965,7 @@ export default function DispatcherJournalPage() {
   const renderColumnCell = (row: DispatcherOrderRow, column: ColumnDef) => {
     const key = column.field;
     const pin = pinStyle(key);
-    const pinCls = `${pinClass(key)}${fillRange?.field === key && fillRange.ids.has(row.id) ? ' dj-fill-target' : ''}${activeCell?.rowId === row.id && activeCell.field === key ? ' dj-cell--active' : ''}${multiSelected && selectedKeys.has(cellKey(row.id, key)) ? ' dj-cell--selected' : ''}`;
+    const pinCls = `${pinClass(key)}${fillRange?.fields.has(key) && fillRange.ids.has(row.id) ? ' dj-fill-target' : ''}${activeCell?.rowId === row.id && activeCell.field === key ? ' dj-cell--active' : ''}${multiSelected && selectedKeys.has(cellKey(row.id, key)) ? ' dj-cell--selected' : ''}`;
     if (column.kind === 'status') {
       return (
         <td key={key} data-field={key} className={`dj-status-cell${pinCls}`} style={pin}>
@@ -2422,7 +2503,7 @@ export default function DispatcherJournalPage() {
                   </td>
                   <td
                     data-field={DATE_KEY}
-                    className={`dj-date-cell${pinClass(DATE_KEY)}${fillRange?.field === DATE_KEY && fillRange.ids.has(row.id) ? ' dj-fill-target' : ''}${activeCell?.rowId === row.id && activeCell.field === DATE_KEY ? ' dj-cell--active' : ''}${multiSelected && selectedKeys.has(cellKey(row.id, DATE_KEY)) ? ' dj-cell--selected' : ''}`}
+                    className={`dj-date-cell${pinClass(DATE_KEY)}${fillRange?.fields.has(DATE_KEY) && fillRange.ids.has(row.id) ? ' dj-fill-target' : ''}${activeCell?.rowId === row.id && activeCell.field === DATE_KEY ? ' dj-cell--active' : ''}${multiSelected && selectedKeys.has(cellKey(row.id, DATE_KEY)) ? ' dj-cell--selected' : ''}`}
                     style={pinStyle(DATE_KEY)}
                   >
                     <DateCell
