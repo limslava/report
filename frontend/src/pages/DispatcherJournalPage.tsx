@@ -669,10 +669,18 @@ export default function DispatcherJournalPage() {
 
   // фактическая высота строки и шапки (зависят от набора колонок) — для расчёта окна
   useLayoutEffect(() => {
-    const firstRow = tbodyRef.current?.querySelector('tr[data-row-index]') as HTMLElement | null;
-    if (firstRow) {
-      const height = firstRow.getBoundingClientRect().height / zoom;
-      if (height > 10 && Math.abs(height - rowHeight) > 0.5) setRowHeight(height);
+    // высота строки — самая частая среди нарисованных строк и с порогом в 1 px: если какая-то
+    // строка на пиксель выше, замер не «прыгает» при прокрутке (иначе окно пересчитывается
+    // по кругу — React #185 «Maximum update depth», 15.09)
+    const renderedRows = tbodyRef.current?.querySelectorAll('tr[data-row-index]');
+    if (renderedRows?.length) {
+      const counts = new Map<number, number>();
+      renderedRows.forEach((row) => {
+        const height = Math.round((row as HTMLElement).getBoundingClientRect().height / zoom);
+        counts.set(height, (counts.get(height) ?? 0) + 1);
+      });
+      const [height] = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0];
+      if (height > 10 && Math.abs(height - rowHeight) >= 1) setRowHeight(height);
     }
     const firstBand = tbodyRef.current?.querySelector('tr.dj-band') as HTMLElement | null;
     if (firstBand) {
