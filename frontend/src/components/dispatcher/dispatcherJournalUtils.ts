@@ -430,3 +430,38 @@ export function planPasteIntoSelection(cells: Array<{ row: number; col: number }
     text: grid[(row - minRow) % gridRows]?.[(col - minCol) % gridCols] ?? '',
   }));
 }
+
+/** Фильтр столбца по условию (как «Фильтровать по условию» в google). */
+export type ColumnCondition =
+  | { type: 'empty' }
+  | { type: 'notEmpty' }
+  | { type: 'contains'; value: string }
+  | { type: 'notContains'; value: string }
+  /** даты YYYY-MM-DD включительно; пустая граница — без ограничения */
+  | { type: 'dateRange'; from: string; to: string };
+
+/** Условие реально что-то отбирает (пустой текст «содержит» или пустой диапазон дат — нет). */
+export function isConditionActive(condition: ColumnCondition | null | undefined): condition is ColumnCondition {
+  if (!condition) return false;
+  if (condition.type === 'contains' || condition.type === 'notContains') return Boolean(condition.value.trim());
+  if (condition.type === 'dateRange') return Boolean(condition.from || condition.to);
+  return true;
+}
+
+/** Проходит ли значение ячейки условие; для даты text — YYYY-MM-DD. */
+export function matchesCondition(text: string, condition: ColumnCondition | null | undefined): boolean {
+  if (!isConditionActive(condition)) return true;
+  const value = text.trim();
+  switch (condition.type) {
+    case 'empty': return !value;
+    case 'notEmpty': return Boolean(value);
+    case 'contains': return value.toLocaleLowerCase('ru').includes(condition.value.trim().toLocaleLowerCase('ru'));
+    case 'notContains': return !value.toLocaleLowerCase('ru').includes(condition.value.trim().toLocaleLowerCase('ru'));
+    case 'dateRange': return Boolean(value) && (!condition.from || value >= condition.from) && (!condition.to || value <= condition.to);
+    default: return true;
+  }
+}
+
+/** Ключ цвета ячейки для «Фильтровать по цвету»: цвет заливки в нижнем регистре или «none». */
+export const NO_COLOR_KEY = 'none';
+export const colorKeyOf = (background: string | null | undefined): string => (background ? background.toLowerCase() : NO_COLOR_KEY);

@@ -20,6 +20,9 @@ import {
   summarizeSelection,
   planBlockFill,
   planPasteIntoSelection,
+  matchesCondition,
+  isConditionActive,
+  colorKeyOf,
 } from './dispatcherJournalUtils';
 
 describe('dispatcherJournalUtils', () => {
@@ -197,5 +200,28 @@ describe('протягивание и вставка в выделение', () 
     expect(planPasteIntoSelection(cells, [['v']])?.map((cell) => cell.text)).toEqual(['v', 'v', 'v', 'v']);
     expect(planPasteIntoSelection(cells, [['a'], ['b']])?.map((cell) => cell.text)).toEqual(['a', 'b', 'a', 'b']);
     expect(planPasteIntoSelection(cells, [['a'], ['b'], ['c']])).toBeNull();
+  });
+});
+
+describe('фильтр по условию и цвету', () => {
+  it('пусто / не пусто / содержит / не содержит — без учёта регистра', () => {
+    expect(matchesCondition('', { type: 'empty' })).toBe(true);
+    expect(matchesCondition('  ', { type: 'notEmpty' })).toBe(false);
+    expect(matchesCondition('РЖД БИЗНЕС АКТИВ', { type: 'contains', value: 'ржд' })).toBe(true);
+    expect(matchesCondition('Хасан', { type: 'notContains', value: 'ржд' })).toBe(true);
+    expect(matchesCondition('Хасан', { type: 'contains', value: '  ' })).toBe(true);
+  });
+
+  it('дата с … по … включительно, пустая граница — без ограничения', () => {
+    const range = { type: 'dateRange' as const, from: '2026-09-10', to: '2026-09-15' };
+    expect(['2026-09-09', '2026-09-10', '2026-09-15', '2026-09-16'].map((date) => matchesCondition(date, range)))
+      .toEqual([false, true, true, false]);
+    expect(matchesCondition('2026-09-30', { type: 'dateRange', from: '2026-09-20', to: '' })).toBe(true);
+    expect(isConditionActive({ type: 'dateRange', from: '', to: '' })).toBe(false);
+  });
+
+  it('ключ цвета', () => {
+    expect(colorKeyOf('#38761D')).toBe('#38761d');
+    expect(colorKeyOf(null)).toBe('none');
   });
 });

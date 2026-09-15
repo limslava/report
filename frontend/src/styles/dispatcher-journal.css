@@ -361,6 +361,51 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
 .dj-filter-option:hover { background: #f6f8fb; }
 .dj-filter-option__text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dj-filter-option__count { color: #9aa3b0; font-size: 11px; }
+/* разделы фильтра столбца (как в google): по цвету, по условию, по значению */
+.dj-filter-section {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  color: #3d4757;
+  padding: 5px 2px;
+  cursor: pointer;
+  text-align: left;
+}
+.dj-filter-section:hover { color: #2a78d6; }
+.dj-filter-section__dot { width: 6px; height: 6px; border-radius: 50%; background: #2a78d6; margin-left: 2px; }
+.dj-color-filter { display: flex; flex-direction: column; gap: 2px; padding: 0 2px 6px; max-height: 200px; overflow-y: auto; }
+.dj-color-filter__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  padding: 2px 6px;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.dj-color-filter__item:hover { background: #f6f8fb; }
+.dj-color-filter__item.is-selected { border-color: #2a78d6; background: #eef5ff; }
+.dj-color-filter__chip {
+  flex: 1;
+  min-width: 0;
+  padding: 1px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #5f6368;
+}
 
 .dj-filter-chip {
   display: inline-flex;
