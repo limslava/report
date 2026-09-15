@@ -268,6 +268,29 @@ export function addDaysYmd(value: string, days: number): string {
 }
 
 /**
+ * Своя сортировка сотрудника: порядок id строк. Строки, которых в сохранённом порядке нет
+ * (добавлены позже, в том числе коллегами), встают сразу за своим предыдущим соседом из общего порядка.
+ */
+export function applyPersonalOrder<T extends { id: string }>(rows: T[], order: string[] | null | undefined): T[] {
+  if (!order?.length) return rows;
+  const rank = new Map(order.map((id, index) => [id, index]));
+  let lastRank = -1;
+  const ranked = rows.map((row, index) => {
+    const known = rank.get(row.id);
+    if (known !== undefined) lastRank = known;
+    // неизвестная строка — сразу за предыдущей известной, сохраняя общий порядок между собой
+    return { row, key: known !== undefined ? known : lastRank + 0.5 + index / (rows.length * 4 + 4) };
+  });
+  return ranked.sort((a, b) => a.key - b.key).map((item) => item.row);
+}
+
+/** «№ заказа» ГГММ-NNN → число для сортировки (2609-012 → 2609000012). */
+export function orderNumberSortKey(value: string | null | undefined): number | '' {
+  const match = /^(\d{4})-(\d+)$/.exec((value ?? '').trim());
+  return match ? Number(match[1]) * 1_000_000 + Number(match[2]) : '';
+}
+
+/**
  * Сортировка «как в google» один раз: видимые строки (после фильтра) сортируются
  * между собой и встают на места, которые они занимали; скрытые остаются на своих.
  * Возвращает новый порядок id всей таблицы.

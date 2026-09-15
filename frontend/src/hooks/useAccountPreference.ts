@@ -58,14 +58,25 @@ export function useAccountPreference<T>(
   normalize: (value: unknown) => T = (value) => (value === undefined ? fallback : (value as T)),
 ): [T, (next: T | ((prev: T) => T)) => void] {
   const localKey = `${key}:${userId ?? 'anonymous'}`;
-  const [value, setValue] = useState<T>(() => {
-    const local = readLocal(localKey);
+  const initialFor = (storageKey: string): T => {
+    const local = readLocal(storageKey);
     return local.found ? normalize(local.value) : fallback;
-  });
+  };
+  // ключ может меняться (например, свой порядок строк — на каждый месяц): значение берётся заново
+  const [state, setState] = useState<{ key: string; value: T }>(() => ({ key: localKey, value: initialFor(localKey) }));
+  let value = state.value;
+  if (state.key !== localKey) {
+    value = initialFor(localKey);
+    setState({ key: localKey, value });
+  }
+  const setValue = useCallback((next: T) => setState({ key: localKey, value: next }), [localKey]);
   const valueRef = useRef(value);
   valueRef.current = value;
   const saveTimerRef = useRef<number | null>(null);
   const touchedRef = useRef(false);
+  useEffect(() => {
+    touchedRef.current = false;
+  }, [localKey]);
   const normalizeRef = useRef(normalize);
   normalizeRef.current = normalize;
 

@@ -26,6 +26,8 @@ export type DispatcherStatusOption = {
 
 export type DispatcherOrderRow = {
   id: string;
+  /** «№ заказа» ГГММ-NNN — выдаётся при заведении, не меняется */
+  orderNumber: string | null;
   orderDate: string;
   /** порядок строки внутри дня (перетаскивание) */
   position: number;

@@ -24,6 +24,15 @@ import { planWebSocketService } from '../services/websocket.service';
 import { requestKtkVvoAutofill } from '../services/ktk-vvo-registry-autofill.service';
 import { buildDispatcherJournalWorkbook, type ExportColor } from '../services/dispatcher-journal-export.service';
 import { buildContentDisposition } from '../utils/content-disposition';
+import { assignMissingDispatcherOrderNumbers } from '../services/dispatcher-order-number.service';
+
+/** Новым строкам — «№ заказа»; возвращает их уже с номером. */
+const withOrderNumbers = async (saved: DispatcherOrder[]): Promise<DispatcherOrder[]> => {
+  await assignMissingDispatcherOrderNumbers();
+  const fresh = await orderRepository.find({ where: { id: In(saved.map((order) => order.id)) } });
+  const byId = new Map(fresh.map((order) => [order.id, order]));
+  return saved.map((order) => byId.get(order.id) ?? order);
+};
 import {
   DISPATCHER_FINANCE_FIELDS,
   canSeeDispatcherFinance,
@@ -101,6 +110,7 @@ const requireDate = (value: unknown): string => {
 
 const serializeOrder = (order: DispatcherOrder) => ({
   id: order.id,
+  orderNumber: order.orderNumber ?? null,
   orderDate: order.orderDate,
   position: order.position,
   status: order.status,
@@ -263,7 +273,7 @@ export const createDispatcherOrder = async (req: Request, res: Response, next: N
         (order as any)[field] = Boolean(value);
       }
     });
-    const saved = await orderRepository.save(order);
+    const [saved] = await withOrderNumbers([await orderRepository.save(order)]);
     await recordDispatcherChanges([{ action: 'create', order: saved, userId: req.user?.id }]);
     notifyJournalChanged({ date, userId: req.user?.id });
     res.status(201).json(serializeOrder(saved));
@@ -286,7 +296,7 @@ export const createDispatcherOrdersBatch = async (req: Request, res: Response, n
       createdBy: req.user?.id ?? null,
       updatedBy: req.user?.id ?? null,
     }));
-    const saved = await orderRepository.save(orders);
+    const saved = await withOrderNumbers(await orderRepository.save(orders));
     await recordDispatcherChanges(saved.map((item) => ({ action: 'create' as const, order: item, userId: req.user?.id })));
     notifyJournalChanged({ date, userId: req.user?.id });
     res.status(201).json(saved.map(serializeOrder));
@@ -764,6 +774,7 @@ export const importDispatcherOrders = async (req: Request, res: Response, next: 
         }));
         await manager.save(chunk);
       }
+      await assignMissingDispatcherOrderNumbers(manager);
     });
     // терминалы для выпадающих списков — из импортированных заявок (если справочник ещё пуст)
     await recordDispatcherChanges([{
