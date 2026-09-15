@@ -2065,6 +2065,7 @@ export default function DispatcherJournalPage() {
           value={row[column.field]}
           multiline={column.multiline}
           format={FINANCE_FIELDS.has(column.field) ? formatFinance : undefined}
+          numeric={FINANCE_FIELDS.has(column.field)}
           onSave={(value) => patchRow(row.id, { [column.field]: value || null })}
         />
       </td>
@@ -2140,6 +2141,7 @@ export default function DispatcherJournalPage() {
         <EditableCell
           value=""
           multiline={column.multiline}
+          numeric={FINANCE_FIELDS.has(column.field)}
           onSave={(value) => { if (value) void createRow(defaultNewDate, { [column.field]: value }); }}
         />
       </td>

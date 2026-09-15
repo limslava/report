@@ -6,6 +6,8 @@ type EditableCellProps = {
   multiline?: boolean;
   /** Как показывать значение вне правки (например, формат «Финансы»); при правке — как введено. */
   format?: (value: string) => string;
+  /** денежная/числовая ячейка — по правому краю, цифры одинаковой ширины */
+  numeric?: boolean;
   onSave: (value: string) => void;
 };
 
@@ -16,7 +18,7 @@ type EditableCellProps = {
  */
 type Mode = 'view' | 'caret' | 'typed';
 
-export default function EditableCell({ value, multiline, format, onSave }: EditableCellProps) {
+export default function EditableCell({ value, multiline, format, numeric, onSave }: EditableCellProps) {
   const [draft, setDraft] = useState(value ?? '');
   const [mode, setMode] = useState<Mode>('view');
   // режим в ref — blur, пришедший сразу после Enter/Tab, не должен сохранять второй раз
@@ -146,5 +148,5 @@ export default function EditableCell({ value, multiline, format, onSave }: Edita
       </span>
     );
   }
-  return <input ref={fieldRef} className={`dj-cell-input${editing ? ' is-editing' : ''}`} {...common} />;
+  return <input ref={fieldRef} className={`dj-cell-input${numeric ? ' dj-cell-input--num' : ''}${editing ? ' is-editing' : ''}`} {...common} />;
 }
