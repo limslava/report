@@ -394,27 +394,28 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
 
 /* ячейка-список: клик выделяет, стрелка ▾ (у активной ячейки и под курсором) открывает список */
 .dj-list-cell { position: relative; display: block; }
+/* место под стрелку занято всегда — текст не прыгает и не уходит под неё, длинное обрезается «…» */
+.dj-list-cell .dj-cell-input { padding-right: 16px; text-overflow: ellipsis; }
+.dj-list-cell .dj-cell-input--chip { padding-right: 16px; }
 .dj-list-caret {
   position: absolute;
-  top: 50%;
-  right: 2px;
-  transform: translateY(-50%);
-  width: 14px;
-  height: 18px;
-  display: none;
+  top: 0;
+  bottom: 0;
+  right: 3px;
+  width: 12px;
+  display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  line-height: 1;
-  color: #6b7280;
-  background: rgba(255, 255, 255, 0.85);
-  border-radius: 3px;
+  color: #5f6368;
+  opacity: 0;
   cursor: pointer;
   user-select: none;
+  transition: opacity 0.12s;
 }
-.dj-list-caret:hover { color: #1f2733; background: #e3ebf7; }
+.dj-status-cell .dj-list-caret { right: 5px; }
 .dj-table td:hover .dj-list-caret,
-.dj-table td.dj-cell--active .dj-list-caret { display: flex; }
+.dj-table td.dj-cell--active .dj-list-caret { opacity: 0.75; }
+.dj-table td .dj-list-caret:hover { opacity: 1; }
 
 /* значение справочника с цветом — ячейка-«чип», как статус */
 .dj-cell-input--chip {

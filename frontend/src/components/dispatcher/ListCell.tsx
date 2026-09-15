@@ -192,6 +192,8 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
       <span
         className="dj-list-caret"
         aria-hidden="true"
+        // стрелка того же цвета, что текст значения: на тёмной заливке она светлая
+        style={cellStyle?.color ? { color: cellStyle.color } : undefined}
         onMouseDown={(event) => {
           event.preventDefault();
           if (document.activeElement !== inputRef.current) inputRef.current?.focus();
@@ -199,7 +201,9 @@ export default function ListCell({ value, options, colorOf, normalize, placehold
           else openList();
         }}
       >
-        ▾
+        <svg width="9" height="6" viewBox="0 0 9 6" focusable="false">
+          <path d="M1 1.2 4.5 4.7 8 1.2" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </span>
       {open && rect && filtered.length > 0 && createPortal(
         <div
