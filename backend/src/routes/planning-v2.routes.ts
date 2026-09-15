@@ -13,6 +13,7 @@ import {
   updatePlanningBasePlan,
   getPlanningValuesByMonth,
   exportPlanningDailyExcel,
+  exportKtkVvoSummaryExcel,
   exportPlanningTotalsExcel,
 } from '../controllers/planning-v2.controller';
 
@@ -41,6 +42,7 @@ router.get('/reports/segment', getPlanningSegmentReport);
 router.get('/reports/summary', getPlanningSummaryReport);
 router.get('/reports/tech-dashboard', authorizeRole('admin', 'director', 'general_director', 'financer', 'head_sales'), getPlanningTechDashboard);
 router.get('/exports/daily', exportPlanningDailyExcel);
+router.get('/exports/ktk-vvo-summary', exportKtkVvoSummaryExcel);
 router.get('/exports/totals', exportPlanningTotalsExcel);
 router.get('/totals/year', getPlanningYearTotals);
 router.put('/totals/base-plan', updatePlanningBasePlan);

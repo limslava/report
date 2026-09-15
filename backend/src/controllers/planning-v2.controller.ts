@@ -11,6 +11,7 @@ import { sendError } from '../utils/http';
 import { recordAuditLog } from '../services/audit-log.service';
 import { cache } from '../utils/cache';
 import { buildContentDisposition } from '../utils/content-disposition';
+import { buildKtkVvoSummaryExcel } from '../services/ktk-vvo-summary-export.service';
 
 function parseSegmentCode(raw: string): PlanningSegmentCode {
   if (!Object.values(PlanningSegmentCode).includes(raw as PlanningSegmentCode)) {
@@ -598,6 +599,33 @@ export const updatePlanningBasePlan = async (req: Request, res: Response, next: 
     });
 
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Excel «Вариант 2» контейнерных перевозок Владивосток: сводная по месяцам, месяцы по дням, машины на дату. */
+export const exportKtkVvoSummaryExcel = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = req.user;
+    if (!user) {
+      sendError(res, 401, 'Authentication required', { code: 'UNAUTHORIZED' });
+      return;
+    }
+    const asOfDate = req.query.asOfDate ? String(req.query.asOfDate) : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(asOfDate)) {
+      res.status(400).json({ error: 'Invalid asOfDate' });
+      return;
+    }
+    const segments = await planningV2Service.getSegmentsForRole(user.role);
+    if (!segments.some((segment) => segment.code === PlanningSegmentCode.KTK_VVO)) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+    const buffer = await buildKtkVvoSummaryExcel(asOfDate);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', buildContentDisposition(`Заявки КТК Владивосток — ${formatDdMmYyyy(asOfDate)}.xlsx`));
+    res.status(200).send(buffer);
   } catch (error) {
     next(error);
   }
