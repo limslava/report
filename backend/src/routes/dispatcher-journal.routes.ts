@@ -23,6 +23,7 @@ import {
   reorderDispatcherDictionary,
   updateDispatcherDictionaryItem,
   updateDispatcherOrder,
+  updateDispatcherOrderPositions,
   updateDispatcherStatus,
 } from '../controllers/dispatcher-journal.controller';
 
@@ -106,6 +107,7 @@ router.post(
   handleValidationErrors,
   createDispatcherOrdersBatch,
 );
+router.post('/orders/positions', updateDispatcherOrderPositions);
 router.patch('/orders/:id', [param('id').isUUID()], handleValidationErrors, updateDispatcherOrder);
 router.delete('/orders/:id', [param('id').isUUID()], handleValidationErrors, deleteDispatcherOrder);
 

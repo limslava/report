@@ -1,6 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm';
 
-export type DispatcherOrderChangeAction = 'create' | 'update' | 'delete' | 'move' | 'import';
+export type DispatcherOrderChangeAction = 'create' | 'update' | 'delete' | 'move' | 'import' | 'sort';
 
 /**
  * История изменений реестра диспетчеров: кто, когда, какое поле, было → стало.

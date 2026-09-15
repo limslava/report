@@ -162,9 +162,6 @@
   line-height: 1.2;
 }
 .dj-sort-btn:hover { color: #2a78d6; }
-.dj-sort-ind { width: 8px; flex: none; }
-.dj-sort-ind.is-asc::after { content: '▲'; font-size: 8px; color: #2a78d6; }
-.dj-sort-ind.is-desc::after { content: '▼'; font-size: 8px; color: #2a78d6; }
 
 .dj-delete-btn {
   border: 0;

@@ -268,24 +268,6 @@ export function addDaysYmd(value: string, days: number): string {
 }
 
 /**
- * Своя сортировка сотрудника (как в google, но у каждого своя): порядок id строк.
- * Строки, которых в сохранённом порядке нет (добавлены позже, в том числе
- * коллегами), встают сразу за своим предыдущим соседом из общего порядка.
- */
-export function applyPersonalOrder<T extends { id: string }>(rows: T[], order: string[] | null): T[] {
-  if (!order?.length) return rows;
-  const rank = new Map(order.map((id, index) => [id, index]));
-  let lastRank = -1;
-  const ranked = rows.map((row, index) => {
-    const known = rank.get(row.id);
-    if (known !== undefined) lastRank = known;
-    // неизвестная строка — сразу за предыдущей известной, сохраняя общий порядок между собой
-    return { row, key: known !== undefined ? known : lastRank + 0.5 + index / (rows.length * 4 + 4) };
-  });
-  return ranked.sort((a, b) => a.key - b.key).map((item) => item.row);
-}
-
-/**
  * Сортировка «как в google» один раз: видимые строки (после фильтра) сортируются
  * между собой и встают на места, которые они занимали; скрытые остаются на своих.
  * Возвращает новый порядок id всей таблицы.
