@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { NextFunction, Request, Response, Router } from 'express';
 import { body, param, query } from 'express-validator';
 import { authenticate } from '../middleware/authenticate';
 import { authorizeRole } from '../middleware/authorize';
@@ -32,6 +32,18 @@ const router = Router();
 export const DISPATCHER_JOURNAL_ROLES = ['manager_ktk_vvo', 'head_ktk_vvo'] as const;
 /** Ведение справочников реестра (статусы, типы КТК, НДС, операции): руководитель КТК и админ. */
 export const DISPATCHER_DICTIONARY_EDIT_ROLES = ['admin', 'head_ktk_vvo'] as const;
+/** Цвета значений справочников выбирают и диспетчеры КТК (решение 15.09.2026). */
+export const DISPATCHER_DICTIONARY_COLOR_ROLES = [...DISPATCHER_DICTIONARY_EDIT_ROLES, 'manager_ktk_vvo'] as const;
+const COLOR_FIELDS = new Set(['color', 'textColor']);
+
+/** Диспетчеру в правке записи справочника доступны только цвета — название, видимость и прочее нет. */
+const onlyColorsUnlessEditor = (req: Request, res: Response, next: NextFunction) => {
+  const role = req.user?.role ?? '';
+  if ((DISPATCHER_DICTIONARY_EDIT_ROLES as readonly string[]).includes(role)) return next();
+  const keys = Object.keys((req.body ?? {}) as Record<string, unknown>);
+  if (keys.length && keys.every((key) => COLOR_FIELDS.has(key))) return next();
+  return res.status(403).json({ message: 'Диспетчер может менять только цвета справочников' });
+};
 
 router.use(authenticate, authorizeRole('admin', ...DISPATCHER_JOURNAL_ROLES));
 
@@ -43,7 +55,8 @@ router.get('/dictionaries', listDispatcherDictionaries);
 router.post('/dictionaries/statuses', authorizeRole(...DISPATCHER_DICTIONARY_EDIT_ROLES), createDispatcherStatus);
 router.patch(
   '/dictionaries/statuses/:id',
-  authorizeRole(...DISPATCHER_DICTIONARY_EDIT_ROLES),
+  authorizeRole(...DISPATCHER_DICTIONARY_COLOR_ROLES),
+  onlyColorsUnlessEditor,
   [param('id').isUUID()],
   handleValidationErrors,
   updateDispatcherStatus,
@@ -58,7 +71,8 @@ router.delete(
 router.post('/dictionaries/items', authorizeRole(...DISPATCHER_DICTIONARY_EDIT_ROLES), createDispatcherDictionaryItem);
 router.patch(
   '/dictionaries/items/:id',
-  authorizeRole(...DISPATCHER_DICTIONARY_EDIT_ROLES),
+  authorizeRole(...DISPATCHER_DICTIONARY_COLOR_ROLES),
+  onlyColorsUnlessEditor,
   [param('id').isUUID()],
   handleValidationErrors,
   updateDispatcherDictionaryItem,

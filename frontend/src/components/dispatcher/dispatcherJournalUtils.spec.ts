@@ -12,6 +12,10 @@ import {
   plateKey,
   shortPersonName,
   vatRateOf,
+  formatFinance,
+  applyPersonalOrder,
+  sortWithinSlots,
+  datesAreGrouped,
 } from './dispatcherJournalUtils';
 
 describe('dispatcherJournalUtils', () => {
@@ -106,5 +110,44 @@ describe('dispatcherJournalUtils', () => {
     expect(seriesValue('5', 2)).toBe('7');
     expect(seriesValue('выгрузка', 3)).toBe('выгрузка');
     expect(addDaysYmd('2026-09-30', 1)).toBe('2026-10-01');
+  });
+});
+
+describe('formatFinance', () => {
+  const norm = (value: string) => value.replace(/[\u00a0\u202f]/g, ' ');
+  it('форматирует чистое число как «41 000,00 ₽»', () => {
+    expect(norm(formatFinance('41000'))).toBe('41 000,00 ₽');
+    expect(norm(formatFinance('41 000'))).toBe('41 000,00 ₽');
+    expect(norm(formatFinance('2500,5'))).toBe('2 500,50 ₽');
+    expect(norm(formatFinance(3800))).toBe('3 800,00 ₽');
+  });
+  it('выражения и текст оставляет как есть', () => {
+    expect(formatFinance('12000+3800')).toBe('12000+3800');
+    expect(formatFinance('2x2500')).toBe('2x2500');
+    expect(formatFinance('уточнить')).toBe('уточнить');
+    expect(formatFinance('')).toBe('');
+    expect(formatFinance(null)).toBe('');
+  });
+});
+
+describe('своя сортировка', () => {
+  const row = (id: string, status: string, orderDate = '2026-09-15') => ({ id, status, orderDate });
+  const byStatus = <T extends { status: string }>(list: T[]) => [...list].sort((a, b) => a.status.localeCompare(b.status, 'ru'));
+
+  it('сортирует только видимые строки на их местах — как в google после снятия фильтра', () => {
+    const full = [row('a', 'в', '2026-09-14'), row('b', 'новая'), row('c', 'за', '2026-09-16'), row('d', 'выполнена')];
+    // фильтр по 15.09: видны b и d
+    expect(sortWithinSlots(full, ['b', 'd'], byStatus)).toEqual(['a', 'd', 'c', 'b']);
+  });
+
+  it('применяет сохранённый порядок, новые строки ставит за предыдущим соседом', () => {
+    const rows = [row('a', ''), row('b', ''), row('new', ''), row('c', '')];
+    expect(applyPersonalOrder(rows, ['c', 'b', 'a']).map((item) => item.id)).toEqual(['c', 'b', 'new', 'a']);
+    expect(applyPersonalOrder(rows, null).map((item) => item.id)).toEqual(['a', 'b', 'new', 'c']);
+  });
+
+  it('полосы дней только когда дни идут блоками', () => {
+    expect(datesAreGrouped([row('a', '', '1'), row('b', '', '1'), row('c', '', '2')])).toBe(true);
+    expect(datesAreGrouped([row('a', '', '1'), row('b', '', '2'), row('c', '', '1')])).toBe(false);
   });
 });

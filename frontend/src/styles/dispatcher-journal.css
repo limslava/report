@@ -286,6 +286,7 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
 }
 .dj-context-item:hover { background: #eef5ff; }
 .dj-context-item.danger { color: #c62828; }
+.dj-context-sep { height: 1px; background: #eceff3; margin: 4px 0; }
 .dj-context-item.danger:hover { background: #fdecec; }
 
 /* ── меню заголовка: сортировка, фильтр, закрепление ── */
@@ -801,6 +802,17 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
   background: transparent;
 }
 .dj-table td.dj-cell--active .dj-cell-input--chip:focus { box-shadow: none; }
+/* выделенная, но не правящаяся ячейка (как в google): без мигающего курсора */
+.dj-cell-input[readonly],
+.dj-cell-textarea[readonly],
+.dj-date-input[readonly] { caret-color: transparent; cursor: default; }
+.dj-table td[tabindex]:focus { outline: none; }
+/* ячейка в правке — белый фон и более заметная рамка */
+.dj-cell-input.is-editing,
+.dj-cell-textarea.is-editing { cursor: text; }
+.dj-table td.dj-cell--active:has(.is-editing) { box-shadow: inset 0 0 0 2px #1a73e8, 0 0 0 1px #1a73e8; background: #fff !important; }
+.dj-table td.dj-cell--active:has(.is-editing) .dj-cell-input,
+.dj-table td.dj-cell--active:has(.is-editing) .dj-cell-textarea { background: #fff; }
 .dj-table td.dj-fill-target { background: #dbe9fb !important; box-shadow: inset 2px 0 0 #2a78d6, inset -2px 0 0 #2a78d6; }
 .dj-fill-handle {
   position: absolute;
