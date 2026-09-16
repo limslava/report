@@ -247,7 +247,19 @@ export function parseClipboardGrid(text: string): string[][] {
     row.push(cell);
     rows.push(row);
   }
+  // хвостовые пустые строки (текст из мессенджера часто заканчивается переводом строки)
+  // не должны затирать соседние заявки
+  while (rows.length && rows[rows.length - 1].every((value) => value.trim() === '')) rows.pop();
   return rows;
+}
+
+/**
+ * Текст из буфера в ячейку, которую правят: перенос строки остаётся только в многострочных
+ * ячейках (комментарии, адреса), в остальных строки склеиваются пробелом — как в google-таблице.
+ */
+export function clipboardTextForCell(raw: string, multiline: boolean): string {
+  const text = raw.replace(/\r\n?/g, '\n').replace(/\t/g, ' ').replace(/\n+$/, '');
+  return multiline ? text : text.replace(/\s*\n\s*/g, ' ');
 }
 
 /** Протягивание с Ctrl: «TRZU0009» + 1 → «TRZU0010», «5» + 2 → «7»; без числа в конце — как есть. */

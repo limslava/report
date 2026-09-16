@@ -3,6 +3,7 @@ import {
   addDaysYmd,
   amountWithoutVat,
   parseClipboardGrid,
+  clipboardTextForCell,
   seriesValue,
   buildOrderText,
   isCompletedStatus,
@@ -146,6 +147,19 @@ describe('своя сортировка', () => {
     const full = [row('a', 'в', '2026-09-14'), row('b', 'новая'), row('c', 'за', '2026-09-16'), row('d', 'выполнена')];
     // фильтр по 15.09: видны b и d
     expect(sortWithinSlots(full, ['b', 'd'], byStatus)).toEqual(['a', 'd', 'c', 'b']);
+  });
+
+  it('хвостовые пустые строки буфера не превращаются в правки соседних заявок', () => {
+    expect(parseClipboardGrid('A1\n')).toEqual([['A1']]);
+    expect(parseClipboardGrid('A1\n\n')).toEqual([['A1']]);
+    expect(parseClipboardGrid('A1\nB1\n\n')).toEqual([['A1'], ['B1']]);
+    expect(parseClipboardGrid('A1\t\nB1\t\n')).toEqual([['A1', ''], ['B1', '']]);
+  });
+
+  it('текст в правящуюся ячейку: переносы только в многострочных', () => {
+    expect(clipboardTextForCell('ул. Русская 99\nконтакт 8-914\n', true)).toBe('ул. Русская 99\nконтакт 8-914');
+    expect(clipboardTextForCell('ул. Русская 99\nконтакт 8-914', false)).toBe('ул. Русская 99 контакт 8-914');
+    expect(clipboardTextForCell('A\tB', false)).toBe('A B');
   });
 
   it('своя сортировка: новые строки встают за предыдущим соседом из общего порядка', () => {
