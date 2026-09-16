@@ -1,4 +1,5 @@
 import {
+  KTK_VVO_AUTOFILL_FROM,
   computeKtkVvoMonth,
   isOwnVehicle,
   parseAmount,
@@ -62,9 +63,13 @@ describe('ежедневный отчёт КТК Владивосток из р�
     expect(isOwnVehicle({ driverName: 'Петров', vehiclePlate: 'А001АА125' }, fleet)).toBe(false);
   });
 
-  it('время по Владивостоку и фиксация плана в 09:50', () => {
+  it('время по Владивостоку и фиксация плана в 09:45', () => {
     expect(vladivostokToday(new Date('2026-09-16T14:30:00Z'))).toBe('2026-09-17');
-    expect(planFreezeAt('2026-09-17').toISOString()).toBe('2026-09-16T23:50:00.000Z');
+    expect(planFreezeAt('2026-09-17').toISOString()).toBe('2026-09-16T23:45:00.000Z');
+  });
+
+  it('старт автозаполнения — 16.09.2026', () => {
+    expect(KTK_VVO_AUTOFILL_FROM).toBe('2026-09-16');
   });
 
   describe('что записывается', () => {
@@ -77,8 +82,8 @@ describe('ежедневный отчёт КТК Владивосток из р�
     const pick = (writes: ReturnType<typeof planKtkVvoWrites>, date: string, metric: string) =>
       writes.find((item) => item.date === date && item.metric === metric);
 
-    it('до старта ничего; до 09:50 план пересчитывается, будущие дни без факта', () => {
-      const writes = planKtkVvoWrites({ computed, existing: new Map(), now: new Date('2026-09-16T23:00:00Z') });
+    it('до старта ничего; до 09:45 план пересчитывается, будущие дни без факта', () => {
+      const writes = planKtkVvoWrites({ computed, existing: new Map(), now: new Date('2026-09-16T23:00:00Z'), from: '2026-09-17' });
       expect(writes.some((item) => item.date < '2026-09-17')).toBe(false);
       expect(pick(writes, '2026-09-17', 'ktk_vvo_plan_unload_load')?.value).toBe(2);
       expect(pick(writes, '2026-09-17', 'ktk_vvo_fact_unload_load')?.value).toBe(1);
@@ -87,13 +92,13 @@ describe('ежедневный отчёт КТК Владивосток из р�
       expect(pick(writes, '2026-09-19', 'ktk_vvo_plan_unload_load')).toBeUndefined();
     });
 
-    it('после 09:50 план не меняется, ручная правка не перезаписывается, факт заменяет старое значение', () => {
+    it('после 09:45 план не меняется, ручная правка не перезаписывается, факт заменяет старое значение', () => {
       const existing = new Map<string, ExistingValue>([
         ['2026-09-17|ktk_vvo_plan_unload_load', { value: 5, source: 'auto' }],
         ['2026-09-17|ktk_vvo_fact_move_own', { value: 9, source: 'manual' }],
         ['2026-09-17|ktk_vvo_fact_unload_load', { value: 7, source: null }],
       ]);
-      const writes = planKtkVvoWrites({ computed, existing, now: new Date('2026-09-17T02:00:00Z') });
+      const writes = planKtkVvoWrites({ computed, existing, now: new Date('2026-09-17T02:00:00Z'), from: '2026-09-17' });
       expect(pick(writes, '2026-09-17', 'ktk_vvo_plan_unload_load')).toBeUndefined();
       expect(pick(writes, '2026-09-17', 'ktk_vvo_plan_move')?.value).toBe(0);
       expect(pick(writes, '2026-09-17', 'ktk_vvo_fact_move_own')).toBeUndefined();
@@ -102,7 +107,7 @@ describe('ежедневный отчёт КТК Владивосток из р�
 
     it('не пишет то, что уже совпадает', () => {
       const existing = new Map<string, ExistingValue>([['2026-09-17|ktk_vvo_fact_unload_load', { value: 1, source: 'auto' }]]);
-      const writes = planKtkVvoWrites({ computed, existing, now: new Date('2026-09-17T02:00:00Z') });
+      const writes = planKtkVvoWrites({ computed, existing, now: new Date('2026-09-17T02:00:00Z'), from: '2026-09-17' });
       expect(pick(writes, '2026-09-17', 'ktk_vvo_fact_unload_load')).toBeUndefined();
     });
   });

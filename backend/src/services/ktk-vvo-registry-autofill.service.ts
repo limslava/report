@@ -156,7 +156,7 @@ export function requestKtkVvoAutofill(dates: Array<string | null | undefined>): 
   }, 3000);
 }
 
-/** Фоновый пересчёт каждые 2 минуты: план дня успевает обновиться до 09:50, справочник «Нашей организации» подхватывается. */
+/** Фоновый пересчёт каждые 2 минуты: план дня успевает обновиться до 09:45, справочник «Нашей организации» подхватывается. */
 export function startKtkVvoAutofill(): void {
   setTimeout(() => void runKtkVvoAutofill(), 30_000);
   setInterval(() => void runKtkVvoAutofill(), 2 * 60_000);
