@@ -172,7 +172,7 @@ export default function DispatcherHistoryDialog({ open, onClose, orderId, orderL
             </TextField>
             <TextField
               size="small"
-              label="№ КТК или клиент"
+              label="№ заказа, КТК или клиент"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               sx={{ width: 220 }}
@@ -207,7 +207,7 @@ export default function DispatcherHistoryDialog({ open, onClose, orderId, orderL
                     <td>{formatDateTime(item.createdAt)}</td>
                     <td>{item.userName ?? '—'}</td>
                     {!orderId && (
-                      <td>{[formatOrderDate(item.orderDate), item.ktkNumber, item.client].filter(Boolean).join(' · ') || '—'}</td>
+                      <td>{[item.orderNumber, formatOrderDate(item.orderDate), item.ktkNumber, item.client].filter(Boolean).join(' · ') || '—'}</td>
                     )}
                     <td className="dj-history__what">{what}</td>
                     <td className="dj-history__old">{before}</td>

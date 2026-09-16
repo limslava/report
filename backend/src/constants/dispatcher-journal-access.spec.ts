@@ -8,6 +8,8 @@ describe('доступ к реестру диспетчерского отдел
   it('раскладывает роли по уровням', () => {
     expect(dispatcherJournalAccess('admin')).toBe('full');
     expect(dispatcherJournalAccess('manager_ktk_vvo')).toBe('full');
+    expect(dispatcherJournalAccess('manager_sales')).toBe('full');
+    expect(dispatcherJournalAccess('head_sales')).toBe('full');
     expect(dispatcherJournalAccess('doc_manager_vvo')).toBe('fields');
     expect(dispatcherJournalAccess('secretary')).toBe('view');
     expect(dispatcherJournalAccess('hr_specialist')).toBe('view');

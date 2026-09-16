@@ -5,6 +5,10 @@ import {
   Box,
   Button,
   Checkbox,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   ListItemIcon,
   ListItemText,
   Menu,
@@ -36,6 +40,7 @@ import {
   createDispatcherOrdersBatch,
   deleteDispatcherOrder,
   getDispatcherCrew,
+  getDispatcherOwnFleet,
   getDispatcherDictionaryOptions,
   getDispatcherOrders,
   getDispatcherStatuses,
@@ -103,6 +108,10 @@ import {
   parseClipboardGrid,
   clipboardTextForCell,
   looksLikeClipboardGrid,
+  surnameKey,
+  OWN_DRIVER_COLORS,
+  OWN_PLATE_COLORS,
+  FOREIGN_FLEET_COLORS,
   planBlockFill,
   planPasteIntoSelection,
   rangeCellKeys,
@@ -189,7 +198,7 @@ type ColumnDef =
   /** accent — цвет галочки и заголовка, как «свой цвет» флажка в google-таблице */
   | { kind: 'checkbox'; field: BooleanFieldName; title: string; width: number; accent?: string }
   /** только чтение: «Без НДС» считается, «№ заказа» выдаётся системой */
-  | { kind: 'computed'; field: 'amountWithoutVat' | 'orderNumber'; title: string; width: number };
+  | { kind: 'computed'; field: 'amountWithoutVat' | 'orderNumber' | 'responsible'; title: string; width: number };
 
 /** Своя сортировка сотрудника: порядок id строк и по какой колонке сортировали последний раз. */
 type PersonalOrder = { ids: string[]; by: { field: string; direction: 'asc' | 'desc' } | null };
@@ -201,6 +210,7 @@ type PersonalOrder = { ids: string[]; by: { field: string; direction: 'asc' | 'd
  */
 const ALL_COLUMNS: ColumnDef[] = [
   { kind: 'computed', field: 'orderNumber', title: '№ заказа', width: 76 },
+  { kind: 'computed', field: 'responsible', title: 'Ответственный', width: 104 },
   { kind: 'status', field: 'status', title: 'Статус', width: 130 },
   { kind: 'text', field: 'info', title: 'Инфо', width: 70 },
   { kind: 'text', field: 'client', title: 'Клиент', width: 120, list: 'client' },
@@ -297,6 +307,8 @@ const withNewColumnDefaults = (prefs: ColumnPrefs | undefined): ColumnPrefs | un
   }
   // «№ заказа» (15.09.2026) — первым столбцом у тех, кто уже настраивал колонки
   if (!order.includes('orderNumber')) order.unshift('orderNumber');
+  // «Ответственный» (16.09.2026) — сразу за «№ заказа»
+  if (!order.includes('responsible')) order.splice(order.indexOf('orderNumber') + 1, 0, 'responsible');
   return order.length === prefs.order.length ? prefs : { ...prefs, order };
 };
 
@@ -415,7 +427,9 @@ type Message = { severity: 'error' | 'success'; text: string } | null;
 const columnText = (row: DispatcherOrderRow, column: ColumnDef): string => {
   if (column.kind === 'checkbox') return row[column.field] ? 'да' : '';
   if (column.kind === 'computed') {
-    return column.field === 'orderNumber' ? row.orderNumber ?? '' : formatMoney(amountWithoutVat(row.clientRate, row.passes, row.vat));
+    if (column.field === 'orderNumber') return row.orderNumber ?? '';
+    if (column.field === 'responsible') return row.responsible ?? '';
+    return formatMoney(amountWithoutVat(row.clientRate, row.passes, row.vat));
   }
   if (column.field === 'driverName') return shortPersonName(row.driverName);
   return row[column.field] ?? '';
@@ -429,6 +443,8 @@ export default function DispatcherJournalPage() {
   const canEditField = (field: string) => canEditDispatcherField(journalAccess, field);
   const accessRef = useRef(journalAccess);
   accessRef.current = journalAccess;
+  const canManageRowsRef = useRef(canManageRows);
+  canManageRowsRef.current = canManageRows;
   const canEditDictionaries = DICTIONARY_EDIT_ROLES.has(user?.role ?? '');
   const canEditDictionaryColors = DICTIONARY_COLOR_ROLES.has(user?.role ?? '');
   const canViewHistory = HISTORY_ROLES.has(user?.role ?? '');
@@ -452,6 +468,10 @@ export default function DispatcherJournalPage() {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: DispatcherOrderRow } | null>(null);
   const [dictionariesOpen, setDictionariesOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  // свои водители и машины «Нашей организации» — для подсветки чужих красным
+  const [ownFleet, setOwnFleet] = useState<{ driverSurnames: Set<string>; plates: Set<string> } | null>(null);
+  // вставка списка в середину реестра, когда ниже уже есть заявки или другой день
+  const [pastePrompt, setPastePrompt] = useState<{ count: number; replace: () => void; insert: () => void } | null>(null);
   const [exporting, setExporting] = useState(false);
   // история: весь реестр (orderId = null) или одна строка
   const [history, setHistory] = useState<{ orderId: string | null; label?: string } | null>(null);
@@ -855,7 +875,9 @@ export default function DispatcherJournalPage() {
     if (!column) return '';
     if (column.kind === 'checkbox') return row[column.field] ? 1 : '';
     if (column.kind === 'computed') {
-      return column.field === 'orderNumber' ? orderNumberSortKey(row.orderNumber) : amountWithoutVat(row.clientRate, row.passes, row.vat) ?? '';
+      if (column.field === 'orderNumber') return orderNumberSortKey(row.orderNumber);
+      if (column.field === 'responsible') return (row.responsible ?? '').toLocaleLowerCase('ru');
+      return amountWithoutVat(row.clientRate, row.passes, row.vat) ?? '';
     }
     if (column.field === 'ktkType' && row.ktkType) {
       // типы КТК — в порядке справочника (20DC, 20HC … 40FR), а не по алфавиту
@@ -879,9 +901,15 @@ export default function DispatcherJournalPage() {
   const cellColorKey = useCallback((row: DispatcherOrderRow, field: string): string => {
     if (field === 'status') return colorKeyOf(statusByName.get(row.status ?? '')?.color);
     const column = COLUMN_BY_KEY.get(field);
-    if (column?.kind !== 'text' || !column.list || column.list === 'drivers' || column.list === 'vehicles') return NO_COLOR_KEY;
+    if (column?.kind !== 'text' || !column.list) return NO_COLOR_KEY;
+    if (column.list === 'drivers' || column.list === 'vehicles') {
+      const value = row[column.field] ?? '';
+      if (!ownFleet || !value.trim()) return NO_COLOR_KEY;
+      const own = column.list === 'drivers' ? ownFleet.driverSurnames.has(surnameKey(value)) : ownFleet.plates.has(plateKey(value));
+      return colorKeyOf(own ? (column.list === 'drivers' ? OWN_DRIVER_COLORS : OWN_PLATE_COLORS).background : FOREIGN_FLEET_COLORS.background);
+    }
     return colorKeyOf(dictionaryColors[column.list]?.[row[column.field] ?? '']?.color);
-  }, [dictionaryColors, statusByName]);
+  }, [dictionaryColors, ownFleet, statusByName]);
 
   /** Текст ячейки для условия: у даты — YYYY-MM-DD. */
   const conditionText = useCallback((row: DispatcherOrderRow, field: string): string => {
@@ -1207,6 +1235,9 @@ export default function DispatcherJournalPage() {
 
   useEffect(() => {
     loadDictionaries();
+    getDispatcherOwnFleet()
+      .then(({ data }) => setOwnFleet({ driverSurnames: new Set(data.driverSurnames), plates: new Set(data.plates) }))
+      .catch(() => undefined);
     // подсказки водителей и техники нужны только тем, кто их вводит (справочники остальным закрыты)
     if (accessRef.current !== 'full') return;
     getDirectoryOptions('vvo')
@@ -1590,7 +1621,7 @@ export default function DispatcherJournalPage() {
       if (row) created.push(row.id);
     }
     if (undoPatches.length || created.length) pushUndo({ kind: 'multi', patches: undoPatches, created });
-    return { patched: undoPatches.length, created: created.length };
+    return { patched: undoPatches.length, created: created.length, createdIds: created };
   }, [createRow, patchRow]);
 
   const applyTsvLine = useCallback((line: string): { date: string; patch: DispatcherOrderPatch } => {
@@ -1842,17 +1873,76 @@ export default function DispatcherJournalPage() {
             creations.push({ date: patch.orderDate ?? lastDate, patch });
           }
         });
+        const reportPaste = ({ patched, created }: { patched: number; created: number }) => setMessage({
+          severity: 'success',
+          text: `Вставлено: ${grid.length} стр.${patched ? ` · изменено ${patched}` : ''}${created ? ` · создано ${created}` : ''} (Ctrl+Z — отменить)`,
+        });
+        // список в середину: ниже уже есть заявки или начинается другой день — спрашиваем,
+        // заменить значения или вставить новыми строками под выбранной (в пустые строки того же дня — сразу)
+        const startRow = isGhost ? null : list[startIndex];
+        if (startRow && grid.length > 1 && canManageRowsRef.current) {
+          const width = Math.max(...grid.map((cells) => cells.length));
+          const pastedFields = fieldOrder.slice(startColumn, startColumn + width).filter((field) => field !== DATE_KEY);
+          const isEmptyForPaste = (row: DispatcherOrderRow) => pastedFields.every((field) => {
+            const column = COLUMN_BY_KEY.get(field);
+            return !column || column.kind === 'computed' || !columnText(row, column).trim();
+          });
+          const occupied = grid.slice(1).some((_cells, offset) => {
+            const target = list[startIndex + 1 + offset];
+            return Boolean(target) && (target.orderDate !== startRow.orderDate || !isEmptyForPaste(target));
+          });
+          if (occupied) {
+            const insertAsNewRows = () => {
+              const useClicked = isEmptyForPaste(startRow);
+              const lineOf = (cells: string[]) => {
+                const patch: DispatcherOrderPatch = {};
+                cells.forEach((value, cellOffset) => {
+                  const field = fieldOrder[startColumn + cellOffset];
+                  if (field) Object.assign(patch, cellPatchFromText(field, value) ?? {});
+                });
+                return patch;
+              };
+              const newLines = useClicked ? grid.slice(1) : grid;
+              const ordered = sortByDate(rowsRef.current);
+              const at = ordered.findIndex((row) => row.id === startRow.id);
+              const next = ordered[at + 1];
+              const step = next ? (next.position - startRow.position) / (newLines.length + 1) : 1;
+              const insertPatches = useClicked ? [{ id: startRow.id, patch: lineOf(grid[0]) }] : [];
+              const insertCreations = newLines.map((cells, index) => {
+                const patch = lineOf(cells);
+                return {
+                  date: patch.orderDate ?? startRow.orderDate,
+                  patch: { ...patch, position: startRow.position + step * (index + 1) },
+                };
+              });
+              void applyBulkChanges(insertPatches, insertCreations).then((result) => {
+                // при своей сортировке новые строки встают сразу под выбранной и у вас
+                const personal = personalSortRef.current;
+                if (personal && result.createdIds.length) {
+                  const ids = personal.ids.filter((id) => !result.createdIds.includes(id));
+                  const anchor = ids.indexOf(startRow.id);
+                  if (anchor >= 0) {
+                    ids.splice(anchor + 1, 0, ...result.createdIds);
+                    setPersonalSort({ ...personal, ids });
+                  }
+                }
+                reportPaste(result);
+              });
+            };
+            setPastePrompt({
+              count: grid.length,
+              insert: insertAsNewRows,
+              replace: () => void applyBulkChanges(patches, creations).then(reportPaste),
+            });
+            return;
+          }
+        }
         // вставка длинного текста из мессенджера раньше молча затирала строки ниже
         if (patches.length + creations.length > 10
           && !window.confirm(`В буфере ${grid.length} строк. Вставить в ${patches.length} строк реестра${creations.length ? ` и создать ещё ${creations.length}` : ''}?`)) {
           return;
         }
-        void applyBulkChanges(patches, creations).then(({ patched, created }) => {
-          setMessage({
-            severity: 'success',
-            text: `Вставлено: ${grid.length} стр.${patched ? ` · изменено ${patched}` : ''}${created ? ` · создано ${created}` : ''} (Ctrl+Z — отменить)`,
-          });
-        });
+        void applyBulkChanges(patches, creations).then(reportPaste);
         return;
       }
       // вставка целых строк реестра (их копируют по Ctrl+C с выделенной строкой) — только
@@ -1903,7 +1993,7 @@ export default function DispatcherJournalPage() {
       document.removeEventListener('cut', cutHandler);
       document.removeEventListener('paste', pasteHandler);
     };
-  }, [applyBulkChanges, applyTsvLine, cellPatchFromText, createRow, deleteRow, patchRow, rowToTsv, selectionAsTsv, undoLast]);
+  }, [applyBulkChanges, applyTsvLine, cellPatchFromText, createRow, deleteRow, patchRow, rowToTsv, selectionAsTsv, setPersonalSort, undoLast]);
 
   // ── «ручка» протягивания у активной ячейки (правый нижний угол) ──
   const [fillHandlePos, setFillHandlePos] = useState<{ left: number; top: number } | null>(null);
@@ -2141,7 +2231,15 @@ export default function DispatcherJournalPage() {
   const listColorOf = (
     source: ListSource,
   ): ((value: string) => { background?: string; color: string } | undefined) | undefined => {
-    if (source === 'drivers' || source === 'vehicles') return undefined;
+    if (source === 'drivers' || source === 'vehicles') {
+      if (!ownFleet) return undefined;
+      return (value: string) => {
+        if (!value.trim()) return undefined;
+        const own = source === 'drivers' ? ownFleet.driverSurnames.has(surnameKey(value)) : ownFleet.plates.has(plateKey(value));
+        if (!own) return FOREIGN_FLEET_COLORS;
+        return source === 'drivers' ? OWN_DRIVER_COLORS : OWN_PLATE_COLORS;
+      };
+    }
     const colors = dictionaryColors[source] ?? {};
     return (value: string) => {
       const entry = colors[value];
@@ -2204,6 +2302,26 @@ export default function DispatcherJournalPage() {
     }
     if (column.kind === 'computed') {
       const isNumber = column.field === 'orderNumber';
+      if (column.field === 'responsible') {
+        return (
+          <td
+            key={key}
+            data-field={key}
+            className={`dj-computed-cell dj-responsible${pinCls}`}
+            style={pin}
+            title="Ответственный — кто завёл заявку"
+            tabIndex={-1}
+            onKeyDown={(event) => {
+              const direction = navDirectionOf(event);
+              if (!direction) return;
+              event.preventDefault();
+              requestCellNav(event.currentTarget, direction, event.shiftKey);
+            }}
+          >
+            {row.responsible ?? ''}
+          </td>
+        );
+      }
       const amount = amountWithoutVat(row.clientRate, row.passes, row.vat);
       return (
         <td
@@ -3039,6 +3157,36 @@ export default function DispatcherJournalPage() {
           </MenuItem>
         )}
       </Menu>
+
+      <Dialog open={Boolean(pastePrompt)} onClose={() => setPastePrompt(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>Вставить {pastePrompt?.count} строк</DialogTitle>
+        <DialogContent sx={{ fontSize: 14, color: '#3d4757' }}>
+          Ниже уже есть заявки или начинается другой день. Вставить новыми строками под выбранной
+          (с её датой) или заменить значения в следующих строках?
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button onClick={() => setPastePrompt(null)}>Отмена</Button>
+          <Button
+            color="warning"
+            onClick={() => {
+              pastePrompt?.replace();
+              setPastePrompt(null);
+            }}
+          >
+            Заменить
+          </Button>
+          <Button
+            variant="contained"
+            autoFocus
+            onClick={() => {
+              pastePrompt?.insert();
+              setPastePrompt(null);
+            }}
+          >
+            Новыми строками
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {history && (
         <DispatcherHistoryDialog

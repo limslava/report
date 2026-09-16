@@ -28,6 +28,8 @@ export type DispatcherOrderRow = {
   id: string;
   /** «№ заказа» ГГММ-NNN — выдаётся при заведении, не меняется */
   orderNumber: string | null;
+  /** «Ответственный» — фамилия и инициалы заведшего заявку, не меняется */
+  responsible: string | null;
   orderDate: string;
   /** порядок строки внутри дня (перетаскивание) */
   position: number;
@@ -159,6 +161,10 @@ export const reorderDispatcherDictionary = (type: 'status' | 'item', ids: string
 
 export type DispatcherCrewEntry = { driverName: string; plate: string; onLine: boolean };
 
+/** Свои водители (фамилии) и госномера «Нашей организации»: чужие в реестре подсвечиваются красным. */
+export const getDispatcherOwnFleet = () =>
+  api.get<{ driverSurnames: string[]; plates: string[] }>('/dispatcher-journal/own-fleet');
+
 export const getDispatcherCrew = (date: string) =>
   api.get<DispatcherCrewEntry[]>('/dispatcher-journal/crew', { params: { date } });
 
@@ -197,6 +203,7 @@ export type DispatcherHistoryItem = {
   newValue: string | null;
   orderDate: string | null;
   ktkNumber: string | null;
+  orderNumber: string | null;
   client: string | null;
   userId: string | null;
   userName: string | null;

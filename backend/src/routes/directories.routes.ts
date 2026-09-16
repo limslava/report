@@ -78,7 +78,8 @@ router.get('/employees', authorizeRole(...DIRECTORY_ROLES), asyncHandler(listEmp
 router.post('/employees', authorizeRole(...DIRECTORY_EDIT_ROLES), asyncHandler(saveEmployee));
 router.put('/employees/:id', authorizeRole(...DIRECTORY_EDIT_ROLES), asyncHandler(saveEmployee));
 router.delete('/employees/:id', authorizeRole(...DIRECTORY_DELETE_ROLES), asyncHandler(deleteEmployee));
-router.get('/employees/card-by-name', authorizeRole(...DIRECTORY_ROLES), asyncHandler(findEmployeeCardByName));
+// карточка водителя для «Скопировать данные» в реестре — и отделу продаж, который тоже ведёт реестр
+router.get('/employees/card-by-name', authorizeRole(...DIRECTORY_ROLES, 'head_sales', 'manager_sales', 'manager_extra'), asyncHandler(findEmployeeCardByName));
 router.get('/employees/:id/card-text', authorizeRole(...DIRECTORY_ROLES), asyncHandler(getEmployeeCardText));
 
 // подсказки для диалогов графиков — роли, редактирующие графики
@@ -94,7 +95,11 @@ router.get(
     'hr_specialist',
     'garage_head_vvo',
     'warehouse_manager_vvo',
-    'security'
+    'security',
+    // реестр диспетчерского отдела: подсказки водителей и техники
+    'head_sales',
+    'manager_sales',
+    'manager_extra'
   ),
   asyncHandler(getDirectoryOptions)
 );

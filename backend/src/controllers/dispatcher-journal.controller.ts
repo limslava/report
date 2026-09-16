@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { Between, In } from 'typeorm';
+import { Between, In, IsNull } from 'typeorm';
 import { AppDataSource } from '../config/data-source';
 import { DispatcherOrder } from '../models/dispatcher-order.model';
 import { DispatcherStatus } from '../models/dispatcher-status.model';
@@ -19,6 +19,10 @@ import {
 } from '../services/dispatcher-history.service';
 import { DispatcherOrderChange } from '../models/dispatcher-order-change.model';
 import { User } from '../models/user.model';
+import { Employee } from '../models/employee.model';
+import { FleetVehicle } from '../models/fleet-vehicle.model';
+import { plateKey, surnameKey } from '../services/ktk-vvo-registry-autofill.model';
+import { shortResponsibleName } from '../services/dispatcher-order-number.service';
 import { ensureDispatcherDictionaryCatalog } from '../services/dispatcher-status-seed.service';
 import { planWebSocketService } from '../services/websocket.service';
 import { requestKtkVvoAutofill } from '../services/ktk-vvo-registry-autofill.service';
@@ -111,6 +115,7 @@ const requireDate = (value: unknown): string => {
 const serializeOrder = (order: DispatcherOrder) => ({
   id: order.id,
   orderNumber: order.orderNumber ?? null,
+  responsible: order.responsible ?? null,
   orderDate: order.orderDate,
   position: order.position,
   status: order.status,
@@ -248,6 +253,29 @@ const userNamesById = async (ids: Array<string | null | undefined>): Promise<Map
   return new Map(users.map((user) => [user.id, user.fullName]));
 };
 
+/** «Ответственный»: фамилия и инициалы сотрудника, заведшего заявку («Иванов Иван Петрович» → «Иванов И.П.»). */
+const responsibleName = async (userId: string | undefined): Promise<string | null> => {
+  if (!userId) return null;
+  const user = await AppDataSource.getRepository(User).findOne({ where: { id: userId } });
+  return user ? shortResponsibleName(user.fullName) : null;
+};
+
+/** Свои водители и машины («Наша организация»): в реестре чужие подсвечиваются красным. */
+export const listDispatcherOwnFleet = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const [employees, vehicles] = await Promise.all([
+      AppDataSource.getRepository(Employee).find({ where: { counterpartyId: IsNull(), position: 'водитель' }, select: ['fullName'] }),
+      AppDataSource.getRepository(FleetVehicle).find({ where: { counterpartyId: IsNull() }, select: ['plate'] }),
+    ]);
+    res.json({
+      driverSurnames: [...new Set(employees.map((employee) => surnameKey(employee.fullName)).filter(Boolean))],
+      plates: [...new Set(vehicles.map((vehicle) => plateKey(vehicle.plate)).filter(Boolean))],
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 /** Позиция строки из запроса (перетаскивание, восстановление по Ctrl+Z). */
 const parsePosition = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -255,10 +283,12 @@ const parsePosition = (value: unknown): number | null =>
 export const createDispatcherOrder = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const date = requireDate(req.body?.orderDate);
+    const responsible = await responsibleName(req.user?.id);
     const order = orderRepository.create({
       orderDate: date,
       position: parsePosition(req.body?.position) ?? Date.now(),
       status: 'новая',
+      responsible,
       createdBy: req.user?.id ?? null,
       updatedBy: req.user?.id ?? null,
     });
@@ -289,10 +319,12 @@ export const createDispatcherOrdersBatch = async (req: Request, res: Response, n
     const count = Number(req.body?.count);
     if (!Number.isInteger(count) || count < 1 || count > 100) httpError(400, 'Количество строк — от 1 до 100');
     const base = Date.now();
+    const responsible = await responsibleName(req.user?.id);
     const orders = Array.from({ length: count }, (_item, index) => orderRepository.create({
       orderDate: date,
       position: base + index,
       status: null,
+      responsible,
       createdBy: req.user?.id ?? null,
       updatedBy: req.user?.id ?? null,
     }));
@@ -838,7 +870,11 @@ export const listDispatcherHistory = async (req: Request, res: Response, next: N
     if (typeof req.query.userId === 'string' && req.query.userId) query.andWhere('c.user_id = :userId', { userId: req.query.userId });
     if (typeof req.query.orderId === 'string' && req.query.orderId) query.andWhere('c.order_id = :orderId', { orderId: req.query.orderId });
     if (typeof req.query.q === 'string' && req.query.q.trim()) {
-      query.andWhere('(c.ktk_number ILIKE :q OR c.client ILIKE :q)', { q: `%${req.query.q.trim()}%` });
+      query.andWhere(
+        '(c.ktk_number ILIKE :q OR c.client ILIKE :q OR c.order_number ILIKE :q'
+        + ' OR c.order_id IN (SELECT o.id FROM dispatcher_orders o WHERE o.order_number ILIKE :q))',
+        { q: `%${req.query.q.trim()}%` },
+      );
     }
     if (typeof req.query.before === 'string' && req.query.before) {
       const before = new Date(req.query.before);
@@ -846,6 +882,12 @@ export const listDispatcherHistory = async (req: Request, res: Response, next: N
     }
     const rows = await query.getMany();
     const page = rows.slice(0, limit);
+    // записи истории до появления «№ заказа» — номер берём из самой заявки
+    const orderIds = [...new Set(page.filter((row) => !row.orderNumber && row.orderId).map((row) => row.orderId as string))];
+    const currentOrders = orderIds.length
+      ? await orderRepository.find({ where: { id: In(orderIds) }, select: ['id', 'orderNumber'] })
+      : [];
+    const currentNumberById = new Map(currentOrders.map((order) => [order.id, order.orderNumber]));
     const names = await userNamesById(page.map((row) => row.userId));
     res.json({
       items: page.map((row) => ({
@@ -857,6 +899,7 @@ export const listDispatcherHistory = async (req: Request, res: Response, next: N
         newValue: row.newValue,
         orderDate: row.orderDate,
         ktkNumber: row.ktkNumber,
+        orderNumber: row.orderNumber ?? (row.orderId ? currentNumberById.get(row.orderId) : null) ?? null,
         client: row.client,
         userId: row.userId,
         userName: row.userId ? names.get(row.userId) ?? null : null,

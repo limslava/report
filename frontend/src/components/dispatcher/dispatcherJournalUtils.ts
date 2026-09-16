@@ -32,6 +32,15 @@ export function shortPersonName(raw: string | null | undefined): string {
 export const personKey = (raw: string | null | undefined): string =>
   shortPersonName(raw).toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ');
 
+/** Фамилия для сравнения со справочником «Нашей организации»: «Иванов И.И.» → «иванов». */
+export const surnameKey = (raw: string | null | undefined): string =>
+  (raw ?? '').trim().split(/\s+/)[0].toLowerCase().replace(/ё/g, 'е');
+
+/** Цвета водителя и госномера в реестре, как в google-таблице отдела: свои — голубой/зелёный, чужие — красный. */
+export const OWN_DRIVER_COLORS = { background: '#cfe2f3', color: '#1c4587' };
+export const OWN_PLATE_COLORS = { background: '#d9ead3', color: '#274e13' };
+export const FOREIGN_FLEET_COLORS = { background: '#b10202', color: '#ffffff' };
+
 /** Госномер без пробелов и в верхнем регистре, латиница → кириллица. */
 export function plateKey(raw: string | null | undefined): string {
   const latinToCyrillic: Record<string, string> = {

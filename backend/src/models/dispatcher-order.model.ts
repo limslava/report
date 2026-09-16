@@ -132,6 +132,10 @@ export class DispatcherOrder {
   @Column({ name: 'created_by', type: 'uuid', nullable: true })
   createdBy!: string | null;
 
+  /** «Ответственный» — фамилия и инициалы того, кто завёл заявку; не меняется (импорт — пусто). */
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  responsible!: string | null;
+
   @Column({ name: 'updated_by', type: 'uuid', nullable: true })
   updatedBy!: string | null;
 

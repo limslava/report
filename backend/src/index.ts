@@ -15,7 +15,7 @@ import { planningV2Service } from './services/planning-v2.service';
 import { withRetry } from './utils/db-retry';
 import { createApp } from './app';
 import { startKtkVvoAutofill } from './services/ktk-vvo-registry-autofill.service';
-import { assignMissingDispatcherOrderNumbers } from './services/dispatcher-order-number.service';
+import { assignMissingDispatcherOrderNumbers, fillMissingDispatcherResponsible } from './services/dispatcher-order-number.service';
 
 config();
 
@@ -45,6 +45,8 @@ async function startServer() {
       // «№ заказа» заявкам, заведённым до его появления (и пропущенным по сбою)
       const numbered = await assignMissingDispatcherOrderNumbers();
       if (numbered > 0) logger.info(`Реестр: выдано номеров заказа: ${numbered}`);
+      const responsible = await fillMissingDispatcherResponsible();
+      if (responsible > 0) logger.info(`Реестр: заполнен «Ответственный»: ${responsible}`);
     } catch (err) {
       logger.error('Failed to assign dispatcher order numbers:', err);
     }

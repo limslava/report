@@ -5,6 +5,7 @@ import {
   parseClipboardGrid,
   clipboardTextForCell,
   looksLikeClipboardGrid,
+  surnameKey,
   seriesValue,
   buildOrderText,
   isCompletedStatus,
@@ -155,6 +156,12 @@ describe('своя сортировка', () => {
     expect(parseClipboardGrid('A1\n\n')).toEqual([['A1']]);
     expect(parseClipboardGrid('A1\nB1\n\n')).toEqual([['A1'], ['B1']]);
     expect(parseClipboardGrid('A1\t\nB1\t\n')).toEqual([['A1', ''], ['B1', '']]);
+  });
+
+  it('фамилия водителя для сверки со своими', () => {
+    expect(surnameKey('Чугунов И.П.')).toBe('чугунов');
+    expect(surnameKey(' Лёвин Пётр ')).toBe('левин');
+    expect(surnameKey('Шибанов-ИП Сивохин')).toBe('шибанов-ип');
   });
 
   it('блок таблицы отличается от текста с переносами строк', () => {
