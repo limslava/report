@@ -4,6 +4,7 @@ import {
   amountWithoutVat,
   parseClipboardGrid,
   clipboardTextForCell,
+  looksLikeClipboardGrid,
   seriesValue,
   buildOrderText,
   isCompletedStatus,
@@ -154,6 +155,13 @@ describe('своя сортировка', () => {
     expect(parseClipboardGrid('A1\n\n')).toEqual([['A1']]);
     expect(parseClipboardGrid('A1\nB1\n\n')).toEqual([['A1'], ['B1']]);
     expect(parseClipboardGrid('A1\t\nB1\t\n')).toEqual([['A1', ''], ['B1', '']]);
+  });
+
+  it('блок таблицы отличается от текста с переносами строк', () => {
+    expect(looksLikeClipboardGrid('A\tB\nC\tD', null)).toBe(true);
+    expect(looksLikeClipboardGrid('10\n20\n30', '<table><tr><td>10</td></tr></table>')).toBe(true);
+    expect(looksLikeClipboardGrid('ул. Русская 99\nконтакт 8-914', null)).toBe(false);
+    expect(looksLikeClipboardGrid('одно значение', null)).toBe(false);
   });
 
   it('текст в правящуюся ячейку: переносы только в многострочных', () => {

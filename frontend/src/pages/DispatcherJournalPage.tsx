@@ -102,6 +102,7 @@ import {
   normalizeTimeInput,
   parseClipboardGrid,
   clipboardTextForCell,
+  looksLikeClipboardGrid,
   planBlockFill,
   planPasteIntoSelection,
   rangeCellKeys,
@@ -1689,7 +1690,10 @@ export default function DispatcherJournalPage() {
       if (inField(event.target)) return;
       if (selectedKeysRef.current.size > 1 && event.clipboardData) {
         event.preventDefault();
-        event.clipboardData.setData('text/plain', selectionAsTsv());
+        const tsv = selectionAsTsv();
+        event.clipboardData.setData('text/plain', tsv);
+        // html с таблицей — чтобы при вставке было видно, что это блок ячеек, а не текст
+        event.clipboardData.setData('text/html', tsvAsHtmlTable(tsv));
         setMessage({ severity: 'success', text: `Скопировано ячеек: ${selectedKeysRef.current.size}` });
         return;
       }
@@ -1702,7 +1706,9 @@ export default function DispatcherJournalPage() {
       const selected = rowsRef.current.find((row) => row.id === selectedRowIdRef.current);
       if (!selected || !event.clipboardData) return;
       event.preventDefault();
-      event.clipboardData.setData('text/plain', rowToTsv(selected));
+      const line = rowToTsv(selected);
+      event.clipboardData.setData('text/plain', line);
+      event.clipboardData.setData('text/html', tsvAsHtmlTable(line));
       setMessage({ severity: 'success', text: 'Строка скопирована в буфер' });
     };
 
@@ -1710,7 +1716,9 @@ export default function DispatcherJournalPage() {
       if (inField(event.target)) return;
       if (selectedKeysRef.current.size > 1 && event.clipboardData) {
         event.preventDefault();
-        event.clipboardData.setData('text/plain', selectionAsTsv());
+        const tsv = selectionAsTsv();
+        event.clipboardData.setData('text/plain', tsv);
+        event.clipboardData.setData('text/html', tsvAsHtmlTable(tsv));
         clearSelectedCellsRef.current();
         return;
       }
@@ -1728,6 +1736,15 @@ export default function DispatcherJournalPage() {
       event.clipboardData.setData('text/plain', rowToTsv(selected));
       void deleteRow(selected, { silent: true });
       setMessage({ severity: 'success', text: 'Строка вырезана в буфер' });
+    };
+
+    /** Скопированные ячейки — ещё и таблицей: так их узнают Excel, google-таблицы и сам реестр. */
+    const tsvAsHtmlTable = (tsv: string): string => {
+      const escape = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const body = tsv.split('\n')
+        .map((line) => `<tr>${line.split('\t').map((value) => `<td>${escape(value)}</td>`).join('')}</tr>`)
+        .join('');
+      return `<table>${body}</table>`;
     };
 
     /** Вставка текста в поле, которое правят: как обычная вставка с клавиатуры. */
@@ -1758,12 +1775,22 @@ export default function DispatcherJournalPage() {
         return;
       }
       if (cell) {
-        // вставка в ячейку: несколько строк/колонок из Excel или google — раскладываем
-        // вниз и вправо от ячейки (как в таблицах); одно значение в правке — обычная
-        // вставка в поле, в выделенную ячейку — замена значения
+        // вставка в ячейку: блок из Excel или google-таблицы раскладываем вниз и вправо
+        // (как в таблицах), обычный текст — целиком в ячейку, даже если в нём есть переносы строк
         const cellElement = cell.td;
         const rowElement = cell.tr;
-        const grid = parseClipboardGrid(event.clipboardData?.getData('text/plain') ?? '');
+        const raw = event.clipboardData?.getData('text/plain') ?? '';
+        if (!looksLikeClipboardGrid(raw, event.clipboardData?.getData('text/html'))) {
+          const column = COLUMN_BY_KEY.get(cell.field);
+          const multiline = Boolean(column && column.kind === 'text' && column.multiline);
+          const text = clipboardTextForCell(raw, multiline);
+          if (!text || !cell.rowId) return;
+          event.preventDefault();
+          const patch = cellPatchFromText(cell.field, text);
+          if (patch) patchRow(cell.rowId, patch);
+          return;
+        }
+        const grid = parseClipboardGrid(raw);
         if (!grid.length) return;
         event.preventDefault();
         const fieldOrder = [DATE_KEY, ...visibleColumnsRef.current.map((column) => column.field as string)];

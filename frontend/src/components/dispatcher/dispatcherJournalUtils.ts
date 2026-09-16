@@ -254,6 +254,16 @@ export function parseClipboardGrid(text: string): string[][] {
 }
 
 /**
+ * Буфер — блок таблицы (Excel, google-таблица, сам реестр), а не обычный текст?
+ * Таблицы кладут в буфер ещё и html с <table>, а колонки разделяют табуляцией.
+ * Текст из мессенджера с переносами строк — это одно значение, а не блок строк.
+ */
+export function looksLikeClipboardGrid(text: string, html: string | null | undefined): boolean {
+  if (/<table[\s>]/i.test(html ?? '')) return true;
+  return text.includes('\t');
+}
+
+/**
  * Текст из буфера в ячейку, которую правят: перенос строки остаётся только в многострочных
  * ячейках (комментарии, адреса), в остальных строки склеиваются пробелом — как в google-таблице.
  */
