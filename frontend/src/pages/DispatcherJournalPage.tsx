@@ -73,6 +73,7 @@ import {
   type ColumnPrefs,
 } from '../utils/tableColumns';
 import ListCell from '../components/dispatcher/ListCell';
+import ConfirmDialog, { type ConfirmRequest } from '../components/dispatcher/ConfirmDialog';
 import EditableCell from '../components/dispatcher/EditableCell';
 import {
   CELL_NAV_EVENT,
@@ -474,6 +475,8 @@ export default function DispatcherJournalPage() {
   // свои водители и машины «Нашей организации» — для подсветки чужих красным
   const [ownFleet, setOwnFleet] = useState<{ driverSurnames: Set<string>; plates: Set<string> } | null>(null);
   // вставка списка в середину реестра, когда ниже уже есть заявки или другой день
+  // подтверждения (удаление строки, большая вставка) — своим окном: браузерное можно отключить
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [pastePrompt, setPastePrompt] = useState<{ count: number; replace: () => void; insert: () => void } | null>(null);
   const [exporting, setExporting] = useState(false);
   // история: весь реестр (orderId = null) или одна строка
@@ -1447,8 +1450,15 @@ export default function DispatcherJournalPage() {
   const deleteRow = useCallback(async (row: DispatcherOrderRow, options?: { silent?: boolean; skipUndo?: boolean }) => {
     if (accessRef.current !== 'full') return;
     if (!options?.silent) {
-      const label = [row.ktkNumber, row.client].filter(Boolean).join(', ');
-      if (!window.confirm(`Удалить строку${label ? ` (${label})` : ''}?`)) return;
+      const label = [row.orderNumber, row.ktkNumber, row.client].filter(Boolean).join(', ');
+      setConfirmRequest({
+        title: 'Удалить строку?',
+        text: label ? `${label}. Вернуть можно по Ctrl+Z.` : 'Вернуть можно по Ctrl+Z.',
+        confirmLabel: 'Удалить',
+        danger: true,
+        onConfirm: () => void deleteRow(row, { ...options, silent: true }),
+      });
+      return;
     }
     try {
       await deleteDispatcherOrder(row.id);
@@ -1941,8 +1951,13 @@ export default function DispatcherJournalPage() {
           }
         }
         // вставка длинного текста из мессенджера раньше молча затирала строки ниже
-        if (patches.length + creations.length > 10
-          && !window.confirm(`В буфере ${grid.length} строк. Вставить в ${patches.length} строк реестра${creations.length ? ` и создать ещё ${creations.length}` : ''}?`)) {
+        if (patches.length + creations.length > 10) {
+          setConfirmRequest({
+            title: `Вставить ${grid.length} строк?`,
+            text: `Изменится строк реестра: ${patches.length}${creations.length ? `, создастся новых: ${creations.length}` : ''}. Отменить можно по Ctrl+Z.`,
+            confirmLabel: 'Вставить',
+            onConfirm: () => void applyBulkChanges(patches, creations).then(reportPaste),
+          });
           return;
         }
         void applyBulkChanges(patches, creations).then(reportPaste);
@@ -3160,6 +3175,8 @@ export default function DispatcherJournalPage() {
           </MenuItem>
         )}
       </Menu>
+
+      <ConfirmDialog request={confirmRequest} onClose={() => setConfirmRequest(null)} />
 
       <Dialog open={Boolean(pastePrompt)} onClose={() => setPastePrompt(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3, width: 480, maxWidth: 'calc(100% - 32px)' } }}>
         <DialogTitle sx={{ pb: 1, px: 3, fontWeight: 600 }}>Вставить {pastePrompt?.count} строк</DialogTitle>

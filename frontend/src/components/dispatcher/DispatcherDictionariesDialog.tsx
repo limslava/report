@@ -31,6 +31,7 @@ import {
 } from '../../services/dispatcher-journal.api';
 import { textColorFor } from './dispatcherJournalUtils';
 import ColorPickerButton, { type ChipColors } from './ColorPickerButton';
+import ConfirmDialog, { type ConfirmRequest } from './ConfirmDialog';
 
 type TabKey = 'status' | DispatcherDictionaryKind;
 
@@ -64,6 +65,7 @@ type Props = {
 /** Ведение справочников реестра: статусы, типы КТК, варианты НДС, операции. */
 export default function DispatcherDictionariesDialog({ open, canEdit, canEditColors = canEdit, onClose, onChanged }: Props) {
   const [tab, setTab] = useState<TabKey>('status');
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [statuses, setStatuses] = useState<DispatcherStatusEntry[]>([]);
   const [items, setItems] = useState<DispatcherDictionaryEntry[]>([]);
   const [newName, setNewName] = useState('');
@@ -218,10 +220,12 @@ export default function DispatcherDictionariesDialog({ open, canEdit, canEditCol
                     <IconButton
                       size="small"
                       sx={{ p: 0.25 }}
-                      onClick={() => {
-                        if (!window.confirm(`Удалить «${row.name}»?`)) return;
-                        void run(() => (tab === 'status' ? deleteDispatcherStatusEntry(row.id) : deleteDispatcherDictionaryEntry(row.id)));
-                      }}
+                      onClick={() => setConfirmRequest({
+                        title: `Удалить «${row.name}»?`,
+                        confirmLabel: 'Удалить',
+                        danger: true,
+                        onConfirm: () => void run(() => (tab === 'status' ? deleteDispatcherStatusEntry(row.id) : deleteDispatcherDictionaryEntry(row.id))),
+                      })}
                     >
                       <DeleteOutline sx={{ fontSize: 17 }} />
                     </IconButton>
@@ -258,6 +262,7 @@ export default function DispatcherDictionariesDialog({ open, canEdit, canEditCol
       <DialogActions>
         <Button onClick={onClose}>Закрыть</Button>
       </DialogActions>
+      <ConfirmDialog request={confirmRequest} onClose={() => setConfirmRequest(null)} />
     </Dialog>
   );
 }
