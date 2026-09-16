@@ -7,6 +7,37 @@ import { AppDataSource } from '../config/data-source';
  * выдаётся один раз и больше не меняется, даже если дату заявки перенесли.
  * Заявки без номера (новые и заведённые до появления номера) нумеруются по дате и порядку в реестре.
  */
+/** «Иванов Иван Петрович» → «Иванов И.П.»; уже короткое имя остаётся как есть. */
+export function shortResponsibleName(fullName: string | null | undefined): string | null {
+  const parts = (fullName ?? '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return null;
+  const [surname, ...rest] = parts;
+  const initials = rest.map((part) => (/^[A-ZА-ЯЁ]\.$/i.test(part) ? part.toUpperCase() : `${part[0].toUpperCase()}.`)).join('');
+  return initials ? `${surname} ${initials}` : surname;
+}
+
+/**
+ * «Ответственный» заявкам, заведённым до появления столбца: по записи «создана» в истории.
+ * Заявки из импорта google-таблицы такой записи не имеют — остаются пустыми.
+ */
+export async function fillMissingDispatcherResponsible(): Promise<number> {
+  const rows: Array<{ id: string; full_name: string }> = await AppDataSource.query(`
+    SELECT DISTINCT ON (o.id) o.id, u.full_name
+    FROM dispatcher_orders o
+    JOIN dispatcher_order_changes c ON c.order_id = o.id AND c.action = 'create'
+    JOIN users u ON u.id = c.user_id
+    WHERE o.responsible IS NULL
+    ORDER BY o.id, c.created_at
+  `);
+  for (const row of rows) {
+    await AppDataSource.query('UPDATE dispatcher_orders SET responsible = $1 WHERE id = $2 AND responsible IS NULL', [
+      shortResponsibleName(row.full_name),
+      row.id,
+    ]);
+  }
+  return rows.length;
+}
+
 export async function assignMissingDispatcherOrderNumbers(manager?: EntityManager): Promise<number> {
   const run = async (tx: EntityManager): Promise<number> => {
     // одна выдача номеров за раз — без дублей при одновременном заведении

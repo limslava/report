@@ -346,17 +346,14 @@ const DashboardLayout = () => {
   );
 
   const dispatchMenuIcon = isHeadKtkVvo ? (
+    // руководитель КТК Владивосток: мешок с деньгами и стопка монет (выбор 16.09.2026)
     <SvgIcon viewBox="0 0 24 24" sx={{ fontSize: 24 }}>
-      <defs>
-        <linearGradient id="csMarkGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#FFB347" />
-          <stop offset="100%" stopColor="#FF6A00" />
-        </linearGradient>
-      </defs>
-      <circle cx="12" cy="12" r="9.5" fill="#111827" />
-      <circle cx="12" cy="12" r="7.25" fill="none" stroke="url(#csMarkGradient)" strokeWidth="1.8" />
-      <circle cx="12" cy="12" r="2.6" fill="none" stroke="#22D3EE" strokeWidth="1.6" />
-      <path d="M12 3.6v3.1M12 17.3v3.1M3.6 12h3.1M17.3 12h3.1" stroke="#22D3EE" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M7.5 2.5h5l-1.3 2.6H8.8z" fill="#B7791F" />
+      <path d="M8.6 5.1h2.8c3.4 1.8 5.6 5 5.6 8.3 0 2.9-2.7 4.6-7 4.6s-7-1.7-7-4.6c0-3.3 2.2-6.5 5.6-8.3z" fill="#F2B632" />
+      <path d="M8.8 15.4v-5.6h2a1.7 1.7 0 0 1 0 3.4H8M8 14.2h3.1" stroke="#6B4410" strokeWidth="1.3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <ellipse cx="17.5" cy="20.3" rx="4.3" ry="1.6" fill="#B7791F" />
+      <ellipse cx="17.5" cy="19" rx="4.3" ry="1.6" fill="#E0A528" />
+      <ellipse cx="17.5" cy="17.7" rx="4.3" ry="1.6" fill="#F7C948" />
     </SvgIcon>
   ) : isKtkDispatchRole ? (
     <LocalShipping />

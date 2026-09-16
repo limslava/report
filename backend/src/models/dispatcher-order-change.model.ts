@@ -38,6 +38,10 @@ export class DispatcherOrderChange {
   @Column({ name: 'ktk_number', type: 'text', nullable: true })
   ktkNumber!: string | null;
 
+  /** «№ заказа» на момент изменения (у записей до его появления — берётся из заявки) */
+  @Column({ name: 'order_number', type: 'varchar', length: 16, nullable: true })
+  orderNumber!: string | null;
+
   @Column({ type: 'text', nullable: true })
   client!: string | null;
 

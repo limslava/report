@@ -5,7 +5,7 @@
 
 export type DispatcherJournalAccess = 'full' | 'fields' | 'view';
 
-const FULL_ROLES = new Set(['admin', 'manager_ktk_vvo', 'head_ktk_vvo']);
+const FULL_ROLES = new Set(['admin', 'manager_ktk_vvo', 'head_ktk_vvo', 'head_sales', 'manager_sales', 'manager_extra']);
 const FIELD_EDITOR_ROLES = new Set(['doc_manager_vvo']);
 const VIEWER_ROLES = new Set(['secretary', 'head_hr', 'hr_specialist']);
 

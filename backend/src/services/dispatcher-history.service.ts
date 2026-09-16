@@ -12,7 +12,7 @@ export const canViewDispatcherHistory = (role: string | undefined): boolean =>
 type ChangeInput = {
   action: DispatcherOrderChangeAction;
   /** заявка; для сортировки (действие над многими строками) id нет — только дата */
-  order?: (Omit<Pick<DispatcherOrder, 'id' | 'orderDate' | 'ktkNumber' | 'client'>, 'id'> & { id: string | null }) | null;
+  order?: (Omit<Pick<DispatcherOrder, 'id' | 'orderDate' | 'ktkNumber' | 'client'>, 'id'> & { id: string | null; orderNumber?: string | null }) | null;
   field?: string | null;
   oldValue?: unknown;
   newValue?: unknown;
@@ -41,6 +41,7 @@ export async function recordDispatcherChanges(changes: ChangeInput[]): Promise<v
       newValue: toText(change.newValue),
       orderDate: change.order?.orderDate ?? null,
       ktkNumber: change.order?.ktkNumber ?? null,
+      orderNumber: change.order?.orderNumber ?? null,
       client: change.order?.client ?? null,
       userId: change.userId ?? null,
     })));
