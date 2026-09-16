@@ -3161,15 +3161,28 @@ export default function DispatcherJournalPage() {
         )}
       </Menu>
 
-      <Dialog open={Boolean(pastePrompt)} onClose={() => setPastePrompt(null)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ pb: 1 }}>Вставить {pastePrompt?.count} строк</DialogTitle>
-        <DialogContent sx={{ fontSize: 14, color: '#3d4757' }}>
+      <Dialog open={Boolean(pastePrompt)} onClose={() => setPastePrompt(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3, width: 480, maxWidth: 'calc(100% - 32px)' } }}>
+        <DialogTitle sx={{ pb: 1, px: 3, fontWeight: 600 }}>Вставить {pastePrompt?.count} строк</DialogTitle>
+        <DialogContent sx={{ fontSize: 14, color: '#3d4757', px: 3 }}>
           Ниже уже есть заявки или начинается другой день. Вставить новыми строками под выбранной
           (с её датой) или заменить значения в следующих строках?
         </DialogContent>
-        <DialogActions sx={{ px: 2, pb: 2 }}>
-          <Button onClick={() => setPastePrompt(null)}>Отмена</Button>
+        <DialogActions
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 1.3fr)',
+            gap: 1,
+            px: 3,
+            pb: 2.5,
+            '& > :not(style) ~ :not(style)': { ml: 0 },
+            '& .MuiButton-root': { textTransform: 'none', fontSize: 14, fontWeight: 600, py: 0.9, whiteSpace: 'nowrap' },
+          }}
+        >
+          <Button variant="outlined" color="inherit" sx={{ color: '#4b5563', borderColor: '#d1d5db' }} onClick={() => setPastePrompt(null)}>
+            Отмена
+          </Button>
           <Button
+            variant="outlined"
             color="warning"
             onClick={() => {
               pastePrompt?.replace();
@@ -3180,6 +3193,7 @@ export default function DispatcherJournalPage() {
           </Button>
           <Button
             variant="contained"
+            disableElevation
             autoFocus
             onClick={() => {
               pastePrompt?.insert();
