@@ -148,6 +148,8 @@ export const ORDER_AXLE_WARNING =
   '❗️ ❗️ ❗️ При проезде пунктов автоматического весового и габаритного контроля- опускать все все оси❗️ ❗️ ❗️';
 
 export type OrderTextSource = {
+  /** «№ заказа» — первой строкой, если уже выдан */
+  orderNumber?: string | null;
   orderDate: string;
   ktkNumber: string | null;
   ktkType: string | null;
@@ -192,6 +194,7 @@ export function buildOrderText(row: OrderTextSource): string {
     ['Примечание', note],
   ];
   return [
+    ...(value(row.orderNumber ?? null) ? [`№ заказа: ${value(row.orderNumber ?? null)}`] : []),
     `ДАТА ${day}.${month}.${year.slice(2)}`,
     ...lines
       .filter((line): line is [string, string] => line !== null)

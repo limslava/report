@@ -87,6 +87,10 @@ describe('dispatcherJournalUtils', () => {
       comments: '8 914 711-32-23 Алексей',
     });
     expect(text.split('\n')[0]).toBe('ДАТА 01.09.26');
+    const numbered = buildOrderText({ orderNumber: '2609-045', orderDate: '2026-09-14', ktkNumber: 'TRZU1103134', ktkType: null,
+      grossWeight: null, operation: null, terminalFrom: null, slotFrom: null, pinFrom: null, deliveryAddress: null,
+      submitTime: null, terminalTo: null, vehiclePlate: null, comments: null });
+    expect(numbered.split('\n').slice(0, 2)).toEqual(['№ заказа: 2609-045', 'ДАТА 14.09.26']);
     expect(text).toContain('*Номер контейнера* TRZU1103134');
     expect(text).toContain('*Пин*\n');
     expect(text).toContain('*Контактная информация* 8 914 711-32-23 Алексей');
