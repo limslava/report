@@ -101,6 +101,7 @@ import {
   NO_COLOR_KEY,
   normalizeTimeInput,
   parseClipboardGrid,
+  clipboardTextForCell,
   planBlockFill,
   planPasteIntoSelection,
   rangeCellKeys,
@@ -1729,28 +1730,49 @@ export default function DispatcherJournalPage() {
       setMessage({ severity: 'success', text: 'Строка вырезана в буфер' });
     };
 
+    /** Вставка текста в поле, которое правят: как обычная вставка с клавиатуры. */
+    const insertIntoField = (element: HTMLInputElement | HTMLTextAreaElement, text: string) => {
+      const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const setValue = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+      const start = element.selectionStart ?? element.value.length;
+      const end = element.selectionEnd ?? start;
+      const next = element.value.slice(0, start) + text + element.value.slice(end);
+      setValue?.call(element, next);
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+      const caret = start + text.length;
+      element.setSelectionRange?.(caret, caret);
+    };
+
     const pasteHandler = (event: ClipboardEvent) => {
       const editing = inField(event.target);
       const cell = selectedCell(event.target);
-      if (editing || cell) {
+      // ячейку правят — вставляем текст в неё, а не разливаем по строкам ниже (как в google)
+      if (editing) {
+        const field = event.target as HTMLInputElement | HTMLTextAreaElement;
+        const column = cell ? COLUMN_BY_KEY.get(cell.field) : undefined;
+        const multiline = Boolean(column && column.kind === 'text' && column.multiline);
+        const text = clipboardTextForCell(event.clipboardData?.getData('text/plain') ?? '', multiline);
+        if (!text) return;
+        event.preventDefault();
+        insertIntoField(field, text);
+        return;
+      }
+      if (cell) {
         // вставка в ячейку: несколько строк/колонок из Excel или google — раскладываем
         // вниз и вправо от ячейки (как в таблицах); одно значение в правке — обычная
         // вставка в поле, в выделенную ячейку — замена значения
-        const cellElement = cell?.td ?? null;
-        const rowElement = cell?.tr ?? null;
+        const cellElement = cell.td;
+        const rowElement = cell.tr;
         const grid = parseClipboardGrid(event.clipboardData?.getData('text/plain') ?? '');
-        if (!cellElement || !rowElement || !grid.length) return;
-        if (editing && grid.length <= 1 && (grid[0]?.length ?? 0) <= 1) return;
+        if (!grid.length) return;
         event.preventDefault();
-        // черновик правящейся ячейки сохраняется до вставки, иначе blur позже затёр бы вставленное
-        if (editing) (document.activeElement as HTMLElement | null)?.blur();
         const fieldOrder = [DATE_KEY, ...visibleColumnsRef.current.map((column) => column.field as string)];
         const list = displayRowsRef.current;
         let startColumn = fieldOrder.indexOf(cellElement.dataset.field ?? '');
         let isGhost = !rowElement.dataset.rowId;
         let startIndex = isGhost ? list.length : Number(rowElement.dataset.rowIndex);
         // выделено несколько ячеек — вставка в выделение, как в google
-        if (!editing && selectedKeysRef.current.size > 1) {
+        if (selectedKeysRef.current.size > 1) {
           const rowIds = list.map((item) => item.id);
           const selected = [...selectedKeysRef.current].map((key) => {
             const [rowId, field] = key.split('|');
@@ -1793,6 +1815,11 @@ export default function DispatcherJournalPage() {
             creations.push({ date: patch.orderDate ?? lastDate, patch });
           }
         });
+        // вставка длинного текста из мессенджера раньше молча затирала строки ниже
+        if (patches.length + creations.length > 10
+          && !window.confirm(`В буфере ${grid.length} строк. Вставить в ${patches.length} строк реестра${creations.length ? ` и создать ещё ${creations.length}` : ''}?`)) {
+          return;
+        }
         void applyBulkChanges(patches, creations).then(({ patched, created }) => {
           setMessage({
             severity: 'success',
@@ -1801,9 +1828,15 @@ export default function DispatcherJournalPage() {
         });
         return;
       }
+      // вставка целых строк реестра (их копируют по Ctrl+C с выделенной строкой) — только
+      // если в буфере действительно строка таблицы: иначе одно значение сдвинуло бы дату заявки
       const text = event.clipboardData?.getData('text/plain') ?? '';
       const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
       if (!lines.length) return;
+      if (!lines.some((line) => line.includes('\t'))) {
+        setMessage({ severity: 'error', text: 'Кликните в ячейку, куда вставить значение' });
+        return;
+      }
       event.preventDefault();
       void (async () => {
         const selected = rowsRef.current.find((row) => row.id === selectedRowIdRef.current);
