@@ -30,6 +30,9 @@ type ColumnFilterPopoverProps = {
   onSort?: (direction: 'asc' | 'desc') => void;
   onApply: (value: ColumnFilterValue) => void;
   onTogglePin: () => void;
+  /** выравнивание текста в столбце (у каждого своё) */
+  align: ColumnAlign;
+  onAlign: (align: ColumnAlign) => void;
   onClose: () => void;
 };
 
@@ -39,6 +42,15 @@ type ColumnFilterPopoverProps = {
  * содержит, для даты — «с … по …») и по значениям (галочки с поиском).
  * Все три действуют вместе, «ОК» применяет их разом.
  */
+export type ColumnAlign = 'left' | 'center' | 'right';
+
+/** Значки выравнивания: 4 линии (x, ширина), как в google-таблицах. */
+const ALIGN_OPTIONS: Array<{ value: ColumnAlign; label: string; lines: Array<[number, number]> }> = [
+  { value: 'left', label: 'По левому краю', lines: [[2, 12], [2, 8], [2, 12], [2, 8]] },
+  { value: 'center', label: 'По центру', lines: [[2, 12], [4, 8], [2, 12], [4, 8]] },
+  { value: 'right', label: 'По правому краю', lines: [[2, 12], [6, 8], [2, 12], [6, 8]] },
+];
+
 export default function ColumnFilterPopover({
   anchorEl,
   title,
@@ -52,6 +64,8 @@ export default function ColumnFilterPopover({
   onSort,
   onApply,
   onTogglePin,
+  align,
+  onAlign,
   onClose,
 }: ColumnFilterPopoverProps) {
   const [query, setQuery] = useState('');
@@ -134,6 +148,23 @@ export default function ColumnFilterPopover({
           {isPinnedUntilHere ? <PushPin sx={{ fontSize: 15 }} /> : <PushPinOutlined sx={{ fontSize: 15 }} />}
           {isPinnedUntilHere ? 'Открепить столбцы' : 'Закрепить столбцы до этого'}
         </button>
+        <div className="dj-align-seg" role="group" aria-label="Выравнивание текста в столбце">
+          {ALIGN_OPTIONS.map(({ value, label, lines }) => (
+            <button
+              key={value}
+              type="button"
+              className={align === value ? 'is-active' : undefined}
+              title={label}
+              aria-label={label}
+              aria-pressed={align === value}
+              onClick={() => onAlign(value)}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                {lines.map(([x, width], index) => <rect key={index} x={x} y={3 + index * 3.2} width={width} height={1.3} rx={0.65} />)}
+              </svg>
+            </button>
+          ))}
+        </div>
         <Divider sx={{ my: 0.75 }} />
         {hasColors && (
           <>
