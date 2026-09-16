@@ -26,7 +26,6 @@ type ExportColumn = {
 /** Столбцы реестра (порядок и названия — как в DispatcherJournalPage). */
 export const DISPATCHER_EXPORT_COLUMNS: ExportColumn[] = [
   { field: 'orderNumber', title: '№ заказа', width: 11 },
-  { field: 'responsible', title: 'Ответственный', width: 16 },
   { field: 'status', title: 'Статус', width: 16, palette: 'status' },
   { field: 'info', title: 'Инфо', width: 10 },
   { field: 'client', title: 'Клиент', width: 18, palette: 'client' },
@@ -58,6 +57,7 @@ export const DISPATCHER_EXPORT_COLUMNS: ExportColumn[] = [
   { field: 'seal', title: 'Пломба', width: 11 },
   { field: 'recoupling', title: 'Перецеп', width: 9, kind: 'checkbox' },
   { field: 'driverRemarks', title: 'Замечания к водителю', width: 24 },
+  { field: 'responsible', title: 'Ответственный', width: 16 },
 ];
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];

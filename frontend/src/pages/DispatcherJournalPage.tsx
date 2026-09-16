@@ -210,7 +210,6 @@ type PersonalOrder = { ids: string[]; by: { field: string; direction: 'asc' | 'd
  */
 const ALL_COLUMNS: ColumnDef[] = [
   { kind: 'computed', field: 'orderNumber', title: '№ заказа', width: 76 },
-  { kind: 'computed', field: 'responsible', title: 'Ответственный', width: 104 },
   { kind: 'status', field: 'status', title: 'Статус', width: 130 },
   { kind: 'text', field: 'info', title: 'Инфо', width: 70 },
   { kind: 'text', field: 'client', title: 'Клиент', width: 120, list: 'client' },
@@ -242,6 +241,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   { kind: 'text', field: 'seal', title: 'Пломба', width: 70 },
   { kind: 'checkbox', field: 'recoupling', title: 'Перецеп', width: 50 },
   { kind: 'text', field: 'driverRemarks', title: 'Замечания к водителю', width: 140, multiline: true },
+  { kind: 'computed', field: 'responsible', title: 'Ответственный', width: 104 },
 ];
 
 const ALL_COLUMN_KEYS = ALL_COLUMNS.map((column) => column.field);
@@ -307,8 +307,11 @@ const withNewColumnDefaults = (prefs: ColumnPrefs | undefined): ColumnPrefs | un
   }
   // «№ заказа» (15.09.2026) — первым столбцом у тех, кто уже настраивал колонки
   if (!order.includes('orderNumber')) order.unshift('orderNumber');
-  // «Ответственный» (16.09.2026) — сразу за «№ заказа»
-  if (!order.includes('responsible')) order.splice(order.indexOf('orderNumber') + 1, 0, 'responsible');
+  // «Ответственный» (16.09.2026) — по умолчанию после «Замечаний к водителю», дальше переносится как любой столбец
+  if (!order.includes('responsible')) {
+    const remarksIndex = order.indexOf('driverRemarks');
+    order.splice(remarksIndex >= 0 ? remarksIndex + 1 : order.length, 0, 'responsible');
+  }
   return order.length === prefs.order.length ? prefs : { ...prefs, order };
 };
 
