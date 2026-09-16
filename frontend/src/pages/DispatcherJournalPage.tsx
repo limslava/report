@@ -74,6 +74,7 @@ import {
 } from '../utils/tableColumns';
 import ListCell from '../components/dispatcher/ListCell';
 import ConfirmDialog, { type ConfirmRequest } from '../components/dispatcher/ConfirmDialog';
+import type { ColumnAlign } from '../components/dispatcher/ColumnFilterPopover';
 import EditableCell from '../components/dispatcher/EditableCell';
 import {
   CELL_NAV_EVENT,
@@ -629,6 +630,22 @@ export default function DispatcherJournalPage() {
   };
 
   // масштаб таблицы (как в операционном отчёте) — у каждого сотрудника свой
+  // выравнивание текста по столбцам — у каждого своё, в учётной записи
+  const [columnAligns, setColumnAligns] = useAccountPreference<Record<string, ColumnAlign>>(
+    'dj-align-v1', user?.id, {}, (value) => (value && typeof value === 'object' ? value as Record<string, ColumnAlign> : {}),
+  );
+  const alignOf = (field: string): ColumnAlign => {
+    const saved = columnAligns[field];
+    if (saved === 'left' || saved === 'center' || saved === 'right') return saved;
+    const column = COLUMN_BY_KEY.get(field);
+    if (FINANCE_FIELDS.has(field) || field === 'amountWithoutVat') return 'right';
+    if (field === 'orderNumber' || column?.kind === 'checkbox') return 'center';
+    return 'left';
+  };
+  const alignCss = useMemo(() => Object.entries(columnAligns)
+    .filter(([field, value]) => /^[A-Za-z]+$/.test(field) && (value === 'left' || value === 'center' || value === 'right'))
+    .map(([field, value]) => `.dj-table td[data-field="${field}"], .dj-table td[data-field="${field}"] .dj-cell-input, .dj-table td[data-field="${field}"] textarea { text-align: ${value} !important; }`)
+    .join('\n'), [columnAligns]);
   const [zoom, setZoom] = useAccountPreference<number>('dj-zoom-v1', user?.id, 1, (value) => {
     const stored = Number(value);
     return Number.isFinite(stored) && stored >= MIN_ZOOM && stored <= MAX_ZOOM ? stored : 1;
@@ -3086,6 +3103,8 @@ export default function DispatcherJournalPage() {
           onSort={(direction) => sortOnce(filterMenu.field, direction)}
           onApply={(value) => applyColumnFilter(filterMenu.field, value)}
           onTogglePin={() => setPinnedUntil((prev) => (prev === filterMenu.field ? null : filterMenu.field))}
+          align={alignOf(filterMenu.field)}
+          onAlign={(value) => setColumnAligns((prev) => ({ ...prev, [filterMenu.field]: value }))}
           onClose={() => setFilterMenu(null)}
         />
       )}
@@ -3176,6 +3195,7 @@ export default function DispatcherJournalPage() {
         )}
       </Menu>
 
+      {alignCss && <style>{alignCss}</style>}
       <ConfirmDialog request={confirmRequest} onClose={() => setConfirmRequest(null)} />
 
       <Dialog open={Boolean(pastePrompt)} onClose={() => setPastePrompt(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3, width: 480, maxWidth: 'calc(100% - 32px)' } }}>

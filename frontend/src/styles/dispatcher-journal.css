@@ -957,3 +957,13 @@ body.dj-filling, body.dj-filling * { cursor: crosshair !important; user-select: 
 
 /* «Ответственный» — служебный столбец, не редактируется */
 .dj-table td.dj-responsible { color: #4b5563; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* выравнивание столбца в меню заголовка: три значка в одной рамке, как в google-таблицах */
+.dj-align-seg { display: inline-flex; margin: 4px 6px 2px; border: 1px solid #d5d9e0; border-radius: 6px; overflow: hidden; }
+.dj-align-seg button { width: 34px; height: 26px; padding: 0; border: 0; background: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.dj-align-seg button + button { border-left: 1px solid #d5d9e0; }
+.dj-align-seg button:hover { background: #f1f3f6; }
+.dj-align-seg button.is-active { background: #e8f0fe; }
+.dj-align-seg svg { width: 16px; height: 16px; }
+.dj-align-seg svg rect { fill: #5f6368; }
+.dj-align-seg button.is-active svg rect { fill: #1a73e8; }
