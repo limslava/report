@@ -47,9 +47,16 @@ export async function saveFileWithPicker(suggestedName: string, load: () => Prom
     }
     if (handle) {
       const blob = await load();
-      const writable = await handle.createWritable();
-      await writable.write(blob);
-      await writable.close();
+      const write = (async () => {
+        const writable = await handle!.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return true;
+      })();
+      // если запись зависла или запрещена — отдаём обычной загрузкой, чтобы файл не потерялся
+      const timeout = new Promise<boolean>((resolve) => { window.setTimeout(() => resolve(false), 20_000); });
+      const written = await Promise.race([write.catch(() => false), timeout]);
+      if (!written) await downloadBlob(blob, safeName);
       return 'saved';
     }
   }
