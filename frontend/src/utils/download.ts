@@ -1,96 +1,16 @@
-type SaveFilePickerOptions = {
-  suggestedName?: string;
-  types?: Array<{
-    description: string;
-    accept: Record<string, string[]>;
-  }>;
-};
-
-type FileSystemWritableFileStream = {
-  write: (data: Blob) => Promise<void>;
-  close: () => Promise<void>;
-};
-
-type FileSystemFileHandle = {
-  createWritable: () => Promise<FileSystemWritableFileStream>;
-};
-
-type WindowWithSavePicker = Window & {
-  showSaveFilePicker?: (options?: SaveFilePickerOptions) => Promise<FileSystemFileHandle>;
-};
-
 /**
- * Сохранение файла, который ещё нужно получить с сервера: окно «Сохранить как» открывается
- * сразу по клику, а не после загрузки — иначе браузер его больше не показывает (разрешение
- * действует несколько секунд после нажатия) и файл молча падает в «Загрузки».
+ * Файл с сервера: сначала получаем, потом отдаём браузеру. Системное окно «Сохранить как»
+ * (showSaveFilePicker) не используем — в Arc и Chrome на macOS оно то не открывается,
+ * то зависает. Куда класть файл, решает браузер: «Загрузки» или свой диалог, если в его
+ * настройках включено «Всегда спрашивать, куда сохранять файлы».
  */
 export async function saveFileWithPicker(suggestedName: string, load: () => Promise<Blob>): Promise<'saved' | 'cancelled'> {
-  const safeName = suggestedName.normalize('NFC');
-  const savePicker = (window as WindowWithSavePicker).showSaveFilePicker;
-  if (savePicker) {
-    let handle: FileSystemFileHandle | null = null;
-    try {
-      handle = await savePicker.call(window, {
-        suggestedName: safeName,
-        types: [
-          {
-            description: 'Excel workbook',
-            accept: {
-              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-            },
-          },
-        ],
-      });
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled';
-      handle = null;
-    }
-    if (handle) {
-      const blob = await load();
-      const write = (async () => {
-        const writable = await handle!.createWritable();
-        await writable.write(blob);
-        await writable.close();
-        return true;
-      })();
-      // если запись зависла или запрещена — отдаём обычной загрузкой, чтобы файл не потерялся
-      const timeout = new Promise<boolean>((resolve) => { window.setTimeout(() => resolve(false), 20_000); });
-      const written = await Promise.race([write.catch(() => false), timeout]);
-      if (!written) await downloadBlob(blob, safeName);
-      return 'saved';
-    }
-  }
-  await downloadBlob(await load(), safeName);
+  await downloadBlob(await load(), suggestedName.normalize('NFC'));
   return 'saved';
 }
 
 export async function downloadBlob(blob: Blob, filename: string): Promise<void> {
   const safeFilename = filename.normalize('NFC');
-  const savePicker = (window as WindowWithSavePicker).showSaveFilePicker;
-
-  if (savePicker) {
-    try {
-      const handle = await savePicker.call(window, {
-        suggestedName: safeFilename,
-        types: [
-          {
-            description: 'Excel workbook',
-            accept: {
-              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-            },
-          },
-        ],
-      });
-      const writable = await handle.createWritable();
-      await writable.write(blob);
-      await writable.close();
-      return;
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return;
-      // Fall back to browser download if direct file saving is unavailable.
-    }
-  }
-
   const file = new File([blob], safeFilename, {
     type: blob.type || 'application/octet-stream',
   });
