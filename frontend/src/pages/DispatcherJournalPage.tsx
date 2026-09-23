@@ -2899,12 +2899,18 @@ export default function DispatcherJournalPage() {
               if (!cell || !rowElement) return;
               const next = { rowId: rowElement.dataset.rowId ?? null, field: cell.dataset.field ?? '' };
               setActiveCell((prev) => (prev?.rowId === next.rowId && prev?.field === next.field ? prev : next));
-              // перешли в другую ячейку — выделение начинается с неё заново
-              setCellSelection((prev) => (
-                prev.anchor?.rowId === next.rowId && prev.anchor?.field === next.field && !prev.focus && !prev.extra.length
-                  ? prev
-                  : { anchor: next.rowId ? { rowId: next.rowId, field: next.field } : null, focus: null, extra: [] }
-              ));
+              // перешли в другую ячейку — выделение начинается с неё заново; внутри уже
+              // выделенного блока оставляем его (правый клик по блоку — «Копировать» целиком)
+              const insideSelection = Boolean(next.rowId)
+                && selectedKeysRef.current.size > 1
+                && selectedKeysRef.current.has(cellKey(next.rowId as string, next.field));
+              if (!insideSelection) {
+                setCellSelection((prev) => (
+                  prev.anchor?.rowId === next.rowId && prev.anchor?.field === next.field && !prev.focus && !prev.extra.length
+                    ? prev
+                    : { anchor: next.rowId ? { rowId: next.rowId, field: next.field } : null, focus: null, extra: [] }
+                ));
+              }
             }}
             onMouseDownCapture={(event) => {
               if (event.button !== 0) return;
