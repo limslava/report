@@ -1,8 +1,17 @@
 import api from './api';
 
 /** Excel всего реестра (лист на месяц). Имя файла — из ответа сервера. */
-export const downloadDispatcherJournalExcel = async (): Promise<{ blob: Blob; filename: string }> => {
-  const response = await api.get('/dispatcher-journal/export', { responseType: 'blob', timeout: 120_000 });
+export const downloadDispatcherJournalExcel = async (options?: {
+  /** сколько байт уже получено; total = null, если сервер не сообщил размер */
+  onProgress?: (loaded: number, total: number | null) => void;
+  signal?: AbortSignal;
+}): Promise<{ blob: Blob; filename: string }> => {
+  const response = await api.get('/dispatcher-journal/export', {
+    responseType: 'blob',
+    timeout: 120_000,
+    signal: options?.signal,
+    onDownloadProgress: (event) => options?.onProgress?.(event.loaded ?? 0, event.total ?? null),
+  });
   const disposition = String(response.headers['content-disposition'] ?? '');
   const match = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
   let filename = 'Реестр КТК Владивосток.xlsx';
