@@ -241,7 +241,7 @@ export default function OperationsPreview() {
   const userId = useAuthStore((state) => state.user?.id);
   const userRole = useAuthStore((state) => state.user?.role);
   // начальник гаража смотрит факт контейнеровозов и автовозов Владивостока — только просмотр
-  const isFactOnlyViewer = userRole === 'garage_head_vvo' && activeLocation === 'ktk_vvo';
+  const isFactOnlyViewer = (userRole === 'garage_head_vvo' || userRole === 'bdd_specialist_vvo') && activeLocation === 'ktk_vvo';
   const allowedDepartments = useMemo(
     () => getDepartmentsForLocation(activeLocation)
       .filter((department) => !isFactOnlyViewer || department === 'Контейнеры' || department === 'Авто'),

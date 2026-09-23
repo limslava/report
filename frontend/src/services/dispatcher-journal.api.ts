@@ -59,6 +59,10 @@ export type DispatcherOrderRow = {
   demurrage: string | null;
   orderOnVehicle: boolean;
   invoiceSent: boolean;
+  /** ЭЗЗ/ПЭ — электронная заявка на заезд / пропуск экспедитора */
+  ezzPe: boolean;
+  /** ЭТРН — электронная транспортная накладная */
+  etrn: boolean;
   extraTon: string | null;
   seal: string | null;
   recoupling: boolean;

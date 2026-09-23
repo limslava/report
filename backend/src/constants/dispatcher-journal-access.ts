@@ -9,9 +9,18 @@
 export type DispatcherJournalAccess = 'full' | 'fields' | 'view';
 
 /** Ведут реестр целиком: строки, порядок, все поля (отдел продаж — решение 16.09.2026). */
-export const DISPATCHER_JOURNAL_ROLES = ['manager_ktk_vvo', 'head_ktk_vvo', 'head_sales', 'manager_sales', 'manager_extra'] as const;
-export const DISPATCHER_JOURNAL_FIELD_EDITOR_ROLES = ['doc_manager_vvo'] as const;
-export const DISPATCHER_JOURNAL_VIEWER_ROLES = ['secretary', 'head_hr', 'hr_specialist'] as const;
+export const DISPATCHER_JOURNAL_ROLES = [
+  'manager_ktk_vvo',
+  'head_ktk_vvo',
+  'head_sales',
+  'manager_sales',
+  'manager_extra',
+  // менеджер документационного отдела ведёт реестр целиком (решение 23.09.2026)
+  'doc_manager_vvo',
+] as const;
+/** Правка только своих полей — сейчас таких ролей нет, механика оставлена на будущее. */
+export const DISPATCHER_JOURNAL_FIELD_EDITOR_ROLES = [] as const;
+export const DISPATCHER_JOURNAL_VIEWER_ROLES = ['secretary', 'head_hr', 'hr_specialist', 'bdd_specialist_vvo'] as const;
 export const DISPATCHER_JOURNAL_READ_ROLES = [
   'admin',
   ...DISPATCHER_JOURNAL_ROLES,

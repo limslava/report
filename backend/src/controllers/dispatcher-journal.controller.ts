@@ -89,7 +89,7 @@ const EDITABLE_TEXT_FIELDS = [
   'seal',
   'driverRemarks',
 ] as const;
-const EDITABLE_BOOLEAN_FIELDS = ['orderOnVehicle', 'invoiceSent', 'recoupling'] as const;
+const EDITABLE_BOOLEAN_FIELDS = ['orderOnVehicle', 'invoiceSent', 'ezzPe', 'etrn', 'recoupling'] as const;
 
 type EditableTextField = typeof EDITABLE_TEXT_FIELDS[number];
 type EditableBooleanField = typeof EDITABLE_BOOLEAN_FIELDS[number];
@@ -144,6 +144,8 @@ const serializeOrder = (order: DispatcherOrder) => ({
   demurrage: order.demurrage,
   orderOnVehicle: order.orderOnVehicle,
   invoiceSent: order.invoiceSent,
+  ezzPe: order.ezzPe,
+  etrn: order.etrn,
   extraTon: order.extraTon,
   seal: order.seal,
   recoupling: order.recoupling,

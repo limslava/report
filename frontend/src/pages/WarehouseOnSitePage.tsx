@@ -1,5 +1,6 @@
 import {
   ArrowBack,
+  Description,
   Logout,
   MiscellaneousServices,
   PhotoCamera,
@@ -26,10 +27,12 @@ import WarehousePageTitle from '../components/warehouse/WarehousePageTitle';
 import WarehousePhotoDialog from '../components/warehouse/WarehousePhotoDialog';
 import WarehouseServicesDialog from '../components/warehouse/WarehouseServicesDialog';
 import {
+  downloadWarehouseVehicleInspectionAct,
   getWarehouseVehicles,
   uploadWarehouseVehiclePhoto,
   WarehouseVehicle,
 } from '../services/warehouse.api';
+import { downloadBlob } from '../utils/download';
 import { warehouseVehicleTypeLabel } from '../constants/warehouse';
 import {
   createWarehousePhotoClientHash,
@@ -65,6 +68,20 @@ export default function WarehouseOnSitePage() {
   const [servicesVehicle, setServicesVehicle] = useState<WarehouseVehicle | null>(null);
   const [pendingUploads, setPendingUploads] = useState<Record<string, number>>({});
   const [uploadingVehicleId, setUploadingVehicleId] = useState<string | null>(null);
+  // акт приёмки по машине на стоянке — кладовщику для сверки у машины
+  const [actVehicleId, setActVehicleId] = useState<string | null>(null);
+
+  const downloadAct = async (vehicle: WarehouseVehicle) => {
+    setActVehicleId(vehicle.id);
+    try {
+      const response = await downloadWarehouseVehicleInspectionAct(vehicle.id, 'reception');
+      await downloadBlob(response.data, `Акт_передачи_${vehicle.warehouseNumber}.pdf`);
+    } catch (downloadError) {
+      setError(messageFromError(downloadError));
+    } finally {
+      setActVehicleId(null);
+    }
+  };
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
 
   const loadVehicles = useCallback(async (silent = false) => {
@@ -323,6 +340,16 @@ export default function WarehouseOnSitePage() {
                           sx={{ minHeight: 48 }}
                         >
                           Фото
+                        </Button>
+                        <Button
+                          fullWidth
+                          variant="outlined"
+                          startIcon={<Description />}
+                          disabled={actVehicleId === vehicle.id}
+                          onClick={() => void downloadAct(vehicle)}
+                          sx={{ minHeight: 48 }}
+                        >
+                          Акт
                         </Button>
                       </Stack>
                       <Button

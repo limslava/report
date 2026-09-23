@@ -188,7 +188,7 @@ type TextFieldName =
   | 'driverRate' | 'vat' | 'clientRate' | 'passes' | 'extraAddress' | 'demurrage'
   | 'extraTon' | 'seal' | 'driverRemarks';
 
-type BooleanFieldName = 'orderOnVehicle' | 'invoiceSent' | 'recoupling';
+type BooleanFieldName = 'orderOnVehicle' | 'invoiceSent' | 'ezzPe' | 'etrn' | 'recoupling';
 
 /** Источник подсказок ячейки: справочники реестра или справочники водителей/техники. */
 type ListSource = keyof DispatcherDictionaryOptions | 'drivers' | 'vehicles';
@@ -239,6 +239,8 @@ const ALL_COLUMNS: ColumnDef[] = [
   { kind: 'text', field: 'demurrage', title: 'Простой/руб', width: 84 },
   { kind: 'checkbox', field: 'orderOnVehicle', title: 'Заказ на ТС', width: 52, accent: '#1a73e8' },
   { kind: 'checkbox', field: 'invoiceSent', title: 'Отправка счета', width: 52, accent: '#d93025' },
+  { kind: 'checkbox', field: 'ezzPe', title: 'ЭЗЗ/ПЭ', width: 52, accent: '#e8710a' },
+  { kind: 'checkbox', field: 'etrn', title: 'ЭТРН', width: 52, accent: '#00838f' },
   { kind: 'text', field: 'extraTon', title: 'Доп тонна', width: 70 },
   { kind: 'text', field: 'seal', title: 'Пломба', width: 70 },
   { kind: 'checkbox', field: 'recoupling', title: 'Перецеп', width: 50 },
@@ -309,6 +311,12 @@ const withNewColumnDefaults = (prefs: ColumnPrefs | undefined): ColumnPrefs | un
   }
   // «№ заказа» (15.09.2026) — первым столбцом у тех, кто уже настраивал колонки
   if (!order.includes('orderNumber')) order.unshift('orderNumber');
+  // «ЭЗЗ/ПЭ» и «ЭТРН» (23.09.2026) — сразу за «Отправкой счета»
+  ['ezzPe', 'etrn'].forEach((key, index) => {
+    if (order.includes(key)) return;
+    const invoiceIndex = order.indexOf('invoiceSent');
+    order.splice(invoiceIndex >= 0 ? invoiceIndex + 1 + index : order.length, 0, key);
+  });
   // «Ответственный» (16.09.2026) — по умолчанию после «Замечаний к водителю», дальше переносится как любой столбец
   if (!order.includes('responsible')) {
     const remarksIndex = order.indexOf('driverRemarks');
@@ -344,7 +352,7 @@ const DICTIONARY_EDIT_ROLES = new Set(['admin', 'head_ktk_vvo']);
 /** Цвета значений справочников выбирают и диспетчеры (проверка дублируется на сервере). */
 const DICTIONARY_COLOR_ROLES = new Set(['admin', 'head_ktk_vvo', 'manager_ktk_vvo']);
 /** История изменений реестра видна администратору и руководителю КТК (проверка и на сервере). */
-const HISTORY_ROLES = new Set(['admin', 'head_ktk_vvo']);
+const HISTORY_ROLES = new Set(['admin', 'head_ktk_vvo', 'manager_ktk_vvo']);
 
 /** Названия полей реестра для окна истории. */
 const FIELD_TITLES: Record<string, string> = {
@@ -428,6 +436,15 @@ const EMPTY_SELECTION: CellSelection = { anchor: null, focus: null, extra: [] };
 
 type Message = { severity: 'error' | 'success'; text: string } | null;
 
+/** Скопированные ячейки — ещё и таблицей: так их узнают Excel, google-таблицы и сам реестр. */
+const tsvAsHtmlTable = (tsv: string): string => {
+  const escape = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const body = tsv.split('\n')
+    .map((line) => `<tr>${line.split('\t').map((value) => `<td>${escape(value)}</td>`).join('')}</tr>`)
+    .join('');
+  return `<table>${body}</table>`;
+};
+
 /** Текст ячейки для фильтра, копирования и сортировки. */
 const columnText = (row: DispatcherOrderRow, column: ColumnDef): string => {
   if (column.kind === 'checkbox') return row[column.field] ? 'да' : '';
@@ -478,6 +495,8 @@ export default function DispatcherJournalPage() {
   // вставка списка в середину реестра, когда ниже уже есть заявки или другой день
   // подтверждения (удаление строки, большая вставка) — своим окном: браузерное можно отключить
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
+  type PasteTargetCell = { td: HTMLElement; tr: HTMLElement; field: string; rowId: string | null };
+  const pasteIntoCellRef = useRef<(cell: PasteTargetCell, text: string, html: string) => void>(() => undefined);
   const [pastePrompt, setPastePrompt] = useState<{ count: number; replace: () => void; insert: () => void } | null>(null);
   const [exporting, setExporting] = useState(false);
   // история: весь реестр (orderId = null) или одна строка
@@ -1626,6 +1645,64 @@ export default function DispatcherJournalPage() {
     return { [column.field]: trimmed || null };
   }, []);
 
+  /** «Копировать» из меню: выделенные ячейки, активная ячейка или вся строка. */
+  const copyFromMenu = useCallback(async (row: DispatcherOrderRow) => {
+    const active = activeCellRef.current;
+    let text: string;
+    let html: string | null = null;
+    if (selectedKeysRef.current.size > 1) {
+      text = selectionAsTsv();
+      html = tsvAsHtmlTable(text);
+    } else if (active?.rowId) {
+      text = cellText(active.rowId, active.field);
+    } else {
+      text = rowToTsv(row);
+      html = tsvAsHtmlTable(text);
+    }
+    try {
+      if (html && typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+          'text/html': new Blob([html], { type: 'text/html' }),
+        })]);
+      } else {
+        await navigator.clipboard.writeText(text);
+      }
+      setMessage({ severity: 'success', text: 'Скопировано в буфер обмена' });
+    } catch {
+      setMessage({ severity: 'error', text: 'Браузер не дал доступ к буферу обмена' });
+    }
+  }, [cellText, rowToTsv, selectionAsTsv]);
+
+  /** «Вставить» из меню: в активную ячейку, иначе в первую ячейку выбранной строки. */
+  const pasteFromMenu = useCallback(async (row: DispatcherOrderRow) => {
+    const active = activeCellRef.current;
+    const rowId = active?.rowId && rowsRef.current.some((item) => item.id === active.rowId) ? active.rowId : row.id;
+    const field = active?.rowId === rowId && active?.field ? active.field : visibleColumnsRef.current[0]?.field ?? DATE_KEY;
+    const tr = wrapRef.current?.querySelector(`tr[data-row-id="${rowId}"]`) as HTMLElement | null;
+    const td = tr?.querySelector(`td[data-field="${field}"]`) as HTMLElement | null;
+    if (!tr || !td) {
+      setMessage({ severity: 'error', text: 'Кликните в ячейку, куда вставить значение' });
+      return;
+    }
+    try {
+      let text = '';
+      let html = '';
+      if (navigator.clipboard?.read) {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          if (item.types.includes('text/html')) html = await (await item.getType('text/html')).text();
+          if (item.types.includes('text/plain')) text = await (await item.getType('text/plain')).text();
+        }
+      }
+      if (!text) text = await navigator.clipboard.readText();
+      if (!text.trim()) return;
+      pasteIntoCellRef.current({ td, tr, field, rowId }, text, html);
+    } catch {
+      setMessage({ severity: 'error', text: 'Браузер не дал доступ к буферу обмена — используйте Ctrl+V' });
+    }
+  }, []);
+
   /** Пакет правок и новых строк одним действием — одна запись в Ctrl+Z. */
   const applyBulkChanges = useCallback(async (
     patches: Array<{ id: string; patch: DispatcherOrderPatch }>,
@@ -1799,15 +1876,6 @@ export default function DispatcherJournalPage() {
       setMessage({ severity: 'success', text: 'Строка вырезана в буфер' });
     };
 
-    /** Скопированные ячейки — ещё и таблицей: так их узнают Excel, google-таблицы и сам реестр. */
-    const tsvAsHtmlTable = (tsv: string): string => {
-      const escape = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const body = tsv.split('\n')
-        .map((line) => `<tr>${line.split('\t').map((value) => `<td>${escape(value)}</td>`).join('')}</tr>`)
-        .join('');
-      return `<table>${body}</table>`;
-    };
-
     /** Вставка текста в поле, которое правят: как обычная вставка с клавиатуры. */
     const insertIntoField = (element: HTMLInputElement | HTMLTextAreaElement, text: string) => {
       const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -1821,39 +1889,24 @@ export default function DispatcherJournalPage() {
       element.setSelectionRange?.(caret, caret);
     };
 
-    const pasteHandler = (event: ClipboardEvent) => {
-      const editing = inField(event.target);
-      const cell = selectedCell(event.target);
-      // ячейку правят — вставляем текст в неё, а не разливаем по строкам ниже (как в google)
-      if (editing) {
-        const field = event.target as HTMLInputElement | HTMLTextAreaElement;
-        const column = cell ? COLUMN_BY_KEY.get(cell.field) : undefined;
-        const multiline = Boolean(column && column.kind === 'text' && column.multiline);
-        const text = clipboardTextForCell(event.clipboardData?.getData('text/plain') ?? '', multiline);
-        if (!text) return;
-        event.preventDefault();
-        insertIntoField(field, text);
-        return;
-      }
-      if (cell) {
+    /** Вставка в ячейку — и по Ctrl+V, и через меню правой кнопки. */
+    pasteIntoCellRef.current = (cell, raw, html) => {
+
         // вставка в ячейку: блок из Excel или google-таблицы раскладываем вниз и вправо
         // (как в таблицах), обычный текст — целиком в ячейку, даже если в нём есть переносы строк
         const cellElement = cell.td;
         const rowElement = cell.tr;
-        const raw = event.clipboardData?.getData('text/plain') ?? '';
-        if (!looksLikeClipboardGrid(raw, event.clipboardData?.getData('text/html'))) {
+        if (!looksLikeClipboardGrid(raw, html)) {
           const column = COLUMN_BY_KEY.get(cell.field);
           const multiline = Boolean(column && column.kind === 'text' && column.multiline);
           const text = clipboardTextForCell(raw, multiline);
           if (!text || !cell.rowId) return;
-          event.preventDefault();
           const patch = cellPatchFromText(cell.field, text);
           if (patch) patchRow(cell.rowId, patch);
           return;
         }
         const grid = parseClipboardGrid(raw);
         if (!grid.length) return;
-        event.preventDefault();
         const fieldOrder = [DATE_KEY, ...visibleColumnsRef.current.map((column) => column.field as string)];
         const list = displayRowsRef.current;
         let startColumn = fieldOrder.indexOf(cellElement.dataset.field ?? '');
@@ -1978,6 +2031,25 @@ export default function DispatcherJournalPage() {
           return;
         }
         void applyBulkChanges(patches, creations).then(reportPaste);
+    };
+
+    const pasteHandler = (event: ClipboardEvent) => {
+      const editing = inField(event.target);
+      const cell = selectedCell(event.target);
+      // ячейку правят — вставляем текст в неё, а не разливаем по строкам ниже (как в google)
+      if (editing) {
+        const field = event.target as HTMLInputElement | HTMLTextAreaElement;
+        const column = cell ? COLUMN_BY_KEY.get(cell.field) : undefined;
+        const multiline = Boolean(column && column.kind === 'text' && column.multiline);
+        const text = clipboardTextForCell(event.clipboardData?.getData('text/plain') ?? '', multiline);
+        if (!text) return;
+        event.preventDefault();
+        insertIntoField(field, text);
+        return;
+      }
+      if (cell) {
+        event.preventDefault();
+        pasteIntoCellRef.current(cell, event.clipboardData?.getData('text/plain') ?? '', event.clipboardData?.getData('text/html') ?? '');
         return;
       }
       // вставка целых строк реестра (их копируют по Ctrl+C с выделенной строкой) — только
@@ -3032,6 +3104,31 @@ export default function DispatcherJournalPage() {
             >
               Копировать строку
             </button>
+            <div className="dj-context-sep" />
+            <button
+              type="button"
+              className="dj-context-item"
+              onClick={() => {
+                const current = rowsRef.current.find((item) => item.id === contextMenu.row.id) ?? contextMenu.row;
+                setContextMenu(null);
+                void copyFromMenu(current);
+              }}
+            >
+              Копировать<span className="dj-context-hint">Ctrl+C</span>
+            </button>
+            {canManageRows && (
+              <button
+                type="button"
+                className="dj-context-item"
+                onClick={() => {
+                  const current = rowsRef.current.find((item) => item.id === contextMenu.row.id) ?? contextMenu.row;
+                  setContextMenu(null);
+                  void pasteFromMenu(current);
+                }}
+              >
+                Вставить<span className="dj-context-hint">Ctrl+V</span>
+              </button>
+            )}
             {canManageRows && <div className="dj-context-sep" />}
             {canManageRows && <button
               type="button"

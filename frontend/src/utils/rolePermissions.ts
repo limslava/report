@@ -97,13 +97,19 @@ export function canAccessFuel(role?: string | null): boolean {
 
 export function directoryLocationsForRole(role?: string | null): FuelLocation[] {
   if (role === 'admin' || role === 'head_hr' || role === 'hr_specialist') return ['vvo', 'mow'];
-  if (role === 'head_ktk_vvo' || role === 'manager_ktk_vvo') return ['vvo'];
+  // БДД Владивосток ведёт «Нашу организацию» своего региона (решение 23.09.2026)
+  if (role === 'head_ktk_vvo' || role === 'manager_ktk_vvo' || role === 'bdd_specialist_vvo') return ['vvo'];
   if (role === 'head_ktk_mow' || role === 'manager_ktk_mow') return ['mow'];
   return [];
 }
 
 export function canAccessDirectories(role?: string | null): boolean {
   return directoryLocationsForRole(role).length > 0;
+}
+
+/** Контрагентов БДД не ведёт и не видит. */
+export function canAccessCounterparties(role?: string | null): boolean {
+  return canAccessDirectories(role) && role !== 'bdd_specialist_vvo';
 }
 
 /** Печатные формы: пока только Владивосток (шаблоны под контрагентов ВВО) + админ. */
@@ -116,6 +122,7 @@ export function canAccessPrintForms(role?: string | null): boolean {
 /** Ведение справочников: руководители и менеджеры КТК — свой регион (регион даёт directoryLocationsForRole). */
 export function canEditDirectoriesFrontend(role?: string | null): boolean {
   return role === 'admin'
+    || role === 'bdd_specialist_vvo'
     || role === 'head_hr'
     || role === 'hr_specialist'
     || role === 'head_ktk_vvo'
@@ -197,6 +204,7 @@ export function canAccessOperationsPreview(role?: string | null): boolean {
     role === 'head_hr' ||
     role === 'hr_specialist' ||
     role === 'garage_head_vvo' ||
+    role === 'bdd_specialist_vvo' ||
     role === 'warehouse_manager_vvo' ||
     role === 'security'
   );

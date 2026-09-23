@@ -117,6 +117,14 @@ export class DispatcherOrder {
   @Column({ name: 'invoice_sent', type: 'boolean', default: false })
   invoiceSent!: boolean;
 
+  /** ЭЗЗ/ПЭ — электронная заявка на заезд / пропуск экспедитора (галочка, 23.09.2026) */
+  @Column({ name: 'ezz_pe', type: 'boolean', default: false })
+  ezzPe!: boolean;
+
+  /** ЭТРН — электронная транспортная накладная (галочка, 23.09.2026) */
+  @Column({ type: 'boolean', default: false })
+  etrn!: boolean;
+
   @Column({ name: 'extra_ton', type: 'text', nullable: true })
   extraTon!: string | null;
 

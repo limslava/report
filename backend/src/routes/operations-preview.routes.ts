@@ -26,6 +26,7 @@ router.get(
     'head_hr',
     'hr_specialist',
     'garage_head_vvo',
+    'bdd_specialist_vvo',
     'warehouse_manager_vvo',
     'security',
     'director',
@@ -45,6 +46,7 @@ router.put(
     'head_hr',
     'hr_specialist',
     'garage_head_vvo',
+    'bdd_specialist_vvo',
     'warehouse_manager_vvo',
     'security'
   ),
@@ -61,6 +63,7 @@ router.get(
     'head_hr',
     'hr_specialist',
     'garage_head_vvo',
+    'bdd_specialist_vvo',
     'warehouse_manager_vvo',
     'security',
     'director',
