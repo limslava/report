@@ -311,7 +311,7 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
     try {
       setDownloading(true);
       setError(null);
-      // окно «Сохранить как» открывается сразу по клику: после загрузки браузер его уже не покажет
+      // файл отдаём обычным скачиванием: системное окно «Сохранить как» зависало в Arc
       await saveFileWithPicker(
         `Заявки КТК Владивосток — ${formatDateForFilename(currentContext.asOfDate)}.xlsx`,
         async () => (await planningV2Api.downloadKtkVvoSummaryExcel({ asOfDate: currentContext.asOfDate })).blob,

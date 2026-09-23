@@ -3327,13 +3327,10 @@ export default function DispatcherJournalPage() {
           onClick={() => {
             setSettingsAnchor(null);
             setExporting(true);
-            // окно «Сохранить как» открываем сразу по клику: после загрузки файла браузер его уже не покажет
+            // файл отдаём обычным скачиванием: системное окно «Сохранить как» зависало в Arc
             const suggested = `Реестр КТК Владивосток — ${formatDateFull(todayYmd())}.xlsx`;
             saveFileWithPicker(suggested, async () => (await downloadDispatcherJournalExcel()).blob)
-              .then((result) => {
-                if (result === 'saved') setMessage({ severity: 'success', text: 'Excel сохранён: лист на каждый месяц' });
-                else setMessage(null);
-              })
+              .then(() => setMessage({ severity: 'success', text: 'Excel скачан: лист на каждый месяц' }))
               .catch(() => setMessage({ severity: 'error', text: 'Не удалось скачать Excel' }))
               .finally(() => setExporting(false));
           }}
