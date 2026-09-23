@@ -5,7 +5,6 @@ import {
   Box,
   Button,
   Checkbox,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -64,7 +63,8 @@ import {
   dispatcherJournalAccess,
 } from '../utils/dispatcherJournalAccess';
 import { sortRows } from '../utils/tableSort';
-import { saveFileWithPicker } from '../utils/download';
+import { downloadBlob } from '../utils/download';
+import ExcelExportDialog, { type ExcelExportState } from '../components/dispatcher/ExcelExportDialog';
 import {
   applyColumnPrefs,
   isHidden,
@@ -558,7 +558,48 @@ export default function DispatcherJournalPage() {
   const ownClipboardRef = useRef<{ text: string; html: string } | null>(null);
   const pasteIntoCellRef = useRef<(cell: PasteTargetCell, text: string, html: string) => void>(() => undefined);
   const [pastePrompt, setPastePrompt] = useState<{ count: number; replace: () => void; insert: () => void } | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const [excelExport, setExcelExport] = useState<ExcelExportState | null>(null);
+  const excelAbortRef = useRef<AbortController | null>(null);
+
+  /** Готовим Excel в окне выгрузки: сначала прогресс, потом кнопка «Сохранить». */
+  const startExcelExport = useCallback(() => {
+    excelAbortRef.current?.abort();
+    const controller = new AbortController();
+    excelAbortRef.current = controller;
+    setExcelExport({ status: 'preparing', loaded: 0, total: null });
+    downloadDispatcherJournalExcel({
+      signal: controller.signal,
+      onProgress: (loaded, total) =>
+        setExcelExport((prev) => (prev?.status === 'preparing' ? { status: 'preparing', loaded, total } : prev)),
+    })
+      .then(({ blob, filename }) => {
+        if (controller.signal.aborted) return;
+        setExcelExport({
+          status: 'ready',
+          blob,
+          filename: filename || `Реестр КТК Владивосток — ${formatDateFull(todayYmd())}.xlsx`,
+        });
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setExcelExport({ status: 'error', text: 'Сервер не отдал файл. Попробуйте ещё раз.' });
+      });
+  }, []);
+
+  /** Скачивание строго по нажатию кнопки — браузер сам решает, спросить папку или положить в загрузки. */
+  const saveExcelExport = useCallback(() => {
+    setExcelExport((prev) => {
+      if (prev?.status !== 'ready' && prev?.status !== 'saved') return prev;
+      void downloadBlob(prev.blob, prev.filename);
+      return { status: 'saved', blob: prev.blob, filename: prev.filename };
+    });
+  }, []);
+
+  const closeExcelExport = useCallback(() => {
+    excelAbortRef.current?.abort();
+    excelAbortRef.current = null;
+    setExcelExport(null);
+  }, []);
   // история: весь реестр (orderId = null) или одна строка
   const [history, setHistory] = useState<{ orderId: string | null; label?: string } | null>(null);
   const reloadTimerRef = useRef<number | null>(null);
@@ -3322,17 +3363,9 @@ export default function DispatcherJournalPage() {
           <ListItemText primary="Вернуть общий порядок" secondary={personalSort ? 'сейчас у вас своя сортировка' : undefined} />
         </MenuItem>
         <MenuItem
-          disabled={exporting}
-          // пока файл готовится, внизу висит полоска «Готовим Excel…» — видно, что идёт работа
           onClick={() => {
             setSettingsAnchor(null);
-            setExporting(true);
-            // файл отдаём обычным скачиванием: системное окно «Сохранить как» зависало в Arc
-            const suggested = `Реестр КТК Владивосток — ${formatDateFull(todayYmd())}.xlsx`;
-            saveFileWithPicker(suggested, async () => (await downloadDispatcherJournalExcel()).blob)
-              .then(() => setMessage({ severity: 'success', text: 'Excel скачан: лист на каждый месяц' }))
-              .catch(() => setMessage({ severity: 'error', text: 'Не удалось скачать Excel' }))
-              .finally(() => setExporting(false));
+            startExcelExport();
           }}
         >
           <ListItemIcon><FileDownload fontSize="small" /></ListItemIcon>
@@ -3363,12 +3396,13 @@ export default function DispatcherJournalPage() {
       </Menu>
 
       {alignCss && <style>{alignCss}</style>}
-      <Snackbar open={exporting} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-        <Alert severity="info" icon={false} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <CircularProgress size={16} sx={{ mr: 1, verticalAlign: 'middle' }} />
-          Готовим Excel со всеми месяцами…
-        </Alert>
-      </Snackbar>
+      <ExcelExportDialog
+        state={excelExport}
+        hint="лист на каждый месяц"
+        onSave={saveExcelExport}
+        onRetry={startExcelExport}
+        onClose={closeExcelExport}
+      />
 
       <ConfirmDialog request={confirmRequest} onClose={() => setConfirmRequest(null)} />
 
