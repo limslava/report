@@ -63,7 +63,7 @@ import {
   dispatcherJournalAccess,
 } from '../utils/dispatcherJournalAccess';
 import { sortRows } from '../utils/tableSort';
-import { downloadBlob } from '../utils/download';
+import { saveFileWithPicker } from '../utils/download';
 import {
   applyColumnPrefs,
   isHidden,
@@ -3325,10 +3325,17 @@ export default function DispatcherJournalPage() {
           onClick={() => {
             setSettingsAnchor(null);
             setExporting(true);
-            setMessage({ severity: 'success', text: 'Готовим Excel со всеми месяцами…' });
-            downloadDispatcherJournalExcel()
-              .then(({ blob, filename }) => downloadBlob(blob, filename))
-              .then(() => setMessage({ severity: 'success', text: 'Excel скачан: лист на каждый месяц' }))
+            // окно «Сохранить как» открываем сразу по клику: после загрузки файла браузер его уже не покажет
+            const suggested = `Реестр КТК Владивосток — ${formatDateFull(todayYmd())}.xlsx`;
+            saveFileWithPicker(suggested, async () => {
+              setMessage({ severity: 'success', text: 'Готовим Excel со всеми месяцами…' });
+              const { blob } = await downloadDispatcherJournalExcel();
+              return blob;
+            })
+              .then((result) => {
+                if (result === 'saved') setMessage({ severity: 'success', text: 'Excel сохранён: лист на каждый месяц' });
+                else setMessage(null);
+              })
               .catch(() => setMessage({ severity: 'error', text: 'Не удалось скачать Excel' }))
               .finally(() => setExporting(false));
           }}
