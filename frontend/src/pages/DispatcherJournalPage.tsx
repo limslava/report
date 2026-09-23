@@ -437,6 +437,32 @@ const EMPTY_SELECTION: CellSelection = { anchor: null, focus: null, extra: [] };
 type Message = { severity: 'error' | 'success'; text: string } | null;
 
 /**
+ * Системный буфер обмена для «Вставить» из меню. Читаем не дольше секунды: запрос доступа
+ * в некоторых браузерах висит, и вставка из меню не срабатывала вовсе.
+ */
+const readSystemClipboard = async (): Promise<{ text: string; html: string } | null> => {
+  const read = (async (): Promise<{ text: string; html: string } | null> => {
+    try {
+      let text = '';
+      let html = '';
+      if (navigator.clipboard?.read) {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          if (item.types.includes('text/html')) html = await (await item.getType('text/html')).text();
+          if (item.types.includes('text/plain')) text = await (await item.getType('text/plain')).text();
+        }
+      }
+      if (!text && navigator.clipboard?.readText) text = await navigator.clipboard.readText();
+      return text.trim() ? { text, html } : null;
+    } catch {
+      return null;
+    }
+  })();
+  const timeout = new Promise<null>((resolve) => { window.setTimeout(() => resolve(null), 1000); });
+  return Promise.race([read, timeout]);
+};
+
+/**
  * Копирование из меню: через событие copy скрытого поля — работает без разрешения на буфер
  * (navigator.clipboard.write Chrome отдаёт не всегда). Кладём и текст, и таблицу.
  */
@@ -1711,29 +1737,20 @@ export default function DispatcherJournalPage() {
     }
     // курсор в нужной ячейке: и для вставки, и чтобы сработал обычный Ctrl+V
     (td.querySelector('input, textarea') as HTMLElement | null)?.focus();
-    let text = '';
-    let html = '';
-    try {
-      if (navigator.clipboard?.read) {
-        const items = await navigator.clipboard.read();
-        for (const item of items) {
-          if (item.types.includes('text/html')) html = await (await item.getType('text/html')).text();
-          if (item.types.includes('text/plain')) text = await (await item.getType('text/plain')).text();
-        }
-      }
-      if (!text && navigator.clipboard?.readText) text = await navigator.clipboard.readText();
-    } catch {
-      // браузер не дал читать буфер — вставим то, что копировали в самом реестре
-    }
-    if (!text.trim() && ownClipboardRef.current) {
-      text = ownClipboardRef.current.text;
-      html = ownClipboardRef.current.html;
-    }
-    if (!text.trim()) {
+    // системный буфер спрашиваем с тайм-аутом: в некоторых браузерах запрос доступа
+    // может висеть бесконечно, и вставка тогда просто не срабатывала
+    const system = await readSystemClipboard();
+    const own = ownClipboardRef.current;
+    const payload = system ?? (own && own.text.trim() ? own : null);
+    if (!payload) {
       setMessage({ severity: 'success', text: 'Курсор в нужной ячейке — нажмите Ctrl+V' });
       return;
     }
-    pasteIntoCellRef.current({ td, tr, field, rowId }, text, html);
+    pasteIntoCellRef.current({ td, tr, field, rowId }, payload.text, payload.html);
+    // у блока из нескольких строк своё сообщение, у одного значения — показываем результат
+    if (!/[\t\n]/.test(payload.text.trim())) {
+      setMessage({ severity: 'success', text: `Вставлено: ${payload.text.trim().slice(0, 40)}` });
+    }
   }, []);
 
   /** Пакет правок и новых строк одним действием — одна запись в Ctrl+Z. */
