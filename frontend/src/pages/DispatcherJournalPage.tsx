@@ -5,6 +5,7 @@ import {
   Box,
   Button,
   Checkbox,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -3322,16 +3323,13 @@ export default function DispatcherJournalPage() {
         </MenuItem>
         <MenuItem
           disabled={exporting}
+          // пока файл готовится, внизу висит полоска «Готовим Excel…» — видно, что идёт работа
           onClick={() => {
             setSettingsAnchor(null);
             setExporting(true);
             // окно «Сохранить как» открываем сразу по клику: после загрузки файла браузер его уже не покажет
             const suggested = `Реестр КТК Владивосток — ${formatDateFull(todayYmd())}.xlsx`;
-            saveFileWithPicker(suggested, async () => {
-              setMessage({ severity: 'success', text: 'Готовим Excel со всеми месяцами…' });
-              const { blob } = await downloadDispatcherJournalExcel();
-              return blob;
-            })
+            saveFileWithPicker(suggested, async () => (await downloadDispatcherJournalExcel()).blob)
               .then((result) => {
                 if (result === 'saved') setMessage({ severity: 'success', text: 'Excel сохранён: лист на каждый месяц' });
                 else setMessage(null);
@@ -3368,6 +3366,13 @@ export default function DispatcherJournalPage() {
       </Menu>
 
       {alignCss && <style>{alignCss}</style>}
+      <Snackbar open={exporting} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert severity="info" icon={false} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CircularProgress size={16} sx={{ mr: 1, verticalAlign: 'middle' }} />
+          Готовим Excel со всеми месяцами…
+        </Alert>
+      </Snackbar>
+
       <ConfirmDialog request={confirmRequest} onClose={() => setConfirmRequest(null)} />
 
       <Dialog open={Boolean(pastePrompt)} onClose={() => setPastePrompt(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3, width: 480, maxWidth: 'calc(100% - 32px)' } }}>
