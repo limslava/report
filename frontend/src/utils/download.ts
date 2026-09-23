@@ -19,6 +19,44 @@ type WindowWithSavePicker = Window & {
   showSaveFilePicker?: (options?: SaveFilePickerOptions) => Promise<FileSystemFileHandle>;
 };
 
+/**
+ * Сохранение файла, который ещё нужно получить с сервера: окно «Сохранить как» открывается
+ * сразу по клику, а не после загрузки — иначе браузер его больше не показывает (разрешение
+ * действует несколько секунд после нажатия) и файл молча падает в «Загрузки».
+ */
+export async function saveFileWithPicker(suggestedName: string, load: () => Promise<Blob>): Promise<'saved' | 'cancelled'> {
+  const safeName = suggestedName.normalize('NFC');
+  const savePicker = (window as WindowWithSavePicker).showSaveFilePicker;
+  if (savePicker) {
+    let handle: FileSystemFileHandle | null = null;
+    try {
+      handle = await savePicker.call(window, {
+        suggestedName: safeName,
+        types: [
+          {
+            description: 'Excel workbook',
+            accept: {
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+            },
+          },
+        ],
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled';
+      handle = null;
+    }
+    if (handle) {
+      const blob = await load();
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return 'saved';
+    }
+  }
+  await downloadBlob(await load(), safeName);
+  return 'saved';
+}
+
 export async function downloadBlob(blob: Blob, filename: string): Promise<void> {
   const safeFilename = filename.normalize('NFC');
   const savePicker = (window as WindowWithSavePicker).showSaveFilePicker;

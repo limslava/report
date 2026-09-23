@@ -25,7 +25,7 @@ import { planningV2Api } from '../../services/planning-v2.api';
 import { PlanningGridRow, PlanningSegmentReport } from '../../types/planning-v2.types';
 import { useAuthStore } from '../../store/auth-store';
 import { registerUnsavedHandlers, setHasUnsavedChanges } from '../../store/unsavedChanges';
-import { downloadBlob } from '../../utils/download';
+import { saveFileWithPicker } from '../../utils/download';
 import { subscribePlansRealtime } from '../../services/plans-realtime';
 
 interface ExcelLikePlanTableProps {
@@ -311,8 +311,11 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
     try {
       setDownloading(true);
       setError(null);
-      const { blob, filename } = await planningV2Api.downloadKtkVvoSummaryExcel({ asOfDate: currentContext.asOfDate });
-      await downloadBlob(blob, filename ?? `Заявки КТК Владивосток — ${formatDateForFilename(currentContext.asOfDate)}.xlsx`);
+      // окно «Сохранить как» открывается сразу по клику: после загрузки браузер его уже не покажет
+      await saveFileWithPicker(
+        `Заявки КТК Владивосток — ${formatDateForFilename(currentContext.asOfDate)}.xlsx`,
+        async () => (await planningV2Api.downloadKtkVvoSummaryExcel({ asOfDate: currentContext.asOfDate })).blob,
+      );
     } catch (err: any) {
       setError(err?.message || 'Ошибка выгрузки Excel');
     } finally {
@@ -324,14 +327,13 @@ const ExcelLikePlanTable: React.FC<ExcelLikePlanTableProps> = ({
     try {
       setDownloading(true);
       setError(null);
-      const { blob, filename } = await planningV2Api.downloadDailyExcel({
+      const fallbackName = `${report?.segment.name ?? currentContext.segmentCode} — ${formatDateForFilename(currentContext.asOfDate)}.xlsx`;
+      await saveFileWithPicker(fallbackName, async () => (await planningV2Api.downloadDailyExcel({
         segmentCode: currentContext.segmentCode,
         year: currentContext.year,
         month: currentContext.month,
         asOfDate: currentContext.asOfDate,
-      });
-      const fallbackName = `${report?.segment.name ?? currentContext.segmentCode} — ${formatDateForFilename(currentContext.asOfDate)}.xlsx`;
-      await downloadBlob(blob, filename ?? fallbackName);
+      })).blob);
     } catch (err: any) {
       setError(err?.message || 'Ошибка выгрузки Excel');
     } finally {
