@@ -526,6 +526,8 @@ export default function DispatcherJournalPage() {
   // подтверждения (удаление строки, большая вставка) — своим окном: браузерное можно отключить
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   type PasteTargetCell = { td: HTMLElement; tr: HTMLElement; field: string; rowId: string | null };
+  /** Что скопировали в самом реестре: для «Вставить» из меню, когда браузер не даёт читать буфер. */
+  const ownClipboardRef = useRef<{ text: string; html: string } | null>(null);
   const pasteIntoCellRef = useRef<(cell: PasteTargetCell, text: string, html: string) => void>(() => undefined);
   const [pastePrompt, setPastePrompt] = useState<{ count: number; replace: () => void; insert: () => void } | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -1689,8 +1691,9 @@ export default function DispatcherJournalPage() {
       text = rowToTsv(row);
       html = tsvAsHtmlTable(text);
     }
-    if (copyTextToClipboard(text, html)) setMessage({ severity: 'success', text: 'Скопировано в буфер обмена' });
-    else setMessage({ severity: 'error', text: 'Браузер не дал скопировать — нажмите Ctrl+C' });
+    ownClipboardRef.current = { text, html: html ?? '' };
+    if (copyTextToClipboard(text, html)) setMessage({ severity: 'success', text: 'Скопировано' });
+    else setMessage({ severity: 'success', text: 'Скопировано в реестре (в другие программы — Ctrl+C)' });
   }, [cellText, rowToTsv, selectionAsTsv]);
 
   /** «Вставить» из меню: в активную ячейку, иначе в первую ячейку выбранной строки. */
@@ -1704,11 +1707,11 @@ export default function DispatcherJournalPage() {
       setMessage({ severity: 'error', text: 'Кликните в ячейку, куда вставить значение' });
       return;
     }
-    // ячейку выделяем сразу: если браузер не даст прочитать буфер, сработает обычный Ctrl+V
+    // курсор в нужной ячейке: и для вставки, и чтобы сработал обычный Ctrl+V
     (td.querySelector('input, textarea') as HTMLElement | null)?.focus();
+    let text = '';
+    let html = '';
     try {
-      let text = '';
-      let html = '';
       if (navigator.clipboard?.read) {
         const items = await navigator.clipboard.read();
         for (const item of items) {
@@ -1717,14 +1720,18 @@ export default function DispatcherJournalPage() {
         }
       }
       if (!text && navigator.clipboard?.readText) text = await navigator.clipboard.readText();
-      if (!text.trim()) {
-        setMessage({ severity: 'success', text: 'Курсор в нужной ячейке — нажмите Ctrl+V' });
-        return;
-      }
-      pasteIntoCellRef.current({ td, tr, field, rowId }, text, html);
     } catch {
-      setMessage({ severity: 'success', text: 'Курсор в нужной ячейке — нажмите Ctrl+V' });
+      // браузер не дал читать буфер — вставим то, что копировали в самом реестре
     }
+    if (!text.trim() && ownClipboardRef.current) {
+      text = ownClipboardRef.current.text;
+      html = ownClipboardRef.current.html;
+    }
+    if (!text.trim()) {
+      setMessage({ severity: 'success', text: 'Курсор в нужной ячейке — нажмите Ctrl+V' });
+      return;
+    }
+    pasteIntoCellRef.current({ td, tr, field, rowId }, text, html);
   }, []);
 
   /** Пакет правок и новых строк одним действием — одна запись в Ctrl+Z. */
@@ -1806,8 +1813,10 @@ export default function DispatcherJournalPage() {
 
   const copyRowToClipboard = useCallback((row: DispatcherOrderRow) => {
     const text = rowToTsv(row);
-    if (copyTextToClipboard(text, tsvAsHtmlTable(text))) setMessage({ severity: 'success', text: 'Строка скопирована в буфер' });
-    else setMessage({ severity: 'error', text: 'Браузер не дал скопировать — выделите строку и нажмите Ctrl+C' });
+    const html = tsvAsHtmlTable(text);
+    ownClipboardRef.current = { text, html };
+    if (copyTextToClipboard(text, html)) setMessage({ severity: 'success', text: 'Строка скопирована в буфер' });
+    else setMessage({ severity: 'success', text: 'Строка скопирована в реестре (в другие программы — Ctrl+C)' });
   }, [rowToTsv]);
 
   // Копирование/вставка через нативные события copy/cut/paste — работают
@@ -1853,13 +1862,16 @@ export default function DispatcherJournalPage() {
         event.clipboardData.setData('text/plain', tsv);
         // html с таблицей — чтобы при вставке было видно, что это блок ячеек, а не текст
         event.clipboardData.setData('text/html', tsvAsHtmlTable(tsv));
+        ownClipboardRef.current = { text: tsv, html: tsvAsHtmlTable(tsv) };
         setMessage({ severity: 'success', text: `Скопировано ячеек: ${selectedKeysRef.current.size}` });
         return;
       }
       const cell = selectedCell(event.target);
       if (cell && event.clipboardData) {
         event.preventDefault();
-        event.clipboardData.setData('text/plain', cellRawText(cell.rowId, cell.field));
+        const value = cellRawText(cell.rowId, cell.field);
+        event.clipboardData.setData('text/plain', value);
+        ownClipboardRef.current = { text: value, html: '' };
         return;
       }
       const selected = rowsRef.current.find((row) => row.id === selectedRowIdRef.current);
