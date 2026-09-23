@@ -517,7 +517,8 @@ export default function DispatcherJournalPage() {
   const [message, setMessage] = useState<Message>(null);
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [ghostKey, setGhostKey] = useState(0);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: DispatcherOrderRow } | null>(null);
+  // field — ячейка, по которой кликнули правой кнопкой: с ней работают «Копировать» и «Вставить»
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: DispatcherOrderRow; field: string | null } | null>(null);
   const [dictionariesOpen, setDictionariesOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   // свои водители и машины «Нашей организации» — для подсветки чужих красным
@@ -1678,8 +1679,8 @@ export default function DispatcherJournalPage() {
   }, []);
 
   /** «Копировать» из меню: выделенные ячейки, активная ячейка или вся строка. */
-  const copyFromMenu = useCallback((row: DispatcherOrderRow) => {
-    const active = activeCellRef.current;
+  const copyFromMenu = useCallback((row: DispatcherOrderRow, field: string | null) => {
+    const active = field ? { rowId: row.id, field } : activeCellRef.current;
     let text: string;
     let html: string | null = null;
     if (selectedKeysRef.current.size > 1) {
@@ -1697,10 +1698,11 @@ export default function DispatcherJournalPage() {
   }, [cellText, rowToTsv, selectionAsTsv]);
 
   /** «Вставить» из меню: в активную ячейку, иначе в первую ячейку выбранной строки. */
-  const pasteFromMenu = useCallback(async (row: DispatcherOrderRow) => {
+  const pasteFromMenu = useCallback(async (row: DispatcherOrderRow, menuField: string | null) => {
     const active = activeCellRef.current;
-    const rowId = active?.rowId && rowsRef.current.some((item) => item.id === active.rowId) ? active.rowId : row.id;
-    const field = active?.rowId === rowId && active?.field ? active.field : visibleColumnsRef.current[0]?.field ?? DATE_KEY;
+    const rowId = menuField ? row.id : (active?.rowId && rowsRef.current.some((item) => item.id === active.rowId) ? active.rowId : row.id);
+    const field = menuField
+      ?? (active?.rowId === rowId && active?.field ? active.field : visibleColumnsRef.current[0]?.field ?? DATE_KEY);
     const tr = wrapRef.current?.querySelector(`tr[data-row-id="${rowId}"]`) as HTMLElement | null;
     const td = tr?.querySelector(`td[data-field="${field}"]`) as HTMLElement | null;
     if (!tr || !td) {
@@ -2968,7 +2970,17 @@ export default function DispatcherJournalPage() {
                     // на Mac Ctrl+клик — это выделение ячейки, а не меню строки
                     if (event.ctrlKey && /Mac/i.test(navigator.platform)) return;
                     setSelectedRowId(row.id);
-                    setContextMenu({ x: event.clientX, y: event.clientY, row });
+                    // правый клик выбирает ячейку под курсором (как в таблицах): с ней работают
+                    // «Копировать» и «Вставить»; уже выделенный блок ячеек при этом сохраняется
+                    const field = ((event.target as HTMLElement).closest('td[data-field]') as HTMLElement | null)?.dataset.field ?? null;
+                    if (field) {
+                      const inSelection = selectedKeysRef.current.size > 1 && selectedKeysRef.current.has(cellKey(row.id, field));
+                      if (!inSelection) {
+                        setActiveCell({ rowId: row.id, field });
+                        setCellSelection({ anchor: { rowId: row.id, field }, focus: null, extra: [] });
+                      }
+                    }
+                    setContextMenu({ x: event.clientX, y: event.clientY, row, field });
                   }}
                   onDragOver={(event) => {
                     if (!dragRowRef.current) return;
@@ -3144,7 +3156,7 @@ export default function DispatcherJournalPage() {
               onClick={() => {
                 const current = rowsRef.current.find((item) => item.id === contextMenu.row.id) ?? contextMenu.row;
                 setContextMenu(null);
-                copyFromMenu(current);
+                copyFromMenu(current, contextMenu.field);
               }}
             >
               Копировать<span className="dj-context-hint">Ctrl+C</span>
@@ -3156,7 +3168,7 @@ export default function DispatcherJournalPage() {
                 onClick={() => {
                   const current = rowsRef.current.find((item) => item.id === contextMenu.row.id) ?? contextMenu.row;
                   setContextMenu(null);
-                  void pasteFromMenu(current);
+                  void pasteFromMenu(current, contextMenu.field);
                 }}
               >
                 Вставить<span className="dj-context-hint">Ctrl+V</span>
