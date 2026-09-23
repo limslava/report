@@ -436,6 +436,36 @@ const EMPTY_SELECTION: CellSelection = { anchor: null, focus: null, extra: [] };
 
 type Message = { severity: 'error' | 'success'; text: string } | null;
 
+/**
+ * Копирование из меню: через событие copy скрытого поля — работает без разрешения на буфер
+ * (navigator.clipboard.write Chrome отдаёт не всегда). Кладём и текст, и таблицу.
+ */
+const copyTextToClipboard = (text: string, html?: string | null): boolean => {
+  const holder = document.createElement('textarea');
+  holder.value = text;
+  holder.setAttribute('readonly', '');
+  holder.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+  document.body.appendChild(holder);
+  const onCopy = (event: ClipboardEvent) => {
+    event.preventDefault();
+    event.clipboardData?.setData('text/plain', text);
+    if (html) event.clipboardData?.setData('text/html', html);
+  };
+  document.addEventListener('copy', onCopy, true);
+  let copied = false;
+  try {
+    holder.select();
+    copied = document.execCommand('copy');
+  } catch {
+    copied = false;
+  } finally {
+    document.removeEventListener('copy', onCopy, true);
+    holder.remove();
+  }
+  if (!copied) void navigator.clipboard?.writeText?.(text).catch(() => undefined);
+  return copied;
+};
+
 /** Скопированные ячейки — ещё и таблицей: так их узнают Excel, google-таблицы и сам реестр. */
 const tsvAsHtmlTable = (tsv: string): string => {
   const escape = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -1646,7 +1676,7 @@ export default function DispatcherJournalPage() {
   }, []);
 
   /** «Копировать» из меню: выделенные ячейки, активная ячейка или вся строка. */
-  const copyFromMenu = useCallback(async (row: DispatcherOrderRow) => {
+  const copyFromMenu = useCallback((row: DispatcherOrderRow) => {
     const active = activeCellRef.current;
     let text: string;
     let html: string | null = null;
@@ -1659,19 +1689,8 @@ export default function DispatcherJournalPage() {
       text = rowToTsv(row);
       html = tsvAsHtmlTable(text);
     }
-    try {
-      if (html && typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
-        await navigator.clipboard.write([new ClipboardItem({
-          'text/plain': new Blob([text], { type: 'text/plain' }),
-          'text/html': new Blob([html], { type: 'text/html' }),
-        })]);
-      } else {
-        await navigator.clipboard.writeText(text);
-      }
-      setMessage({ severity: 'success', text: 'Скопировано в буфер обмена' });
-    } catch {
-      setMessage({ severity: 'error', text: 'Браузер не дал доступ к буферу обмена' });
-    }
+    if (copyTextToClipboard(text, html)) setMessage({ severity: 'success', text: 'Скопировано в буфер обмена' });
+    else setMessage({ severity: 'error', text: 'Браузер не дал скопировать — нажмите Ctrl+C' });
   }, [cellText, rowToTsv, selectionAsTsv]);
 
   /** «Вставить» из меню: в активную ячейку, иначе в первую ячейку выбранной строки. */
@@ -1685,6 +1704,8 @@ export default function DispatcherJournalPage() {
       setMessage({ severity: 'error', text: 'Кликните в ячейку, куда вставить значение' });
       return;
     }
+    // ячейку выделяем сразу: если браузер не даст прочитать буфер, сработает обычный Ctrl+V
+    (td.querySelector('input, textarea') as HTMLElement | null)?.focus();
     try {
       let text = '';
       let html = '';
@@ -1695,11 +1716,14 @@ export default function DispatcherJournalPage() {
           if (item.types.includes('text/plain')) text = await (await item.getType('text/plain')).text();
         }
       }
-      if (!text) text = await navigator.clipboard.readText();
-      if (!text.trim()) return;
+      if (!text && navigator.clipboard?.readText) text = await navigator.clipboard.readText();
+      if (!text.trim()) {
+        setMessage({ severity: 'success', text: 'Курсор в нужной ячейке — нажмите Ctrl+V' });
+        return;
+      }
       pasteIntoCellRef.current({ td, tr, field, rowId }, text, html);
     } catch {
-      setMessage({ severity: 'error', text: 'Браузер не дал доступ к буферу обмена — используйте Ctrl+V' });
+      setMessage({ severity: 'success', text: 'Курсор в нужной ячейке — нажмите Ctrl+V' });
     }
   }, []);
 
@@ -1780,13 +1804,10 @@ export default function DispatcherJournalPage() {
     }
   }, []);
 
-  const copyRowToClipboard = useCallback(async (row: DispatcherOrderRow) => {
-    try {
-      await navigator.clipboard.writeText(rowToTsv(row));
-      setMessage({ severity: 'success', text: 'Строка скопирована в буфер' });
-    } catch {
-      setMessage({ severity: 'error', text: 'Браузер не дал доступ к буферу — выделите строку и нажмите Ctrl+C' });
-    }
+  const copyRowToClipboard = useCallback((row: DispatcherOrderRow) => {
+    const text = rowToTsv(row);
+    if (copyTextToClipboard(text, tsvAsHtmlTable(text))) setMessage({ severity: 'success', text: 'Строка скопирована в буфер' });
+    else setMessage({ severity: 'error', text: 'Браузер не дал скопировать — выделите строку и нажмите Ctrl+C' });
   }, [rowToTsv]);
 
   // Копирование/вставка через нативные события copy/cut/paste — работают
@@ -3098,7 +3119,7 @@ export default function DispatcherJournalPage() {
               className="dj-context-item"
               onClick={() => {
                 const current = rowsRef.current.find((item) => item.id === contextMenu.row.id) ?? contextMenu.row;
-                void copyRowToClipboard(current);
+                copyRowToClipboard(current);
                 setContextMenu(null);
               }}
             >
@@ -3111,7 +3132,7 @@ export default function DispatcherJournalPage() {
               onClick={() => {
                 const current = rowsRef.current.find((item) => item.id === contextMenu.row.id) ?? contextMenu.row;
                 setContextMenu(null);
-                void copyFromMenu(current);
+                copyFromMenu(current);
               }}
             >
               Копировать<span className="dj-context-hint">Ctrl+C</span>
