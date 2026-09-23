@@ -23,7 +23,8 @@ export const isValidLocation = (value: unknown): value is FleetLocation =>
 /** Регионы, которые роль ВИДИТ в справочниках (сотрудники/техника/прицепы). */
 export function directoryLocationsForRole(role: string | undefined): FleetLocation[] {
   if (role === 'admin' || role === 'head_hr' || role === 'hr_specialist') return ['vvo', 'mow'];
-  if (role === 'head_ktk_vvo' || role === 'manager_ktk_vvo') return ['vvo'];
+  // БДД Владивосток ведёт «Нашу организацию» своего региона (решение 23.09.2026)
+  if (role === 'head_ktk_vvo' || role === 'manager_ktk_vvo' || role === 'bdd_specialist_vvo') return ['vvo'];
   if (role === 'head_ktk_mow' || role === 'manager_ktk_mow') return ['mow'];
   return [];
 }
@@ -37,7 +38,8 @@ export function canEditDirectories(role: string | undefined): boolean {
     role === 'head_ktk_vvo' ||
     role === 'head_ktk_mow' ||
     role === 'manager_ktk_vvo' ||
-    role === 'manager_ktk_mow'
+    role === 'manager_ktk_mow' ||
+    role === 'bdd_specialist_vvo'
   );
 }
 
@@ -47,7 +49,7 @@ export function canEditDirectoryEntry(
   location: FleetLocation
 ): boolean {
   if (role === 'admin' || role === 'head_hr' || role === 'hr_specialist') return true;
-  if (role === 'head_ktk_vvo' || role === 'manager_ktk_vvo') return location === 'vvo';
+  if (role === 'head_ktk_vvo' || role === 'manager_ktk_vvo' || role === 'bdd_specialist_vvo') return location === 'vvo';
   if (role === 'head_ktk_mow' || role === 'manager_ktk_mow') return location === 'mow';
   return false;
 }
@@ -90,7 +92,12 @@ export const DIRECTORY_ROLES = [
   'manager_ktk_mow',
   'head_hr',
   'hr_specialist',
+  // БДД Владивосток ведёт «Нашу организацию» своего региона (решение 23.09.2026)
+  'bdd_specialist_vvo',
 ] as const;
+
+/** Контрагенты: БДД их не ведёт и не видит. */
+export const DIRECTORY_COUNTERPARTY_ROLES = DIRECTORY_ROLES.filter((role) => role !== 'bdd_specialist_vvo');
 
 /** Ведение справочников (менеджеры КТК — свой регион, проверяется в контроллере). */
 export const DIRECTORY_EDIT_ROLES = [
@@ -101,7 +108,11 @@ export const DIRECTORY_EDIT_ROLES = [
   'manager_ktk_mow',
   'head_hr',
   'hr_specialist',
+  'bdd_specialist_vvo',
 ] as const;
+
+/** Контрагентов заводят и правят без БДД. */
+export const DIRECTORY_COUNTERPARTY_EDIT_ROLES = DIRECTORY_EDIT_ROLES.filter((role) => role !== 'bdd_specialist_vvo');
 
 /** Кандидаты на удаление (регион проверяется в контроллере по записи). */
 export const DIRECTORY_DELETE_ROLES = ['admin', 'head_ktk_vvo', 'head_ktk_mow'] as const;

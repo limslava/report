@@ -4,6 +4,8 @@ import { authorizeRole } from '../middleware/authorize';
 import { asyncHandler } from '../middleware/error-handler';
 import {
   DIRECTORY_DELETE_ROLES,
+  DIRECTORY_COUNTERPARTY_EDIT_ROLES,
+  DIRECTORY_COUNTERPARTY_ROLES,
   DIRECTORY_EDIT_ROLES,
   DIRECTORY_ROLES,
   FLEET_VIEW_ROLES,
@@ -50,9 +52,9 @@ router.get('/attachments/:id/download', authorizeRole(...DIRECTORY_ROLES), async
 router.delete('/attachments/:id', authorizeRole(...DIRECTORY_EDIT_ROLES), asyncHandler(deleteDirectoryAttachment));
 
 // Справочник контрагентов: свой список, добавление по ИНН (реквизиты из ФНС)
-router.get('/counterparties', authorizeRole(...DIRECTORY_ROLES), asyncHandler(listCounterpartiesDirectory));
-router.get('/counterparties/:id', authorizeRole(...DIRECTORY_ROLES), asyncHandler(getCounterpartyDirectory));
-router.post('/counterparties', authorizeRole(...DIRECTORY_EDIT_ROLES), asyncHandler(createCounterpartyDirectory));
+router.get('/counterparties', authorizeRole(...DIRECTORY_COUNTERPARTY_ROLES), asyncHandler(listCounterpartiesDirectory));
+router.get('/counterparties/:id', authorizeRole(...DIRECTORY_COUNTERPARTY_ROLES), asyncHandler(getCounterpartyDirectory));
+router.post('/counterparties', authorizeRole(...DIRECTORY_COUNTERPARTY_EDIT_ROLES), asyncHandler(createCounterpartyDirectory));
 router.delete('/counterparties/:id', authorizeRole(...DIRECTORY_DELETE_ROLES), asyncHandler(deleteCounterpartyDirectory));
 
 // Модели и нормы: читают все причастные, пишут БДД/рук. КТК/админ (проверка в контроллере)

@@ -53,6 +53,8 @@ export const DISPATCHER_EXPORT_COLUMNS: ExportColumn[] = [
   { field: 'demurrage', title: 'Простой/руб', width: 12, kind: 'money' },
   { field: 'orderOnVehicle', title: 'Заказ на ТС', width: 9, kind: 'checkbox' },
   { field: 'invoiceSent', title: 'Отправка счета', width: 9, kind: 'checkbox' },
+  { field: 'ezzPe', title: 'ЭЗЗ/ПЭ', width: 9, kind: 'checkbox' },
+  { field: 'etrn', title: 'ЭТРН', width: 9, kind: 'checkbox' },
   { field: 'extraTon', title: 'Доп тонна', width: 10 },
   { field: 'seal', title: 'Пломба', width: 11 },
   { field: 'recoupling', title: 'Перецеп', width: 9, kind: 'checkbox' },

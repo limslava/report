@@ -55,6 +55,7 @@ import {
   canAccessOperationsPreview,
   canViewCalendar,
   canAccessFuel,
+  canAccessCounterparties,
   canAccessDirectories,
   canAccessPrintForms,
   canViewOperationsEfficiency,
@@ -153,6 +154,7 @@ const DashboardLayout = () => {
   const isKtkMowManager = user?.role === 'manager_ktk_mow' || user?.role === 'head_ktk_mow';
   const isKtkDispatchRole = isKtkVvoManager || isKtkMowManager;
   const isBddRole = user?.role === 'bdd_specialist_vvo' || user?.role === 'bdd_specialist_mow';
+  const isBddVvo = user?.role === 'bdd_specialist_vvo';
   // Роли диспетчерского отдела: единый блок меню «Диспетчерский отдел»
   // (Реестр / График работы / Печатные формы / Показатели / Справочник),
   // пункты без доступа не показываются (структура согласована 2026-09-11).
@@ -331,7 +333,9 @@ const DashboardLayout = () => {
           onClick: () => handleNavigate('/directories'), active: location.pathname.includes('/directories'),
           children: [
             { key: 'directories-own', label: 'Наша организация', onClick: () => handleNavigate('/directories'), active: location.pathname.endsWith('/directories') },
-            { key: 'directories-counterparties', label: 'Контрагенты', onClick: () => handleNavigate('/directories/counterparties'), active: location.pathname.includes('/directories/counterparties') },
+            ...(canAccessCounterparties(user?.role)
+              ? [{ key: 'directories-counterparties', label: 'Контрагенты', onClick: () => handleNavigate('/directories/counterparties'), active: location.pathname.includes('/directories/counterparties') }]
+              : []),
           ],
         }
       : null,
@@ -628,7 +632,7 @@ const DashboardLayout = () => {
                             <ListItemText primary="Контейнеровозы" primaryTypographyProps={{ fontSize: 13 }} />
                           </ListItemButton>
                         </ListItem>
-                        {isKtkVvoManager && (
+                        {(isKtkVvoManager || isBddVvo) && (
                           <ListItem disablePadding sx={{ pl: 6 }}>
                             <ListItemButton
                               selected={location.pathname === '/operations-preview' && location.search.includes('section=auto')}
@@ -639,6 +643,7 @@ const DashboardLayout = () => {
                             </ListItemButton>
                           </ListItem>
                         )}
+                        {!isBddVvo && (
                         <ListItem disablePadding sx={{ pl: 6 }}>
                           <ListItemButton
                             selected={location.pathname === '/operations-preview' && location.search.includes('section=dispatchers')}
@@ -648,6 +653,8 @@ const DashboardLayout = () => {
                             <ListItemText primary="Диспетчера" primaryTypographyProps={{ fontSize: 13 }} />
                           </ListItemButton>
                         </ListItem>
+                        )}
+                        {!isBddVvo && (
                         <ListItem disablePadding sx={{ pl: 6 }}>
                           <ListItemButton
                             selected={location.pathname === '/operations-preview' && location.search.includes('section=couriers')}
@@ -657,6 +664,7 @@ const DashboardLayout = () => {
                             <ListItemText primary={isKtkMowManager ? 'Механики' : 'Оперативники'} primaryTypographyProps={{ fontSize: 13 }} />
                           </ListItemButton>
                         </ListItem>
+                        )}
                       </>
                     )}
                   </>
@@ -789,15 +797,17 @@ const DashboardLayout = () => {
                             <ListItemText primary="Наша организация" primaryTypographyProps={{ fontSize: 13 }} />
                           </ListItemButton>
                         </ListItem>
-                        <ListItem disablePadding sx={{ pl: 6 }}>
-                          <ListItemButton
-                            selected={location.pathname.includes('/directories/counterparties')}
-                            onClick={() => handleNavigate('/directories/counterparties')}
-                            sx={{ py: 0.5, minHeight: 32 }}
-                          >
-                            <ListItemText primary="Контрагенты" primaryTypographyProps={{ fontSize: 13 }} />
-                          </ListItemButton>
-                        </ListItem>
+                        {canAccessCounterparties(user?.role) && (
+                          <ListItem disablePadding sx={{ pl: 6 }}>
+                            <ListItemButton
+                              selected={location.pathname.includes('/directories/counterparties')}
+                              onClick={() => handleNavigate('/directories/counterparties')}
+                              sx={{ py: 0.5, minHeight: 32 }}
+                            >
+                              <ListItemText primary="Контрагенты" primaryTypographyProps={{ fontSize: 13 }} />
+                            </ListItemButton>
+                          </ListItem>
+                        )}
                       </>
                     )}
                   </>

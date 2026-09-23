@@ -4,7 +4,7 @@ import { DispatcherOrderChange, type DispatcherOrderChangeAction } from '../mode
 import { logger } from '../utils/logger';
 
 /** Роли, которым видна история изменений реестра. */
-export const DISPATCHER_HISTORY_ROLES = ['admin', 'head_ktk_vvo'] as const;
+export const DISPATCHER_HISTORY_ROLES = ['admin', 'head_ktk_vvo', 'manager_ktk_vvo'] as const;
 
 export const canViewDispatcherHistory = (role: string | undefined): boolean =>
   (DISPATCHER_HISTORY_ROLES as readonly string[]).includes(role ?? '');
@@ -55,5 +55,5 @@ export const HISTORY_FIELDS = [
   'orderDate', 'status', 'info', 'client', 'driverName', 'vehiclePlate', 'ktkNumber', 'ktkType', 'grossWeight',
   'comments', 'operation', 'terminalFrom', 'slotFrom', 'pinFrom', 'submitTime', 'deliveryAddress', 'terminalTo',
   'slotTo', 'pinTo', 'driverRate', 'vat', 'clientRate', 'passes', 'extraAddress', 'demurrage', 'orderOnVehicle',
-  'invoiceSent', 'extraTon', 'seal', 'recoupling', 'driverRemarks',
+  'invoiceSent', 'ezzPe', 'etrn', 'extraTon', 'seal', 'recoupling', 'driverRemarks',
 ] as const;

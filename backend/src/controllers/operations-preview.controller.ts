@@ -229,6 +229,8 @@ const canAccessLocationSection = (role: unknown, location: PreviewLocation, sect
     return (location === 'garage_vvo' && section === 'mechanics')
       || (location === 'ktk_vvo' && (section === 'containers' || section === 'auto'));
   }
+  // специалист по БДД Владивосток: контейнеровозы и автовозы — факт, только просмотр
+  if (role === 'bdd_specialist_vvo') return location === 'ktk_vvo' && (section === 'containers' || section === 'auto');
   if (role === 'warehouse_manager_vvo') return location === 'garage_vvo' && section === 'warehouse_staff';
   if (role === 'security') return location === 'security_vvo' && section === 'guards';
   if (role === 'manager_ktk_vvo' || role === 'head_ktk_vvo') return location === 'ktk_vvo';
@@ -242,7 +244,7 @@ const canAccessLocationSection = (role: unknown, location: PreviewLocation, sect
  * только просмотр, план ему не отдаётся.
  */
 const isFactOnlyViewer = (role: unknown, location: PreviewLocation): boolean =>
-  role === 'garage_head_vvo' && location === 'ktk_vvo';
+  (role === 'garage_head_vvo' || role === 'bdd_specialist_vvo') && location === 'ktk_vvo';
 
 const FACT_ONLY_DEPARTMENTS = new Set<string>(['Контейнеры', 'Авто']);
 

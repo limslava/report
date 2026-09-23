@@ -1,11 +1,11 @@
 import { canDeleteDirectoryEntry, canEditDirectories, canEditDirectoryEntry } from './directories';
 
 describe('Права справочников (решение 2026-09-08)', () => {
-  test('ведение: руководители и менеджеры КТК, кадры, админ — да', () => {
-    for (const role of ['admin', 'head_ktk_vvo', 'head_ktk_mow', 'manager_ktk_vvo', 'manager_ktk_mow', 'head_hr', 'hr_specialist']) {
+  test('ведение: руководители и менеджеры КТК, кадры, БДД Владивосток, админ — да', () => {
+    for (const role of ['admin', 'head_ktk_vvo', 'head_ktk_mow', 'manager_ktk_vvo', 'manager_ktk_mow', 'head_hr', 'hr_specialist', 'bdd_specialist_vvo']) {
       expect(canEditDirectories(role)).toBe(true);
     }
-    for (const role of ['bdd_specialist_vvo', 'director', undefined]) {
+    for (const role of ['bdd_specialist_mow', 'director', undefined]) {
       expect(canEditDirectories(role)).toBe(false);
     }
   });
@@ -17,6 +17,9 @@ describe('Права справочников (решение 2026-09-08)', () =
     expect(canEditDirectoryEntry('manager_ktk_mow', 'vvo')).toBe(false);
     expect(canEditDirectoryEntry('head_hr', 'vvo')).toBe(true);
     expect(canEditDirectoryEntry('head_hr', 'mow')).toBe(true);
+    // БДД Владивосток — только свой регион (решение 23.09.2026)
+    expect(canEditDirectoryEntry('bdd_specialist_vvo', 'vvo')).toBe(true);
+    expect(canEditDirectoryEntry('bdd_specialist_vvo', 'mow')).toBe(false);
   });
 
   test('удаление: админ — везде, руководитель КТК — только свой регион', () => {

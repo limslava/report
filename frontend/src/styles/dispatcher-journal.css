@@ -304,7 +304,8 @@ body.dj-resizing { cursor: col-resize !important; user-select: none; }
   padding: 4px 0;
 }
 .dj-context-item {
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
   text-align: left;
   border: 0;
@@ -967,3 +968,6 @@ body.dj-filling, body.dj-filling * { cursor: crosshair !important; user-select: 
 .dj-align-seg svg { width: 16px; height: 16px; }
 .dj-align-seg svg rect { fill: #5f6368; }
 .dj-align-seg button.is-active svg rect { fill: #1a73e8; }
+
+/* подсказка горячей клавиши в меню правой кнопки */
+.dj-context-hint { margin-left: auto; padding-left: 12px; color: #9aa3b0; font-size: 11px; }
